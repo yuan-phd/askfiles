@@ -8,7 +8,7 @@
 #   count          number of directories to list, default 40
 #
 # Linux packaging for a measurement in a cloud session:
-#   npm run build && npx electron-builder --config electron-builder.yml --linux dir
+#   npm run build:main && PACKAGE_TARGET=linux-x64 bash scripts/build.sh && npx electron-builder --config electron-builder.yml --linux dir
 
 set -euo pipefail
 

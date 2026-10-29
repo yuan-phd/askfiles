@@ -25,20 +25,25 @@ describe('build.sh preflight', () => {
     const result = run({ PACKAGE_TARGET: 'win-x64' });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("unknown PACKAGE_TARGET 'win-x64'");
-    expect(result.stdout).not.toContain('1/7');
+    expect(result.stdout).not.toContain('1/8');
   });
 
   it('stops before building for mac-arm64 when resources/ollama is missing', () => {
     const result = run({ PACKAGE_TARGET: 'mac-arm64' });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('resources/ollama/ollama is missing');
-    expect(result.stdout).not.toContain('1/7');
+    expect(result.stdout).not.toContain('1/8');
+  });
+
+  it('accepts linux-x64 without resources/ollama', () => {
+    const result = run({ PACKAGE_TARGET: 'linux-x64' });
+    expect(result.stdout).toContain('1/8 apply patches');
   });
 
   it('fails with the patch step message when the tree has no patch helper', () => {
     const result = run({ PACKAGE_TARGET: '' });
     expect(result.status).toBe(1);
-    expect(result.stdout).toContain('1/7 apply patches');
+    expect(result.stdout).toContain('1/8 apply patches');
     expect(result.stderr).toContain('patching upstream failed');
   });
 });
