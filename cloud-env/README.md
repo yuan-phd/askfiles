@@ -42,7 +42,7 @@ The first two raise the default and maximum timeout of commands Claude runs to 1
 
 ## Setup script
 
-Paste the contents of cloud-env/setup-script.sh. It installs zstd (the Ollama installer needs it), then Ollama, and pulls qwen3:0.6b and all-minilm as test models. These are test models only; product models are chosen in config/presets.json.
+Paste the contents of cloud-env/setup-script.sh. It installs zstd (the Ollama installer needs it) and iproute2 (ss, used by the process manager integration test to check the bind address), then Ollama, and pulls qwen3:0.6b and all-minilm as test models. These are test models only; product models are chosen in config/presets.json.
 
 If the script runs longer than about five minutes, the environment is not cached and every session pays the full setup. If that happens, remove the qwen3 pull from the script and let sessions pull it on demand.
 

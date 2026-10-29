@@ -7,10 +7,11 @@
 set -u
 export DEBIAN_FRONTEND=noninteractive
 
-# The Ollama installer unpacks a .tar.zst archive and refuses to run without zstd.
-if ! command -v zstd >/dev/null 2>&1; then
+# The Ollama installer unpacks a .tar.zst archive and refuses to run without zstd. iproute2 provides
+# ss, which the process manager integration test uses to check that every socket binds to 127.0.0.1.
+if ! command -v zstd >/dev/null 2>&1 || ! command -v ss >/dev/null 2>&1; then
   apt-get update -qq >/dev/null 2>&1 || true
-  apt-get install -y -qq zstd >/dev/null 2>&1 || echo "[setup] zstd install failed"
+  apt-get install -y -qq zstd iproute2 >/dev/null 2>&1 || echo "[setup] zstd or iproute2 install failed"
 fi
 
 # Ollama for integration tests. The installer downloads from ollama.com and GitHub release assets.
