@@ -13,6 +13,7 @@ Implement src/main/process-manager, the component that starts, watches and stops
 
 - Everything that differs by platform is injected: binary paths, working directories, data directory, log directory, signal names. No process.platform branches inside the manager; the caller builds a config object.
 - The manager exposes: start(), stop(), status(), and an event emitter for state changes (starting, healthy, crashed, restarting, stopped) with timestamps.
+- Bind address: upstream server (upstream/server/utils/boot/index.js, both the HTTP and HTTPS paths) and collector (upstream/collector/index.js) call listen(port) without a host and read no environment variable for the bind address, so they listen on all interfaces. The 127.0.0.1 patch is expected work in this session, not a fallback: one patch file in patches/ that adds a host argument to every one of those listen calls, read from an environment variable with default 127.0.0.1. The patch starts with a comment explaining why. The manager sets that variable for both processes.
 - Ports: allocate three free ports on 127.0.0.1 at start; never hardcode 3001, 8888 or 11434. Pass them to the processes through environment variables.
 - First run: if <dataDir>/server/.env is missing, write it from a template with fresh random JWT_SECRET, SIG_KEY and SIG_SALT (32 bytes, base64) plus the port values. Existing files are never overwritten.
 - Startup order with health checks and per-step timeouts: Ollama (GET /api/tags), collector (its health or root route; find it in upstream/collector), prisma migrate deploy, server (GET /api/ping). A step that fails its timeout aborts start() with the step name and the last 50 log lines.
@@ -30,10 +31,11 @@ Implement src/main/process-manager, the component that starts, watches and stops
 ## Do not
 
 - Do not implement the wizard, model download or the window logic.
-- Do not edit upstream/. If the collector or server cannot be told to bind to 127.0.0.1 through environment, write the patch into patches/ and explain it.
+- Do not edit upstream/. The bind address change goes into patches/ as described under Design constraints.
 
 ## Acceptance
 
 - npm test green. RUN_INTEGRATION=1 npm run test:integration green in this container, or skipped with the exact reason printed.
 - The manager has no reference to process.platform.
+- The bind patch applies cleanly with git apply --check against the vendored tag, and the integration test shows both server and collector listening on 127.0.0.1 only.
 - PR opened with the integration test output pasted in the body.

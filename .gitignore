@@ -10,19 +10,16 @@ release/
 .env
 .env.*
 !.env.example
-storage/
-data/
-models/
+/storage/
+/data/
+/models/
 resources/ollama*
 *.log
 
 # upstream build products (upstream/ itself is vendored and tracked)
 upstream/server/public/
 upstream/frontend/dist/
-upstream/server/storage/
-upstream/collector/storage/
 upstream/collector/hotdir/*
-!upstream/collector/hotdir/.gitkeep
 
 # tests
 test-results/
@@ -31,5 +28,5 @@ coverage/
 
 # editors and OS
 .DS_Store
-.vscode/
+/.vscode/
 .idea/

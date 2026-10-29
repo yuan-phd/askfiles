@@ -13,6 +13,10 @@ cd "${CLAUDE_PROJECT_DIR:?CLAUDE_PROJECT_DIR is not set}" || exit 1
 ROOT="$(pwd)"
 SELF="$ROOT/scripts/install_pkgs.sh"
 
+# The collector depends on puppeteer, which otherwise downloads Chromium during yarn install. We do
+# not use web scraping, and the download is large and may be refused by the network allowlist.
+export PUPPETEER_SKIP_DOWNLOAD=1
+
 install_dir() {
   local dir="$1"
   local tool="$2"

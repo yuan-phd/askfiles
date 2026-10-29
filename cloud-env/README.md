@@ -31,9 +31,10 @@ If a session reports a refused host, add it here. The change reaches running ses
 BASH_DEFAULT_TIMEOUT_MS=600000
 BASH_MAX_TIMEOUT_MS=1800000
 RUN_INTEGRATION=1
+PUPPETEER_SKIP_DOWNLOAD=1
 ```
 
-The first two raise the default and maximum timeout of commands Claude runs to 10 and 30 minutes. The third tells our test scripts that integration tests may run; they still skip with a message when Ollama is not reachable.
+The first two raise the default and maximum timeout of commands Claude runs to 10 and 30 minutes. The third tells our test scripts that integration tests may run; they still skip with a message when Ollama is not reachable. The fourth stops puppeteer, a dependency of upstream/collector, from downloading Chromium during yarn install; the product does not use web scraping.
 
 ## Setup script
 

@@ -15,6 +15,7 @@ Create the shell project around the vendored upstream so that one command prepar
 2. tsconfig.json for src/main with strict mode, output to dist/main.
 3. src/main/index.ts: minimal Electron entry that reads a port from an environment variable or a config file, opens one BrowserWindow at http://127.0.0.1:<port>, and logs to a configurable directory. No process management yet (Session C).
 4. scripts/build.sh, idempotent, with these steps in order:
+   - export PUPPETEER_SKIP_DOWNLOAD=1 before any yarn install, so puppeteer (a dependency of upstream/collector) does not download Chromium; the product does not use web scraping
    - apply every patch in patches/ to upstream/ with git apply --check first, then git apply; stop with a clear message on failure
    - build upstream/frontend with yarn and copy dist into upstream/server/public with the VITE_API_BASE value from docs/upstream-analysis.md Q11 (or the upstream Dockerfile if the report is absent)
    - yarn install for upstream/server and upstream/collector with production flags, then prisma generate for the server

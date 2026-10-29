@@ -7,6 +7,8 @@ Read docs/plan.md before starting any task. It records the decisions, the phases
 ## Repository layout
 
 - upstream/            AnythingLLM core, vendored with git subtree at the tag in UPSTREAM_VERSION. Read only.
+  - upstream/server, upstream/collector, upstream/frontend: three separate yarn packages, each with its own yarn.lock. Prisma schema and migrations at upstream/server/prisma (schema.prisma).
+  - upstream/browser-extension and upstream/embed are empty placeholders for upstream submodules (declared in upstream/.gitmodules) that we do not use. Never try to initialize them.
 - patches/             Minimal unified diffs applied to upstream at build time. Each patch starts with a comment that says why it exists.
 - src/main/            Electron main process in TypeScript: process manager, first-run wizard, folder watcher, model manager.
 - src/renderer/        Our pages in plain HTML, CSS and JavaScript: onboarding, search, models, and browse in phase 4. No framework.
@@ -49,6 +51,8 @@ Some of these are created by Session B. Until then, the upstream commands still 
 - Upstream only: cd upstream/server && yarn install && npx prisma generate. Same with yarn for upstream/collector and upstream/frontend.
 
 Node 22. The shell uses npm. Upstream uses yarn classic and its own lock files.
+
+Upstream targets Node 18 (upstream/.nvmrc, upstream/docker/Dockerfile); Node 22 is assumed to work until Session A says otherwise.
 
 ## Style
 
