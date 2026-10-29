@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; connect-src 'none'; img-src 'self' data:; style-src 'self'; script-src 'self'"
+    />
+    <title>AskFiles setup</title>
+    <!-- Colour and spacing tokens come from the search page so the visual pass tunes one file. -->
+    <link rel="stylesheet" href="../search/search.css" />
+    <link rel="stylesheet" href="../shared/pages.css" />
+    <script type="module" src="./onboarding.js"></script>
+  </head>
+  <body data-phase="idle">
+    <main class="page narrow">
+      <h1>Setting up AskFiles</h1>
+      <p class="lead">This happens once. Everything stays on this Mac.</p>
+      <p id="tier" class="note" data-testid="tier" hidden></p>
+
+      <ol id="steps" class="steps" data-testid="steps"></ol>
+
+      <div id="progress" class="progress" hidden>
+        <progress id="progress-bar" data-testid="progress-bar" max="100" value="0">0%</progress>
+        <p id="progress-text" class="note" data-testid="progress-text"></p>
+      </div>
+
+      <div id="error" class="error" role="alert" data-testid="error" hidden>
+        <p id="error-text" data-testid="error-text"></p>
+        <button id="retry" type="button" class="primary" data-testid="retry" disabled>Try again</button>
+      </div>
+
+      <p id="done" class="done" data-testid="done" hidden>All set. Opening your library.</p>
+    </main>
+  </body>
+</html>

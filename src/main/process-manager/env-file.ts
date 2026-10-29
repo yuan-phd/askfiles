@@ -7,16 +7,30 @@ export function randomSecret(): string {
   return crypto.randomBytes(32).toString('base64');
 }
 
-export function renderServerEnv(v: { serverPort: number; collectorPort: number }): string {
+/**
+ * Ports are optional so the first-run wizard can create the file when the process manager has not
+ * written it yet. secret is injectable so tests can compare whole files byte for byte.
+ */
+export function renderServerEnv(
+  v: { serverPort?: number; collectorPort?: number },
+  secret: () => string = randomSecret,
+): string {
+  const ports =
+    v.serverPort === undefined || v.collectorPort === undefined
+      ? []
+      : [
+          '# The ports record the first run only: the process manager allocates fresh ports at every',
+          '# start and passes them as environment variables, which take precedence over this file.',
+          `SERVER_PORT=${v.serverPort}`,
+          `COLLECTOR_PORT=${v.collectorPort}`,
+        ];
   return [
-    '# Written once by AskFiles on first run and never overwritten.',
-    '# The ports record the first run only: the process manager allocates fresh ports at every',
-    '# start and passes them as environment variables, which take precedence over this file.',
-    `SERVER_PORT=${v.serverPort}`,
-    `COLLECTOR_PORT=${v.collectorPort}`,
-    `JWT_SECRET="${randomSecret()}"`,
-    `SIG_KEY="${randomSecret()}"`,
-    `SIG_SALT="${randomSecret()}"`,
+    '# Written by AskFiles on first run. The secrets are never rewritten; the first-run wizard and the',
+    '# model manager set the preset values (docs/presets.md).',
+    ...ports,
+    `JWT_SECRET="${secret()}"`,
+    `SIG_KEY="${secret()}"`,
+    `SIG_SALT="${secret()}"`,
     `DISABLE_TELEMETRY="true"`,
     '',
   ].join('\n');

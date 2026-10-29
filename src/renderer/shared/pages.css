@@ -1,0 +1,197 @@
+/* Layout for the onboarding and model pages. Tokens and base rules come from ../search/search.css. */
+
+.page {
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: var(--space-7) var(--space-5);
+}
+
+.page.narrow {
+  max-width: 34rem;
+}
+
+h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0 0 var(--space-2);
+}
+
+.lead {
+  margin: 0 0 var(--space-5);
+  color: var(--text-muted);
+}
+
+.note {
+  margin: var(--space-2) 0;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+button.primary,
+button.secondary {
+  border-radius: var(--radius-small);
+  padding: var(--space-2) var(--space-4);
+  cursor: pointer;
+}
+
+button.primary {
+  border: 0;
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+button.secondary {
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 1px;
+}
+
+/* Steps */
+
+.steps {
+  list-style: none;
+  margin: var(--space-5) 0;
+  padding: 0;
+}
+
+.steps li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  color: var(--text-muted);
+}
+
+.steps li::before {
+  content: '';
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+}
+
+.steps li[data-status='active'] {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.steps li[data-status='active']::before {
+  border-color: var(--busy);
+  background: var(--busy);
+}
+
+.steps li[data-status='done']::before {
+  border-color: var(--ok);
+  background: var(--ok);
+}
+
+.steps li[data-status='failed'] {
+  color: var(--bad);
+}
+
+.steps li[data-status='failed']::before {
+  border-color: var(--bad);
+  background: var(--bad);
+}
+
+/* Progress */
+
+.progress progress {
+  width: 100%;
+  height: 8px;
+  appearance: none;
+  border: 0;
+  border-radius: 4px;
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+
+.progress progress::-webkit-progress-bar {
+  background: var(--surface-sunken);
+}
+
+.progress progress::-webkit-progress-value {
+  background: var(--accent);
+}
+
+.error {
+  margin-top: var(--space-5);
+  padding: var(--space-4);
+  border: 1px solid var(--bad);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.error p {
+  margin: 0 0 var(--space-3);
+}
+
+.done {
+  margin-top: var(--space-5);
+  color: var(--ok);
+  font-weight: 600;
+}
+
+/* Model list */
+
+.models {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--space-4) 0 var(--space-5);
+}
+
+.models th,
+.models td {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.models th {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.models td.actions {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-small);
+  background: var(--accent-soft);
+  font-size: 0.8rem;
+}
+
+.pull {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.pull input {
+  flex: 1;
+  font: inherit;
+  color: inherit;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+}
+
+.models td.actions button + button {
+  margin-left: var(--space-2);
+}
