@@ -1,33 +1,13 @@
 import path from 'node:path';
+import { SUPPORTED_EXTENSIONS as SPLITTER_EXTENSIONS } from '../sections/index.js';
 
 /**
- * Extensions the collector converts at the pinned tag (upstream/collector/utils/constants.js,
- * SUPPORTED_FILETYPE_CONVERTERS; docs/upstream-analysis.md Q14). Audio and video are left out:
- * the collector transcribes them with a Whisper model downloaded from Hugging Face on first use,
- * which would break the promise that nothing leaves the machine.
+ * File types the section splitter parses (src/main/sections). The collector converts more
+ * (pptx, odt, epub, images; docs/upstream-analysis.md Q14), but those have no section parser yet.
+ * Audio and video stay out for good: the collector would download a Whisper model to transcribe
+ * them, which breaks the promise that nothing leaves the machine.
  */
-export const SUPPORTED_EXTENSIONS: readonly string[] = [
-  '.txt',
-  '.md',
-  '.org',
-  '.adoc',
-  '.rst',
-  '.csv',
-  '.json',
-  '.html',
-  '.pdf',
-  '.docx',
-  '.pptx',
-  '.odt',
-  '.odp',
-  '.xlsx',
-  '.mbox',
-  '.epub',
-  '.png',
-  '.jpg',
-  '.jpeg',
-  '.webp',
-];
+export const SUPPORTED_EXTENSIONS: readonly string[] = SPLITTER_EXTENSIONS;
 
 /**
  * True for files the library should hold. Hidden files and folders (.DS_Store, .git) and Office

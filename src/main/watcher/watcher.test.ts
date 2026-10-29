@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { fakeApi, headingSplitter, manualWatch, oneSectionSplitter, type FakeApi } from './__fixtures__/fakes.js';
+import { countingSplitter, fakeApi, manualWatch, type FakeApi } from './__fixtures__/fakes.js';
 import { chokidarWatch } from './fs-watch.js';
 import type { FileEvent, IndexData, Splitter, WatchFactory } from './types.js';
 import { FolderWatcher } from './watcher.js';
@@ -36,7 +36,7 @@ function make(opts: { watch?: WatchFactory; splitter?: Splitter; retryDelaysMs?:
     storageDir,
     workspaceSlug: 'library',
     api,
-    splitter: opts.splitter ?? oneSectionSplitter(),
+    splitter: opts.splitter ?? countingSplitter(),
     watch: opts.watch ?? manualWatch(),
     debounceMs: opts.debounceMs ?? 30,
     stableMs: 30,
@@ -76,7 +76,8 @@ describe('FolderWatcher', () => {
     expect(rec.hash).toMatch(/^[0-9a-f]{64}$/);
     expect(rec.sections).toHaveLength(1);
     const sec = rec.sections[0]!;
-    expect(sec.location).toMatch(/^askfiles\/[0-9a-f]{16}-[0-9a-f]{16}\.json$/);
+    expect(sec.location).toMatch(/^askfiles\/leave\.md-[0-9a-f]{12}-1-1\.json$/);
+    expect(rec.splitKey).toMatch(/^[0-9a-f]{12}$/);
     expect(sec.docId).toBe(api.embedded.get(sec.location));
     expect(Date.parse(rec.indexedAt)).not.toBeNaN();
 
@@ -84,21 +85,26 @@ describe('FolderWatcher', () => {
     expect(doc).toMatchObject({
       title: 'leave.md',
       url: `file://${p}`,
-      pageContent: 'Annual leave is 27 days.',
-      sectionTitle: 'leave.md',
+      pageContent: 'leave\nAnnual leave is 27 days.',
+      sectionTitle: 'leave',
       sectionIndex: 1,
+      subIndex: 1,
+      subCount: 1,
       pageStart: 0,
       pageEnd: 0,
       sourcePath: p,
+      fileHash: rec.hash,
+      splitKey: rec.splitKey,
       docSource: 'askfiles section split',
     });
+    expect(sec).toMatchObject({ sectionTitle: 'leave', sectionIndex: 1, subIndex: 1, pageStart: null, pageEnd: null });
     expect(events).toEqual([{ path: p, kind: 'upsert', outcome: 'indexed', sections: 1 }]);
     expect(w.status()).toMatchObject({ state: 'idle', pending: 0, indexed: 1, deadLetters: [] });
   });
 
-  it('re-embeds only changed sections and removes the stale ones', async () => {
+  it('embeds a changed file afresh and removes its old documents', async () => {
     const watch = manualWatch();
-    const { w } = make({ watch, splitter: headingSplitter() });
+    const { w } = make({ watch, splitter: countingSplitter() });
     await w.start();
     const p = write('h.md', '# One\nfirst body\n# Two\nsecond body\n');
     watch.emit('add', p);
@@ -111,16 +117,16 @@ describe('FolderWatcher', () => {
     watch.emit('change', p);
     await w.whenIdle();
     const after = readIndex().files[p]!.sections.map((s) => s.location);
-    expect(after[0]).toBe(before[0]);
-    expect(after[1]).not.toBe(before[1]);
-    expect(api.log).toEqual(['embed +1 -0', 'remove 1']);
+    // Names follow the file's bytes (src/main/sections/documents.ts), so every chunk is new.
+    for (const l of after) expect(before).not.toContain(l);
+    expect(api.log).toEqual(['embed +2 -0', 'remove 2']);
     expect([...api.embedded.keys()].sort()).toEqual([...after].sort());
-    expect(fs.existsSync(path.join(storageDir, 'documents', before[1]!))).toBe(false);
+    for (const l of before) expect(fs.existsSync(path.join(storageDir, 'documents', l))).toBe(false);
   });
 
   it('does nothing when a change event leaves the content as it was', async () => {
     const watch = manualWatch();
-    const splitter = oneSectionSplitter();
+    const splitter = countingSplitter();
     const { w, events } = make({ watch, splitter });
     await w.start();
     const p = write('a.txt', 'same');
@@ -172,7 +178,7 @@ describe('FolderWatcher', () => {
 
   it('waits while a file is still growing (partial write)', async () => {
     const watch = manualWatch();
-    const splitter = oneSectionSplitter();
+    const splitter = countingSplitter();
     const { w } = make({ watch, splitter, debounceMs: 60 });
     await w.start();
     const p = write('big.txt', 'part one');
@@ -188,13 +194,13 @@ describe('FolderWatcher', () => {
     };
     await w.whenIdle();
     expect(splitter.calls).toEqual([p]);
-    expect(readDoc(readIndex().files[p]!.sections[0]!.location).pageContent).toBe('part one and part two');
+    expect(readDoc(readIndex().files[p]!.sections[0]!.location).pageContent).toBe('big\npart one and part two');
     // Debounce, then one more stable period because the size had changed.
     expect(embeddedAt - t0).toBeGreaterThanOrEqual(60 + 30);
   });
 
   it('reconciles the folder against index.json after a restart', async () => {
-    const splitter = oneSectionSplitter();
+    const splitter = countingSplitter();
     const first = make({ splitter });
     const keep = write('keep.md', 'unchanged');
     const edit = write('edit.md', 'old text');
@@ -216,7 +222,7 @@ describe('FolderWatcher', () => {
     const files = readIndex().files;
     expect(Object.keys(files).sort()).toEqual([added, edit, keep].sort());
     expect(splitter.calls.sort()).toEqual([added, edit].sort());
-    expect(readDoc(files[edit]!.sections[0]!.location).pageContent).toBe('new text, longer');
+    expect(readDoc(files[edit]!.sections[0]!.location).pageContent).toBe('edit\nnew text, longer');
     expect(api.embedded.size).toBe(3);
     expect(second.events.map((e) => `${e.outcome} ${path.basename(e.path)}`).sort()).toEqual([
       'indexed edit.md',
@@ -285,13 +291,68 @@ describe('FolderWatcher', () => {
 
   it('fills section titles into vector-search results from its own records', async () => {
     const watch = manualWatch();
-    const { w } = make({ watch, splitter: headingSplitter() });
+    const { w } = make({ watch, splitter: countingSplitter() });
     await w.start();
     const p = write('h.md', '# One\nalpha beta gamma\n# Two\ndelta epsilon\n');
     watch.emit('add', p);
     await w.whenIdle();
     const [hit] = w.resolveSources([{ title: 'h.md', url: `file://${p}`, text: 'delta  epsilon' }]);
-    expect(hit).toMatchObject({ sectionTitle: 'Two', sectionIndex: 2, page: 2, pageEnd: 2 });
+    expect(hit).toMatchObject({ sectionTitle: 'Two', sectionIndex: 2, page: null, pageEnd: null });
+  });
+
+  it('indexes the real split: heading-only sections folded, long sections in sub-chunks', async () => {
+    const watch = manualWatch();
+    const { w } = make({ watch });
+    await w.start();
+    const long = Array.from({ length: 20 }, (_, i) => `Rule ${i} of the leave policy applies to every employee.`);
+    const p = write('policy.md', `# Handbook\n# 1 Leave\n${long.join('\n\n')}\n# 2 Expenses\nClaims within 30 days.\n`);
+    watch.emit('add', p);
+    await w.whenIdle();
+    const recs = readIndex().files[p]!.sections;
+    const docs = recs.map((r) => readDoc(r.location));
+    // The empty Handbook heading is folded into the next section, never a document of its own.
+    expect(docs.some((d) => String(d.pageContent).trim() === 'Handbook')).toBe(false);
+    const leave = recs.filter((r) => r.sectionTitle === '1 Leave');
+    expect(leave.length).toBeGreaterThan(1);
+    expect(leave.map((r) => r.subIndex)).toEqual(leave.map((_, i) => i + 1));
+    for (const d of docs) expect(String(d.pageContent).length).toBeLessThanOrEqual(400);
+    expect(recs.at(-1)).toMatchObject({ sectionTitle: '2 Expenses', sectionIndex: 2, subIndex: 1 });
+    // Every sub-chunk of the long section resolves back to it.
+    for (const d of docs.filter((d) => d.sectionTitle === '1 Leave')) {
+      const body = String(d.pageContent).split('\n').slice(2).join(' ');
+      const [hit] = w.resolveSources([{ title: 'policy.md', url: `file://${p}`, text: body }]);
+      expect(hit).toMatchObject({ sectionTitle: '1 Leave', sectionIndex: 1 });
+    }
+  });
+
+  it('splits every file again when the split settings change', async () => {
+    const watch = manualWatch();
+    const first = make({ watch, splitter: countingSplitter(400) });
+    const p = write('a.md', '# A\nbody');
+    await first.w.start();
+    await first.w.whenIdle();
+    const before = readIndex().files[p]!;
+    await first.w.stop();
+
+    const splitter = countingSplitter(800);
+    const second = make({ splitter });
+    await second.w.start();
+    await second.w.whenIdle();
+    const after = readIndex().files[p]!;
+    expect(splitter.calls).toEqual([p]);
+    expect(after.splitKey).not.toBe(before.splitKey);
+    expect(after.sections[0]!.location).not.toBe(before.sections[0]!.location);
+    expect(api.embedded.size).toBe(1);
+  });
+
+  it('puts a file the splitter cannot parse on the dead-letter list', async () => {
+    const watch = manualWatch();
+    const { w } = make({ watch });
+    await w.start();
+    const p = write('broken.docx', 'not a zip file');
+    watch.emit('add', p);
+    await w.whenIdle();
+    expect(w.status().deadLetters).toEqual([expect.objectContaining({ path: p, attempts: 4 })]);
   });
 
   it('works with the real chokidar watch', async () => {

@@ -4,7 +4,6 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createLibraryApi } from './api.js';
 import { loadIndex, saveIndex } from './index-store.js';
-import { sectionDocument, sectionLocation } from './section-docs.js';
 
 function recordingFetch(responses: { status: number; body: unknown }[]) {
   const calls: { url: string; method: string; headers: Record<string, string>; body: unknown }[] = [];
@@ -77,26 +76,5 @@ describe('index.json', () => {
     expect(fs.readdirSync(dir).some((n) => n.startsWith('index.json.broken-'))).toBe(true);
     expect(logs[0]).toContain('unreadable');
     fs.rmSync(dir, { recursive: true });
-  });
-});
-
-describe('section documents', () => {
-  const s = { sectionTitle: '2 Install', sectionIndex: 2, pageStart: 3, pageEnd: null, text: 'Body text here' };
-
-  it('names a section by file and content', () => {
-    const a = sectionLocation('/d/a.pdf', s);
-    expect(sectionLocation('/d/a.pdf', { ...s })).toBe(a);
-    expect(sectionLocation('/d/a.pdf', { ...s, text: 'Body text changed' })).not.toBe(a);
-    expect(sectionLocation('/d/b.pdf', s)).not.toBe(a);
-    expect(a.split('/')).toHaveLength(2);
-  });
-
-  it('writes the same flat keys and types for every section', () => {
-    const withPages = sectionDocument('/d/a.pdf', s, 'now');
-    const without = sectionDocument('/d/n.md', { ...s, pageStart: null, pageEnd: null }, 'now');
-    expect(Object.keys(without)).toEqual(Object.keys(withPages));
-    for (const k of Object.keys(withPages)) expect(typeof without[k]).toBe(typeof withPages[k]);
-    expect(withPages).toMatchObject({ pageStart: 3, pageEnd: 3, wordCount: 3, title: 'a.pdf', sourcePath: '/d/a.pdf' });
-    expect(without).toMatchObject({ pageStart: 0, pageEnd: 0 });
   });
 });

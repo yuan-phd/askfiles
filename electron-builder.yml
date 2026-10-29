@@ -9,8 +9,10 @@ directories:
   output: release
   buildResources: build
 
-# Only the shell's own compiled main process and its runtime dependencies (chokidar, plain
-# JavaScript) go into app.asar, so there is nothing to rebuild for Electron.
+# Only the shell's own compiled main process and its runtime dependencies (chokidar, mammoth,
+# pdfjs-dist, read-excel-file) go into app.asar. pdfjs-dist pulls the optional @napi-rs/canvas,
+# an N-API prebuild, so nothing needs a rebuild for Electron; electron-builder unpacks its .node
+# file to app.asar.unpacked, where scripts/sign-adhoc.sh signs it with the rest of Resources.
 npmRebuild: false
 files:
   - package.json

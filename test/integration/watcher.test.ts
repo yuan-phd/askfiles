@@ -2,10 +2,7 @@
 // vector-search, then deletes it and waits until it is gone. Needs RUN_INTEGRATION=1, Ollama with
 // the test models, the upstream packages, and the compiled main process (npm run build:main),
 // because test/e2e/upstream.mts boots the stack from dist/main.
-//
-// The real section splitter is Session G's src/main/sections. Until it lands, this test splits
-// through the collector: it parses the file with /v1/document/upload, takes its text as one
-// section and purges the collector's copy. Only the test does this; the watcher never parses.
+// The split is the real one (src/main/sections through sectionSplitter).
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -13,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 // @ts-expect-error plain JavaScript client from Session D without type declarations
 import { createClient, generateApiKey, normalizeSource, REFUSAL_TEXT } from '../../src/renderer/api/client.js';
-import { chokidarWatch, createLibraryApi, FolderWatcher, type Splitter } from '../../src/main/watcher/index.js';
+import { chokidarWatch, createLibraryApi, FolderWatcher, sectionSplitter } from '../../src/main/watcher/index.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const PDF = path.join(ROOT, 'test', 'fixtures', 'handbook.pdf');
@@ -72,15 +69,6 @@ describe.skipIf(reason !== null)('folder watcher against the real server', () =>
       queryRefusalResponse: REFUSAL_TEXT,
     });
 
-    const viaCollector: Splitter = {
-      async split(file) {
-        const bytes = fs.readFileSync(file);
-        const [doc] = await client.uploadDocument(new Blob([bytes]), { filename: path.basename(file) });
-        await client.removeDocuments(ws.slug, [doc.location]);
-        return [{ sectionTitle: 'Whole file', sectionIndex: 1, pageStart: 1, pageEnd: 3, text: doc.pageContent }];
-      },
-    };
-
     const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'askfiles-watcher-it-')));
     const folder = path.join(tmp, 'Documents');
     fs.mkdirSync(folder);
@@ -90,7 +78,8 @@ describe.skipIf(reason !== null)('folder watcher against the real server', () =>
       storageDir: up.storageDir,
       workspaceSlug: ws.slug,
       api: createLibraryApi({ baseUrl: up.baseUrl, apiKey }),
-      splitter: viaCollector,
+      // all-minilm reads 256 word pieces at most; a small maximum keeps each chunk within that.
+      splitter: sectionSplitter({ maxChars: 1000, embeddingModel: 'all-minilm:latest' }),
       watch: chokidarWatch,
       log: (m) => log(`[watcher] ${m}`),
     });
@@ -113,7 +102,16 @@ describe.skipIf(reason !== null)('folder watcher against the real server', () =>
       log(`queryable after ${found.elapsed} ms, ${found.value.length} hit(s)`);
       expect(found.elapsed).toBeLessThan(60_000);
       const [resolved] = watcher.resolveSources(found.value);
-      expect(resolved).toMatchObject({ sectionTitle: 'Whole file', sectionIndex: 1, page: 1, pageEnd: 3 });
+      const recs = watcher.files()[0]!.sections;
+      log(
+        `sections: ${recs.map((r) => `${r.sectionIndex}.${r.subIndex} ${r.sectionTitle} p${r.pageStart}`).join(' | ')}`,
+      );
+      expect(recs.length).toBeGreaterThan(1);
+      const match = recs.find(
+        (r) => r.sectionTitle === resolved.sectionTitle && r.sectionIndex === resolved.sectionIndex,
+      );
+      expect(match).toBeDefined();
+      expect(resolved.page).toBeGreaterThanOrEqual(1);
 
       fs.rmSync(dropped);
       const gone = await until('PDF removed', 60_000, async () => ((await search()).length === 0 ? true : null));

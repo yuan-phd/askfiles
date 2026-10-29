@@ -3,9 +3,10 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { sectionDocuments } from '../sections/index.js';
 import { isHidden, isIndexable, SUPPORTED_EXTENSIONS } from './file-types.js';
 import { loadIndex, saveIndex } from './index-store.js';
-import { hashFile, readSectionText, sectionDocument, sectionLocation, writeSectionDocument } from './section-docs.js';
+import { DOCS_FOLDER, hashFile, readSectionText, writeSectionDocument } from './section-docs.js';
 import { createSourceResolver, type SourceLike } from './sources.js';
 import type {
   DeadLetter,
@@ -266,7 +267,8 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
     if (!st.isFile()) return { outcome: 'unchanged' };
     const hash = await hashFile(p);
     const old = this.data.files[p];
-    if (old && old.hash === hash) {
+    const { splitKey } = this.o.splitter;
+    if (old && old.hash === hash && old.splitKey === splitKey) {
       if (old.size !== st.size || old.mtimeMs !== st.mtimeMs) {
         this.data.files[p] = { ...old, size: st.size, mtimeMs: st.mtimeMs };
         this.save();
@@ -274,23 +276,28 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
       return { outcome: 'unchanged', sections: old.sections.length };
     }
 
-    const sections = (await this.o.splitter.split(p)).filter((s) => s.text.trim() !== '');
-    const published = this.o.now().toLocaleString();
+    const chunks = (await this.o.splitter.split(p)).filter((c) => c.text.trim() !== '');
+    // Names depend on path, bytes, split key and chunk position only: a changed file gets all new
+    // names and is embedded afresh; an unchanged one keeps them (src/main/sections/documents.ts).
+    const docs = sectionDocuments(
+      chunks,
+      { path: p, relPath: path.relative(this.root, p), hash },
+      { splitKey, published: this.o.now().toLocaleString('en-US') },
+    );
     const oldByLocation = new Map((old?.sections ?? []).map((s) => [s.location, s]));
     const records: SectionRecord[] = [];
-    for (const s of sections) {
-      const location = sectionLocation(p, s);
-      if (records.some((r) => r.location === location)) continue;
-      if (!oldByLocation.has(location) || readSectionText(this.o.storageDir, location) === null) {
-        writeSectionDocument(this.o.storageDir, location, sectionDocument(p, s, published));
-      }
+    for (const { name, doc } of docs) {
+      const location = `${DOCS_FOLDER}/${name}`;
+      if (readSectionText(this.o.storageDir, location) === null) writeSectionDocument(this.o.storageDir, location, doc);
       records.push({
         location,
         docId: null,
-        sectionTitle: s.sectionTitle,
-        sectionIndex: s.sectionIndex,
-        pageStart: s.pageStart,
-        pageEnd: s.pageEnd,
+        sectionTitle: doc.sectionTitle,
+        sectionIndex: doc.sectionIndex,
+        subIndex: doc.subIndex,
+        // 0 is how the documents say no page.
+        pageStart: doc.pageStart || null,
+        pageEnd: doc.pageEnd || null,
       });
     }
 
@@ -315,6 +322,7 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
       path: p,
       url: pathToFileURL(p).href,
       hash,
+      splitKey,
       size: st.size,
       mtimeMs: st.mtimeMs,
       indexedAt: this.o.now().toISOString(),
@@ -349,7 +357,8 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
         continue;
       }
       // Size and time decide what to look at; the job then compares hashes before any work.
-      if (!rec || rec.size !== st.size || rec.mtimeMs !== st.mtimeMs) this.settle(p);
+      const changed = !rec || rec.size !== st.size || rec.mtimeMs !== st.mtimeMs;
+      if (changed || rec.splitKey !== this.o.splitter.splitKey) this.settle(p);
     }
     let missing = 0;
     for (const p of Object.keys(this.data.files)) {

@@ -1,44 +1,19 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { LibraryApi, Section, Splitter, WatchEventType, WatchFactory } from '../types.js';
+import { sectionSplitter } from '../splitter.js';
+import type { LibraryApi, Splitter, WatchEventType, WatchFactory } from '../types.js';
 
-/** Stands in for Session G's splitter: one section per file, titled with the file name. */
-export function oneSectionSplitter(): Splitter & { calls: string[] } {
+/** The real splitter (src/main/sections) with a small chunk maximum, counting its calls. */
+export function countingSplitter(maxChars = 400): Splitter & { calls: string[] } {
+  const inner = sectionSplitter({ maxChars, embeddingModel: 'all-minilm:latest' });
   const calls: string[] = [];
   return {
     calls,
+    splitKey: inner.splitKey,
     async split(file) {
       calls.push(file);
-      return [
-        {
-          sectionTitle: path.basename(file),
-          sectionIndex: 1,
-          pageStart: null,
-          pageEnd: null,
-          text: fs.readFileSync(file, 'utf8'),
-        },
-      ];
-    },
-  };
-}
-
-/** Splits on lines starting with "# ", for tests that need several sections per file. */
-export function headingSplitter(): Splitter {
-  return {
-    async split(file) {
-      const out: Section[] = [];
-      for (const block of fs.readFileSync(file, 'utf8').split(/^(?=# )/m)) {
-        const title = /^# (.*)$/m.exec(block)?.[1] ?? 'Untitled';
-        out.push({
-          sectionTitle: title,
-          sectionIndex: out.length + 1,
-          pageStart: out.length + 1,
-          pageEnd: out.length + 1,
-          text: block.trim(),
-        });
-      }
-      return out;
+      return inner.split(file);
     },
   };
 }

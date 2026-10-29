@@ -1,21 +1,11 @@
-/**
- * One section of a document as the section splitter returns it. The splitter itself is Session G's
- * src/main/sections; the watcher only depends on this shape.
- */
-export interface Section {
-  sectionTitle: string;
-  /** 1-based position of the section in its file. */
-  sectionIndex: number;
-  /** First and last page, or null for formats without pages. */
-  pageStart: number | null;
-  pageEnd: number | null;
-  /** Body of the section, heading folded in; never heading-only (docs/sessions/F-ci-and-watcher.md). */
-  text: string;
-}
+import type { Chunk } from '../sections/index.js';
 
+/** The section split the watcher embeds; sectionSplitter (splitter.ts) wraps src/main/sections. */
 export interface Splitter {
-  /** Returns the sections of the file at an absolute path, in document order. */
-  split(filePath: string): Promise<Section[]>;
+  /** Key of the split settings (splitKeyOf); part of every document name, so a change re-embeds. */
+  readonly splitKey: string;
+  /** Chunks of the file at an absolute path, in document order, each within the chunk maximum. */
+  split(filePath: string): Promise<Chunk[]>;
 }
 
 /** The library calls the watcher needs, so tests can run against a fake. */
@@ -53,6 +43,9 @@ export interface SectionRecord {
   docId: string | null;
   sectionTitle: string;
   sectionIndex: number;
+  /** Position of this chunk inside a section longer than the chunk maximum, from 1. */
+  subIndex: number;
+  /** First and last page, or null for formats without pages. */
   pageStart: number | null;
   pageEnd: number | null;
 }
@@ -61,6 +54,8 @@ export interface FileRecord {
   path: string;
   url: string;
   hash: string;
+  /** Splitter.splitKey the file was indexed with; another key means it is split again. */
+  splitKey: string;
   size: number;
   mtimeMs: number;
   /** ISO time of the last successful index. */
