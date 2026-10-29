@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; connect-src 'self' http://127.0.0.1:* http://localhost:*; img-src 'self' data:; style-src 'self'; script-src 'self'"
+    />
+    <title>AskFiles</title>
+    <link rel="stylesheet" href="./search.css" />
+    <script type="module" src="./search.js"></script>
+  </head>
+  <body>
+    <header class="status" data-testid="status-bar">
+      <div class="status-folder">
+        <span class="status-label">Library</span>
+        <span class="status-value" id="status-folder" data-testid="status-folder">No folder chosen</span>
+      </div>
+      <div class="status-meta">
+        <span id="status-count" data-testid="status-count">Connecting</span>
+        <span class="status-state" id="status-state" data-testid="status-state" data-state="connecting">
+          <span class="dot" aria-hidden="true"></span><span id="status-state-text">Connecting</span>
+        </span>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="search" aria-label="Search">
+        <form id="query-form" class="query" autocomplete="off">
+          <label class="visually-hidden" for="query">Ask a question about your documents</label>
+          <textarea
+            id="query"
+            data-testid="query"
+            rows="1"
+            placeholder="Ask a question about your documents"
+            spellcheck="false"
+          ></textarea>
+          <button type="submit" id="submit" data-testid="submit">Search</button>
+        </form>
+        <p class="hint">Enter to search, Shift+Enter for a new line, Esc to clear.</p>
+
+        <div id="result" class="result" hidden>
+          <p class="question" id="result-question" data-testid="result-question"></p>
+
+          <div class="answer" id="answer" data-testid="answer" aria-live="polite" aria-busy="false">
+            <p class="answer-progress" id="answer-progress" data-testid="answer-progress" hidden></p>
+            <div class="answer-text" id="answer-text" data-testid="answer-text"></div>
+          </div>
+
+          <section class="sources" id="sources" data-testid="sources" hidden aria-labelledby="sources-title">
+            <h2 id="sources-title">Sources</h2>
+            <ol class="cards" id="source-list"></ol>
+          </section>
+
+          <section class="fallback" id="fallback" data-testid="fallback" hidden aria-labelledby="fallback-title">
+            <h2 id="fallback-title">No direct answer in your documents</h2>
+            <p class="fallback-lead" id="fallback-lead">These sections are the closest matches. Open one to read it.</p>
+            <ol class="section-list" id="fallback-list" data-testid="fallback-list"></ol>
+          </section>
+
+          <p class="error" id="error" data-testid="error" role="alert" hidden></p>
+        </div>
+      </section>
+
+      <aside class="recent" aria-labelledby="recent-title">
+        <h2 id="recent-title">Recent questions</h2>
+        <ul id="recent-list" data-testid="recent-list"></ul>
+        <p class="recent-empty" id="recent-empty">Your questions will appear here.</p>
+      </aside>
+    </main>
+
+    <template id="card-template">
+      <li class="card" data-testid="source-card">
+        <div class="card-meta">
+          <span class="card-file" data-testid="source-file"></span>
+          <span class="card-section" data-testid="source-section" hidden></span>
+          <span class="card-page" data-testid="source-page" hidden></span>
+        </div>
+        <div class="card-passages" data-testid="source-passages"></div>
+        <div class="card-actions">
+          <span class="card-count" data-testid="source-count" hidden></span>
+          <button type="button" class="open" data-testid="source-open">Open file</button>
+        </div>
+      </li>
+    </template>
+
+    <template id="section-template">
+      <li class="section-item" data-testid="fallback-item">
+        <div class="section-text">
+          <span class="section-title" data-testid="fallback-section"></span>
+          <span class="section-where">
+            <span class="section-file" data-testid="fallback-file"></span>
+            <span class="section-page" data-testid="fallback-page" hidden></span>
+          </span>
+          <span class="section-preview" data-testid="fallback-preview"></span>
+        </div>
+        <button type="button" class="open" data-testid="fallback-open">Open</button>
+      </li>
+    </template>
+  </body>
+</html>

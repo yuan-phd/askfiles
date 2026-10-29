@@ -1,0 +1,57 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R 6 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 220 >>
+stream
+BT
+/F1 14 Tf
+72 720 Td
+18 TL
+(1 Annual leave) Tj T*
+(Every employee of Northwind receives 27 days of paid annual leave per year.) Tj T*
+(Unused leave can be carried over until the end of March of the next year.) Tj T*
+ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>
+endobj
+7 0 obj
+<< /Length 204 >>
+stream
+BT
+/F1 14 Tf
+72 720 Td
+18 TL
+(2 Expense claims) Tj T*
+(Expense claims are submitted through the finance portal within 30 days.) Tj T*
+(Receipts above 50 euros must be attached as a scanned copy.) Tj T*
+ET
+endstream
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000121 00000 n 
+0000000191 00000 n 
+0000000317 00000 n 
+0000000588 00000 n 
+0000000714 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R >>
+startxref
+969
+%%EOF
