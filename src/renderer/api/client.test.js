@@ -109,6 +109,12 @@ describe('normalizeSource', () => {
     });
   });
 
+  it('treats page 0, written for formats without pages, as no page', () => {
+    expect(
+      normalizeSource({ title: 'a.docx', text: 't', sectionTitle: 'Leave', sectionIndex: 1, pageStart: 0, pageEnd: 0 }),
+    ).toMatchObject({ page: null, pageEnd: null });
+  });
+
   it('accepts vector-search results with nested metadata', () => {
     const s = normalizeSource({
       id: 'v',
@@ -222,6 +228,16 @@ describe('createClient', () => {
       'http://h/api/v1/workspace/new',
       { name: LIBRARY_NAME, chatMode: 'query', queryRefusalResponse: REFUSAL_TEXT },
     ]);
+  });
+
+  it('updates workspace settings', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ workspace: { slug: 'lib', topN: 6 }, message: null }));
+    const client = createClient({ baseUrl: 'http://h', apiKey: 'K', fetchImpl });
+    expect(await client.updateWorkspace('lib', { topN: 6 })).toEqual({ slug: 'lib', topN: 6 });
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://h/api/v1/workspace/lib/update');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({ topN: 6 });
   });
 
   it('streams chat events', async () => {

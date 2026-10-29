@@ -15,10 +15,13 @@
     "build:upstream": "bash scripts/build.sh",
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.mjs",
-    "lint": "tsc -p tsconfig.json --noEmit && eslint . && prettier --check .",
+    "lint": "tsc -p tsconfig.json --noEmit && tsc -p scripts/eval/tsconfig.json && eslint . && prettier --check .",
     "format": "prettier --write .",
     "package:mac": "npm run build:main && PACKAGE_TARGET=mac-arm64 bash scripts/build.sh && electron-builder --config electron-builder.yml --mac dir --arm64 && bash scripts/sign-adhoc.sh && electron-builder --config electron-builder.yml --mac dmg --arm64 --prepackaged release/mac-arm64/AskFiles.app",
-    "test:e2e": "npm run build:main && playwright test"
+    "test:e2e": "npm run build:main && playwright test",
+    "eval": "tsx scripts/eval/run.ts",
+    "eval:score": "tsx scripts/eval/score.ts",
+    "eval:compare": "tsx scripts/eval/compare.ts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
@@ -28,8 +31,14 @@
     "electron-builder": "26.17.0",
     "eslint": "10.12.0",
     "prettier": "3.9.10",
+    "tsx": "4.23.15",
     "typescript": "6.0.3",
     "typescript-eslint": "8.71.2",
     "vitest": "5.0.5"
+  },
+  "dependencies": {
+    "mammoth": "1.13.0",
+    "pdfjs-dist": "6.4.299",
+    "read-excel-file": "9.3.13"
   }
 }

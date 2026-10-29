@@ -30,3 +30,7 @@ coverage/
 .DS_Store
 /.vscode/
 .idea/
+
+# evaluation harness: data directory kept between runs, run folders
+/.eval-data/
+/eval-runs/

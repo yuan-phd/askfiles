@@ -1,0 +1,98 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R /Outlines 4 0 R /PageMode /UseOutlines >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [5 0 R 7 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Outlines /First 9 0 R /Last 11 0 R /Count 4 >>
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 6 0 R >>
+endobj
+6 0 obj
+<< /Length 565 >>
+stream
+BT
+/F1 16 Tf
+1 0 0 1 72 716 Tm
+(1 Accounts) Tj
+/F1 11 Tf
+1 0 0 1 72 699.5 Tm
+(Every employee receives one account for email, chat and the staff portal.) Tj
+/F1 11 Tf
+1 0 0 1 72 683 Tm
+(Passwords must be changed every 90 days and must have at least 14 characters.) Tj
+/F1 11 Tf
+1 0 0 1 72 666.5 Tm
+(Two-factor authentication with the Northwind app is mandatory for all accounts.) Tj
+/F1 16 Tf
+1 0 0 1 72 642.5 Tm
+(2 Laptops) Tj
+/F1 11 Tf
+1 0 0 1 72 626 Tm
+(Laptops are replaced every 4 years or earlier when a repair would cost more than half of a new device.) Tj
+ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 8 0 R >>
+endobj
+8 0 obj
+<< /Length 468 >>
+stream
+BT
+/F1 13 Tf
+1 0 0 1 72 720.5 Tm
+(2.1 Lost devices) Tj
+/F1 11 Tf
+1 0 0 1 72 704 Tm
+(A lost or stolen laptop must be reported to it-help@northwind.example within 24 hours.) Tj
+/F1 11 Tf
+1 0 0 1 72 687.5 Tm
+(The IT team then locks the device remotely and erases it when it next connects.) Tj
+/F1 16 Tf
+1 0 0 1 72 663.5 Tm
+(3 Printing) Tj
+/F1 11 Tf
+1 0 0 1 72 647 Tm
+(Printers on every floor accept jobs from the staff portal; colour printing needs a project code.) Tj
+ET
+endstream
+endobj
+9 0 obj
+<< /Title (1 Accounts) /Parent 4 0 R /Dest [5 0 R /XYZ 0 732 0] /Next 10 0 R >>
+endobj
+10 0 obj
+<< /Title (2 Laptops) /Parent 4 0 R /Dest [5 0 R /XYZ 0 658.5 0] /Prev 9 0 R /Next 11 0 R /First 12 0 R /Last 12 0 R /Count 1 >>
+endobj
+11 0 obj
+<< /Title (3 Printing) /Parent 4 0 R /Dest [7 0 R /XYZ 0 679.5 0] /Prev 10 0 R >>
+endobj
+12 0 obj
+<< /Title (2.1 Lost devices) /Parent 10 0 R /Dest [7 0 R /XYZ 0 733.5 0] >>
+endobj
+xref
+0 13
+0000000000 65535 f 
+0000000009 00000 n 
+0000000097 00000 n 
+0000000160 00000 n 
+0000000230 00000 n 
+0000000302 00000 n 
+0000000428 00000 n 
+0000001044 00000 n 
+0000001170 00000 n 
+0000001689 00000 n 
+0000001784 00000 n 
+0000001929 00000 n 
+0000002027 00000 n 
+trailer
+<< /Size 13 /Root 1 0 R >>
+startxref
+2119
+%%EOF
