@@ -144,7 +144,10 @@ export function measure(resourcesDir, top = 40) {
   for (const t of trees) {
     const dups = findDuplicates(t.packages);
     const extra = dups.reduce((s, d) => s + d.bytes - Math.max(...d.copies.map((c) => c.bytes)), 0);
-    lines.push(`${t.tree}: ${dups.length} names; ${formatSize(extra)} beyond the largest copy of each. Largest 10:`, '');
+    lines.push(
+      `${t.tree}: ${dups.length} names; ${formatSize(extra)} beyond the largest copy of each. Largest 10:`,
+      '',
+    );
     lines.push('| Package | Copies | Size of all copies |', '| --- | --- | --- |');
     for (const d of dups.slice(0, 10)) lines.push(`| ${d.name} | ${d.copies.length} | ${formatSize(d.bytes)} |`);
     lines.push('');
