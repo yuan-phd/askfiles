@@ -254,7 +254,7 @@ Estimate: 14 to 25 working days of iteration for phases 1 to 4, about five to se
 
 | Phase | Working days | Your time | Cloud share | Measured so far |
 | --- | --- | --- | --- | --- |
-| 1 Shell | 6 to 11 | Package tests and copy tests | Analysis, skeleton, process manager, wizard logic, presets, model manager, CI workflow | Sessions A to G merged on 2026-10-29 (PRs 1 to 7). On the macos-14 CI runner (Session F PR): build 65 s, package job 22 min, smoke test 3 min 45 s, one chat answer 38 s. Session I: DMG 695 967 267 bytes (663.7 MiB) before, 590 546 990 bytes (563.2 MiB) after; package job 26 min 45 s before, 4 min 15 s after with warm caches (9 min 27 s with empty ones) (docs/bundle-report.md) |
+| 1 Shell | 6 to 11 | Package tests and copy tests | Analysis, skeleton, process manager, wizard logic, presets, model manager, CI workflow | Sessions A to G merged on 2026-10-29 (PRs 1 to 7). On the macos-14 CI runner (Session F PR): build 65 s, package job 22 min, smoke test 3 min 45 s, one chat answer 38 s. Session I: DMG 695 967 267 bytes (663.7 MiB) before, 578 415 079 bytes (551.6 MiB) after; package job 26 min 45 s before, 4 min 15 s after with warm caches (9 min 27 s with empty ones) (docs/bundle-report.md) |
 | 2 Presets and testing | 2 to 4 | Corpora, questions, scoring, user test | Harness and preset generator | Evaluation harness merged (Session G, PR 7) |
 | 3 Search interface | 3 to 6 | Visual pass | API client, watcher, search page, onboarding page | Search page, API client and folder watcher merged (Sessions D and F, PRs 4 and 5) |
 | 4 Browse view | 3 to 5 | Visual pass | Outline extraction, document and library pages, heading index, keyword search | No merged work yet |

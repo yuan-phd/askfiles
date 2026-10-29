@@ -6,9 +6,9 @@ Session I, 2026-10-29. What the packaged server and collector dependencies weigh
 
 | | Before | After |
 | --- | --- | --- |
-| DMG, mac CI (macos-14) | 695 967 267 bytes (663.7 MiB), run 8 | 590 546 990 bytes (563.2 MiB), run 11: 105.4 MB (15.1 percent) smaller |
-| AskFiles.app unpacked, mac CI | 2 458 796 KB (2.34 GiB) | 1 967 244 KB (1.88 GiB) |
-| server and collector node_modules, mac CI | 1.15 GB in 93 884 files | 808.4 MB in 56 950 files |
+| DMG, mac CI (macos-14) | 695 967 267 bytes (663.7 MiB), run 8 | 578 415 079 bytes (551.6 MiB), run 15: 117.6 MB (16.9 percent) smaller, although Session H added the tesseract data and pages to app.asar since run 8 |
+| AskFiles.app unpacked, mac CI | 2 458 796 KB (2.34 GiB) | 1 900 344 KB (1.81 GiB) |
+| server and collector node_modules, mac CI | 1.15 GB in 93 884 files | 740.6 MB in 53 354 files |
 | server and collector node_modules, Linux packaging | 1.33 GB in 92 594 files | 842.2 MB in 52 063 files |
 | package job, mac CI | 26 min 45 s on main (run 6), of which 22 min 52 s in Build, package and sign; 19 min 20 s in run 8 | 4 min 15 s with warm caches (run 12), 9 min 27 s with the new caches empty (run 11) |
 
@@ -27,7 +27,7 @@ scripts/build.sh runs scripts/prune.mjs as step 7 for `PACKAGE_TARGET=mac-arm64`
 | 4. unused: canvas, chartjs-node-canvas, @mintplex-labs/mdpdf, puppeteer | 136.8 MB, 9 packages | 8.8 MB, 64 packages | 910.0 MB, 55 659 files |
 | 5. providers: vector database clients 74.8 MB, model provider SDKs 2.1 MB | 76.9 MB, 73 packages | 0 | 842.2 MB, 52 063 files |
 
-On the mac runner (run 11) the same steps removed: platform 72.1 MB server and 73.7 MB collector, dev 185.8 MB and 105.8 MB, unused 71.1 MB server (mdpdf for one platform only, canvas) and 8.8 MB collector. The smoke test of that DMG passed (launch, /api/ping, PDF upload, one chat answer).
+On the mac runner (run 15, rebased onto Session H) the same steps removed: platform 72.1 MB server and 73.7 MB collector, dev 186.4 MB and 105.8 MB, unused 71.1 MB server (mdpdf for one platform only, canvas) and 8.8 MB collector, providers 76.9 MB server (vector database clients 74.8 MB, model provider SDKs 2.1 MB). The smoke test of that DMG passed (first run, search page, quit).
 
 After every step: scripts/check-server-boot.sh passed, and scripts/check-packaged-backend.mjs passed against the packaged copy (release/linux-unpacked/resources): prisma migrate deploy, collector and server healthy, upload and parse of a PDF, a DOCX, an XLSX and a Markdown file, OCR of a PNG, embedding of the five documents into a workspace with all-minilm, one chat answer with sources from qwen3:0.6b. After step 4, `npm run test:integration` passed (5 tests) on the same pruned tree; after step 5, on the tree rebased onto Session H, it passed again (7 tests in 5 files).
 
@@ -102,6 +102,8 @@ Timestamps from the package job logs. Run 6 is main after Session F, run 8 this 
 | DMG | 3 min 0 s | 2 min 52 s | 2 min 40 s | 1 min 51 s |
 | Build, package and sign step | 22 min 52 s | 16 min 54 s | 6 min 3 s | 2 min 40 s |
 | whole job | 26 min 45 s | 19 min 20 s | 9 min 27 s | 4 min 15 s |
+
+Run 15 (after the rebase and the provider step) took 7 min 22 s: prune.mjs and build.sh changed, so the node_modules cache missed by design and the installs ran (build.sh 58 s).
 
 The yarn download cache (2 GB, about 1 min to restore) is now restored only when one of the two new caches misses; run 12 skipped it.
 
@@ -405,16 +407,16 @@ collector/node_modules: 69 names; 46.6 MB beyond the largest copy of each. Large
 | test, example and doc folders | 16.6 MB |
 | readme and changelog | 15.4 MB |
 
-### mac CI, after (run 11)
+### mac CI, after (run 15)
 
-Measured 2026-10-29 at commit f1bc6a4 on Darwin arm64.
+Measured 2026-10-29 at commit 7c17e28 on Darwin arm64.
 Packaged copy: release/mac-arm64/AskFiles.app/Contents/Resources
 
 | Tree | Size | Files | Package directories |
 | --- | --- | --- | --- |
-| server/node_modules | 499.6 MB | 36960 | 1089 |
+| server/node_modules | 431.8 MB | 33364 | 1015 |
 | collector/node_modules | 308.9 MB | 19990 | 534 |
-| both | 808.4 MB | 56950 | 1623 |
+| both | 740.6 MB | 53354 | 1549 |
 
 #### 40 largest package directories
 
@@ -427,7 +429,6 @@ Own size: files of the package without its nested node_modules, which are listed
 | 50.1 MB | collector/node_modules/onnxruntime-web |
 | 39.9 MB | server/node_modules/@xenova/transformers |
 | 39.9 MB | collector/node_modules/@xenova/transformers |
-| 39.7 MB | server/node_modules/chromadb-default-embed |
 | 38.3 MB | server/node_modules/@prisma/engines |
 | 29.2 MB | collector/node_modules/tesseract.js-core |
 | 28.0 MB | server/node_modules/prisma |
@@ -440,7 +441,6 @@ Own size: files of the package without its nested node_modules, which are listed
 | 14.9 MB | collector/node_modules/@img/sharp-libvips-darwin-arm64 |
 | 12.0 MB | collector/node_modules/pdf-parse |
 | 7.6 MB | collector/node_modules/xlsx |
-| 7.2 MB | server/node_modules/chromadb |
 | 6.6 MB | server/node_modules/pdf-lib |
 | 6.4 MB | server/node_modules/exceljs |
 | 6.3 MB | server/node_modules/js-tiktoken |
@@ -461,24 +461,26 @@ Own size: files of the package without its nested node_modules, which are listed
 | 3.0 MB | server/node_modules/@langchain/community |
 | 2.9 MB | server/node_modules/@azure/msal-browser |
 | 2.9 MB | collector/node_modules/zod |
-| 2.7 MB | server/node_modules/weaviate-client |
+| 2.7 MB | collector/node_modules/@langchain/community/node_modules/langchain |
+| 2.6 MB | server/node_modules/array.prototype.findindex/node_modules/es-abstract |
+| 2.6 MB | server/node_modules/reflect.getprototypeof/node_modules/es-abstract |
 
 #### Packages installed at more than one path in the same tree
 
-server/node_modules: 155 names; 38.5 MB beyond the largest copy of each. Largest 10:
+server/node_modules: 138 names; 28.5 MB beyond the largest copy of each. Largest 10:
 
 | Package | Copies | Size of all copies |
 | --- | --- | --- |
 | zod | 8 | 11.7 MB |
 | es-abstract | 3 | 7.4 MB |
-| protobufjs | 4 | 4.5 MB |
-| openai | 3 | 4.3 MB |
 | lodash | 3 | 4.0 MB |
+| openai | 2 | 3.0 MB |
 | web-streams-polyfill | 2 | 3.0 MB |
-| @grpc/grpc-js | 2 | 2.7 MB |
-| graphql | 2 | 2.7 MB |
 | bluebird | 3 | 1.8 MB |
-| undici | 2 | 1.8 MB |
+| async | 2 | 1.5 MB |
+| iconv-lite | 4 | 1.2 MB |
+| @anthropic-ai/sdk | 3 | 1.2 MB |
+| acorn | 3 | 1.2 MB |
 
 collector/node_modules: 61 names; 26.5 MB beyond the largest copy of each. Largest 10:
 
@@ -499,6 +501,6 @@ collector/node_modules: 61 names; 26.5 MB beyond the largest copy of each. Large
 
 | Kind | Size |
 | --- | --- |
-| test, example and doc folders | 3.8 MB |
+| test, example and doc folders | 3.7 MB |
 | source maps | 2.0 MB |
-| readme and changelog | 318 KB |
+| readme and changelog | 309 KB |
