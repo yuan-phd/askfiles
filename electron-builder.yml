@@ -1,0 +1,76 @@
+# Packaging for macOS arm64. Run only on a Mac: npm run package:mac (see docs/packaging.md).
+# The upstream tree must be prepared first by scripts/build.sh with PACKAGE_TARGET=mac-arm64,
+# which package:mac does.
+appId: io.askfiles.desktop
+productName: AskFiles
+copyright: Copyright AskFiles contributors
+
+directories:
+  output: release
+  buildResources: build
+
+# Only the shell's own compiled main process goes into app.asar. The root package has no runtime
+# dependencies, so there is nothing to rebuild for Electron.
+npmRebuild: false
+files:
+  - package.json
+  - dist/main/**
+
+# Server and collector ship as plain folders in Contents/Resources, not in app.asar
+# (docs/upstream-analysis.md Q1, Q2, risks 1 and 4): Prisma's schema engine and ripgrep are spawned
+# as executables, the Prisma runtime has no asar awareness, and native modules load from real paths.
+# They run as child processes under ELECTRON_RUN_AS_NODE; all native modules are N-API (Q1).
+# Writable data must go to ~/Library/Application Support/AskFiles; the patches that move the DB,
+# hotdir and .env out of these folders are Session C's work (analysis risk 1).
+extraResources:
+  - from: upstream/server
+    to: server
+    filter:
+      - '**/*'
+      # public/ is the frontend build from scripts/build.sh and is shipped.
+      - '!storage/**'
+      - '!.env*'
+      - '!__tests__/**'
+      - '!swagger/**'
+      - '!{nodemon.json,eslint.config.mjs,jsconfig.json,yarn.lock}'
+      - '!node_modules/.install_pkgs.sha256'
+      # onnxruntime-node carries binaries for six platforms; only darwin arm64 is used (about 70 MB saved).
+      - '!node_modules/onnxruntime-node/bin/napi-v3/{linux,win32}/**'
+      - '!node_modules/onnxruntime-node/bin/napi-v3/darwin/x64/**'
+  - from: upstream/collector
+    to: collector
+    filter:
+      - '**/*'
+      - '!storage/**'
+      - '!hotdir/**'
+      - '!.env*'
+      - '!__tests__/**'
+      - '!{nodemon.json,eslint.config.mjs,yarn.lock}'
+      - '!node_modules/.install_pkgs.sha256'
+      - '!node_modules/onnxruntime-node/bin/napi-v3/{linux,win32}/**'
+      - '!node_modules/onnxruntime-node/bin/napi-v3/darwin/x64/**'
+  # The default logo images are the only tracked files in server/storage worth shipping; Session C
+  # can seed the data directory from them. Everything else in storage/ is local runtime data.
+  - from: upstream/server/storage/assets
+    to: server/storage/assets
+  - from: upstream/LICENSE
+    to: licenses/anything-llm-LICENSE
+  # The Ollama macOS release, extracted into resources/ollama by hand (not committed; see
+  # docs/packaging.md). Kept whole: the binary loads its libraries from its own folder and the
+  # license files must ship with it (analysis Q12).
+  - from: resources/ollama
+    to: ollama
+
+mac:
+  target:
+    - target: dmg
+      arch: arm64
+  category: public.app-category.productivity
+  # No Apple Developer certificate: electron-builder skips signing and scripts/sign-adhoc.sh signs
+  # the whole bundle afterwards.
+  identity: null
+  hardenedRuntime: false
+  gatekeeperAssess: false
+
+dmg:
+  artifactName: AskFiles-${version}-arm64.dmg
