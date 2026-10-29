@@ -9,7 +9,7 @@ Session I, 2026-10-29. What the packaged server and collector dependencies weigh
 | DMG, mac CI (macos-14) | 695 967 267 bytes (663.7 MiB), run 8 | 590 546 990 bytes (563.2 MiB), run 11: 105.4 MB (15.1 percent) smaller |
 | AskFiles.app unpacked, mac CI | 2 458 796 KB (2.34 GiB) | 1 967 244 KB (1.88 GiB) |
 | server and collector node_modules, mac CI | 1.15 GB in 93 884 files | 808.4 MB in 56 950 files |
-| server and collector node_modules, Linux packaging | 1.33 GB in 92 594 files | 910.0 MB in 55 659 files |
+| server and collector node_modules, Linux packaging | 1.33 GB in 92 594 files | 842.2 MB in 52 063 files |
 | package job, mac CI | 26 min 45 s on main (run 6), of which 22 min 52 s in Build, package and sign; 19 min 20 s in run 8 | 4 min 15 s with warm caches (run 12), 9 min 27 s with the new caches empty (run 11) |
 
 Before on the mac is CI run 8 (this PR's first push, which only added the measurement step) against main's build. The brief expected about 1.6 GB; that is the size of the unpacked dependency folders, the DMG was already compressed to 664 MiB. Ollama (523 MiB unpacked, kept whole) is the largest part that pruning does not touch.
@@ -23,12 +23,13 @@ scripts/build.sh runs scripts/prune.mjs as step 7 for `PACKAGE_TARGET=mac-arm64`
 | Before (main, with the old onnxruntime filter in electron-builder.yml) | | | 1.33 GB, 92 594 files |
 | 1. platform: binaries the target cannot load | 76.6 MB, 20 files | 78.7 MB, 45 files | 1.32 GB, 92 553 files (the filter is gone, so Linux keeps its own onnxruntime) |
 | 2. dedupe | 0 | 0 | nothing removed, see below |
-| 3. dev: source maps, typings, @types, readme and changelog, test, example and doc folders | 185.8 MB, 18 992 paths | 105.8 MB, 12 964 paths | 1.03 GB, 56 793 files |
+| 3. dev: source maps, typings, @types, readme and changelog, test, example, doc and benchmark folders | 186.4 MB, 18 994 paths | 105.8 MB, 12 964 paths | 1.03 GB, 56 793 files (measured before benchmark folders were added: 0.6 MB, 2 paths) |
 | 4. unused: canvas, chartjs-node-canvas, @mintplex-labs/mdpdf, puppeteer | 136.8 MB, 9 packages | 8.8 MB, 64 packages | 910.0 MB, 55 659 files |
+| 5. providers: vector database clients 74.8 MB, model provider SDKs 2.1 MB | 76.9 MB, 73 packages | 0 | 842.2 MB, 52 063 files |
 
 On the mac runner (run 11) the same steps removed: platform 72.1 MB server and 73.7 MB collector, dev 185.8 MB and 105.8 MB, unused 71.1 MB server (mdpdf for one platform only, canvas) and 8.8 MB collector. The smoke test of that DMG passed (launch, /api/ping, PDF upload, one chat answer).
 
-After every step: scripts/check-server-boot.sh passed, and scripts/check-packaged-backend.mjs passed against the packaged copy (release/linux-unpacked/resources): prisma migrate deploy, collector and server healthy, upload and parse of a PDF, a DOCX, an XLSX and a Markdown file, OCR of a PNG, embedding of the five documents into a workspace with all-minilm, one chat answer with sources from qwen3:0.6b. After step 4, `npm run test:integration` passed (5 tests) on the same pruned tree.
+After every step: scripts/check-server-boot.sh passed, and scripts/check-packaged-backend.mjs passed against the packaged copy (release/linux-unpacked/resources): prisma migrate deploy, collector and server healthy, upload and parse of a PDF, a DOCX, an XLSX and a Markdown file, OCR of a PNG, embedding of the five documents into a workspace with all-minilm, one chat answer with sources from qwen3:0.6b. After step 4, `npm run test:integration` passed (5 tests) on the same pruned tree; after step 5, on the tree rebased onto Session H, it passed again (7 tests in 5 files).
 
 ### 1. Other platforms
 
@@ -40,7 +41,7 @@ Yarn classic has no dedupe command, and the upstream lock files may not change. 
 
 ### 3. Development files
 
-Removed: `*.js.map` and other source maps, `*.d.ts` typings, every @types package without JavaScript, README, CHANGELOG and HISTORY files, and the folders test, tests, `__tests__`, example, examples, docs, doc, .github and coverage directly under a package root unless main, module, browser, bin or exports point into them. Folders of the same name deeper down stay (yaml/dist/doc is code). LICENSE and NOTICE files stay, and so does the readme of a package without a license file, because it may be the only license notice (docs/licenses.md). Source maps only change stack traces in logs, which then point at the shipped JavaScript.
+Removed: `*.js.map` and other source maps, `*.d.ts` typings, every @types package without JavaScript, README, CHANGELOG and HISTORY files, and the folders test, tests, `__tests__`, example, examples, docs, doc, .github, coverage, benchmark and benchmarks directly under a package root unless main, module, browser, bin or exports point into them. Folders of the same name deeper down stay (yaml/dist/doc is code). LICENSE and NOTICE files stay, and so does the readme of a package without a license file, because it may be the only license notice (docs/licenses.md). Source maps only change stack traces in logs, which then point at the shipped JavaScript.
 
 ### 4. Packages AskFiles never reaches
 
@@ -57,17 +58,37 @@ prune.mjs removes each one and the packages that only it pulled in, and refuses 
 
 scripts/check-server-boot.sh boots the server with canvas blocked; with canvas removed it passes the same way. The chat export, Telegram and agent paths now fail inside their own try/catch, as they already could on the Mac when the canvas prebuild download fails (docs/packaging.md). They are only reachable through the upstream interface behind the developer switch.
 
+### 5. Vector database clients and model provider SDKs AskFiles never selects
+
+The presets set VECTOR_DB=lancedb, LLM_PROVIDER=ollama and EMBEDDING_ENGINE=ollama. On top of the step 4 guards, prune.mjs parses every upstream source file (acorn, a new dev dependency), follows the requires that run at module scope from server/index.js and collector/index.js, and refuses to remove any package that one of those files loads at module scope. The document, embedding and chat routes are all registered at start, so their module-scope requires are inside that set; what their handlers load later is covered by check-packaged-backend.mjs and the integration tests, which exercise those paths on the pruned tree.
+
+Removed (server only; the collector requires none of them):
+
+| Group | Packages | Linux install |
+| --- | --- | --- |
+| Vector database clients and what only they pull in | chromadb (with chromadb-default-embed), @pinecone-database/pinecone, pinecone-client, @qdrant/js-client-rest, @zilliz/milvus2-sdk-node (Milvus and Zilliz), weaviate-client, @datastax/astra-db-ts; with them @grpc/grpc-js, protobufjs, nice-grpc and others | 74.8 MB |
+| Model provider SDKs that only chromadb pulls in | voyageai, @google/generative-ai, chromadb's own copies of openai and ollama | 2.1 MB |
+
+Each client is required at module scope only in its file under server/utils/vectorDbProviders/, and upstream loads that file only inside the VECTOR_DB switch (utils/helpers/index.js, getVectorDbClass). @langchain/community's own chroma, astradb, milvus and qdrant integrations are separate entry points that nothing imports; they are the one exception the step accepts, read by hand.
+
+Checked and kept, because the step refuses them:
+
+| Package | Why it stays |
+| --- | --- |
+| pg | utils/vectorDbProviders/pgvector/index.js requires it at module scope and is loaded at server start |
+| openai, @anthropic-ai/sdk, @langchain/openai, @langchain/anthropic | the agent provider modules under utils/agents/aibitat/providers require them at module scope at server start; several chat providers too |
+| elevenlabs | utils/TextToSpeech/elevenLabs/index.js, loaded at start |
+| ollama | the provider AskFiles uses |
+| cohere-ai | still a dependency of a package that stays |
+
 ## Not pruned
 
 - onnxruntime-web (50 MB in each tree after step 3): @xenova/transformers imports it at load, also in Node.
 - @lancedb/lancedb-darwin-arm64 (69.6 MB): the vector database.
 - prisma and @prisma/engines (66 MB): `prisma migrate deploy` runs at every start.
 - tesseract.js-core (29 MB): OCR.
-- Further candidates that need an owner decision first, because they are not in the brief's list: chromadb and chromadb-default-embed (47 MB, the Chroma vector database provider; AskFiles uses LanceDB), the other vector database clients (weaviate-client, @zilliz/milvus2-sdk-node, @qdrant, @pinecone-database), and pdf-parse's three unused pdf.js builds (collector uses v1.10.100).
-
-## Open question found on the way
-
-The tesseract language data is not shipped. docs/plan.md (Session B) says the app ships eng and chi_sim 4.0.0_best_int so OCR never downloads; neither scripts/build.sh nor electron-builder.yml includes them, and collector/utils/OCRLoader reads STORAGE_DIR/models/tesseract, else tesseract.js downloads from cdn.jsdelivr.net. scripts/check-packaged-backend.mjs seeds that folder from TESSDATA_DIR for the OCR check. Which session adds them?
+- web-push (MPL-2.0): utils/PushNotifications/index.js requires it at module scope and loads at server start, so step 5's guard keeps it; its files are not modified.
+- pdf-parse's three unused pdf.js builds (collector uses v1.10.100): files inside a package, not a package; left for now.
 
 ## CI time
 
@@ -189,14 +210,14 @@ collector/node_modules: 69 names; 46.6 MB beyond the largest copy of each. Large
 
 ### Linux packaging after pruning
 
-Measured 2026-10-29 at commit f0dee32 on Linux x86_64.
+Measured 2026-10-29 at commit e21fce6 (uncommitted changes) on Linux x86_64.
 Packaged copy: release/linux-unpacked/resources
 
 | Tree | Size | Files | Package directories |
 | --- | --- | --- | --- |
-| server/node_modules | 595.9 MB | 36313 | 1090 |
+| server/node_modules | 528.1 MB | 32717 | 1016 |
 | collector/node_modules | 314.1 MB | 19346 | 536 |
-| both | 910.0 MB | 55659 | 1626 |
+| both | 842.2 MB | 52063 | 1552 |
 
 #### 40 largest package directories
 
@@ -210,7 +231,6 @@ Own size: files of the package without its nested node_modules, which are listed
 | 50.1 MB | collector/node_modules/onnxruntime-web |
 | 39.9 MB | server/node_modules/@xenova/transformers |
 | 39.9 MB | collector/node_modules/@xenova/transformers |
-| 39.7 MB | server/node_modules/chromadb-default-embed |
 | 37.4 MB | server/node_modules/@prisma/engines |
 | 29.2 MB | collector/node_modules/tesseract.js-core |
 | 27.8 MB | server/node_modules/prisma |
@@ -224,7 +244,6 @@ Own size: files of the package without its nested node_modules, which are listed
 | 15.1 MB | server/node_modules/.prisma |
 | 12.0 MB | collector/node_modules/pdf-parse |
 | 7.6 MB | collector/node_modules/xlsx |
-| 7.2 MB | server/node_modules/chromadb |
 | 6.6 MB | server/node_modules/pdf-lib |
 | 6.4 MB | server/node_modules/exceljs |
 | 6.3 MB | server/node_modules/js-tiktoken |
@@ -244,23 +263,25 @@ Own size: files of the package without its nested node_modules, which are listed
 | 3.0 MB | server/node_modules/jsdom |
 | 3.0 MB | server/node_modules/@langchain/community |
 | 2.9 MB | server/node_modules/@azure/msal-browser |
+| 2.9 MB | collector/node_modules/zod |
+| 2.7 MB | collector/node_modules/@langchain/community/node_modules/langchain |
 
 #### Packages installed at more than one path in the same tree
 
-server/node_modules: 155 names; 38.5 MB beyond the largest copy of each. Largest 10:
+server/node_modules: 138 names; 28.5 MB beyond the largest copy of each. Largest 10:
 
 | Package | Copies | Size of all copies |
 | --- | --- | --- |
 | zod | 8 | 11.7 MB |
 | es-abstract | 3 | 7.4 MB |
-| protobufjs | 4 | 4.5 MB |
-| openai | 3 | 4.3 MB |
 | lodash | 3 | 4.0 MB |
+| openai | 2 | 3.0 MB |
 | web-streams-polyfill | 2 | 3.0 MB |
-| @grpc/grpc-js | 2 | 2.7 MB |
-| graphql | 2 | 2.7 MB |
 | bluebird | 3 | 1.8 MB |
-| undici | 2 | 1.8 MB |
+| async | 2 | 1.5 MB |
+| iconv-lite | 4 | 1.2 MB |
+| @anthropic-ai/sdk | 3 | 1.2 MB |
+| acorn | 3 | 1.2 MB |
 
 collector/node_modules: 61 names; 26.5 MB beyond the largest copy of each. Largest 10:
 
@@ -281,9 +302,9 @@ collector/node_modules: 61 names; 26.5 MB beyond the largest copy of each. Large
 
 | Kind | Size |
 | --- | --- |
-| test, example and doc folders | 3.8 MB |
+| test, example and doc folders | 3.7 MB |
 | source maps | 2.0 MB |
-| readme and changelog | 322 KB |
+| readme and changelog | 314 KB |
 
 ### mac CI, before (run 8)
 

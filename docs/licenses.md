@@ -1,6 +1,6 @@
 # Licenses
 
-Generated 2026-10-29 at commit 31a5550 with `node scripts/license-report.mjs` over the pruned Linux packaging (`PACKAGE_TARGET=linux-x64 bash scripts/build.sh`, then `npx electron-builder --config electron-builder.yml --linux dir`), plus the shell's own dependency tree. Report only: nothing was removed or replaced because of a license.
+Generated 2026-10-29 after the rebase onto Session H, with `node scripts/license-report.mjs` over the pruned Linux packaging (`PACKAGE_TARGET=linux-x64 bash scripts/build.sh`, then `npx electron-builder --config electron-builder.yml --linux dir`), plus the shell's own dependency tree. Report only: nothing was removed or replaced because of a license.
 
 The mac package holds the same packages except the platform ones: @lancedb/lancedb-darwin-arm64 instead of the two linux-x64 builds (Apache-2.0 either way), @img/sharp-darwin-arm64 and @img/sharp-libvips-darwin-arm64 instead of the linux ones. Re-run the script on the Mac against `release/mac-arm64/AskFiles.app/Contents/Resources` for the exact mac list.
 
@@ -14,22 +14,25 @@ None of the models is inside the DMG: the first-run wizard pulls them from the O
 | qwen3:4b, qwen3:8b, qwen3:14b | Chat models of the three tiers in config/presets.json | Apache-2.0 (same license layer for all three tags) |
 | bge-m3:567m | Embedder of every tier in config/presets.json | MIT (the license layer is the MIT template without a filled-in copyright line) |
 | qwen3:0.6b, all-minilm | Test models of the cloud environment and CI smoke test only, never shipped | Apache-2.0 |
-| Tesseract language data, eng and chi_sim, 4.0.0_best_int | npm packages @tesseract.js-data/eng and @tesseract.js-data/chi_sim 1.0.0. Not shipped yet: the collector downloads them on first OCR (see the open question in docs/bundle-report.md) | The npm packages are MIT; the traineddata files come from tesseract-ocr/tessdata_best, Apache-2.0 |
+| Tesseract language data, eng and chi_sim, 4.0.0_best_int | npm packages @tesseract.js-data/eng and @tesseract.js-data/chi_sim 1.0.0, shipped in app.asar by Session H and copied to STORAGE_DIR/models/tesseract at first run | The npm packages are MIT; the traineddata files come from tesseract-ocr/tessdata_best, Apache-2.0 |
 
 ## Notes on the packages outside the allowed list
 
 Read by hand; the table below is the script's output.
 
-- LGPL-3.0-or-later, @img/sharp-libvips-* (collector, through sharp 0.33) and the libvips inside server/node_modules/sharp/vendor (sharp 0.32.6, whose own field says Apache-2.0; vendor/8.14.5/linux-x64/THIRD-PARTY-NOTICES.md lists libvips as LGPLv3). Dynamically linked shared libraries, shipped unmodified with their notices.
-- MPL-2.0, web-push (server, a direct upstream dependency for browser push notifications). File-level copyleft, shipped unmodified.
+- LGPL-3.0-or-later, @img/sharp-libvips-* (collector, through sharp 0.33) and the libvips inside server/node_modules/sharp/vendor (sharp 0.32.6, whose own field says Apache-2.0; vendor/8.14.5/linux-x64/THIRD-PARTY-NOTICES.md lists libvips as LGPLv3). Dynamically linked shared libraries, shipped unmodified. The owner accepts this provided the LGPL text ships in the notices. Checked 2026-10-29: it does not yet. THIRD-PARTY-NOTICES names both @img/sharp-libvips packages under "Packages that ship no license file" with LGPL-3.0-or-later, but contains no LGPL-3.0 text, and the packages themselves ship none. Open for Session H's notices generator.
+- MPL-2.0, web-push (server). Accepted by the owner as long as its files are not modified (they are not). Not pruned: server/utils/PushNotifications/index.js requires it at module scope and is loaded at server start, so it is on a path AskFiles uses.
 - BlueOak-1.0.0, sax, jackspeak, path-scurry, package-json-from-dist: permissive, not on the allowed list.
 - MIT-0 (@csstools/color-helpers, nodemailer), (MIT AND Zlib) (pako), BSD without a variant (duck): permissive, not on the allowed list as written.
-- No license statement in the package: buffers 0.1.1 (exceljs > unzipper > binary), combine-errors 3.0.3 (@mintplex-labs/bree), voyageai 0.0.3 (chromadb). Their package.json has no license field and they ship no license file; their readmes are kept by scripts/prune.mjs but do not state one either. Owner decision.
+- No license statement in the package (no license field, no license file, and the readme states none):
+  - voyageai 0.0.3: removed by prune step 5; it came only with chromadb.
+  - buffers 0.1.1: server, exceljs > unzipper > binary > buffers. exceljs is required only by utils/agents/aibitat/plugins/create-files/xlsx/create-excel-file.js, inside a function (the agent's create-spreadsheet skill). Not on a path AskFiles uses. Left in place.
+  - combine-errors 3.0.3: server, @mintplex-labs/bree > combine-errors. bree is required at module scope by utils/BackgroundWorkers, which utils/boot loads at every server start. On a path AskFiles uses. Left in place.
 - Development dependencies (MPL-2.0 lightningcss, WTFPL truncate-utf8-bytes, BlueOak-1.0.0) are never shipped.
 
 ## Licenses outside the allowed list
 
-Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Python-2.0, CC0-1.0. 30 packages, first dependency path found:
+Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Python-2.0, CC0-1.0. 29 packages, first dependency path found:
 
 | Tree | Package | License | Pulled in by |
 | --- | --- | --- | --- |
@@ -38,7 +41,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | Packaged server dependencies | combine-errors 3.0.3 | UNKNOWN | @mintplex-labs/bree > combine-errors |
 | Packaged server dependencies | pako 1.0.11 | (MIT AND Zlib) | pdf-lib > pako |
 | Packaged server dependencies | sax 1.6.0 | BlueOak-1.0.0 | docx > xml-js > sax |
-| Packaged server dependencies | voyageai 0.0.3 | UNKNOWN | chromadb > voyageai |
 | Packaged server dependencies | web-push 3.6.7 | MPL-2.0 | web-push |
 | Packaged collector dependencies | @img/sharp-libvips-linux-x64 1.0.4 | LGPL-3.0-or-later | sharp > @img/sharp-libvips-linux-x64 |
 | Packaged collector dependencies | @img/sharp-libvips-linuxmusl-x64 1.0.4 | LGPL-3.0-or-later | sharp > @img/sharp-libvips-linuxmusl-x64 |
@@ -66,7 +68,7 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 
 ## Packaged server dependencies
 
-876 packages (name and version).
+813 packages (name and version).
 
 | Package | Version | License |
 | --- | --- | --- |
@@ -103,22 +105,12 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | @cypress/request | 3.0.10 | Apache-2.0 |
 | @cypress/request-promise | 5.0.0 | ISC |
 | @dabh/diagnostics | 2.0.3 | MIT |
-| @datastax/astra-db-ts | 0.1.4 | Apache-2.0 |
 | @fast-csv/format | 4.3.5 | MIT |
 | @fast-csv/parse | 4.3.6 | MIT |
-| @google/generative-ai | 0.1.3 | Apache-2.0 |
-| @graphql-typed-document-node/core | 3.2.0 | MIT |
-| @grpc/grpc-js | 1.14.6 | Apache-2.0 |
-| @grpc/grpc-js | 1.8.17 | Apache-2.0 |
-| @grpc/proto-loader | 0.7.15 | Apache-2.0 |
-| @grpc/proto-loader | 0.7.7 | Apache-2.0 |
-| @grpc/proto-loader | 0.8.1 | Apache-2.0 |
 | @hapi/hoek | 9.3.0 | BSD-3-Clause |
 | @hapi/topo | 5.1.0 | BSD-3-Clause |
-| @huggingface/jinja | 0.1.3 | MIT |
 | @huggingface/jinja | 0.2.2 | MIT |
 | @js-joda/core | 5.6.2 | BSD-3-Clause |
-| @js-sdsl/ordered-map | 4.4.2 | MIT |
 | @kurkle/color | 0.3.4 | MIT |
 | @ladjs/graceful | 3.2.2 | MIT |
 | @lancedb/lancedb | 0.15.0 | Apache 2.0 |
@@ -134,39 +126,28 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | @modelcontextprotocol/sdk | 1.24.3 | MIT |
 | @pdf-lib/standard-fonts | 1.0.0 | MIT |
 | @pdf-lib/upng | 1.0.1 | MIT |
-| @pinecone-database/pinecone | 2.2.0 | Apache-2.0 |
 | @prisma/client | 5.3.1 | Apache-2.0 |
 | @prisma/engines | 5.3.1 | Apache-2.0 |
 | @prisma/engines-version | 5.3.1-2.61e140623197a131c2a6189271ffee05a7aa9a59 | Apache-2.0 |
 | @protobufjs/aspromise | 1.1.2 | BSD-3-Clause |
 | @protobufjs/base64 | 1.1.2 | BSD-3-Clause |
 | @protobufjs/codegen | 2.0.4 | BSD-3-Clause |
-| @protobufjs/codegen | 2.0.5 | BSD-3-Clause |
 | @protobufjs/eventemitter | 1.1.0 | BSD-3-Clause |
-| @protobufjs/eventemitter | 1.1.1 | BSD-3-Clause |
 | @protobufjs/fetch | 1.1.0 | BSD-3-Clause |
-| @protobufjs/fetch | 1.1.1 | BSD-3-Clause |
 | @protobufjs/float | 1.0.2 | BSD-3-Clause |
 | @protobufjs/inquire | 1.1.0 | BSD-3-Clause |
 | @protobufjs/path | 1.1.2 | BSD-3-Clause |
 | @protobufjs/pool | 1.1.0 | BSD-3-Clause |
 | @protobufjs/utf8 | 1.1.0 | BSD-3-Clause |
-| @protobufjs/utf8 | 1.1.1 | BSD-3-Clause |
-| @qdrant/js-client-rest | 1.18.0 | Apache-2.0 |
-| @qdrant/openapi-typescript-fetch | 1.2.6 | MIT |
 | @sideway/address | 4.1.5 | BSD-3-Clause |
 | @sideway/formula | 3.0.1 | BSD-3-Clause |
 | @sideway/pinpoint | 2.0.0 | BSD-3-Clause |
-| @sinclair/typebox | 0.29.6 | MIT |
 | @swc/helpers | 0.5.15 | Apache-2.0 |
 | @tediousjs/connection-string | 0.5.0 | MIT |
 | @types/readable-stream | 4.0.14 | MIT |
 | @vscode/ripgrep | 1.17.1 | MIT |
 | @xenova/transformers | 2.17.2 | Apache-2.0 |
-| @zilliz/milvus2-sdk-node | 2.3.5 | Apache-2.0 (from LICENSE file) |
 | abort-controller | 3.0.0 | MIT |
-| abort-controller-x | 0.4.3 | MIT |
-| abort-controller-x | 0.5.0 | MIT |
 | accepts | 1.3.8 | MIT |
 | accepts | 2.0.0 | MIT |
 | acorn | 7.4.1 | MIT |
@@ -174,10 +155,8 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | agent-base | 7.1.1 | MIT |
 | agent-base | 7.1.4 | MIT |
 | agentkeepalive | 4.5.0 | MIT |
-| ajv | 8.13.0 | MIT |
 | ajv | 8.17.1 | MIT |
 | ajv-formats | 3.0.1 | MIT |
-| ansi-regex | 5.0.1 | MIT |
 | ansi-regex | 6.2.2 | MIT |
 | ansi-styles | 4.3.0 | MIT |
 | ansi-styles | 5.2.0 | MIT |
@@ -233,7 +212,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | boolean | 3.2.0 | MIT |
 | brace-expansion | 1.1.11 | MIT |
 | brace-expansion | 2.0.3 | MIT |
-| bson | 6.6.0 | Apache-2.0 |
 | buffer | 5.7.1 | MIT |
 | buffer | 6.0.3 | MIT |
 | buffer-crc32 | 0.2.13 | MIT |
@@ -258,9 +236,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | cheerio | 1.0.0 | MIT |
 | cheerio-select | 2.1.0 | BSD-2-Clause |
 | chownr | 1.1.4 | ISC |
-| chromadb | 2.0.1 | Apache-2.0 |
-| chromadb-default-embed | 2.14.0 | Apache-2.0 |
-| cliui | 8.0.1 | ISC |
 | cohere-ai | 7.9.5 | MIT (from LICENSE file) |
 | color | 3.2.1 | MIT |
 | color | 4.2.3 | MIT |
@@ -296,7 +271,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | crc-32 | 1.2.2 | Apache-2.0 |
 | crc32-stream | 4.0.3 | MIT |
 | cron-validate | 1.4.5 | MIT |
-| cross-fetch | 3.1.8 | MIT |
 | cross-spawn | 7.0.6 | MIT |
 | crypt | 0.0.2 | BSD-3-Clause |
 | css-select | 5.1.0 | BSD-2-Clause |
@@ -311,7 +285,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | data-view-byte-length | 1.0.2 | MIT |
 | data-view-byte-offset | 1.0.0 | MIT |
 | data-view-byte-offset | 1.0.1 | MIT |
-| dayjs | 1.11.11 | MIT |
 | dayjs | 1.11.20 | MIT |
 | debug | 2.6.9 | MIT |
 | debug | 3.2.7 | MIT |
@@ -347,7 +320,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | ecdsa-sig-formatter | 1.0.11 | Apache-2.0 |
 | ee-first | 1.1.1 | MIT |
 | elevenlabs | v0.5.0 | MIT |
-| emoji-regex | 8.0.0 | MIT |
 | enabled | 2.0.0 | MIT |
 | encode32 | 1.1.0 | MIT |
 | encodeurl | 1.0.2 | MIT |
@@ -368,7 +340,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | es-shim-unscopables | 1.0.2 | MIT |
 | es-to-primitive | 1.2.1 | MIT |
 | es-to-primitive | 1.3.0 | MIT |
-| escalade | 3.1.2 | MIT |
 | escape-html | 1.0.3 | MIT |
 | etag | 1.8.1 | MIT |
 | event-target-shim | 5.0.1 | MIT |
@@ -414,7 +385,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | form-data | 4.0.4 | MIT |
 | form-data-encoder | 1.7.2 | MIT |
 | formdata-node | 4.4.1 | MIT |
-| formdata-node | 6.0.3 | MIT |
 | forwarded | 0.2.0 | MIT |
 | fresh | 0.5.2 | MIT |
 | fresh | 2.0.0 | MIT |
@@ -426,7 +396,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | function.prototype.name | 1.1.8 | MIT |
 | functions-have-names | 1.2.3 | MIT |
 | generate-function | 2.3.1 | MIT |
-| get-caller-file | 2.0.5 | ISC |
 | get-intrinsic | 1.2.4 | MIT |
 | get-intrinsic | 1.3.0 | MIT |
 | get-proto | 1.0.1 | MIT |
@@ -439,9 +408,7 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | globalthis | 1.0.4 | MIT |
 | gopd | 1.2.0 | MIT |
 | graceful-fs | 4.2.11 | ISC |
-| graphql | 16.14.2 | MIT |
 | graphql | 16.9.0 | MIT |
-| graphql-request | 6.1.0 | MIT |
 | guid-typescript | 1.0.9 | ISC |
 | has-bigints | 1.0.2 | MIT |
 | has-flag | 4.0.0 | MIT |
@@ -497,7 +464,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | is-docker | 2.2.1 | MIT |
 | is-extglob | 1.0.0 | MIT |
 | is-finalizationregistry | 1.1.1 | MIT |
-| is-fullwidth-code-point | 3.0.0 | MIT |
 | is-generator-function | 1.0.10 | MIT |
 | is-glob | 2.0.1 | MIT |
 | is-invalid-path | 0.1.0 | MIT |
@@ -532,7 +498,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | isarray | 1.0.0 | MIT |
 | isarray | 2.0.5 | MIT |
 | isexe | 2.0.0 | ISC |
-| isomorphic-fetch | 3.0.0 | MIT |
 | isstream | 0.1.2 | MIT |
 | joi | 17.13.0 | BSD-3-Clause |
 | joi-password-complexity | 5.2.0 | MIT |
@@ -559,7 +524,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | jws | 3.2.2 | MIT |
 | jws | 4.0.0 | MIT |
 | kuler | 2.0.0 | MIT |
-| ky | 0.33.3 | MIT |
 | langchain | 0.1.36 | MIT |
 | langchainhub | 0.0.8 | MIT |
 | langsmith | 0.1.21 | MIT |
@@ -599,12 +563,10 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | logform | 2.6.0 | MIT |
 | long | 4.0.0 | Apache-2.0 |
 | long | 5.2.3 | Apache-2.0 |
-| long | 5.3.2 | Apache-2.0 |
 | lru-cache | 10.4.3 | ISC |
 | lru-cache | 6.0.0 | ISC |
 | lru-cache | 7.18.3 | ISC |
 | lru-cache | 8.0.5 | ISC |
-| lru-cache | 9.1.2 | ISC |
 | marked | 15.0.12 | MIT |
 | math-intrinsics | 1.1.0 | MIT |
 | md5 | 2.3.0 | BSD-3-Clause |
@@ -648,9 +610,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | native-duplexpair | 1.0.0 | MIT |
 | negotiator | 0.6.3 | MIT |
 | negotiator | 1.0.0 | MIT |
-| nice-grpc | 2.1.17 | MIT |
-| nice-grpc-client-middleware-retry | 3.1.16 | MIT |
-| nice-grpc-common | 2.0.4 | MIT |
 | node-abi | 3.62.0 | MIT |
 | node-abort-controller | 3.1.1 | MIT |
 | node-addon-api | 6.1.0 | MIT |
@@ -668,7 +627,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | object-keys | 1.1.1 | MIT |
 | object.assign | 4.1.5 | MIT |
 | object.assign | 4.1.7 | MIT |
-| ollama | 0.5.12 | MIT |
 | ollama | 0.6.3 | MIT |
 | on-finished | 2.4.1 | MIT |
 | once | 1.4.0 | ISC |
@@ -679,7 +637,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | onnxruntime-node | 1.14.0 | MIT |
 | onnxruntime-web | 1.14.0 | MIT |
 | open | 8.4.2 | MIT |
-| openai | 4.38.5 | Apache-2.0 |
 | openai | 4.39.1 | Apache-2.0 |
 | openai | 4.95.1 | Apache-2.0 |
 | openapi-types | 12.1.3 | MIT |
@@ -711,7 +668,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | pg-protocol | 1.6.1 | MIT |
 | pg-types | 2.2.0 | MIT |
 | pgpass | 1.0.5 | MIT |
-| pinecone-client | 1.1.2 | MIT |
 | pkce-challenge | 5.0.1 | MIT |
 | platform | 1.3.6 | MIT |
 | pluralize | 8.0.0 | MIT |
@@ -728,9 +684,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | process-nextick-args | 2.0.1 | MIT |
 | property-expr | 2.0.6 | MIT |
 | protobufjs | 6.11.4 | BSD-3-Clause |
-| protobufjs | 7.2.4 | BSD-3-Clause |
-| protobufjs | 7.6.4 | BSD-3-Clause |
-| protobufjs | 7.6.6 | BSD-3-Clause |
 | proxy-addr | 2.0.7 | MIT |
 | proxy-from-env | 1.1.0 | MIT |
 | psl | 1.15.0 | MIT |
@@ -750,7 +703,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | readable-stream | 2.3.8 | MIT |
 | readable-stream | 3.6.2 | MIT |
 | readable-stream | 4.5.2 | MIT |
-| readable-stream | 4.7.0 | MIT |
 | readdir-glob | 1.1.3 | Apache-2.0 |
 | reflect-metadata | 0.2.2 | Apache-2.0 |
 | reflect.getprototypeof | 1.0.10 | MIT |
@@ -758,7 +710,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | regexp.prototype.flags | 1.5.2 | MIT |
 | regexp.prototype.flags | 1.5.4 | MIT |
 | request-promise-core | 1.1.3 | ISC |
-| require-directory | 2.1.1 | MIT |
 | require-from-string | 2.0.2 | MIT |
 | requires-port | 1.0.0 | MIT |
 | retry | 0.13.1 | MIT |
@@ -822,13 +773,11 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | streamx | 2.16.1 | MIT |
 | string_decoder | 1.1.1 | MIT |
 | string_decoder | 1.3.0 | MIT |
-| string-width | 4.2.3 | MIT |
 | string.prototype.trim | 1.2.10 | MIT |
 | string.prototype.trim | 1.2.9 | MIT |
 | string.prototype.trimend | 1.0.8 | MIT |
 | string.prototype.trimend | 1.0.9 | MIT |
 | string.prototype.trimstart | 1.0.8 | MIT |
-| strip-ansi | 6.0.1 | MIT |
 | strip-ansi | 7.1.2 | MIT |
 | strip-final-newline | 2.0.0 | MIT |
 | strip-json-comments | 2.0.1 | MIT |
@@ -859,7 +808,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | traverse | 0.3.9 | MIT/X11 |
 | triple-beam | 1.4.1 | MIT |
 | truncate | 3.0.0 | MIT |
-| ts-error | 1.0.6 | MIT |
 | tslib | 1.14.1 | 0BSD |
 | tslib | 2.6.2 | 0BSD |
 | tslib | 2.8.1 | 0BSD |
@@ -882,16 +830,13 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | unbox-primitive | 1.0.2 | MIT |
 | unbox-primitive | 1.1.0 | MIT |
 | undici | 6.21.1 | MIT |
-| undici | 6.28.1 | MIT |
 | undici-types | 5.26.5 | MIT |
 | undici-types | 6.19.8 | MIT |
 | undici-types | 6.21.0 | MIT |
 | undici-types | 7.18.2 | MIT |
-| undici-types | 7.24.6 | MIT |
 | universalify | 0.2.0 | MIT |
 | unpipe | 1.0.0 | MIT |
 | unzipper | 0.10.14 | MIT |
-| uri-js | 4.4.1 | BSD-2-Clause |
 | url-join | 4.0.1 | MIT |
 | url-parse | 1.5.10 | MIT |
 | url-pattern | 1.0.3 | MIT |
@@ -902,9 +847,7 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | uuid-apikey | 1.5.3 | MIT |
 | vary | 1.1.2 | MIT |
 | verror | 1.10.0 | MIT |
-| voyageai | 0.0.3 | UNKNOWN |
 | w3c-xmlserializer | 5.0.0 | MIT |
-| weaviate-client | 3.9.0 | BSD-3-Clause |
 | web-push | 3.6.7 | MPL-2.0 |
 | web-streams-polyfill | 3.3.3 | MIT |
 | web-streams-polyfill | 4.0.0-beta.3 | MIT |
@@ -925,7 +868,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | winston | 3.13.0 | MIT |
 | winston-transport | 4.7.0 | MIT |
 | wordwrapjs | 5.1.0 | MIT |
-| wrap-ansi | 7.0.0 | MIT |
 | wrappy | 1.0.2 | ISC |
 | ws | 7.5.10 | MIT |
 | ws | 8.20.0 | MIT |
@@ -934,11 +876,8 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | xml-name-validator | 5.0.0 | Apache-2.0 |
 | xmlchars | 2.2.0 | MIT |
 | xtend | 4.0.2 | MIT |
-| y18n | 5.0.8 | ISC |
 | yallist | 4.0.0 | ISC |
 | yaml | 2.4.2 | ISC |
-| yargs | 17.7.2 | MIT |
-| yargs-parser | 21.1.1 | ISC |
 | yauzl | 2.10.0 | MIT |
 | yup | 0.32.9 | MIT |
 | zip-stream | 4.1.1 | MIT |
@@ -1403,13 +1342,15 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 
 ## Shell runtime dependencies (app.asar)
 
-37 packages (name and version).
+39 packages (name and version).
 
 | Package | Version | License |
 | --- | --- | --- |
 | @napi-rs/canvas | 1.0.13 | MIT |
 | @napi-rs/canvas-linux-x64-gnu | 1.0.13 | MIT |
 | @napi-rs/canvas-linux-x64-musl | 1.0.13 | MIT |
+| @tesseract.js-data/chi_sim | 1.0.0 | MIT |
+| @tesseract.js-data/eng | 1.0.0 | MIT |
 | @xmldom/xmldom | 0.8.15 | MIT |
 | argparse | 1.0.10 | MIT |
 | base64-js | 1.5.1 | MIT |
