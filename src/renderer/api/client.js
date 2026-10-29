@@ -1,4 +1,4 @@
-// AnythingLLM REST client for the AskFiles pages. Plain ES module, fetch only, no dependencies,
+// Upstream REST client for the AskFiles pages. Plain ES module, fetch only, no dependencies,
 // so it runs unchanged in Electron, a plain browser and Node 22.
 //
 // Every route below is the upstream developer API (upstream/server/endpoints/api) at the tag in

@@ -18,6 +18,14 @@ export interface LibraryApi {
   workspaceDocuments(slug: string): Promise<Map<string, string>>;
 }
 
+/** Collector calls for OCR: a scanned PDF is uploaded once without embedding, only for its text. */
+export interface OcrApi {
+  /** POST /v1/document/upload without addToWorkspaces. Returns the parsed text and stored copies. */
+  uploadForText(filePath: string): Promise<{ text: string; locations: string[] }>;
+  /** DELETE /v1/system/remove-documents for copies no workspace uses. */
+  purgeDocuments(locations: string[]): Promise<void>;
+}
+
 export type WatchEventType = 'add' | 'change' | 'unlink';
 
 export interface WatchHandle {

@@ -9,16 +9,24 @@ directories:
   output: release
   buildResources: build
 
-# Only the shell's own compiled main process and its runtime dependencies (chokidar, mammoth,
-# pdfjs-dist, read-excel-file) go into app.asar. pdfjs-dist pulls the optional @napi-rs/canvas,
-# an N-API prebuild, so nothing needs a rebuild for Electron; electron-builder unpacks its .node
-# file to app.asar.unpacked, where scripts/sign-adhoc.sh signs it with the rest of Resources.
+# Only the shell's own compiled main process, its pages and its runtime dependencies (chokidar,
+# mammoth, pdfjs-dist, read-excel-file, the tesseract language data) go into app.asar. pdfjs-dist
+# pulls the optional @napi-rs/canvas, an N-API prebuild, so nothing needs a rebuild for Electron;
+# electron-builder unpacks its .node file to app.asar.unpacked, where scripts/sign-adhoc.sh signs
+# it with the rest of Resources.
 npmRebuild: false
 files:
   - package.json
   - dist/main/**
   # Read at every launch for the server spawn environment (src/main/app.ts).
   - config/presets.json
+  # The pages, served to the window as askfiles://app/... (src/main/app-protocol.ts).
+  - src/renderer/**
+  - '!src/renderer/**/*.test.js'
+  # Shown on the About page.
+  - THIRD-PARTY-NOTICES
+  # OCR data is seeded from 4.0.0_best_int only (src/main/tesseract.ts); the 4.0.0 copies add 30 MB.
+  - '!node_modules/@tesseract.js-data/*/4.0.0/**'
 
 # Server and collector ship as plain folders in Contents/Resources, not in app.asar
 # (docs/upstream-analysis.md Q1, Q2, risks 1 and 4): Prisma's schema engine and ripgrep are spawned

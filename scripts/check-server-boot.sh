@@ -57,7 +57,7 @@ export NODE_ENV=production
 export SERVER_PORT="$PORT"
 export STORAGE_DIR="$WORK/storage"
 # Required once patches/002-database-url.patch is applied; harmless before.
-export DATABASE_URL="file:$WORK/storage/anythingllm.db"
+export DATABASE_URL="file:$WORK/storage/askfiles.db"
 export JWT_SECRET="check-$RANDOM-$RANDOM" SIG_KEY="check-key-$RANDOM-$RANDOM" SIG_SALT="check-salt-$RANDOM-$RANDOM"
 export DISABLE_TELEMETRY=true VECTOR_DB=lancedb
 export LLM_PROVIDER=ollama OLLAMA_BASE_PATH=http://127.0.0.1:11434

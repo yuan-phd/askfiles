@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "comment": "Smoke test preset (scripts/smoke-mac.sh passes it as ASKFILES_PRESETS_FILE): one tier for every machine with the small test models of the cloud environment and CI. Starting values only; answer quality is irrelevant here.",
+  "tiers": [
+    {
+      "id": "smoke",
+      "label": "Smoke test",
+      "minRamGb": 0,
+      "comment": "Starting values for the smoke test only. all-minilm reads 256 word pieces, so chunks stay small; threshold 0 so its low scores still return sources.",
+      "chatModel": "qwen3:0.6b",
+      "embeddingModel": "all-minilm:latest",
+      "contextLength": 4096,
+      "chunkMaxChars": 1000,
+      "maxSnippets": 4,
+      "similarityThreshold": 0,
+      "chatMode": "query",
+      "temperature": 0.1,
+      "reasoningEffort": "off",
+      "ocrLanguages": "eng,chi_sim",
+      "systemPrompt": "Answer only from the provided context. Cite the source document for what you say. If the context does not contain the answer, say that you do not know."
+    }
+  ]
+}

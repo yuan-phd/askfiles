@@ -89,7 +89,7 @@ export function resolveConfig(c: ProcessManagerConfig): ResolvedConfig {
     portsFile: path.join(c.dataDir, 'ports.json'),
     hotDir: path.join(c.dataDir, 'collector', 'hotdir'),
     collectorTmpDir: path.join(c.dataDir, 'collector', 'tmp'),
-    databaseFile: path.join(storageDir, 'anythingllm.db'),
+    databaseFile: path.join(storageDir, 'askfiles.db'),
     host: c.host ?? '127.0.0.1',
     allowedOrigins: c.allowedOrigins ?? [],
     baseEnv: c.baseEnv ?? process.env,

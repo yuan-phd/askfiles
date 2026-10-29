@@ -187,7 +187,7 @@ describe.skipIf(reason !== null)('process manager with real ollama, collector an
     }
 
     // 3. Database under the data directory, nothing written next to the code.
-    const db = path.join(data, 'storage', 'anythingllm.db');
+    const db = path.join(data, 'storage', 'askfiles.db');
     log(
       `database ${db}: ${stat(db)}; ${path.relative(ROOT, upstreamDb)}: before ${upstreamDbBefore}, after ${stat(upstreamDb)}`,
     );

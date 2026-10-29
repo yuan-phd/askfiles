@@ -1,5 +1,5 @@
 #!/bin/bash
-# Vendors the AnythingLLM core into upstream/ with git subtree, squashed to one commit per update.
+# Vendors the upstream core into upstream/ with git subtree, squashed to one commit per update.
 #
 # First run:   scripts/vendor-upstream.sh <tag>     (git subtree add)
 # Upgrade:     scripts/vendor-upstream.sh <tag>     (git subtree pull)
@@ -25,13 +25,13 @@ if [ -n "$(git status --porcelain)" ]; then
 fi
 
 if [ -d "$PREFIX" ]; then
-  git subtree pull --prefix="$PREFIX" "$REMOTE" "$TAG" --squash -m "upstream: AnythingLLM $TAG"
+  git subtree pull --prefix="$PREFIX" "$REMOTE" "$TAG" --squash -m "upstream: $TAG"
 else
-  git subtree add --prefix="$PREFIX" "$REMOTE" "$TAG" --squash -m "upstream: AnythingLLM $TAG"
+  git subtree add --prefix="$PREFIX" "$REMOTE" "$TAG" --squash -m "upstream: $TAG"
 fi
 
 echo "$TAG" > UPSTREAM_VERSION
 git add UPSTREAM_VERSION
 git commit -m "upstream: pin $TAG" >/dev/null 2>&1 || true
 
-echo "vendored AnythingLLM $TAG into $PREFIX/ and recorded it in UPSTREAM_VERSION"
+echo "vendored upstream $TAG into $PREFIX/ and recorded it in UPSTREAM_VERSION"

@@ -137,6 +137,18 @@ input:focus-visible {
   margin: 0 0 var(--space-3);
 }
 
+.folder {
+  margin-top: var(--space-5);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.folder p {
+  margin: 0 0 var(--space-3);
+}
+
 .done {
   margin-top: var(--space-5);
   color: var(--ok);
@@ -194,4 +206,21 @@ input:focus-visible {
 
 .models td.actions button + button {
   margin-left: var(--space-2);
+}
+
+/* About */
+
+.credits li {
+  margin-bottom: var(--space-2);
+}
+
+.notices {
+  max-height: 24rem;
+  overflow: auto;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface-sunken);
+  font-size: 0.75rem;
+  white-space: pre-wrap;
 }

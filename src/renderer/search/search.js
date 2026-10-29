@@ -21,6 +21,7 @@ const els = {
   count: $('status-count'),
   state: $('status-state'),
   stateText: $('status-state-text'),
+  failed: $('status-failed'),
   form: $('query-form'),
   query: $('query'),
   submit: $('submit'),
@@ -67,21 +68,48 @@ function setState(kind, text) {
 }
 
 function renderCount() {
-  const n = state.documentCount;
-  if (n === null) return;
+  // The watcher counts files; without it (a plain browser) the workspace counts section documents.
+  const n = state.indexing ? state.indexing.indexed : state.documentCount;
+  if (n === null || n === undefined) return;
   els.count.textContent = n === 1 ? '1 document indexed' : `${n} documents indexed`;
 }
 
+function renderFailed() {
+  const dead = state.indexing?.deadLetters || [];
+  els.failed.hidden = dead.length === 0;
+  els.failed.textContent = dead.length === 1 ? '1 file could not be read' : `${dead.length} files could not be read`;
+  els.failed.title = dead.map((d) => `${d.path}: ${d.error}`).join('\n');
+}
+
+/**
+ * Status from the folder watcher (src/main/watcher, WatcherStatus plus folder and error):
+ * state starting | idle | working | stopped, pending, indexed, deadLetters.
+ */
 function renderIndexing() {
   const s = state.indexing;
-  if (s && s.state === 'indexing') {
+  if (s && s.error) {
+    setState('error', 'Folder not available');
+    els.state.title = s.error;
+  } else if (s && (s.state === 'working' || s.state === 'starting')) {
     const pending = Number(s.pending) || 0;
     setState('indexing', pending > 0 ? `Indexing, ${pending} left` : 'Indexing');
-  } else if (s && s.state === 'error') {
-    setState('error', s.message || 'Indexing stopped');
   } else {
     setState('ready', 'Up to date');
   }
+  renderCount();
+  renderFailed();
+}
+
+function applyIndexStatus(status) {
+  state.indexing = status || null;
+  if (status && status.folder) setFolder(status.folder);
+  if (state.client || status?.error) renderIndexing();
+}
+
+function setFolder(folder) {
+  config.folder = folder;
+  els.folder.textContent = folderLabel(folder);
+  els.folder.title = folder || '';
 }
 
 function folderLabel(folder) {
@@ -90,8 +118,7 @@ function folderLabel(folder) {
 }
 
 async function connect() {
-  els.folder.textContent = folderLabel(config.folder);
-  els.folder.title = config.folder || '';
+  setFolder(config.folder);
   if (!config.baseUrl) {
     setState('error', 'Not connected');
     els.count.textContent = 'No library server';
@@ -173,7 +200,7 @@ function pagesLabel(pages) {
   return contiguous ? `Pages ${pages[0]} to ${pages[pages.length - 1]}` : `Pages ${pages.join(', ')}`;
 }
 
-function openSource(group) {
+async function openSource(group) {
   const detail = {
     title: group.title,
     url: group.url,
@@ -182,8 +209,18 @@ function openSource(group) {
     page: group.pages[0] ?? null,
   };
   window.dispatchEvent(new CustomEvent('askfiles:open-source', { detail }));
-  if (typeof window.shellConfig?.openSource === 'function') window.shellConfig.openSource(detail);
-  else console.log(`[search] open source ${JSON.stringify(detail)}`);
+  if (typeof window.shellConfig?.openSource !== 'function') {
+    console.log(`[search] open source ${JSON.stringify(detail)}`);
+    return;
+  }
+  try {
+    // The shell reveals the original file; false means it is no longer in the library folder.
+    if ((await window.shellConfig.openSource(detail)) === false) {
+      showError(`${detail.title} is no longer in your documents folder.`);
+    }
+  } catch (e) {
+    showError(`${detail.title} could not be opened: ${e.message}`);
+  }
 }
 
 function setOptional(el, text) {
@@ -422,24 +459,19 @@ document.addEventListener('keydown', (e) => {
 
 els.query.addEventListener('input', autoGrow);
 
-// Hook for the shell: folder watcher status and library changes arrive here (Session F).
-window.askfiles = {
-  setIndexStatus(status) {
-    state.indexing = status || null;
-    if (state.client) renderIndexing();
-  },
-  setFolder(folder) {
-    config.folder = folder;
-    els.folder.textContent = folderLabel(folder);
-    els.folder.title = folder || '';
-  },
-  async refresh() {
-    if (state.client) await refreshLibrary();
-  },
-};
+// Folder watcher status from the shell (src/main/preload.ts, window.askfiles.watcher).
+const watcher = window.askfiles?.watcher;
+if (watcher) {
+  watcher.onStatus(applyIndexStatus);
+  watcher
+    .status()
+    .then((s) => s && applyIndexStatus(s))
+    .catch((e) => console.warn('[search] watcher status failed', e.message));
+}
 
 loadRecent();
-connect().then(() => {
+connect().then((connected) => {
   document.documentElement.dataset.ready = 'true';
+  window.askfiles?.app?.pageReady({ page: 'search', connected, documents: state.documentCount });
 });
 els.query.focus();

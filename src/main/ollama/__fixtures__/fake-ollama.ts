@@ -12,7 +12,7 @@ export interface FakeOllamaOptions {
   layers?: number[];
   /** Pull of these tags answers with an error line after the first layer. */
   failPull?: Set<string>;
-  /** Also serve the two upstream onboarding routes, as if this were the AnythingLLM server. */
+  /** Also serve the two upstream onboarding routes, as if this were the upstream server. */
   onboarding?: boolean;
 }
 

@@ -118,3 +118,42 @@ export async function mockLibrary(page, { documents = 3, recent = [], stream, ve
   });
   return { requests };
 }
+
+/**
+ * In-page stand-in for the preload bridge (src/main/preload.ts) as the search page uses it:
+ * window.askfiles.watcher and .app. window.__watcher(status) pushes a status event the way the
+ * main process does; window.__bridgeCalls records pageReady calls. status is what status() answers.
+ */
+export async function stubBridge(page, { status = null } = {}) {
+  await page.addInitScript((initial) => {
+    const listeners = [];
+    window.__bridgeCalls = [];
+    window.__watcher = (s) => listeners.forEach((l) => l(s));
+    window.askfiles = {
+      watcher: {
+        status: async () => initial,
+        onStatus: (cb) => {
+          listeners.push(cb);
+          return () => listeners.splice(listeners.indexOf(cb), 1);
+        },
+      },
+      app: {
+        info: async () => ({ name: 'AskFiles', version: '0.1.0' }),
+        pageReady: (info) => window.__bridgeCalls.push(['pageReady', info]),
+      },
+    };
+  }, status);
+}
+
+/** A watcher status as src/main/watcher reports it, with the folder the shell adds. */
+export function watcherStatus(over = {}) {
+  return {
+    state: 'idle',
+    pending: 0,
+    current: null,
+    indexed: 0,
+    deadLetters: [],
+    folder: '/Users/anna/Documents/HR',
+    ...over,
+  };
+}
