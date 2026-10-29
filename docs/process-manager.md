@@ -69,7 +69,7 @@ Variables read by the patches in patches/ (all set for collector, migrate and se
 | ANYTHING_LLM_ENV_PATH | <dataDir>/server/.env | 004: the server loads this file at start and dumpENV rewrites it on a settings change |
 | ANYTHING_LLM_ALLOWED_ORIGINS | allowedOrigins joined with commas | 005: browser origins allowed besides the server's own; any other Origin header gets 403 |
 | ANYTHING_LLM_ALLOW_REMOTE_MODEL_DATA | false, always | 006: the models.dev and raw.githubusercontent.com boot fetches run only when this is true |
-| DEFAULT_REASONING_EFFORT | not set by the manager; the preset writes off into .env, and the caller must also pass it in the server spec env (presetSpawnEnv) because upstream dumpENV drops it (docs/presets.md) | 007: thinking switch for the /api/v1 chat routes when the request carries no reasoningEffort |
+| DEFAULT_REASONING_EFFORT | not set by the manager; the preset writes off into .env, and the packaged app also passes it in the server spec env (presetServerEnv in src/main/backend-config.ts, from presetSpawnEnv for this machine's tier) because upstream dumpENV drops it (docs/presets.md). Spec env wins over the file and is reused for every start and crash restart | 007: thinking switch for the /api/v1 chat routes when the request carries no reasoningEffort |
 
 The manager creates storageDir, the hotdir and the collector tmp folder before the first spawn, because multer and the collector expect them to exist.
 

@@ -1,5 +1,7 @@
 import { app } from 'electron';
-import { bundledBackendConfig } from './backend-config.js';
+import os from 'node:os';
+import path from 'node:path';
+import { bundledBackendConfig, presetServerEnv } from './backend-config.js';
 import type { Logger } from './config.js';
 import { ProcessManager } from './process-manager/index.js';
 
@@ -19,13 +21,25 @@ export interface BackendHandlers {
  * Starts Ollama, collector and server from the app bundle and stops them when the app quits.
  * The ports are published in <userData>/ports.json by the process manager.
  */
-export function startBundledBackend(log: Logger, handlers: BackendHandlers): ProcessManager {
+export function startBundledBackend(log: Logger, handlers: BackendHandlers): ProcessManager | null {
+  let serverEnv: Record<string, string>;
+  try {
+    // config/presets.json ships inside app.asar (electron-builder.yml, files).
+    serverEnv = presetServerEnv(path.join(app.getAppPath(), 'config', 'presets.json'), os.totalmem());
+  } catch (e) {
+    // Without the preset the server would run with thinking on; a broken bundle must show, not limp.
+    log(`backend not started: ${(e as Error).message}`);
+    handlers.onError((e as Error).message);
+    return null;
+  }
+  log(`server preset env ${JSON.stringify(serverEnv)}`);
   const manager = new ProcessManager(
     bundledBackendConfig({
       resourcesPath: process.resourcesPath,
       dataDir: app.getPath('userData'),
       logDir: app.getPath('logs'),
       nodePath: process.execPath,
+      serverEnv,
     }),
   );
   manager.on('state', (e) => {

@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { chooseTier, loadPresets, presetSpawnEnv } from './presets/index.js';
 import type { ProcessManagerConfig } from './process-manager/index.js';
 
 export interface BundlePaths {
@@ -10,6 +11,17 @@ export interface BundlePaths {
   logDir: string;
   /** process.execPath: the Electron binary, which runs server and collector as Node. */
   nodePath: string;
+  /** Extra server variables passed at every start, crash restarts included; see presetServerEnv. */
+  serverEnv?: Record<string, string>;
+}
+
+/**
+ * The preset values the server must get in its spawn environment, for the tier this machine's RAM
+ * selects. Upstream dumpENV rewrites server/.env on every settings change and drops
+ * DEFAULT_REASONING_EFFORT (docs/presets.md), so the .env file alone would turn thinking back on.
+ */
+export function presetServerEnv(presetsFile: string, totalMemBytes: number): Record<string, string> {
+  return presetSpawnEnv(chooseTier(loadPresets(presetsFile), totalMemBytes).preset);
 }
 
 /**
@@ -41,7 +53,13 @@ export function bundledBackendConfig(p: BundlePaths): ProcessManagerConfig {
       cwd: server,
       env: { ...asNode, CHECKPOINT_DISABLE: '1' },
     },
-    server: { command: p.nodePath, args: [path.join(server, 'index.js')], cwd: server, env: asNode },
+    // The manager reuses this spec for every start and restart, and spec env wins over the .env file.
+    server: {
+      command: p.nodePath,
+      args: [path.join(server, 'index.js')],
+      cwd: server,
+      env: { ...p.serverEnv, ...asNode },
+    },
     signals: { term: 'SIGTERM', kill: 'SIGKILL' },
     // macOS and Linux have process groups; the ollama runner must die with ollama.
     killProcessGroup: true,

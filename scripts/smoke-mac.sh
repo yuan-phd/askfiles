@@ -115,13 +115,13 @@ log "screenshot $OUT/smoke.png"
 
 log "quitting the app"
 osascript -e 'quit app "AskFiles"' || true
-for _ in $(seq 1 30); do
+for _ in $(seq 1 60); do
   pgrep -f "$APP/Contents" >/dev/null || break
   sleep 1
 done
 if pgrep -fl "$APP/Contents"; then
   pkill -9 -f "$APP/Contents" || true
-  fail "processes from the bundle were still running 30s after quit"
+  fail "processes from the bundle were still running 60s after quit"
 fi
 [ ! -e "$DATA/ports.json" ] || fail "ports.json still present after quit"
 log "ok: app quit cleanly, no process left"

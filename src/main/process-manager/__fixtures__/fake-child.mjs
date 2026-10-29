@@ -29,7 +29,7 @@ const record = (event, extra = {}) => {
 };
 
 const envKeys =
-  /^(ANYTHING_LLM_|DATABASE_URL$|STORAGE_DIR$|JWT_SECRET$|SERVER_PORT$|COLLECTOR_PORT$|OLLAMA_HOST$|NO_PROXY$)/;
+  /^(ANYTHING_LLM_|DATABASE_URL$|STORAGE_DIR$|JWT_SECRET$|SERVER_PORT$|COLLECTOR_PORT$|OLLAMA_HOST$|NO_PROXY$|DEFAULT_REASONING_EFFORT$)/;
 record('start', { env: Object.fromEntries(Object.entries(process.env).filter(([k]) => envKeys.test(k))) });
 
 const lines = Number(opt('--print-lines') ?? 0);

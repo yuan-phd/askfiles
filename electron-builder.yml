@@ -15,6 +15,8 @@ npmRebuild: false
 files:
   - package.json
   - dist/main/**
+  # Read at every launch for the server spawn environment (src/main/app.ts).
+  - config/presets.json
 
 # Server and collector ship as plain folders in Contents/Resources, not in app.asar
 # (docs/upstream-analysis.md Q1, Q2, risks 1 and 4): Prisma's schema engine and ripgrep are spawned
