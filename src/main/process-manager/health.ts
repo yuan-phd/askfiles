@@ -1,4 +1,4 @@
-import http from "node:http";
+import http from 'node:http';
 
 // A private agent keeps health probes off any proxy configured for the global agent.
 const agent = new http.Agent({ keepAlive: false });
@@ -10,12 +10,12 @@ export function probe(url: string, timeoutMs: number): Promise<number | null> {
       res.resume();
       resolve(res.statusCode ?? null);
     });
-    req.on("timeout", () => req.destroy());
-    req.on("error", () => resolve(null));
+    req.on('timeout', () => req.destroy());
+    req.on('error', () => resolve(null));
   });
 }
 
-export type HealthResult = "healthy" | "timeout" | "exited";
+export type HealthResult = 'healthy' | 'timeout' | 'exited';
 
 /**
  * Polls `url` until it answers 200, the deadline passes, or `exited` settles (the child died,
@@ -30,11 +30,11 @@ export async function waitForHealthy(
   opts.exited?.then(() => (gone = true));
   while (!gone) {
     const remaining = deadline - Date.now();
-    if (remaining <= 0) return "timeout";
-    if ((await probe(url, Math.min(2000, remaining))) === 200) return "healthy";
+    if (remaining <= 0) return 'timeout';
+    if ((await probe(url, Math.min(2000, remaining))) === 200) return 'healthy';
     if (gone) break;
     const wait = Math.min(opts.intervalMs, deadline - Date.now());
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   }
-  return "exited";
+  return 'exited';
 }

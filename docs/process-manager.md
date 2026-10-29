@@ -54,10 +54,23 @@ Precedence, lowest first: baseEnv (default process.env), the values in <dataDir>
 | Process | Variables set by the manager |
 | --- | --- |
 | Ollama | OLLAMA_HOST=<host>:<ollama port> |
-| collector, migrate, server | NODE_ENV=production, STORAGE_DIR, SERVER_PORT, COLLECTOR_PORT, ANYTHING_LLM_BIND_HOST=<host>, OLLAMA_BASE_PATH=http://<host>:<ollama port>, DISABLE_TELEMETRY=true, CHECKPOINT_DISABLE=1 (Prisma CLI telemetry) |
+| collector, migrate, server | NODE_ENV=production, STORAGE_DIR, SERVER_PORT, COLLECTOR_PORT, OLLAMA_BASE_PATH and EMBEDDING_BASE_PATH=http://<host>:<ollama port>, DISABLE_TELEMETRY=true, CHECKPOINT_DISABLE=1 (Prisma CLI telemetry), plus the patch variables below |
 | all | NO_PROXY and no_proxy extended with 127.0.0.1, localhost and ::1, so loopback traffic never goes to a proxy |
 
-ANYTHING_LLM_BIND_HOST is read by patches/001-bind-localhost.patch, which adds a host argument to the server (HTTP and HTTPS) and collector listen calls with default 127.0.0.1.
+Variables read by the patches in patches/ (all set for collector, migrate and server):
+
+| Variable | Value set by the manager | Patch |
+| --- | --- | --- |
+| ANYTHING_LLM_BIND_HOST | host (127.0.0.1) | 001: host argument for the server (HTTP and HTTPS) and collector listen calls |
+| DATABASE_URL | file:<storageDir>/anythingllm.db | 002: SQLite path in schema.prisma; prisma generate must run after the patch |
+| ANYTHING_LLM_HOTDIR | <dataDir>/collector/hotdir | 003: upload folder, written by the server and read by the collector |
+| ANYTHING_LLM_COLLECTOR_TMP_DIR | <dataDir>/collector/tmp | 003: collector scratch folder, wiped at collector boot |
+| ANYTHING_LLM_ENV_PATH | <dataDir>/server/.env | 004: the server loads this file at start and dumpENV rewrites it on a settings change |
+| ANYTHING_LLM_ALLOWED_ORIGINS | allowedOrigins joined with commas | 005: browser origins allowed besides the server's own; any other Origin header gets 403 |
+| ANYTHING_LLM_ALLOW_REMOTE_MODEL_DATA | false, always | 006: the models.dev and raw.githubusercontent.com boot fetches run only when this is true |
+| DEFAULT_REASONING_EFFORT | not set by the manager; the preset writes off into .env (Session E) | 007: thinking switch for the /api/v1 chat routes when the request carries no reasoningEffort |
+
+The manager creates storageDir, the hotdir and the collector tmp folder before the first spawn, because multer and the collector expect them to exist.
 
 The ports written into .env on the first run go stale on the next start; the environment values win because dotenv never overrides a variable that is already set.
 
@@ -73,6 +86,7 @@ One file per process in logDir: ollama.log, collector.log, migrate.log, server.l
 | storageDir | <dataDir>/storage | STORAGE_DIR for collector and server |
 | logDir | required | Log directory |
 | host | 127.0.0.1 | Bind and health check address for every child |
+| allowedOrigins | [] | Extra browser origins for patch 005, for example the origin of the shell's own renderer pages. A page loaded from file:// sends Origin null; allowing null also allows sandboxed iframes, so prefer a custom protocol |
 | baseEnv | process.env | Environment inherited by the children |
 | ollama, collector, migrate, server | required | { command, args, cwd, env? } for each step |
 | signals | { term: SIGTERM, kill: SIGKILL } | Signal names |
@@ -96,10 +110,8 @@ const asNode = { ELECTRON_RUN_AS_NODE: "1" };
 const server = path.join(res, "app.asar.unpacked", "upstream", "server");      // final location set by electron-builder.yml
 const collector = path.join(res, "app.asar.unpacked", "upstream", "collector");
 
-// Matches the data layout in docs/plan.md: storage/ holds server/.env and everything under STORAGE_DIR.
 new ProcessManager({
-  dataDir: path.join(appData, "storage"),
-  storageDir: path.join(appData, "storage"),
+  dataDir: appData,                                     // server/.env, storage/ (DB, vectors, documents), collector/hotdir
   logDir: app.getPath("logs"),                          // ~/Library/Logs/AskFiles
   ollama: { command: path.join(res, "ollama", "ollama"), args: ["serve"], cwd: appData,
             env: { OLLAMA_MODELS: path.join(appData, "ollama") } },
@@ -116,11 +128,7 @@ Call manager.stop() from the app's will-quit handler (with event.preventDefault(
 
 ## Open points
 
-These are upstream behaviours found while building this; none blocks the Linux integration test, but each matters for the packaged app.
-
-- The SQLite path is fixed in upstream/server/prisma/schema.prisma as file:../storage/anythingllm.db, relative to the schema. The database therefore lands inside the server install directory (inside the app bundle when packaged), not in STORAGE_DIR. A patch to read DATABASE_URL, or a symlink created by the shell, is needed before 1.7.
-- The server resolves the collector hotdir as STORAGE_DIR/../../collector/hotdir (upstream/server/utils/files/index.js) while the collector reads its own hotdir next to its code (upstream/collector/utils/constants.js). With STORAGE_DIR outside upstream/server/storage, uploads would be written where the collector does not look. Needs a patch or a matching layout before uploads are tested.
-- In production the server writes its settings back to upstream/server/.env (dumpENV in upstream/server/utils/helpers/updateENV.js), not to <dataDir>/server/.env. Inside a signed bundle that write fails or is lost. Presets from Session E should therefore go into <dataDir>/server/.env, which the manager passes as environment.
-- At boot the server tries to fetch https://models.dev/api.json (upstream/server/utils/helpers/modelPricing). It failed in the container (fetch failed in server.log) and did not stop the boot. No document or question content is sent, but it is an outbound call; decide whether to patch it out.
-- A SIGKILL of the Electron process (force quit, crash) leaves the children running, since no handler runs. A pid file in dataDir and a cleanup on next start would cover it; not built.
-- Port allocation has a short window between closing the probe socket and the child binding. A lost race shows as a health timeout naming the step.
+- A SIGKILL of the Electron process (force quit, crash) leaves the children running, since no handler runs. A pid file in dataDir and a cleanup on next launch would cover it; not built.
+- Port allocation has a short window between closing the probe socket and the child binding it. A lost race shows as a health timeout naming the step.
+- The upstream frontend (phase 1 UI) is served by the server at its own origin, which patch 005 allows. Websocket upgrades (agent chat) were not checked against the origin rule.
+- The packaged config above is not verified; it needs the first real package on the Mac (LOCAL).

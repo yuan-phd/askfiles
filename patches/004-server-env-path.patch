@@ -1,0 +1,41 @@
+Load and write the server .env at ANYTHING_LLM_ENV_PATH.
+
+Why: dumpENV (server/utils/helpers/updateENV.js) rewrites server/.env next to the code whenever a
+setting changes in production, and the server loads .env from its working directory. Inside the
+signed app bundle that file is read-only. With ANYTHING_LLM_ENV_PATH set, the server loads that
+file at start and dumpENV writes the same file. The AskFiles process manager points it at
+<dataDir>/server/.env. Unset, upstream behaviour is unchanged.
+
+Paths are relative to upstream/. Apply from the repository root with
+  git apply --directory=upstream patches/004-server-env-path.patch
+
+diff --git a/server/index.js b/server/index.js
+index a3ae9a2..8ca2644 100644
+--- a/server/index.js
++++ b/server/index.js
+@@ -1,6 +1,10 @@
+ process.env.NODE_ENV === "development"
+   ? require("dotenv").config({ path: `.env.${process.env.NODE_ENV}` })
+-  : require("dotenv").config();
++  : require("dotenv").config(
++      process.env.ANYTHING_LLM_ENV_PATH
++        ? { path: process.env.ANYTHING_LLM_ENV_PATH }
++        : undefined
++    );
+ 
+ require("./utils/logger")();
+ require("./utils/boot/patchSdkTimeouts")();
+diff --git a/server/utils/helpers/updateENV.js b/server/utils/helpers/updateENV.js
+index 0bfe860..ab1c502 100644
+--- a/server/utils/helpers/updateENV.js
++++ b/server/utils/helpers/updateENV.js
+@@ -1714,7 +1714,8 @@ function dumpENV() {
+     .map(([key, value]) => `${key}='${sanitizeValue(value)}'`)
+     .join("\n");
+ 
+-  const envPath = path.join(__dirname, "../../.env");
++  const envPath =
++    process.env.ANYTHING_LLM_ENV_PATH || path.join(__dirname, "../../.env");
+   fs.writeFileSync(envPath, envResult, { encoding: "utf8", flag: "w" });
+   return true;
+ }

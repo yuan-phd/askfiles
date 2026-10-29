@@ -1,0 +1,25 @@
+Read the SQLite database location from DATABASE_URL.
+
+Why: upstream/server/prisma/schema.prisma hard-codes file:../storage/anythingllm.db, relative to
+the schema, so the database always lands inside the server code directory. In the packaged app
+that directory is inside the signed, read-only bundle. With env("DATABASE_URL") the AskFiles
+process manager points both prisma migrate deploy and the server at
+file:<dataDir>/storage/anythingllm.db. Run prisma generate after applying this patch.
+Without DATABASE_URL, Prisma fails with: Environment variable not found: DATABASE_URL.
+
+Paths are relative to upstream/. Apply from the repository root with
+  git apply --directory=upstream patches/002-database-url.patch
+
+diff --git a/server/prisma/schema.prisma b/server/prisma/schema.prisma
+index 65cfd6c..0fd7a59 100644
+--- a/server/prisma/schema.prisma
++++ b/server/prisma/schema.prisma
+@@ -12,7 +12,7 @@ generator client {
+ // }
+ datasource db {
+   provider = "sqlite"
+-  url      = "file:../storage/anythingllm.db"
++  url      = env("DATABASE_URL")
+ }
+ 
+ model api_keys {

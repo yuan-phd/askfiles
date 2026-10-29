@@ -1,6 +1,7 @@
-import { spawn, type ChildProcess } from "node:child_process";
-import { EventEmitter } from "node:events";
-import path from "node:path";
+import { spawn, type ChildProcess } from 'node:child_process';
+import { EventEmitter } from 'node:events';
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   resolveConfig,
   type ProcessManagerConfig,
@@ -8,21 +9,21 @@ import {
   type ProcessState,
   type ResolvedConfig,
   type StepName,
-} from "./config.js";
-import { ensureServerEnvFile, readEnvFile } from "./env-file.js";
-import { waitForHealthy } from "./health.js";
-import { RotatingLog } from "./log.js";
-import { allocatePorts } from "./ports.js";
+} from './config.js';
+import { ensureServerEnvFile, readEnvFile } from './env-file.js';
+import { waitForHealthy } from './health.js';
+import { RotatingLog } from './log.js';
+import { allocatePorts } from './ports.js';
 
 const HEALTH_PATH: Record<ProcessName, string> = {
-  ollama: "/api/tags",
+  ollama: '/api/tags',
   // The collector has no health route; /accepts is a plain GET that only answers once routes are mounted.
-  collector: "/accepts",
-  server: "/api/ping",
+  collector: '/accepts',
+  server: '/api/ping',
 };
-const STOP_ORDER: ProcessName[] = ["server", "collector", "ollama"];
+const STOP_ORDER: ProcessName[] = ['server', 'collector', 'ollama'];
 
-export type Phase = "stopped" | "starting" | "running" | "stopping";
+export type Phase = 'stopped' | 'starting' | 'running' | 'stopping';
 export type Ports = Record<ProcessName, number>;
 
 export interface StateEvent {
@@ -52,16 +53,16 @@ export interface ManagerStatus {
 }
 
 export class StartError extends Error {
-  readonly step: StepName | "ports";
+  readonly step: StepName | 'ports';
   readonly reason: string;
   readonly logTail: string[];
 
-  constructor(step: StepName | "ports", reason: string, logTail: string[]) {
+  constructor(step: StepName | 'ports', reason: string, logTail: string[]) {
     super(
       `${step}: ${reason}` +
-        (logTail.length ? `\n--- last ${logTail.length} log lines of ${step} ---\n${logTail.join("\n")}` : ""),
+        (logTail.length ? `\n--- last ${logTail.length} log lines of ${step} ---\n${logTail.join('\n')}` : ''),
     );
-    this.name = "StartError";
+    this.name = 'StartError';
     this.step = step;
     this.reason = reason;
     this.logTail = logTail;
@@ -93,15 +94,9 @@ interface Slot {
   timer: NodeJS.Timeout | null;
 }
 
-export interface ProcessManager {
-  on(event: "state", listener: (e: StateEvent) => void): this;
-  once(event: "state", listener: (e: StateEvent) => void): this;
-  off(event: "state", listener: (e: StateEvent) => void): this;
-}
-
-export class ProcessManager extends EventEmitter {
+export class ProcessManager extends EventEmitter<{ state: [StateEvent] }> {
   private readonly cfg: ResolvedConfig;
-  private phase: Phase = "stopped";
+  private phase: Phase = 'stopped';
   private ports: Ports | null = null;
   private fileEnv: Record<string, string> = {};
   private readonly slots: Record<ProcessName, Slot>;
@@ -116,14 +111,14 @@ export class ProcessManager extends EventEmitter {
     const now = new Date().toISOString();
     const slot = (name: ProcessName): Slot => ({
       name,
-      state: "stopped",
+      state: 'stopped',
       since: now,
       run: null,
       restartTimes: [],
       restarts: 0,
       timer: null,
     });
-    this.slots = { ollama: slot("ollama"), collector: slot("collector"), server: slot("server") };
+    this.slots = { ollama: slot('ollama'), collector: slot('collector'), server: slot('server') };
   }
 
   status(): ManagerStatus {
@@ -142,33 +137,37 @@ export class ProcessManager extends EventEmitter {
 
   /** Starts Ollama, collector, migrations and server in order. Rejects with StartError. */
   async start(): Promise<ManagerStatus> {
-    if (this.phase !== "stopped") throw new Error(`start() called while ${this.phase}`);
-    this.phase = "starting";
+    if (this.phase !== 'stopped') throw new Error(`start() called while ${this.phase}`);
+    this.phase = 'starting';
     this.installParentHandlers();
-    this.mlog("starting");
+    this.mlog('starting');
     try {
       let ollama: number, collector: number, server: number;
       try {
         [ollama, collector, server] = (await allocatePorts(3, this.cfg.host)) as [number, number, number];
       } catch (e) {
-        throw new StartError("ports", (e as Error).message, []);
+        throw new StartError('ports', (e as Error).message, []);
       }
       this.ports = { ollama, collector, server };
       this.mlog(`ports ollama=${ollama} collector=${collector} server=${server}`);
 
       const created = ensureServerEnvFile(this.cfg.envFile, { serverPort: server, collectorPort: collector });
-      this.mlog(`${created ? "wrote" : "kept existing"} ${this.cfg.envFile}`);
+      this.mlog(`${created ? 'wrote' : 'kept existing'} ${this.cfg.envFile}`);
       this.fileEnv = readEnvFile(this.cfg.envFile);
+      // multer and the collector expect these to exist; upstream ships them inside its code tree.
+      for (const d of [this.cfg.storageDir, this.cfg.hotDir, this.cfg.collectorTmpDir]) {
+        fs.mkdirSync(d, { recursive: true });
+      }
 
-      await this.startStep("ollama");
-      await this.startStep("collector");
+      await this.startStep('ollama');
+      await this.startStep('collector');
       await this.runMigrate();
-      await this.startStep("server");
-      this.phase = "running";
-      this.mlog("running");
+      await this.startStep('server');
+      this.phase = 'running';
+      this.mlog('running');
       return this.status();
     } catch (e) {
-      this.mlog(`start failed: ${(e as Error).message.split("\n")[0]}`);
+      this.mlog(`start failed: ${(e as Error).message.split('\n')[0]}`);
       await this.stop();
       throw e;
     }
@@ -177,7 +176,7 @@ export class ProcessManager extends EventEmitter {
   /** Stops server, collector and Ollama in that order: term signal, then kill signal after stopTimeoutMs. */
   stop(): Promise<void> {
     if (this.stopping) return this.stopping;
-    if (this.phase === "stopped") return Promise.resolve();
+    if (this.phase === 'stopped') return Promise.resolve();
     this.stopping = this.doStop().finally(() => {
       this.stopping = null;
     });
@@ -185,35 +184,35 @@ export class ProcessManager extends EventEmitter {
   }
 
   private async doStop(): Promise<void> {
-    this.phase = "stopping";
-    this.mlog("stopping");
+    this.phase = 'stopping';
+    this.mlog('stopping');
     for (const s of Object.values(this.slots)) {
       if (s.timer) clearTimeout(s.timer);
       s.timer = null;
     }
-    if (this.migrateRun) await this.stopRun("migrate", this.migrateRun);
+    if (this.migrateRun) await this.stopRun('migrate', this.migrateRun);
     this.migrateRun = null;
     for (const name of STOP_ORDER) {
       const slot = this.slots[name];
       if (slot.run) await this.stopRun(name, slot.run);
       slot.run = null;
-      if (slot.state !== "stopped") this.setState(slot, "stopped");
+      if (slot.state !== 'stopped') this.setState(slot, 'stopped');
     }
     this.removeParentHandlers();
     this.ports = null;
-    this.phase = "stopped";
-    this.mlog("stopped");
+    this.phase = 'stopped';
+    this.mlog('stopped');
     for (const l of this.logs.values()) l.close();
   }
 
   private async startStep(name: ProcessName): Promise<void> {
-    if (this.phase !== "starting") throw new StartError(name, "stopped during start", []);
+    if (this.phase !== 'starting') throw new StartError(name, 'stopped during start', []);
     const slot = this.slots[name];
     slot.restartTimes = [];
     slot.restarts = 0;
     const run = this.spawnProcess(name);
     slot.run = run;
-    this.setState(slot, "starting");
+    this.setState(slot, 'starting');
     this.watchExit(slot, run);
     const timeoutMs = this.cfg.timeoutsMs[name];
     const r = await waitForHealthy(this.healthUrl(name), {
@@ -221,13 +220,13 @@ export class ProcessManager extends EventEmitter {
       intervalMs: this.cfg.healthIntervalMs,
       exited: run.exited,
     });
-    if (this.phase !== "starting") throw new StartError(name, "stopped during start", this.log(name).tail());
-    if (r === "healthy") {
-      this.setState(slot, "healthy");
+    if (this.phase !== 'starting') throw new StartError(name, 'stopped during start', this.log(name).tail());
+    if (r === 'healthy') {
+      this.setState(slot, 'healthy');
       return;
     }
     const reason =
-      r === "timeout"
+      r === 'timeout'
         ? `not healthy within ${timeoutMs} ms at ${this.healthUrl(name)}`
         : `exited before healthy (${describeExit(await run.exited)})`;
     throw new StartError(name, reason, this.log(name).tail());
@@ -236,27 +235,27 @@ export class ProcessManager extends EventEmitter {
   // A method, not an inline comparison, because phase changes across awaits and TypeScript
   // would otherwise narrow it as if it could not.
   private isStopping(): boolean {
-    return this.phase === "stopping" || this.phase === "stopped";
+    return this.phase === 'stopping' || this.phase === 'stopped';
   }
 
   private async runMigrate(): Promise<void> {
-    if (this.phase !== "starting") throw new StartError("migrate", "stopped during start", []);
-    this.mlog("migrate starting");
-    const run = this.spawnProcess("migrate");
+    if (this.phase !== 'starting') throw new StartError('migrate', 'stopped during start', []);
+    this.mlog('migrate starting');
+    const run = this.spawnProcess('migrate');
     this.migrateRun = run;
     const timeoutMs = this.cfg.timeoutsMs.migrate;
     const r = await raceTimeout(run.exited, timeoutMs);
-    if (r === "timeout") {
-      await this.stopRun("migrate", run);
+    if (r === 'timeout') {
+      await this.stopRun('migrate', run);
       this.migrateRun = null;
-      throw new StartError("migrate", `did not finish within ${timeoutMs} ms`, this.log("migrate").tail());
+      throw new StartError('migrate', `did not finish within ${timeoutMs} ms`, this.log('migrate').tail());
     }
     this.migrateRun = null;
-    if (this.phase !== "starting") throw new StartError("migrate", "stopped during start", this.log("migrate").tail());
+    if (this.phase !== 'starting') throw new StartError('migrate', 'stopped during start', this.log('migrate').tail());
     if (r.code !== 0) {
-      throw new StartError("migrate", `failed (${describeExit(r)})`, this.log("migrate").tail());
+      throw new StartError('migrate', `failed (${describeExit(r)})`, this.log('migrate').tail());
     }
-    this.mlog("migrate done");
+    this.mlog('migrate done');
   }
 
   private watchExit(slot: Slot, run: Run): void {
@@ -264,8 +263,8 @@ export class ProcessManager extends EventEmitter {
       if (slot.run !== run || run.expected) return;
       this.mlog(`${slot.name} exited (${describeExit(ex)})`);
       // During start or a restart attempt the waiting code reports the exit itself.
-      if (this.isStopping() || slot.state !== "healthy") return;
-      this.setState(slot, "crashed", describeExit(ex));
+      if (this.isStopping() || slot.state !== 'healthy') return;
+      this.setState(slot, 'crashed', describeExit(ex));
       this.scheduleRestart(slot);
     });
   }
@@ -275,14 +274,14 @@ export class ProcessManager extends EventEmitter {
     const now = Date.now();
     slot.restartTimes = slot.restartTimes.filter((t) => now - t < windowMs);
     if (slot.restartTimes.length >= maxAttempts) {
-      this.setState(slot, "failed", `${maxAttempts} restarts within ${windowMs} ms, giving up`);
+      this.setState(slot, 'failed', `${maxAttempts} restarts within ${windowMs} ms, giving up`);
       return;
     }
     const attempt = slot.restartTimes.length + 1;
     const delayMs = delaysMs[Math.min(attempt - 1, delaysMs.length - 1)]!;
     slot.restartTimes.push(now);
     slot.restarts++;
-    this.setState(slot, "restarting", `attempt ${attempt} in ${delayMs} ms`, { attempt, delayMs });
+    this.setState(slot, 'restarting', `attempt ${attempt} in ${delayMs} ms`, { attempt, delayMs });
     slot.timer = setTimeout(() => {
       slot.timer = null;
       void this.restart(slot);
@@ -301,34 +300,42 @@ export class ProcessManager extends EventEmitter {
       exited: run.exited,
     });
     if (this.isStopping() || slot.run !== run) return;
-    if (r === "healthy") {
-      this.setState(slot, "healthy", `restart ${slot.restarts}`);
+    if (r === 'healthy') {
+      this.setState(slot, 'healthy', `restart ${slot.restarts}`);
       return;
     }
-    if (r === "timeout") await this.stopRun(slot.name, run);
+    if (r === 'timeout') await this.stopRun(slot.name, run);
     if (this.isStopping()) return;
     const detail =
-      r === "timeout" ? `not healthy within ${timeoutMs} ms` : `exited before healthy (${describeExit(await run.exited)})`;
-    this.setState(slot, "crashed", detail);
+      r === 'timeout'
+        ? `not healthy within ${timeoutMs} ms`
+        : `exited before healthy (${describeExit(await run.exited)})`;
+    this.setState(slot, 'crashed', detail);
     this.scheduleRestart(slot);
   }
 
   private spawnProcess(name: StepName): Run {
     const spec = this.cfg.specs[name];
     const log = this.log(name);
-    this.mlog(`spawn ${name}: ${spec.command} ${spec.args.join(" ")} (cwd ${spec.cwd})`);
+    this.mlog(`spawn ${name}: ${spec.command} ${spec.args.join(' ')} (cwd ${spec.cwd})`);
     let child: ChildProcess;
     try {
       child = spawn(spec.command, spec.args, {
         cwd: spec.cwd,
         env: this.envFor(name),
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: ['ignore', 'pipe', 'pipe'],
         detached: this.cfg.killProcessGroup,
       });
     } catch (e) {
       const error = (e as Error).message;
       log.line(`[process-manager] spawn failed: ${error}`);
-      return { child: null, pid: null, done: true, expected: false, exited: Promise.resolve({ code: null, signal: null, error }) };
+      return {
+        child: null,
+        pid: null,
+        done: true,
+        expected: false,
+        exited: Promise.resolve({ code: null, signal: null, error }),
+      };
     }
     const run: Run = {
       child,
@@ -336,11 +343,11 @@ export class ProcessManager extends EventEmitter {
       done: false,
       expected: false,
       exited: new Promise<ExitInfo>((resolve) => {
-        child.once("exit", (code, signal) => {
+        child.once('exit', (code, signal) => {
           run.done = true;
           resolve({ code, signal });
         });
-        child.once("error", (err) => {
+        child.once('error', (err) => {
           log.line(`[process-manager] ${err.message}`);
           // Without a pid the process never started and no exit event follows.
           if (child.pid === undefined) {
@@ -350,8 +357,8 @@ export class ProcessManager extends EventEmitter {
         });
       }),
     };
-    child.stdout?.on("data", (d: Buffer) => log.write(d));
-    child.stderr?.on("data", (d: Buffer) => log.write(d));
+    child.stdout?.on('data', (d: Buffer) => log.write(d));
+    child.stderr?.on('data', (d: Buffer) => log.write(d));
     return run;
   }
 
@@ -360,10 +367,10 @@ export class ProcessManager extends EventEmitter {
     const { term, kill } = this.cfg.signals;
     if (!run.done) {
       this.signal(run, term);
-      if ((await raceTimeout(run.exited, this.cfg.stopTimeoutMs)) === "timeout") {
+      if ((await raceTimeout(run.exited, this.cfg.stopTimeoutMs)) === 'timeout') {
         this.mlog(`${name} still running ${this.cfg.stopTimeoutMs} ms after ${term}, sending ${kill}`);
         this.signal(run, kill);
-        if ((await raceTimeout(run.exited, 5000)) === "timeout") this.mlog(`${name} did not exit after ${kill}`);
+        if ((await raceTimeout(run.exited, 5000)) === 'timeout') this.mlog(`${name} did not exit after ${kill}`);
       }
     }
     // The leader is gone; anything left in its group (for example an ollama runner) goes too.
@@ -387,19 +394,29 @@ export class ProcessManager extends EventEmitter {
     // Loopback traffic between the children must never be sent to a proxy.
     const common = { ...baseEnv, NO_PROXY: noProxy, no_proxy: noProxy };
     const spec = this.cfg.specs[name];
-    if (name === "ollama") return { ...common, ...spec.env, OLLAMA_HOST: `${urlHost(host)}:${p.ollama}` };
+    if (name === 'ollama') return { ...common, ...spec.env, OLLAMA_HOST: `${urlHost(host)}:${p.ollama}` };
     return {
       ...common,
       ...this.fileEnv,
       ...spec.env,
-      NODE_ENV: "production",
+      NODE_ENV: 'production',
       STORAGE_DIR: storageDir,
       SERVER_PORT: String(p.server),
       COLLECTOR_PORT: String(p.collector),
-      ANYTHING_LLM_BIND_HOST: host,
+      // Both follow the Ollama port, which changes at every start.
       OLLAMA_BASE_PATH: `http://${urlHost(host)}:${p.ollama}`,
-      DISABLE_TELEMETRY: "true",
-      CHECKPOINT_DISABLE: "1",
+      EMBEDDING_BASE_PATH: `http://${urlHost(host)}:${p.ollama}`,
+      DISABLE_TELEMETRY: 'true',
+      CHECKPOINT_DISABLE: '1',
+      // Read by the patches in patches/; see docs/process-manager.md.
+      ANYTHING_LLM_BIND_HOST: host,
+      DATABASE_URL: `file:${this.cfg.databaseFile}`,
+      ANYTHING_LLM_HOTDIR: this.cfg.hotDir,
+      ANYTHING_LLM_COLLECTOR_TMP_DIR: this.cfg.collectorTmpDir,
+      ANYTHING_LLM_ENV_PATH: this.cfg.envFile,
+      ANYTHING_LLM_ALLOWED_ORIGINS: this.cfg.allowedOrigins.join(','),
+      // Patch 006 skips the boot fetches unless this is "true"; a stray parent value must not enable them.
+      ANYTHING_LLM_ALLOW_REMOTE_MODEL_DATA: 'false',
     };
   }
 
@@ -407,17 +424,24 @@ export class ProcessManager extends EventEmitter {
     return `http://${urlHost(this.cfg.host)}:${this.ports![name]}${HEALTH_PATH[name]}`;
   }
 
-  private setState(slot: Slot, state: ProcessState, detail?: string, extra?: { attempt: number; delayMs: number }): void {
+  private setState(
+    slot: Slot,
+    state: ProcessState,
+    detail?: string,
+    extra?: { attempt: number; delayMs: number },
+  ): void {
     slot.state = state;
     slot.since = new Date().toISOString();
     const port = this.ports?.[slot.name];
     const pid = slot.run && !slot.run.done && slot.run.pid !== null ? slot.run.pid : undefined;
-    this.mlog(`${slot.name} ${state}${port && state === "healthy" ? ` on ${port}` : ""}${detail ? ` (${detail})` : ""}`);
+    this.mlog(
+      `${slot.name} ${state}${port && state === 'healthy' ? ` on ${port}` : ''}${detail ? ` (${detail})` : ''}`,
+    );
     const ev: StateEvent = { process: slot.name, state, at: slot.since, pid, port, detail, ...extra };
-    this.emit("state", ev);
+    this.emit('state', ev);
   }
 
-  private log(name: StepName | "manager"): RotatingLog {
+  private log(name: StepName | 'manager'): RotatingLog {
     let l = this.logs.get(name);
     if (!l) {
       l = new RotatingLog(path.join(this.cfg.logDir, `${name}.log`), this.cfg.logMaxBytes);
@@ -427,7 +451,7 @@ export class ProcessManager extends EventEmitter {
   }
 
   private mlog(msg: string): void {
-    this.log("manager").line(`[process-manager] ${msg}`);
+    this.log('manager').line(`[process-manager] ${msg}`);
   }
 
   private installParentHandlers(): void {
@@ -446,13 +470,13 @@ export class ProcessManager extends EventEmitter {
       process.on(sig, h);
       return [sig, h];
     });
-    process.on("exit", onExit);
+    process.on('exit', onExit);
     this.parentHandlers = { onExit, signals };
   }
 
   private removeParentHandlers(): void {
     if (!this.parentHandlers) return;
-    process.off("exit", this.parentHandlers.onExit);
+    process.off('exit', this.parentHandlers.onExit);
     for (const [sig, h] of this.parentHandlers.signals) process.off(sig, h);
     this.parentHandlers = null;
   }
@@ -473,19 +497,22 @@ function describeExit(ex: ExitInfo): string {
 }
 
 function urlHost(host: string): string {
-  return host.includes(":") ? `[${host}]` : host;
+  return host.includes(':') ? `[${host}]` : host;
 }
 
 function mergeNoProxy(existing: string | undefined): string {
-  const items = (existing ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-  for (const h of ["127.0.0.1", "localhost", "::1"]) if (!items.includes(h)) items.push(h);
-  return items.join(",");
+  const items = (existing ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  for (const h of ['127.0.0.1', 'localhost', '::1']) if (!items.includes(h)) items.push(h);
+  return items.join(',');
 }
 
-function raceTimeout<T>(p: Promise<T>, ms: number): Promise<T | "timeout"> {
+function raceTimeout<T>(p: Promise<T>, ms: number): Promise<T | 'timeout'> {
   let timer: NodeJS.Timeout | undefined;
-  const t = new Promise<"timeout">((r) => {
-    timer = setTimeout(() => r("timeout"), ms);
+  const t = new Promise<'timeout'>((r) => {
+    timer = setTimeout(() => r('timeout'), ms);
   });
   return Promise.race([p, t]).finally(() => clearTimeout(timer));
 }

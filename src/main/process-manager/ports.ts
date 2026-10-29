@@ -1,4 +1,4 @@
-import net from "node:net";
+import net from 'node:net';
 
 /**
  * Asks the OS for `count` free ports on `host`. All sockets stay open until every port is
@@ -12,7 +12,7 @@ export async function allocatePorts(count: number, host: string): Promise<number
       const s = net.createServer();
       servers.push(s);
       await new Promise<void>((resolve, reject) => {
-        s.once("error", reject);
+        s.once('error', reject);
         s.listen(0, host, () => resolve());
       });
     }

@@ -1,0 +1,64 @@
+Refuse browser requests from foreign origins.
+
+Why: cors({ origin: true }) in server/index.js and collector/index.js reflects any Origin, and
+with no AUTH_TOKEN every /api/system route is open, so any web page the user opens can mint or
+read an API key and then read the library through the local server (verified in
+docs/upstream-analysis.md Q4b). Binding to 127.0.0.1 does not help: the browser is on the machine.
+Now a request that carries an Origin header gets 403 unless the origin is allowed. The server
+allows its own origin (http://127.0.0.1:<SERVER_PORT> and http://localhost:<SERVER_PORT>) plus
+the comma separated list in ANYTHING_LLM_ALLOWED_ORIGINS; the collector allows only that list.
+Requests without an Origin header (the shell's main process, the server calling the collector,
+curl) are unaffected. Side effect: the embed widget cannot be used from other sites; AskFiles
+does not use it.
+
+Paths are relative to upstream/. Apply from the repository root with
+  git apply --directory=upstream patches/005-cors-origin.patch
+
+diff --git a/collector/index.js b/collector/index.js
+index 8f2d701..be16bb6 100644
+--- a/collector/index.js
++++ b/collector/index.js
+@@ -32,7 +32,16 @@ if (
+     })
+   );
+ }
+-app.use(cors({ origin: true }));
++const allowedOrigins = (process.env.ANYTHING_LLM_ALLOWED_ORIGINS || "")
++  .split(",")
++  .map((origin) => origin.trim())
++  .filter(Boolean);
++app.use((request, response, next) => {
++  const origin = request.headers.origin;
++  if (!origin || allowedOrigins.includes(origin)) return next();
++  response.status(403).json({ error: "Origin not allowed" });
++});
++app.use(cors({ origin: allowedOrigins }));
+ app.use(
+   bodyParser.text({ limit: FILE_LIMIT }),
+   bodyParser.json({ limit: FILE_LIMIT }),
+diff --git a/server/index.js b/server/index.js
+index a3ae9a2..cb5b4cf 100644
+--- a/server/index.js
++++ b/server/index.js
+@@ -64,7 +64,20 @@ if (
+     })
+   );
+ }
+-app.use(cors({ origin: true }));
++const allowedOrigins = [
++  `http://127.0.0.1:${process.env.SERVER_PORT || 3001}`,
++  `http://localhost:${process.env.SERVER_PORT || 3001}`,
++  ...(process.env.ANYTHING_LLM_ALLOWED_ORIGINS || "")
++    .split(",")
++    .map((origin) => origin.trim())
++    .filter(Boolean),
++];
++app.use((request, response, next) => {
++  const origin = request.headers.origin;
++  if (!origin || allowedOrigins.includes(origin)) return next();
++  response.status(403).json({ error: "Origin not allowed" });
++});
++app.use(cors({ origin: allowedOrigins }));
+ // Embed endpoints are public-facing and only accept small payloads, so parse them
+ // first with a tight limit. The global parsers below skip already-parsed bodies.
+ app.use("/api/embed", [
