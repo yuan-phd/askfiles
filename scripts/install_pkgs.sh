@@ -13,8 +13,7 @@ cd "${CLAUDE_PROJECT_DIR:?CLAUDE_PROJECT_DIR is not set}" || exit 1
 ROOT="$(pwd)"
 SELF="$ROOT/scripts/install_pkgs.sh"
 
-# The collector depends on puppeteer, which otherwise downloads Chromium during yarn install. We do
-# not use web scraping, and the download is large and may be refused by the network allowlist.
+# upstream/collector depends on puppeteer, which would download Chromium on every install.
 export PUPPETEER_SKIP_DOWNLOAD=1
 
 install_dir() {
@@ -53,8 +52,47 @@ install_dir() {
   fi
 }
 
+# @vscode/ripgrep (an upstream server dependency) asks api.github.com for its release during postinstall.
+# The cloud GitHub proxy only serves API requests for repositories attached to the session, so that call
+# gets a 403. The installer skips the API call when the asset is already in its cache directory, so seed
+# the cache from the release download URL, which the proxy does allow.
+seed_ripgrep_cache() {
+  local lock="$ROOT/upstream/server/yarn.lock"
+  [ -f "$lock" ] || return 0
+  local pkgver
+  pkgver=$(awk '/^"@vscode\/ripgrep@/{f=1} f&&/version/{gsub(/"/,"",$2);print $2;exit}' "$lock")
+  [ -n "$pkgver" ] || return 0
+  # VERSION constant inside @vscode/ripgrep lib/postinstall.js for 1.17.x. Re-check after an upstream upgrade.
+  local rgver="v15.0.1"
+  local dir="${TMPDIR:-/tmp}/vscode-ripgrep-cache-$pkgver"
+  local asset="ripgrep-$rgver-x86_64-unknown-linux-musl.tar.gz"
+  [ -f "$dir/$asset" ] && return 0
+  mkdir -p "$dir"
+  if curl -fsSL -o "$dir/$asset" "https://github.com/microsoft/ripgrep-prebuilt/releases/download/$rgver/$asset"; then
+    echo "[install_pkgs] seeded ripgrep cache at $dir/$asset"
+  else
+    rm -f "$dir/$asset"
+    echo "[install_pkgs] ripgrep cache seed failed; will fall back to the system rg"
+  fi
+}
+
+# Fallback for the same problem: if the server install still fails, give @vscode/ripgrep a bin/ directory
+# with the system rg so its postinstall exits early, then install again.
+install_server_with_fallback() {
+  local dir="$ROOT/upstream/server"
+  [ -f "$dir/package.json" ] || return 0
+  install_dir "$dir" yarn
+  if [ ! -f "$dir/node_modules/.install_pkgs.sha256" ] && [ -d "$dir/node_modules/@vscode/ripgrep" ] && command -v rg >/dev/null 2>&1; then
+    echo "[install_pkgs] retrying server install with the system rg linked into @vscode/ripgrep/bin"
+    mkdir -p "$dir/node_modules/@vscode/ripgrep/bin"
+    ln -sf "$(command -v rg)" "$dir/node_modules/@vscode/ripgrep/bin/rg"
+    install_dir "$dir" yarn
+  fi
+}
+
 install_dir "$ROOT" npm
-install_dir "$ROOT/upstream/server" yarn
+seed_ripgrep_cache
+install_server_with_fallback
 install_dir "$ROOT/upstream/collector" yarn
 install_dir "$ROOT/upstream/frontend" yarn
 

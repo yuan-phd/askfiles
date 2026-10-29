@@ -7,6 +7,12 @@
 set -u
 export DEBIAN_FRONTEND=noninteractive
 
+# The Ollama installer unpacks a .tar.zst archive and refuses to run without zstd.
+if ! command -v zstd >/dev/null 2>&1; then
+  apt-get update -qq >/dev/null 2>&1 || true
+  apt-get install -y -qq zstd >/dev/null 2>&1 || echo "[setup] zstd install failed"
+fi
+
 # Ollama for integration tests. The installer downloads from ollama.com and GitHub release assets.
 if ! command -v ollama >/dev/null 2>&1; then
   curl -fsSL https://ollama.com/install.sh | sh || echo "[setup] ollama install failed"
