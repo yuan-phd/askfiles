@@ -1,9 +1,10 @@
 import { app, BrowserWindow } from 'electron';
 import { join } from 'node:path';
 import { createLogger, resolveLogDir, resolvePort, PORT_ENV, CONFIG_ENV } from './config.js';
+import { startBundledBackend, STARTING_PAGE } from './app.js';
 
-// Until the process manager (Session C) starts the server, the shell only connects to a server
-// that is already running. This page tells whoever opens the app why the window is empty.
+// The packaged app starts its own server (src/main/app.ts). A developer run, or a port set by hand,
+// connects to a server that is already running; this page says why the window is empty.
 function noServerPage(reason: string): string {
   const html = `<!doctype html><meta charset="utf-8"><title>AskFiles</title>
 <body style="font-family:-apple-system,system-ui,sans-serif;padding:2em;line-height:1.5">
@@ -18,6 +19,7 @@ function main(): void {
 
   let target: string;
   let origin: string | null = null;
+  let bundled = false;
   try {
     const resolved = resolvePort({
       env: process.env,
@@ -27,6 +29,9 @@ function main(): void {
       origin = `http://127.0.0.1:${resolved.port}`;
       target = origin + '/';
       log(`server port ${resolved.port} from ${resolved.source}`);
+    } else if (app.isPackaged) {
+      target = STARTING_PAGE;
+      bundled = true;
     } else {
       target = noServerPage('No port is configured.');
       log('no server port configured');
@@ -60,8 +65,17 @@ function main(): void {
     win.webContents.on('did-fail-load', (_event, code, description, url) => {
       log(`load failed ${code} ${description} for ${url}`);
     });
-    log(`opening window at ${origin ?? 'no-server page'}`);
+    log(`opening window at ${origin ?? (bundled ? 'starting page' : 'no-server page')}`);
     void win.loadURL(target);
+    if (bundled) {
+      startBundledBackend(log, {
+        onReady: (o) => {
+          origin = o;
+          void win.loadURL(o + '/');
+        },
+        onError: (message) => void win.loadURL(noServerPage(message)),
+      });
+    }
   });
 }
 

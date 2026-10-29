@@ -12,6 +12,7 @@ start() runs these steps in order and stops at the first failure:
 4. Collector: spawn, poll GET /accepts until 200. The collector has no health route; /accepts is a plain GET route that answers once the app is mounted.
 5. Migrate: run the migrate command (prisma migrate deploy) to completion; exit code 0 required.
 6. Server: spawn, poll GET /api/ping until 200.
+7. Write <dataDir>/ports.json: `{"ollama","collector","server","host","pid","startedAt"}`, through a temp file and a rename. It exists only while every process is up: start() deletes a stale copy before step 1 and stop() deletes it. Tools outside the shell (the CI smoke test, scripts) read the ports from it.
 
 Each step has its own timeout. A timeout, a child exiting before it is healthy, or a failed migrate rejects start() with a StartError carrying the step name and the last 50 lines of that step's log, and everything already started is stopped.
 
@@ -100,35 +101,20 @@ One file per process in logDir: ollama.log, collector.log, migrate.log, server.l
 
 ## Building the config in the packaged macOS app
 
-The Electron main process builds the config once at launch. LOCAL work, not verified yet:
+src/main/backend-config.ts builds it from process.resourcesPath, app.getPath('userData'), app.getPath('logs') and process.execPath; src/main/app.ts starts the manager when the app is packaged and no port is set by hand (ASKFILES_PORT or config.json), and holds the quit in will-quit until stop() resolves. Paths follow extraResources in electron-builder.yml:
 
-```ts
-const res = process.resourcesPath;                      // AskFiles.app/Contents/Resources
-const appData = path.join(app.getPath("appData"), "AskFiles");  // ~/Library/Application Support/AskFiles
-const node = process.execPath;                         // Electron binary, run as Node below
-const asNode = { ELECTRON_RUN_AS_NODE: "1" };
-const server = path.join(res, "app.asar.unpacked", "upstream", "server");      // final location set by electron-builder.yml
-const collector = path.join(res, "app.asar.unpacked", "upstream", "collector");
+| Process | Command | cwd |
+| --- | --- | --- |
+| ollama | Resources/ollama/ollama serve, OLLAMA_MODELS=<userData>/ollama | <userData> |
+| collector | Contents/MacOS/AskFiles Resources/collector/index.js, ELECTRON_RUN_AS_NODE=1 | Resources/collector |
+| migrate | Contents/MacOS/AskFiles Resources/server/node_modules/prisma/build/index.js migrate deploy | Resources/server |
+| server | Contents/MacOS/AskFiles Resources/server/index.js, ELECTRON_RUN_AS_NODE=1 | Resources/server |
 
-new ProcessManager({
-  dataDir: appData,                                     // server/.env, storage/ (DB, vectors, documents), collector/hotdir
-  logDir: app.getPath("logs"),                          // ~/Library/Logs/AskFiles
-  ollama: { command: path.join(res, "ollama", "ollama"), args: ["serve"], cwd: appData,
-            env: { OLLAMA_MODELS: path.join(appData, "ollama") } },
-  collector: { command: node, args: [path.join(collector, "index.js")], cwd: collector, env: asNode },
-  migrate: { command: node, args: [path.join(server, "node_modules", "prisma", "build", "index.js"),
-             "migrate", "deploy", "--schema=./prisma/schema.prisma"], cwd: server, env: asNode },
-  server: { command: node, args: [path.join(server, "index.js")], cwd: server, env: asNode },
-  signals: { term: "SIGTERM", kill: "SIGKILL" },
-  killProcessGroup: true,
-});
-```
-
-Call manager.stop() from the app's will-quit handler (with event.preventDefault() until it resolves) so a normal quit is graceful; the parent signal and exit handlers are the fallback. Windows (phase 5) will need a different kill strategy (taskkill /T /F) instead of signals and process groups; that is a change in the caller's config plus a kill function hook, not a platform branch inside the manager.
+Signals SIGTERM and SIGKILL with killProcessGroup. Not verified on a Mac yet: the first run is the CI smoke job (.github/workflows/mac.yml) or a LOCAL package. Windows (phase 5) will need a different kill strategy (taskkill /T /F) instead of signals and process groups; that is a change in the caller's config plus a kill function hook, not a platform branch inside the manager.
 
 ## Open points
 
 - A SIGKILL of the Electron process (force quit, crash) leaves the children running, since no handler runs. A pid file in dataDir and a cleanup on next launch would cover it; not built.
 - Port allocation has a short window between closing the probe socket and the child binding it. A lost race shows as a health timeout naming the step.
 - The upstream frontend (phase 1 UI) is served by the server at its own origin, which patch 005 allows. Websocket upgrades (agent chat) were not checked against the origin rule.
-- The packaged config above is not verified; it needs the first real package on the Mac (LOCAL).
+- The packaged config above is not verified; the first check is the CI smoke job or a LOCAL package.

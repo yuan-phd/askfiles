@@ -276,6 +276,35 @@ describe('ProcessManager crash handling', () => {
   });
 });
 
+describe('ProcessManager ports.json', () => {
+  it('writes <dataDir>/ports.json once running and removes it on stop', async () => {
+    const dir = tmpDir();
+    const file = path.join(dir, 'data', 'ports.json');
+    const { m, events } = manager(fakeConfig(dir));
+    let presentBeforeHealthy = false;
+    m.on('state', (e) => {
+      if (e.process === 'server' && e.state === 'starting') presentBeforeHealthy = fs.existsSync(file);
+    });
+    const s = await m.start();
+    expect(presentBeforeHealthy).toBe(false);
+    expect(events.at(-1)).toMatchObject({ process: 'server', state: 'healthy' });
+    const ports = JSON.parse(fs.readFileSync(file, 'utf8'));
+    expect(ports).toMatchObject({ ...s.ports, host: '127.0.0.1', pid: process.pid });
+    expect(Date.parse(ports.startedAt)).not.toBeNaN();
+    await m.stop();
+    expect(fs.existsSync(file)).toBe(false);
+  });
+
+  it('removes a stale ports.json at start and leaves none when start fails', async () => {
+    const dir = tmpDir();
+    fs.mkdirSync(path.join(dir, 'data'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'data', 'ports.json'), '{"server":1}');
+    const { m } = manager(fakeConfig(dir, { migrate: fake(dir, 'migrate', '--exit-after', '10', '--exit-code', '3') }));
+    await expect(m.start()).rejects.toThrow(StartError);
+    expect(fs.existsSync(path.join(dir, 'data', 'ports.json'))).toBe(false);
+  });
+});
+
 describe('ProcessManager .env', () => {
   it('writes <dataDir>/server/.env on first start only', async () => {
     const dir = tmpDir();

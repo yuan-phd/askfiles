@@ -9,8 +9,8 @@ directories:
   output: release
   buildResources: build
 
-# Only the shell's own compiled main process goes into app.asar. The root package has no runtime
-# dependencies, so there is nothing to rebuild for Electron.
+# Only the shell's own compiled main process and its runtime dependencies (chokidar, plain
+# JavaScript) go into app.asar, so there is nothing to rebuild for Electron.
 npmRebuild: false
 files:
   - package.json
