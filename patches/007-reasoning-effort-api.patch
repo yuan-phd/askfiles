@@ -1,0 +1,178 @@
+Pass the thinking switch (reasoningEffort) through the developer chat routes.
+
+Why: the Ollama provider sends think false when a chat carries reasoningEffort off
+(server/utils/helpers/reasoningEffort.js), but only the session-auth UI routes
+(server/endpoints/chat.js) read reasoningEffort. The /api/v1 workspace and thread chat and
+stream-chat routes, which the AskFiles search page uses, never pass it to
+server/utils/chats/apiChatHandler.js, so qwen3 answers always start with a think block. The four
+routes now read reasoningEffort from the request body; apiChatHandler falls back to the
+environment variable DEFAULT_REASONING_EFFORT and resolves it against the model's capabilities
+the same way the UI path does (server/utils/chats/stream.js). The AskFiles presets set
+DEFAULT_REASONING_EFFORT=off.
+
+Paths are relative to upstream/. Apply from the repository root with
+  git apply --directory=upstream patches/007-reasoning-effort-api.patch
+
+diff --git a/server/endpoints/api/workspace/index.js b/server/endpoints/api/workspace/index.js
+index 18891b3..9caabe1 100644
+--- a/server/endpoints/api/workspace/index.js
++++ b/server/endpoints/api/workspace/index.js
+@@ -664,6 +664,7 @@ function apiWorkspaceEndpoints(app) {
+           sessionId = null,
+           attachments = [],
+           reset = false,
++          reasoningEffort = null,
+         } = reqBody(request);
+         const workspace = await Workspace.get({ slug: String(slug) });
+ 
+@@ -706,6 +707,8 @@ function apiWorkspaceEndpoints(app) {
+           sessionId: !!sessionId ? String(sessionId) : null,
+           attachments,
+           reset,
++          reasoningEffort:
++            typeof reasoningEffort === "string" ? reasoningEffort : null,
+         });
+ 
+         await Telemetry.sendTelemetry("sent_chat", {
+@@ -819,6 +822,7 @@ function apiWorkspaceEndpoints(app) {
+           sessionId = null,
+           attachments = [],
+           reset = false,
++          reasoningEffort = null,
+         } = reqBody(request);
+         const workspace = await Workspace.get({ slug: String(slug) });
+ 
+@@ -868,6 +872,8 @@ function apiWorkspaceEndpoints(app) {
+           sessionId: !!sessionId ? String(sessionId) : null,
+           attachments,
+           reset,
++          reasoningEffort:
++            typeof reasoningEffort === "string" ? reasoningEffort : null,
+         });
+         await Telemetry.sendTelemetry("sent_chat", {
+           LLMSelection:
+diff --git a/server/endpoints/api/workspaceThread/index.js b/server/endpoints/api/workspaceThread/index.js
+index ee3ceb1..bbeb75d 100644
+--- a/server/endpoints/api/workspaceThread/index.js
++++ b/server/endpoints/api/workspaceThread/index.js
+@@ -397,6 +397,7 @@ function apiWorkspaceThreadEndpoints(app) {
+           userId,
+           attachments = [],
+           reset = false,
++          reasoningEffort = null,
+         } = reqBody(request);
+         const workspace = await Workspace.get({ slug: String(slug) });
+         if (!workspace) {
+@@ -454,6 +455,8 @@ function apiWorkspaceThreadEndpoints(app) {
+           thread,
+           attachments,
+           reset,
++          reasoningEffort:
++            typeof reasoningEffort === "string" ? reasoningEffort : null,
+         });
+         await Telemetry.sendTelemetry("sent_chat", {
+           LLMSelection: process.env.LLM_PROVIDER || "openai",
+@@ -580,6 +583,7 @@ function apiWorkspaceThreadEndpoints(app) {
+           userId,
+           attachments = [],
+           reset = false,
++          reasoningEffort = null,
+         } = reqBody(request);
+         const workspace = await Workspace.get({ slug: String(slug) });
+         if (!workspace) {
+@@ -642,6 +646,8 @@ function apiWorkspaceThreadEndpoints(app) {
+           thread,
+           attachments,
+           reset,
++          reasoningEffort:
++            typeof reasoningEffort === "string" ? reasoningEffort : null,
+         });
+         await Telemetry.sendTelemetry("sent_chat", {
+           LLMSelection: process.env.LLM_PROVIDER || "openai",
+diff --git a/server/utils/chats/apiChatHandler.js b/server/utils/chats/apiChatHandler.js
+index d713849..0bfb383 100644
+--- a/server/utils/chats/apiChatHandler.js
++++ b/server/utils/chats/apiChatHandler.js
+@@ -3,6 +3,7 @@ const { DocumentManager } = require("../DocumentManager");
+ const { WorkspaceChats } = require("../../models/workspaceChats");
+ const { getVectorDbClass, resolveProviderConnector } = require("../helpers");
+ const { addChatCostToMetrics } = require("../helpers/modelPricing");
++const { resolveReasoningEffort } = require("../helpers/reasoningEffort");
+ const { writeResponseChunk } = require("../helpers/chat/responses");
+ const { abortConnectorOnClientDisconnect } = require("../helpers/abortSignals");
+ const {
+@@ -134,6 +135,7 @@ function generatedImageOutputs(agentHandler) {
+  *  sessionId: string|null,
+  *  attachments: { name: string; mime: string; contentString: string }[],
+  *  reset: boolean,
++ *  reasoningEffort: string|null,
+  * }} parameters
+  * @returns {Promise<ResponseObject>}
+  */
+@@ -146,6 +148,7 @@ async function chatSync({
+   sessionId = null,
+   attachments = [],
+   reset = false,
++  reasoningEffort = null,
+ }) {
+   const uuid = uuidv4();
+   const chatMode = mode ?? workspace?.chatMode ?? "automatic";
+@@ -449,9 +452,14 @@ async function chatSync({
+   );
+ 
+   // Send the text completion.
++  const resolvedEffort = await resolveReasoningEffort(
++    LLMConnector,
++    reasoningEffort ?? process.env.DEFAULT_REASONING_EFFORT ?? null
++  );
+   const { textResponse, metrics: completionMetrics } =
+     await LLMConnector.getChatCompletion(messages, {
+       user: user,
++      reasoningEffort: resolvedEffort,
+     });
+   const performanceMetrics = addChatCostToMetrics(completionMetrics, {
+     routingMetadata,
+@@ -510,6 +518,7 @@ async function chatSync({
+  *  sessionId: string|null,
+  *  attachments: { name: string; mime: string; contentString: string }[],
+  *  reset: boolean,
++ *  reasoningEffort: string|null,
+  * }} parameters
+  * @returns {Promise<VoidFunction>}
+  */
+@@ -523,6 +532,7 @@ async function streamChat({
+   sessionId = null,
+   attachments = [],
+   reset = false,
++  reasoningEffort = null,
+ }) {
+   const uuid = uuidv4();
+   const chatMode = mode ?? workspace?.chatMode ?? "automatic";
+@@ -840,6 +850,11 @@ async function streamChat({
+     rawHistory
+   );
+ 
++  const resolvedEffort = await resolveReasoningEffort(
++    LLMConnector,
++    reasoningEffort ?? process.env.DEFAULT_REASONING_EFFORT ?? null
++  );
++
+   // If streaming is not explicitly enabled for connector
+   // we do regular waiting of a response and send a single chunk.
+   if (LLMConnector.streamingEnabled() !== true) {
+@@ -849,6 +864,7 @@ async function streamChat({
+     const { textResponse, metrics: performanceMetrics } =
+       await LLMConnector.getChatCompletion(messages, {
+         user: user,
++        reasoningEffort: resolvedEffort,
+       });
+     completeText = textResponse;
+     metrics = addChatCostToMetrics(performanceMetrics, {
+@@ -868,6 +884,7 @@ async function streamChat({
+   } else {
+     const stream = await LLMConnector.streamGetChatCompletion(messages, {
+       user: user,
++      reasoningEffort: resolvedEffort,
+     });
+     completeText = await LLMConnector.handleStream(response, stream, { uuid });
+     metrics = addChatCostToMetrics(stream.metrics, {

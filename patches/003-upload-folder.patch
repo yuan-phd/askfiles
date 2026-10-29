@@ -1,0 +1,112 @@
+Read the upload folder (hotdir) and the collector tmp folder from the environment.
+
+Why: in production the server writes uploads to STORAGE_DIR/../../collector/hotdir, while the
+collector reads, and wipes at boot, upstream/collector/hotdir and upstream/collector/storage/tmp
+next to its own code. With the data directory outside the code (and the code inside a read-only
+app bundle), uploads fail with ENOENT. Both processes now read ANYTHING_LLM_HOTDIR, and the
+collector reads ANYTHING_LLM_COLLECTOR_TMP_DIR; unset, the upstream paths stay the default.
+The AskFiles process manager sets both under the data directory and creates the folders.
+
+Paths are relative to upstream/. Apply from the repository root with
+  git apply --directory=upstream patches/003-upload-folder.patch
+
+diff --git a/collector/utils/WhisperProviders/localWhisper.js b/collector/utils/WhisperProviders/localWhisper.js
+index 6ee124f..5f0ddc1 100644
+--- a/collector/utils/WhisperProviders/localWhisper.js
++++ b/collector/utils/WhisperProviders/localWhisper.js
+@@ -66,7 +66,10 @@ class LocalWhisper {
+       const wavefile = require("wavefile");
+       const { FFMPEGWrapper } = require("./ffmpeg");
+       const ffmpeg = new FFMPEGWrapper();
+-      const outFolder = path.resolve(__dirname, `../../storage/tmp`);
++      const outFolder = path.resolve(
++        process.env.ANYTHING_LLM_COLLECTOR_TMP_DIR ||
++          path.resolve(__dirname, `../../storage/tmp`)
++      );
+       if (!fs.existsSync(outFolder))
+         fs.mkdirSync(outFolder, { recursive: true });
+ 
+diff --git a/collector/utils/constants.js b/collector/utils/constants.js
+index 92a0911..7c3c9ba 100644
+--- a/collector/utils/constants.js
++++ b/collector/utils/constants.js
+@@ -1,4 +1,7 @@
+-const WATCH_DIRECTORY = require("path").resolve(__dirname, "../hotdir");
++const WATCH_DIRECTORY = require("path").resolve(
++  process.env.ANYTHING_LLM_HOTDIR ||
++    require("path").resolve(__dirname, "../hotdir")
++);
+ 
+ const ACCEPTED_MIMES = {
+   "text/plain": [".txt", ".md", ".org", ".adoc", ".rst"],
+diff --git a/collector/utils/files/index.js b/collector/utils/files/index.js
+index c005afc..4ef54b9 100644
+--- a/collector/utils/files/index.js
++++ b/collector/utils/files/index.js
+@@ -156,7 +156,9 @@ function writeToServerDocuments({
+ // force remove them.
+ async function wipeCollectorStorage() {
+   const cleanHotDir = new Promise((resolve) => {
+-    const directory = path.resolve(__dirname, "../../hotdir");
++    const directory = path.resolve(
++      process.env.ANYTHING_LLM_HOTDIR || path.resolve(__dirname, "../../hotdir")
++    );
+ 
+     if (!fs.existsSync(directory)) return resolve();
+     fs.readdir(directory, (err, files) => {
+@@ -173,7 +175,10 @@ async function wipeCollectorStorage() {
+   });
+ 
+   const cleanTmpDir = new Promise((resolve) => {
+-    const directory = path.resolve(__dirname, "../../storage/tmp");
++    const directory = path.resolve(
++      process.env.ANYTHING_LLM_COLLECTOR_TMP_DIR ||
++        path.resolve(__dirname, "../../storage/tmp")
++    );
+     fs.readdir(directory, (err, files) => {
+       if (err) return resolve();
+ 
+diff --git a/server/utils/files/index.js b/server/utils/files/index.js
+index c1cd3d4..1967ecd 100644
+--- a/server/utils/files/index.js
++++ b/server/utils/files/index.js
+@@ -19,7 +19,10 @@ const vectorCachePath =
+ const hotdirPath =
+   process.env.NODE_ENV === "development"
+     ? path.resolve(__dirname, `../../../collector/hotdir`)
+-    : path.resolve(process.env.STORAGE_DIR, `../../collector/hotdir`);
++    : path.resolve(
++        process.env.ANYTHING_LLM_HOTDIR ||
++          path.resolve(process.env.STORAGE_DIR, `../../collector/hotdir`)
++      );
+ const generatedImagesPath =
+   process.env.NODE_ENV === "development"
+     ? path.resolve(__dirname, `../../storage/generated-images`)
+diff --git a/server/utils/files/multer.js b/server/utils/files/multer.js
+index a483128..78ead66 100644
+--- a/server/utils/files/multer.js
++++ b/server/utils/files/multer.js
+@@ -13,7 +13,10 @@ const fileUploadStorage = multer.diskStorage({
+     const uploadOutput =
+       process.env.NODE_ENV === "development"
+         ? path.resolve(__dirname, `../../../collector/hotdir`)
+-        : path.resolve(process.env.STORAGE_DIR, `../../collector/hotdir`);
++        : path.resolve(
++            process.env.ANYTHING_LLM_HOTDIR ||
++              path.resolve(process.env.STORAGE_DIR, `../../collector/hotdir`)
++          );
+     cb(null, uploadOutput);
+   },
+   filename: function (_, file, cb) {
+@@ -33,7 +36,10 @@ const fileAPIUploadStorage = multer.diskStorage({
+     const uploadOutput =
+       process.env.NODE_ENV === "development"
+         ? path.resolve(__dirname, `../../../collector/hotdir`)
+-        : path.resolve(process.env.STORAGE_DIR, `../../collector/hotdir`);
++        : path.resolve(
++            process.env.ANYTHING_LLM_HOTDIR ||
++              path.resolve(process.env.STORAGE_DIR, `../../collector/hotdir`)
++          );
+     cb(null, uploadOutput);
+   },
+   filename: function (_, file, cb) {
