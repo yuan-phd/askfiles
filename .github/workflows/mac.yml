@@ -77,7 +77,7 @@ jobs:
           path: |
             upstream/server/node_modules
             upstream/collector/node_modules
-          key: upstream-modules-macos-arm64-node22-${{ hashFiles('upstream/server/package.json', 'upstream/server/yarn.lock', 'upstream/server/prisma/**', 'upstream/collector/package.json', 'upstream/collector/yarn.lock', 'patches/**', 'scripts/build.sh', 'scripts/prune.mjs', 'scripts/lib/prisma-engines.mjs') }}
+          key: upstream-modules-macos-arm64-node22-${{ hashFiles('upstream/server/package.json', 'upstream/server/yarn.lock', 'upstream/server/prisma/**', 'upstream/collector/package.json', 'upstream/collector/yarn.lock', 'patches/**', 'scripts/build.sh', 'scripts/prune.mjs', 'scripts/lib/prisma-engines.mjs', 'scripts/lib/load-graph.mjs') }}
           # An older tree is still a warm start: yarn --check-files only adds what changed or was pruned.
           restore-keys: upstream-modules-macos-arm64-node22-
       # The yarn download cache is 2 GB and only needed when a yarn install runs.

@@ -7,13 +7,16 @@
 //   platform  binaries the target cannot load, found by file header (ELF, PE, Mach-O and its CPU type)
 //   dev       source maps, typings, @types packages, readme and changelog files, test and example folders
 //   unused    packages AskFiles never reaches (UNUSED below) and the packages only they depend on
+//   providers vector database clients and model provider SDKs for providers AskFiles never selects
+//             (PROVIDERS below), with the same guards as unused
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { loadGraph } from './lib/load-graph.mjs';
 
 export const TREES = ['server', 'collector'];
 export const TARGETS = ['darwin-arm64', 'linux-x64'];
-export const STEPS = ['platform', 'dev', 'unused'];
+export const STEPS = ['platform', 'dev', 'unused', 'providers'];
 
 // ---- platform -------------------------------------------------------------------------------
 
@@ -116,6 +119,8 @@ const DEV_ROOT_DIRS = new Set([
   'doc',
   '.github',
   'coverage',
+  'benchmark',
+  'benchmarks',
 ]);
 const CODE_FILE = /\.(js|mjs|cjs|node|wasm|json)$/;
 
@@ -241,10 +246,35 @@ export const UNUSED = {
   },
 };
 
+// Clients for vector databases AskFiles never selects (the preset sets VECTOR_DB=lancedb). Each file
+// listed requires the client at module scope, and upstream loads that file only inside the switch
+// on VECTOR_DB (utils/helpers/index.js, getVectorDbClass). pg stays: utils/vectorDbProviders/pgvector
+// loads at server start. The model provider SDKs the presets never select (openai, @anthropic-ai/sdk,
+// @langchain/anthropic, @langchain/openai, elevenlabs) are loaded at module scope on the startup path
+// by the agent and text-to-speech modules, so they stay too; the ones below come only with chromadb.
+export const PROVIDERS = {
+  server: {
+    chromadb: ['utils/vectorDbProviders/chroma/index.js', 'utils/vectorDbProviders/chromacloud/index.js'],
+    '@pinecone-database/pinecone': ['utils/vectorDbProviders/pinecone/index.js'],
+    'pinecone-client': [],
+    '@qdrant/js-client-rest': ['utils/vectorDbProviders/qdrant/index.js'],
+    '@zilliz/milvus2-sdk-node': ['utils/vectorDbProviders/milvus/index.js', 'utils/vectorDbProviders/zilliz/index.js'],
+    'weaviate-client': ['utils/vectorDbProviders/weaviate/index.js'],
+    '@datastax/astra-db-ts': ['utils/vectorDbProviders/astra/index.js'],
+  },
+  collector: {},
+};
+// Removed with PROVIDERS but counted on their own in the log: model provider SDKs.
+export const PROVIDER_SDKS = new Set(['voyageai', 'cohere-ai', '@google/generative-ai', 'openai', 'ollama']);
+
 // Requires inside node_modules that tolerate a missing package, read and confirmed by hand:
 // jsdom sets Canvas to null when require("canvas") throws; langchain's PuppeteerWebBaseLoader imports
-// puppeteer only when a page is scraped and turns a failure into an error for that request.
+// puppeteer only when a page is scraped and turns a failure into an error for that request;
+// @langchain/community's vector store and message store integrations are separate entry points
+// (@langchain/community/vectorstores/chroma and so on) that neither upstream source nor any other
+// package imports (langchain/vectorstores/* re-exports them and is not imported either).
 export const OPTIONAL_REQUIRES = [
+  /^server: node_modules\/@langchain\/community\/dist\/(vectorstores\/(chroma|astradb|milvus|qdrant)|stores\/message\/astradb)\.c?js requires (chromadb|@datastax\/astra-db-ts|@zilliz\/milvus2-sdk-node|@qdrant\/js-client-rest)$/,
   /^server: node_modules\/jsdom\/lib\/jsdom\/utils\.js requires canvas$/,
   /^collector: node_modules\/(.+\/)?(langchain|@langchain\/community)\/dist\/document_loaders\/web\/puppeteer\.c?js requires puppeteer$/,
 ];
@@ -388,6 +418,18 @@ export function pruneUnused(treeDir, unused, dryRun, log = console.log) {
     for (const f of new Set(files)) if (!unused[name].includes(f)) errors.push(`${f} requires ${name}`);
   }
   errors.push(...brokenDependencies(treeDir, gone));
+  // Nothing removed may be required at module scope by a file the process loads at start: every
+  // request through the server or collector would then fail.
+  const graph = loadGraph(treeDir);
+  for (const name of new Set(names.values())) {
+    for (const site of graph.sites.get(name) ?? []) {
+      if (!site.startup || site.lazy) continue;
+      // A nested copy of the same name (chromadb's own openai) going does not affect a site that resolves elsewhere.
+      const resolved = resolvePackage(name, path.dirname(path.join(treeDir, site.file)), treeDir);
+      if (!resolved || gone.has(resolved))
+        errors.push(`${site.file} requires ${name} at module load, on the startup path`);
+    }
+  }
   const tree = path.basename(treeDir);
   errors.push(
     ...undeclaredUses(treeDir, gone, new Set(names.values())).filter(
@@ -422,6 +464,8 @@ function removeDanglingBins(nodeModules) {
 
 // ---- command line ---------------------------------------------------------------------------
 
+const mb = (bytes) => `${(bytes / 1048576).toFixed(1)} MB`;
+
 export function prune({ upstreamDir, target, steps = STEPS, dryRun = false, log = console.log }) {
   if (!TARGETS.includes(target)) throw new Error(`unknown target ${target} (expected ${TARGETS.join(' or ')})`);
   const summary = [];
@@ -435,12 +479,18 @@ export function prune({ upstreamDir, target, steps = STEPS, dryRun = false, log 
           ? prunePlatform(nm, target, dryRun)
           : step === 'dev'
             ? pruneDev(nm, dryRun)
-            : pruneUnused(treeDir, UNUSED[tree], dryRun, log);
+            : pruneUnused(treeDir, (step === 'unused' ? UNUSED : PROVIDERS)[tree], dryRun, log);
       const bytes = removed.reduce((s, r) => s + r.bytes, 0);
       summary.push({ step, tree, count: removed.length, bytes });
       log(
         `[prune] ${step} ${tree}: ${dryRun ? 'would remove' : 'removed'} ${removed.length} paths, ${(bytes / 1048576).toFixed(1)} MB`,
       );
+      if (step === 'providers' && removed.length) {
+        const sdk = removed.filter((r) => PROVIDER_SDKS.has(r.why)).reduce((s, r) => s + r.bytes, 0);
+        log(
+          `[prune] providers ${tree}: model provider SDKs ${mb(sdk)}, vector database clients and their dependencies ${mb(bytes - sdk)}`,
+        );
+      }
       if (step !== 'dev') for (const r of removed) log(`[prune]   ${path.relative(nm, r.path)} (${r.why})`);
     }
   }

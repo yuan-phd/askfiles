@@ -10,7 +10,18 @@ import { pathToFileURL } from 'node:url';
 export const TREES = ['server/node_modules', 'collector/node_modules'];
 
 // Development-only content: the categories scripts/prune.mjs is allowed to remove.
-const DEV_DIRS = new Set(['test', 'tests', '__tests__', 'example', 'examples', 'docs', 'doc', '.github']);
+const DEV_DIRS = new Set([
+  'test',
+  'tests',
+  '__tests__',
+  'example',
+  'examples',
+  'docs',
+  'doc',
+  '.github',
+  'benchmark',
+  'benchmarks',
+]);
 export function devKind(name, isDir) {
   if (isDir) return DEV_DIRS.has(name) ? 'test, example and doc folders' : null;
   if (name.endsWith('.map')) return 'source maps';

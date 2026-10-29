@@ -84,7 +84,7 @@ rm -f "$UPSTREAM/server/public/.askfiles-source-hash"
 # of an earlier build with the same inputs (the CI cache restores them) and steps 3 to 5 are skipped.
 STAMP_PATHS=(upstream/server/package.json upstream/server/yarn.lock upstream/server/prisma
   upstream/collector/package.json upstream/collector/yarn.lock patches scripts/build.sh scripts/prune.mjs
-  scripts/lib/prisma-engines.mjs)
+  scripts/lib/prisma-engines.mjs scripts/lib/load-graph.mjs)
 tree_hash() {
   (echo "PACKAGE_TARGET=$PACKAGE_TARGET node=$("$NODE_BIN" -p 'process.versions.node.split(".")[0]')"
     git -C "$ROOT" ls-files -s -- "${STAMP_PATHS[@]}"

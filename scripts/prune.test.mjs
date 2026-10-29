@@ -175,6 +175,24 @@ describe('pruneUnused', () => {
     );
   });
 
+  it('refuses a package required at module scope by a file loaded at start', () => {
+    tree();
+    write('t/index.js', 'require("./src/boot");');
+    write('t/src/boot.js', 'const d = require("drop");');
+    expect(() => pruneUnused(join(root, 't'), { drop: ['src/use.js', 'src/boot.js'] }, false, () => {})).toThrow(
+      /src\/boot.js requires drop at module load, on the startup path/,
+    );
+    expect(exists('t/node_modules/drop')).toBe(true);
+  });
+
+  it('allows a module-scope require in a file loaded only inside a function', () => {
+    tree();
+    write('t/index.js', 'function pick() { return require("./src/provider"); }');
+    write('t/src/provider.js', 'const d = require("drop");');
+    pruneUnused(join(root, 't'), { drop: ['src/use.js', 'src/provider.js'] }, false, () => {});
+    expect(exists('t/node_modules/drop')).toBe(false);
+  });
+
   it('skips a package that is already gone, so the step can run twice', () => {
     tree();
     const lines = [];
