@@ -92,7 +92,7 @@ async function main() {
     DISABLE_TELEMETRY: 'true',
     CHECKPOINT_DISABLE: '1',
     ANYTHING_LLM_BIND_HOST: '127.0.0.1',
-    DATABASE_URL: `file:${path.join(storage, 'anythingllm.db')}`,
+    DATABASE_URL: `file:${path.join(storage, 'askfiles.db')}`,
     ANYTHING_LLM_HOTDIR: path.join(work, 'hotdir'),
     ANYTHING_LLM_COLLECTOR_TMP_DIR: path.join(work, 'tmp'),
     ANYTHING_LLM_ENV_PATH: path.join(work, 'server/.env'),
