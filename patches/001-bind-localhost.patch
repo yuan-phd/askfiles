@@ -1,0 +1,47 @@
+Bind the server and the collector to 127.0.0.1 by default.
+
+Why: upstream calls listen(port) with no host in server/utils/boot/index.js (HTTP and HTTPS)
+and in collector/index.js, and reads no bind address variable, so both listen on every
+interface. AskFiles promises that documents and questions never leave the machine, and on
+Windows an all-interfaces listener triggers a firewall prompt. This adds a host argument to
+each of the three listen calls, read from ANYTHING_LLM_BIND_HOST, default 127.0.0.1.
+The AskFiles process manager sets ANYTHING_LLM_BIND_HOST=127.0.0.1 for both processes.
+
+Paths are relative to upstream/. Apply from the repository root with
+  git apply --directory=upstream patches/001-bind-localhost.patch
+
+diff --git a/collector/index.js b/collector/index.js
+index 8f2d701..c795e3d 100644
+--- a/collector/index.js
++++ b/collector/index.js
+@@ -223,7 +223,7 @@ app.all("*", function (_, response) {
+ });
+ 
+ app
+-  .listen(COLLECTOR_PORT, async () => {
++  .listen(COLLECTOR_PORT, process.env.ANYTHING_LLM_BIND_HOST || "127.0.0.1", async () => {
+     await wipeCollectorStorage();
+     console.log(`Document processor app listening on port ${COLLECTOR_PORT}`);
+   })
+diff --git a/server/utils/boot/index.js b/server/utils/boot/index.js
+index fd6afe0..b871d70 100644
+--- a/server/utils/boot/index.js
++++ b/server/utils/boot/index.js
+@@ -31,7 +31,7 @@ function bootSSL(app, port = 3001) {
+     const server = https.createServer(credentials, app);
+ 
+     server
+-      .listen(port, async () => {
++      .listen(port, process.env.ANYTHING_LLM_BIND_HOST || "127.0.0.1", async () => {
+         await migrateWebBrowsingToDefault(); // must run before markOnboarded() so a fresh instance is not mistaken for an existing one.
+         await markOnboarded();
+         await setupTelemetry();
+@@ -65,7 +65,7 @@ function bootHTTP(app, port = 3001) {
+   if (!app) throw new Error('No "app" defined - crashing!');
+ 
+   app
+-    .listen(port, async () => {
++    .listen(port, process.env.ANYTHING_LLM_BIND_HOST || "127.0.0.1", async () => {
+       await migrateWebBrowsingToDefault(); // must run before markOnboarded() so a fresh instance is not mistaken for an existing one.
+       await markOnboarded();
+       await setupTelemetry();
