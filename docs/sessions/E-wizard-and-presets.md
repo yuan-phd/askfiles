@@ -17,7 +17,8 @@ Make the first launch decide everything for the user: detect RAM, pick a tier, d
 4. src/renderer/onboarding/: a plain HTML page that shows the steps, the progress bar, and a single retry button on failure. Reads events from a small bridge object; in tests, from a stub.
 5. src/renderer/models/ and src/main/models/: list installed models, pull a model by tag, delete a model, switch the active chat model and restart the server. All through the Ollama HTTP API.
 6. Unit tests: tier mapping at the boundaries (7.9, 8, 15.9, 16, 32, 64 GB), preset validation failures, .env generation byte for byte, state machine transitions including retry after a failed pull.
-7. Integration test (RUN_INTEGRATION=1, Ollama present): pull all-minilm through the wizard code path, assert the progress events reach 100 percent and the model appears in /api/tags.
+7. Thinking: presets turn thinking off. The /v1 chat routes do not pass the option in upstream; Session C patch 7 adds it, read from the request body or from the environment variable DEFAULT_REASONING_EFFORT. Every preset writes DEFAULT_REASONING_EFFORT=off into the server environment, and the .env fixture test includes it. Thinking models stay allowed as chat models. The search page still strips think blocks (Session D).
+8. Integration test (RUN_INTEGRATION=1, Ollama present): pull all-minilm through the wizard code path, assert the progress events reach 100 percent and the model appears in /api/tags.
 
 ## Do not
 
