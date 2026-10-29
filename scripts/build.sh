@@ -89,7 +89,8 @@ tree_hash() {
   (echo "PACKAGE_TARGET=$PACKAGE_TARGET node=$("$NODE_BIN" -p 'process.versions.node.split(".")[0]')"
     git -C "$ROOT" ls-files -s -- "${STAMP_PATHS[@]}"
     git -C "$ROOT" diff HEAD -- "${STAMP_PATHS[@]}"
-    cat "$UPSTREAM/server/node_modules/.yarn-integrity" "$UPSTREAM/collector/node_modules/.yarn-integrity" 2>/dev/null) |
+    # Missing before the first install; pipefail would otherwise end the script here without a message.
+    cat "$UPSTREAM/server/node_modules/.yarn-integrity" "$UPSTREAM/collector/node_modules/.yarn-integrity" 2>/dev/null || true) |
     "$NODE_BIN" -e 'process.stdout.write(require("crypto").createHash("sha256").update(require("fs").readFileSync(0)).digest("hex"))'
 }
 TREE_HASH=$(tree_hash)
