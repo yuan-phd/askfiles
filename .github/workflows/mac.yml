@@ -1,0 +1,153 @@
+# Builds, ad-hoc signs and smoke tests the macOS arm64 app (docs/plan.md task 1.8).
+# Needs no secrets and no certificates, so it runs the same on a fork.
+name: mac
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A new push to the same branch or pull request cancels the run still in progress.
+concurrency:
+  group: mac-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Pinned in docs/packaging.md step 2; change both together.
+  OLLAMA_VERSION: v0.40.4
+  OLLAMA_SHA256: a4ceae4b2aaf18df37ebcbfb56ba3a37a87838631112d66c2be07268693c8d58
+  # The same small test models as the cloud environment.
+  SMOKE_CHAT_MODEL: qwen3:0.6b
+  SMOKE_EMBED_MODEL: all-minilm:latest
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run lint
+
+  package:
+    needs: test
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install yarn classic for the upstream packages
+        run: npm install -g yarn@1.22.22
+
+      - name: Cache root node_modules
+        id: root-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-macos-arm64-node22-${{ hashFiles('package-lock.json') }}
+      - name: npm ci
+        if: steps.root-modules.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - name: Locate the yarn cache
+        id: yarn-cache
+        run: echo "dir=$(yarn cache dir)" >> "$GITHUB_OUTPUT"
+      - name: Cache yarn downloads for upstream
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.yarn-cache.outputs.dir }}
+          key: yarn-macos-arm64-${{ hashFiles('upstream/server/yarn.lock', 'upstream/collector/yarn.lock', 'upstream/frontend/yarn.lock') }}
+      - name: Cache Electron downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+          key: electron-macos-arm64-${{ hashFiles('package-lock.json') }}
+
+      - name: Cache the Ollama release archive
+        id: ollama-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/ollama-darwin.tgz
+          key: ollama-darwin-${{ env.OLLAMA_VERSION }}
+      - name: Download Ollama
+        if: steps.ollama-cache.outputs.cache-hit != 'true'
+        run: >-
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/ollama-darwin.tgz"
+          "https://github.com/ollama/ollama/releases/download/$OLLAMA_VERSION/ollama-darwin.tgz"
+      - name: Verify and unpack Ollama into resources/ollama
+        run: |
+          echo "$OLLAMA_SHA256  $RUNNER_TEMP/ollama-darwin.tgz" | shasum -a 256 -c -
+          mkdir -p resources/ollama
+          tar -xzf "$RUNNER_TEMP/ollama-darwin.tgz" -C resources/ollama
+          resources/ollama/ollama --version || true
+
+      # Runs tsc, scripts/build.sh with PACKAGE_TARGET=mac-arm64 (the make build step), electron-builder,
+      # scripts/sign-adhoc.sh and the DMG step, in that order (package.json).
+      - name: Build, package and sign
+        run: npm run package:mac
+        env:
+          # @vscode/ripgrep (upstream server) looks up its binary through api.github.com in postinstall;
+          # unauthenticated calls from shared runners hit the rate limit (403). This is the automatic
+          # read-only job token, not a configured secret, so forks work the same.
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Check the signature
+        run: codesign --verify --deep --strict --verbose=2 release/mac-arm64/AskFiles.app
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: askfiles-dmg-${{ github.sha }}
+          path: release/*.dmg
+          if-no-files-found: error
+          retention-days: 14
+
+  smoke:
+    needs: package
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      # For scripts/smoke-mac.sh and the test PDF only; nothing is built here.
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: askfiles-dmg-${{ github.sha }}
+          path: ${{ runner.temp }}/dmg
+      - name: Copy the app out of the DMG
+        run: |
+          dmg=$(ls "$RUNNER_TEMP"/dmg/*.dmg)
+          hdiutil attach -nobrowse -readonly -mountpoint "$RUNNER_TEMP/mnt" "$dmg"
+          mkdir -p "$RUNNER_TEMP/app"
+          cp -R "$RUNNER_TEMP/mnt/AskFiles.app" "$RUNNER_TEMP/app/"
+          hdiutil detach "$RUNNER_TEMP/mnt"
+          codesign --verify --deep --strict "$RUNNER_TEMP/app/AskFiles.app"
+      - name: Cache the test models
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Application Support/AskFiles/ollama
+          key: ollama-models-${{ env.SMOKE_CHAT_MODEL }}-${{ env.SMOKE_EMBED_MODEL }}-v1
+      - name: Smoke test
+        run: bash scripts/smoke-mac.sh "$RUNNER_TEMP/app/AskFiles.app" "$RUNNER_TEMP/smoke"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: askfiles-smoke-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/smoke
+            ~/Library/Logs/AskFiles
+          if-no-files-found: warn
+          retention-days: 14

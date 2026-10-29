@@ -57,6 +57,8 @@ export interface ResolvedConfig {
   storageDir: string;
   logDir: string;
   envFile: string;
+  /** Written while running so tools outside the shell (CI smoke test, scripts) find the ports. */
+  portsFile: string;
   hotDir: string;
   collectorTmpDir: string;
   databaseFile: string;
@@ -84,6 +86,7 @@ export function resolveConfig(c: ProcessManagerConfig): ResolvedConfig {
     storageDir,
     logDir: c.logDir,
     envFile: path.join(c.dataDir, 'server', '.env'),
+    portsFile: path.join(c.dataDir, 'ports.json'),
     hotDir: path.join(c.dataDir, 'collector', 'hotdir'),
     collectorTmpDir: path.join(c.dataDir, 'collector', 'tmp'),
     databaseFile: path.join(storageDir, 'anythingllm.db'),

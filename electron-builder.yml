@@ -9,12 +9,16 @@ directories:
   output: release
   buildResources: build
 
-# Only the shell's own compiled main process goes into app.asar. The root package has no runtime
-# dependencies, so there is nothing to rebuild for Electron.
+# Only the shell's own compiled main process and its runtime dependencies (chokidar, mammoth,
+# pdfjs-dist, read-excel-file) go into app.asar. pdfjs-dist pulls the optional @napi-rs/canvas,
+# an N-API prebuild, so nothing needs a rebuild for Electron; electron-builder unpacks its .node
+# file to app.asar.unpacked, where scripts/sign-adhoc.sh signs it with the rest of Resources.
 npmRebuild: false
 files:
   - package.json
   - dist/main/**
+  # Read at every launch for the server spawn environment (src/main/app.ts).
+  - config/presets.json
 
 # Server and collector ship as plain folders in Contents/Resources, not in app.asar
 # (docs/upstream-analysis.md Q1, Q2, risks 1 and 4): Prisma's schema engine and ripgrep are spawned
@@ -31,12 +35,18 @@ extraResources:
       - '!storage/**'
       - '!.env*'
       - '!__tests__/**'
-      - '!swagger/**'
+      # swagger/ stays: endpoints/api/index.js requires swagger/utils at boot.
       - '!{nodemon.json,eslint.config.mjs,jsconfig.json,yarn.lock}'
-      - '!node_modules/.install_pkgs.sha256'
+  # electron-builder drops a node_modules folder sitting directly under `from`, whatever the
+  # filter says (app-builder-lib util/filter.js, createFilter), so each one is its own entry.
+  - from: upstream/server/node_modules
+    to: server/node_modules
+    filter: &node-modules-filter
+      - '**/*'
+      - '!.install_pkgs.sha256'
       # onnxruntime-node carries binaries for six platforms; only darwin arm64 is used (about 70 MB saved).
-      - '!node_modules/onnxruntime-node/bin/napi-v3/{linux,win32}/**'
-      - '!node_modules/onnxruntime-node/bin/napi-v3/darwin/x64/**'
+      - '!onnxruntime-node/bin/napi-v3/{linux,win32}/**'
+      - '!onnxruntime-node/bin/napi-v3/darwin/x64/**'
   - from: upstream/collector
     to: collector
     filter:
@@ -46,9 +56,9 @@ extraResources:
       - '!.env*'
       - '!__tests__/**'
       - '!{nodemon.json,eslint.config.mjs,yarn.lock}'
-      - '!node_modules/.install_pkgs.sha256'
-      - '!node_modules/onnxruntime-node/bin/napi-v3/{linux,win32}/**'
-      - '!node_modules/onnxruntime-node/bin/napi-v3/darwin/x64/**'
+  - from: upstream/collector/node_modules
+    to: collector/node_modules
+    filter: *node-modules-filter
   # The default logo images are the only tracked files in server/storage worth shipping; Session C
   # can seed the data directory from them. Everything else in storage/ is local runtime data.
   - from: upstream/server/storage/assets

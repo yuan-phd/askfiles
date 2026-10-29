@@ -2,7 +2,7 @@
 
 How to turn this repository into AskFiles.app and a DMG on an Apple Silicon Mac, sign it ad-hoc, and copy it to a second Mac. Everything here is LOCAL: cloud sessions stop before step 3.
 
-State of the app at this point (after Session B): the window opens http://127.0.0.1:<port>, where the port comes from ASKFILES_PORT or from {"port": N} in the file named by ASKFILES_CONFIG (default ~/Library/Application Support/AskFiles/config.json). The shell does not start Ollama, the collector or the server yet; that is Session C. With no port configured the window shows a short page saying there is no server. The point of this first package is to prove that packaging, signing and copying work.
+State of the app at this point (after Session F): the packaged app starts Ollama, the collector and the server from its bundle (src/main/app.ts, docs/process-manager.md), shows a starting page, then opens the upstream interface on the server's port and writes the ports to ~/Library/Application Support/AskFiles/ports.json. No model is configured yet: the first-run wizard and presets are Session E, so the interface asks for a provider until they land. ASKFILES_PORT, or {"port": N} in the file named by ASKFILES_CONFIG (default ~/Library/Application Support/AskFiles/config.json), still makes the app connect to a server started by hand instead. The CI workflow .github/workflows/mac.yml builds the same DMG and smoke tests it with scripts/smoke-mac.sh.
 
 ## What you need
 
@@ -90,7 +90,7 @@ Not copied: server and collector storage/, hotdir/, .env files, tests, yarn.lock
 open release/AskFiles-0.1.0-arm64.dmg
 ```
 
-Drag AskFiles to Applications, eject the DMG, open AskFiles from Applications. Expected: a window with the AskFiles no-server page. To see it connect to a server, start the upstream server by hand on port 3001 (upstream/BARE_METAL.md) and run:
+Drag AskFiles to Applications, eject the DMG, open AskFiles from Applications. Expected: a starting page, then the upstream interface. To make it connect to a server started by hand on port 3001 (upstream/BARE_METAL.md) instead, run:
 
 ```
 ASKFILES_PORT=3001 /Applications/AskFiles.app/Contents/MacOS/AskFiles

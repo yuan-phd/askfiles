@@ -141,6 +141,8 @@ export class ProcessManager extends EventEmitter<{ state: [StateEvent] }> {
     this.phase = 'starting';
     this.installParentHandlers();
     this.mlog('starting');
+    // Left behind when the last run was killed without a chance to stop; its ports are stale.
+    fs.rmSync(this.cfg.portsFile, { force: true });
     try {
       let ollama: number, collector: number, server: number;
       try {
@@ -163,6 +165,7 @@ export class ProcessManager extends EventEmitter<{ state: [StateEvent] }> {
       await this.startStep('collector');
       await this.runMigrate();
       await this.startStep('server');
+      this.writePortsFile();
       this.phase = 'running';
       this.mlog('running');
       return this.status();
@@ -199,6 +202,7 @@ export class ProcessManager extends EventEmitter<{ state: [StateEvent] }> {
       if (slot.state !== 'stopped') this.setState(slot, 'stopped');
     }
     this.removeParentHandlers();
+    fs.rmSync(this.cfg.portsFile, { force: true });
     this.ports = null;
     this.phase = 'stopped';
     this.mlog('stopped');
@@ -418,6 +422,19 @@ export class ProcessManager extends EventEmitter<{ state: [StateEvent] }> {
       // Patch 006 skips the boot fetches unless this is "true"; a stray parent value must not enable them.
       ANYTHING_LLM_ALLOW_REMOTE_MODEL_DATA: 'false',
     };
+  }
+
+  /**
+   * <dataDir>/ports.json: { server, collector, ollama, host, pid, startedAt }. Written only once
+   * every process is healthy and removed on stop, so its presence means the server answers.
+   * Temp file and rename, so a reader never sees half a file.
+   */
+  private writePortsFile(): void {
+    const body = { ...this.ports!, host: this.cfg.host, pid: process.pid, startedAt: new Date().toISOString() };
+    const tmp = `${this.cfg.portsFile}.tmp-${process.pid}`;
+    fs.writeFileSync(tmp, JSON.stringify(body) + '\n');
+    fs.renameSync(tmp, this.cfg.portsFile);
+    this.mlog(`wrote ${this.cfg.portsFile}`);
   }
 
   private healthUrl(name: ProcessName): string {
