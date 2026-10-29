@@ -98,6 +98,11 @@ jobs:
       # scripts/sign-adhoc.sh and the DMG step, in that order (package.json).
       - name: Build, package and sign
         run: npm run package:mac
+        env:
+          # @vscode/ripgrep (upstream server) looks up its binary through api.github.com in postinstall;
+          # unauthenticated calls from shared runners hit the rate limit (403). This is the automatic
+          # read-only job token, not a configured secret, so forks work the same.
+          GITHUB_TOKEN: ${{ github.token }}
       - name: Check the signature
         run: codesign --verify --deep --strict --verbose=2 release/mac-arm64/AskFiles.app
 
