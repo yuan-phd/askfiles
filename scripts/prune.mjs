@@ -285,7 +285,7 @@ export function reachable(treeDir, skipNames = new Set(), extraRoots = []) {
   return seen;
 }
 
-/** Required (non-optional, non-peer) dependencies that no longer resolve after a removal. */
+/** Required (non-optional, non-peer) dependencies that resolve to a package about to be removed. */
 export function brokenDependencies(treeDir, gone) {
   const broken = [];
   for (const dir of reachable(treeDir)) {
@@ -293,7 +293,8 @@ export function brokenDependencies(treeDir, gone) {
     const pkg = readJson(path.join(dir, 'package.json')) ?? {};
     for (const name of Object.keys(pkg.dependencies ?? {})) {
       const found = resolvePackage(name, dir, treeDir);
-      if (!found || gone.has(found)) broken.push(`${path.relative(treeDir, dir)} needs ${name}`);
+      // A dependency already missing before this step (an @types package the dev step removed) is not this step's doing.
+      if (found && gone.has(found)) broken.push(`${path.relative(treeDir, dir)} needs ${name}`);
     }
   }
   return broken;

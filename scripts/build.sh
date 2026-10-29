@@ -106,7 +106,7 @@ done
 
 step "7/8 prune for the package target"
 if [ -n "$PRUNE_TARGET" ]; then
-  node "$ROOT/scripts/prune.mjs" "$UPSTREAM" --target "$PRUNE_TARGET" --steps platform,dev || fail "pruning failed; see the message above"
+  node "$ROOT/scripts/prune.mjs" "$UPSTREAM" --target "$PRUNE_TARGET" || fail "pruning failed; see the message above"
 else
   echo "[build] PACKAGE_TARGET not set, nothing pruned"
 fi
