@@ -78,16 +78,47 @@ rm -rf "$UPSTREAM/server/public"
 cp -R "$UPSTREAM/frontend/dist" "$UPSTREAM/server/public"
 rm -f "$UPSTREAM/server/public/.askfiles-source-hash"
 
+# Everything that decides what steps 3 to 7 leave in server and collector node_modules, plus each
+# tree's .yarn-integrity, which any later yarn install rewrites. Step 7 writes it into
+# <pkg>/node_modules/.askfiles-build-stamp; when both stamps still match, the trees are the output
+# of an earlier build with the same inputs (the CI cache restores them) and steps 3 to 5 are skipped.
+STAMP_PATHS=(upstream/server/package.json upstream/server/yarn.lock upstream/server/prisma
+  upstream/collector/package.json upstream/collector/yarn.lock patches scripts/build.sh scripts/prune.mjs
+  scripts/lib/prisma-engines.mjs)
+tree_hash() {
+  (echo "PACKAGE_TARGET=$PACKAGE_TARGET node=$("$NODE_BIN" -p 'process.versions.node.split(".")[0]')"
+    git -C "$ROOT" ls-files -s -- "${STAMP_PATHS[@]}"
+    git -C "$ROOT" diff HEAD -- "${STAMP_PATHS[@]}"
+    cat "$UPSTREAM/server/node_modules/.yarn-integrity" "$UPSTREAM/collector/node_modules/.yarn-integrity" 2>/dev/null) |
+    "$NODE_BIN" -e 'process.stdout.write(require("crypto").createHash("sha256").update(require("fs").readFileSync(0)).digest("hex"))'
+}
+TREE_HASH=$(tree_hash)
+REUSE=0
+if [ "$(cat "$UPSTREAM/server/node_modules/.askfiles-build-stamp" 2>/dev/null)" = "$TREE_HASH" ] &&
+  [ "$(cat "$UPSTREAM/collector/node_modules/.askfiles-build-stamp" 2>/dev/null)" = "$TREE_HASH" ]; then
+  REUSE=1
+fi
+
 step "3/8 install server and collector production dependencies"
-for pkg in server collector; do
-  # scripts/install_pkgs.sh stamps full dev installs; this install changes node_modules, so drop the
-  # stamp and let the next cloud session reinstall dev dependencies if it needs them.
-  rm -f "$UPSTREAM/$pkg/node_modules/.install_pkgs.sha256"
-  (cd "$UPSTREAM/$pkg" && yarn install --production --frozen-lockfile --non-interactive --network-timeout 100000)
-done
+if [ "$REUSE" = 1 ]; then
+  echo "[build] server and collector node_modules match their build stamp, skipping steps 3 to 5"
+else
+  for pkg in server collector; do
+    # scripts/install_pkgs.sh stamps full dev installs; this install changes node_modules, so drop the
+    # stamp and let the next cloud session reinstall dev dependencies if it needs them.
+    rm -f "$UPSTREAM/$pkg/node_modules/.install_pkgs.sha256" "$UPSTREAM/$pkg/node_modules/.askfiles-build-stamp"
+    # --check-files puts back what an earlier step 7 pruned; yarn's integrity check alone does not
+    # look at the files.
+    (cd "$UPSTREAM/$pkg" && yarn install --production --frozen-lockfile --check-files --non-interactive --network-timeout 100000)
+  done
+fi
 
 step "4/8 prisma generate"
-(cd "$UPSTREAM/server" && "$NODE_BIN" node_modules/prisma/build/index.js generate --schema prisma/schema.prisma)
+if [ "$REUSE" = 1 ]; then
+  echo "[build] reusing node_modules/.prisma/client"
+else
+  (cd "$UPSTREAM/server" && "$NODE_BIN" node_modules/prisma/build/index.js generate --schema prisma/schema.prisma)
+fi
 [ -f "$UPSTREAM/server/node_modules/.prisma/client/index.js" ] || fail "prisma generate did not produce node_modules/.prisma/client"
 
 step "5/8 prisma engines"
@@ -106,10 +137,13 @@ done
 
 step "7/8 prune for the package target"
 if [ -n "$PRUNE_TARGET" ]; then
+  # Safe to run again on its own output; a reused tree prunes nothing.
   node "$ROOT/scripts/prune.mjs" "$UPSTREAM" --target "$PRUNE_TARGET" || fail "pruning failed; see the message above"
 else
   echo "[build] PACKAGE_TARGET not set, nothing pruned"
 fi
+TREE_HASH=$(tree_hash)
+for pkg in server collector; do printf '%s' "$TREE_HASH" > "$UPSTREAM/$pkg/node_modules/.askfiles-build-stamp"; done
 
 step "8/8 summary"
 ELAPSED=$(( $(date +%s) - START ))

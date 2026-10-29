@@ -139,7 +139,7 @@ describe('pruneUnused', () => {
 
   it('removes the root and what only it pulled in', () => {
     tree();
-    const removed = pruneUnused(join(root, 't'), { drop: ['src/use.js'] }, false);
+    const removed = pruneUnused(join(root, 't'), { drop: ['src/use.js'] }, false, () => {});
     expect(removed.map((r) => r.why).sort()).toEqual(['drop', 'only-drop']);
     expect(exists('t/node_modules/shared')).toBe(true);
     expect(exists('t/node_modules/orphan')).toBe(true);
@@ -149,27 +149,40 @@ describe('pruneUnused', () => {
   it('keeps a package upstream source requires without declaring it', () => {
     tree();
     write('t/src/phantom.js', 'import("only-drop")');
-    pruneUnused(join(root, 't'), { drop: ['src/use.js'] }, false);
+    pruneUnused(join(root, 't'), { drop: ['src/use.js'] }, false, () => {});
     expect(exists('t/node_modules/only-drop')).toBe(true);
   });
 
   it('refuses when upstream source requires the package outside the listed files', () => {
     tree();
     write('t/src/other.js', 'require("drop/sub")');
-    expect(() => pruneUnused(join(root, 't'), { drop: ['src/use.js'] }, false)).toThrow(/src\/other.js requires drop/);
+    expect(() => pruneUnused(join(root, 't'), { drop: ['src/use.js'] }, false, () => {})).toThrow(
+      /src\/other.js requires drop/,
+    );
     expect(exists('t/node_modules/drop')).toBe(true);
   });
 
   it('refuses when a remaining package requires a removed one', () => {
     tree();
     write('t/node_modules/keep/lib.js', 'require("only-drop")');
-    expect(() => pruneUnused(join(root, 't'), { drop: ['src/use.js'] }, false)).toThrow(
+    expect(() => pruneUnused(join(root, 't'), { drop: ['src/use.js'] }, false, () => {})).toThrow(
       /keep\/lib.js requires only-drop/,
     );
   });
 
-  it('refuses when the package is not installed', () => {
+  it('skips a package that is already gone, so the step can run twice', () => {
     tree();
-    expect(() => pruneUnused(join(root, 't'), { missing: [] }, false)).toThrow(/missing is not installed/);
+    const lines = [];
+    pruneUnused(join(root, 't'), { drop: ['src/use.js'] }, false, () => {});
+    expect(pruneUnused(join(root, 't'), { drop: ['src/use.js'] }, false, (l) => lines.push(l))).toEqual([]);
+    expect(lines.join('\n')).toMatch(/drop is not installed/);
+  });
+
+  it('refuses when a package that stays still depends on it', () => {
+    tree();
+    pkg('t/node_modules/keep', { name: 'keep', dependencies: { shared: '1', drop: '1' } });
+    expect(() => pruneUnused(join(root, 't'), { drop: ['src/use.js'] }, false, () => {})).toThrow(
+      /drop is still a dependency/,
+    );
   });
 });

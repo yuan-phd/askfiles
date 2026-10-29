@@ -37,7 +37,7 @@ export function binaryKind(buf) {
     const read = (o) => (little ? buf.readUInt32LE(o) : buf.readUInt32BE(o));
     return { format: 'macho', cpu: read(4), filetype: read(12) };
   }
-  if (magic === 'cafebabe') {
+  if (magic === 'cafebabe' || magic === 'cafebabf') {
     // Fat Mach-O and Java class files share this magic; a fat header has a small arch count where a
     // class file has its version (45 or more).
     const count = buf.readUInt32BE(4);
@@ -267,14 +267,20 @@ export function reachable(treeDir, skipNames = new Set(), extraRoots = []) {
   while (queue.length) {
     const dir = queue.shift();
     const pkg = readJson(path.join(dir, 'package.json')) ?? {};
+    // An optional peer that is being removed (jsdom's canvas) is not a reason to keep it; other
+    // optional peers count (openai's ws, which openai code requires).
+    const peers = Object.keys(pkg.peerDependencies ?? {}).filter(
+      (n) => !(skipNames.has(n) && pkg.peerDependenciesMeta?.[n]?.optional),
+    );
     const names = new Set([
       ...Object.keys(pkg.dependencies ?? {}),
       ...Object.keys(pkg.optionalDependencies ?? {}),
-      ...Object.keys(pkg.peerDependencies ?? {}),
+      ...peers,
       ...(dir === treeDir ? extraRoots : []),
     ]);
     for (const name of names) {
-      if (skipNames.has(name)) continue;
+      // Skipped at the tree root only: a package that stays and depends on a root keeps it.
+      if (dir === treeDir && skipNames.has(name)) continue;
       const found = resolvePackage(name, dir, treeDir);
       if (found && !seen.has(found)) {
         seen.add(found);
@@ -346,8 +352,14 @@ export function undeclaredUses(treeDir, gone, goneNames) {
   return hits;
 }
 
-export function pruneUnused(treeDir, unused, dryRun) {
-  const roots = Object.keys(unused);
+export function pruneUnused(treeDir, unused, dryRun, log = console.log) {
+  // A root already gone (a tree restored from the CI cache was pruned before) is skipped, so the
+  // step can run again on its own output.
+  const roots = Object.keys(unused).filter((name) => {
+    if (resolvePackage(name, treeDir, treeDir)) return true;
+    log(`[prune] ${name} is not installed in ${path.basename(treeDir)}, nothing to remove`);
+    return false;
+  });
   if (roots.length === 0) return [];
   // Every package upstream source requires stays, with what it depends on, even when only a removed
   // root declared it (collector/utils/shell.js imports strip-ansi, which only puppeteer pulls in).
@@ -364,7 +376,7 @@ export function pruneUnused(treeDir, unused, dryRun) {
   const names = new Map([...gone].map((d) => [d, readJson(path.join(d, 'package.json'))?.name]));
   const errors = [];
   for (const root of roots) {
-    if (![...names.values()].includes(root)) errors.push(`${root} is not installed`);
+    if (![...names.values()].includes(root)) errors.push(`${root} is still a dependency of a package that stays`);
   }
   const sites = requireSites(treeDir, new Set(roots));
   for (const [name, files] of sites) {
@@ -418,7 +430,7 @@ export function prune({ upstreamDir, target, steps = STEPS, dryRun = false, log 
           ? prunePlatform(nm, target, dryRun)
           : step === 'dev'
             ? pruneDev(nm, dryRun)
-            : pruneUnused(treeDir, UNUSED[tree], dryRun);
+            : pruneUnused(treeDir, UNUSED[tree], dryRun, log);
       const bytes = removed.reduce((s, r) => s + r.bytes, 0);
       summary.push({ step, tree, count: removed.length, bytes });
       log(
