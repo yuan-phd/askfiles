@@ -13,6 +13,8 @@ export interface BundlePaths {
   nodePath: string;
   /** Extra server variables passed at every start, crash restarts included; see presetServerEnv. */
   serverEnv?: Record<string, string>;
+  /** Browser origins allowed to call the server, the shell's own pages (patch 005). */
+  allowedOrigins?: string[];
 }
 
 /**
@@ -35,6 +37,7 @@ export function bundledBackendConfig(p: BundlePaths): ProcessManagerConfig {
   return {
     dataDir: p.dataDir,
     logDir: p.logDir,
+    allowedOrigins: p.allowedOrigins ?? [],
     ollama: {
       command: path.join(p.resourcesPath, 'ollama', 'ollama'),
       args: ['serve'],

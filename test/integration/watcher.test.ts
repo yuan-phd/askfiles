@@ -10,10 +10,18 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 // @ts-expect-error plain JavaScript client from Session D without type declarations
 import { createClient, generateApiKey, normalizeSource, REFUSAL_TEXT } from '../../src/renderer/api/client.js';
-import { chokidarWatch, createLibraryApi, FolderWatcher, sectionSplitter } from '../../src/main/watcher/index.js';
+import { seedTesseractData } from '../../src/main/tesseract.js';
+import {
+  chokidarWatch,
+  collectorOcr,
+  createLibraryApi,
+  FolderWatcher,
+  sectionSplitter,
+} from '../../src/main/watcher/index.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const PDF = path.join(ROOT, 'test', 'fixtures', 'handbook.pdf');
+const SCANNED = path.join(ROOT, 'test', 'fixtures', 'scanned.pdf');
 const log = (msg: string) => console.log(`[integration] ${msg}`);
 
 function skipReason(): string | null {
@@ -117,6 +125,71 @@ describe.skipIf(reason !== null)('folder watcher against the real server', () =>
       const gone = await until('PDF removed', 60_000, async () => ((await search()).length === 0 ? true : null));
       log(`removed after ${gone.elapsed} ms`);
       expect(JSON.parse(fs.readFileSync(path.join(tmp, 'shell', 'index.json'), 'utf8')).files).toEqual({});
+    } finally {
+      await watcher.stop();
+    }
+  }, 300_000);
+  it('OCRs a scanned PDF through the collector with the seeded language data', async () => {
+    const up = upstream!;
+    // Node's fetch ignores the proxy here, so a download from the tesseract CDN would fail and
+    // take the collector down (docs/upstream-analysis.md Q14): success means the seed was used.
+    const seed = seedTesseractData({ langs: 'eng,chi_sim', storageDir: up.storageDir });
+    log(`tesseract seed ${JSON.stringify(seed)}`);
+    expect(seed.missing).toEqual([]);
+    const apiKey = await generateApiKey({ baseUrl: up.baseUrl, name: 'askfiles-ocr-it' });
+    const client = createClient({ baseUrl: up.baseUrl, apiKey });
+    const ws = await client.createWorkspace('askfiles-ocr-it', {
+      chatMode: 'query',
+      queryRefusalResponse: REFUSAL_TEXT,
+    });
+
+    const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'askfiles-ocr-it-')));
+    const folder = path.join(tmp, 'Documents');
+    fs.mkdirSync(folder);
+    fs.copyFileSync(SCANNED, path.join(folder, 'scanned.pdf'));
+    const api = createLibraryApi({ baseUrl: up.baseUrl, apiKey });
+    const uploads: string[] = [];
+    const watcher = new FolderWatcher({
+      root: folder,
+      dataDir: path.join(tmp, 'shell'),
+      storageDir: up.storageDir,
+      workspaceSlug: ws.slug,
+      api,
+      splitter: sectionSplitter({
+        maxChars: 1000,
+        embeddingModel: 'all-minilm:latest',
+        ocr: collectorOcr({
+          api: {
+            uploadForText: (f) => (uploads.push(f), api.uploadForText(f)),
+            purgeDocuments: (l) => api.purgeDocuments(l),
+          },
+          cacheDir: path.join(tmp, 'shell', 'ocr-cache'),
+          log: (m) => log(`[ocr] ${m}`),
+        }),
+      }),
+      watch: chokidarWatch,
+      log: (m) => log(`[watcher] ${m}`),
+    });
+    try {
+      const t0 = Date.now();
+      await watcher.start();
+      await watcher.whenIdle();
+      log(`scanned PDF done in ${Date.now() - t0} ms`);
+      expect(watcher.status().deadLetters).toEqual([]);
+      const [rec] = watcher.files();
+      expect(rec!.sections).toHaveLength(1);
+      expect(rec!.sections[0]).toMatchObject({ sectionTitle: 'scanned', pageStart: null, pageEnd: null });
+      const doc = JSON.parse(
+        fs.readFileSync(path.join(up.storageDir, 'documents', rec!.sections[0]!.location), 'utf8'),
+      ) as { pageContent: string; pageStart: number };
+      log(`OCR text: ${JSON.stringify(doc.pageContent)}`);
+      expect(doc.pageStart).toBe(0);
+      expect(doc.pageContent).toMatch(/second class/);
+      expect(doc.pageContent).toMatch(/written approval from a director/);
+      expect(uploads).toHaveLength(1);
+      // The collector copy of the upload is gone again; only the section document is embedded.
+      const embedded = [...(await api.workspaceDocuments(ws.slug)).keys()];
+      expect(embedded).toEqual([rec!.sections[0]!.location]);
     } finally {
       await watcher.stop();
     }

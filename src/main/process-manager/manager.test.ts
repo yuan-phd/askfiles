@@ -81,7 +81,7 @@ describe('ProcessManager start', () => {
     const env = (name: string) => rec.find((r) => r.name === name)!.env!;
     const expected = {
       ANYTHING_LLM_BIND_HOST: '127.0.0.1',
-      DATABASE_URL: `file:${path.join(data, 'storage', 'anythingllm.db')}`,
+      DATABASE_URL: `file:${path.join(data, 'storage', 'askfiles.db')}`,
       ANYTHING_LLM_HOTDIR: path.join(data, 'collector', 'hotdir'),
       ANYTHING_LLM_COLLECTOR_TMP_DIR: path.join(data, 'collector', 'tmp'),
       ANYTHING_LLM_ENV_PATH: path.join(data, 'server', '.env'),

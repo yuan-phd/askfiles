@@ -1,6 +1,15 @@
 import { test, expect } from '@playwright/test';
 import { REFUSAL_TEXT } from '../../src/renderer/api/client.js';
-import { mockLibrary, pageUrl, answerEvents, refusalEvents, chunk, asVectorResult } from './mocks.js';
+import {
+  mockLibrary,
+  pageUrl,
+  answerEvents,
+  refusalEvents,
+  chunk,
+  asVectorResult,
+  stubBridge,
+  watcherStatus,
+} from './mocks.js';
 
 const QUESTION = 'How many days of annual leave do employees get?';
 
@@ -280,14 +289,68 @@ test.describe('with the chat route mocked', () => {
     await expect(query).toHaveValue('What is the notice period?');
   });
 
-  test('the shell can report indexing state', async ({ page }) => {
-    await mockLibrary(page);
+  test('the status bar follows the folder watcher through the bridge', async ({ page }) => {
+    await mockLibrary(page, { documents: 40 });
+    await stubBridge(page, { status: watcherStatus({ state: 'working', pending: 4, indexed: 10 }) });
     await page.goto(pageUrl());
-    await expect(page.getByTestId('status-state')).toHaveAttribute('data-state', 'ready');
-    await page.evaluate(() => window.askfiles.setIndexStatus({ state: 'indexing', pending: 4 }));
     await expect(page.getByTestId('status-state')).toHaveText('Indexing, 4 left');
-    await page.evaluate(() => window.askfiles.setIndexStatus({ state: 'idle' }));
+    // Files from the watcher, not the 40 section documents of the workspace.
+    await expect(page.getByTestId('status-count')).toHaveText('10 documents indexed');
+    await expect(page.getByTestId('status-folder')).toHaveText('/Users/anna/Documents/HR');
+    await expect(page.getByTestId('status-failed')).toBeHidden();
+    await expect
+      .poll(() => page.evaluate(() => window.__bridgeCalls))
+      .toEqual([['pageReady', { page: 'search', connected: true, documents: 40 }]]);
+
+    const dead = [
+      { path: '/Users/anna/Documents/HR/scan.pdf', kind: 'upsert', error: 'OCR found no text', attempts: 4, at: 'x' },
+    ];
+    await page.evaluate((d) => window.__watcher({ ...d, state: 'idle', indexed: 13 }), {
+      ...watcherStatus(),
+      deadLetters: dead,
+    });
     await expect(page.getByTestId('status-state')).toHaveText('Up to date');
+    await expect(page.getByTestId('status-count')).toHaveText('13 documents indexed');
+    await expect(page.getByTestId('status-failed')).toHaveText('1 file could not be read');
+    await expect(page.getByTestId('status-failed')).toHaveAttribute('title', /scan\.pdf: OCR found no text/);
+
+    await page.evaluate(
+      (s) => window.__watcher(s),
+      watcherStatus({ state: 'stopped', error: 'The folder /Users/anna/Documents/HR cannot be read: ENOENT' }),
+    );
+    await expect(page.getByTestId('status-state')).toHaveText('Folder not available');
+  });
+
+  test('says so when the original file is no longer in the folder', async ({ page }) => {
+    await mockLibrary(page, {
+      stream: () => answerEvents('27 days.', [chunk({ id: 'a', text: 'Leave is 27 days.' })]),
+    });
+    await page.addInitScript((base) => {
+      window.__opened = [];
+      window.shellConfig = {
+        baseUrl: base,
+        apiKey: 'test-key',
+        workspace: 'lib',
+        openSource: async (detail) => {
+          window.__opened.push(detail);
+          return false;
+        },
+      };
+    }, 'http://127.0.0.1:1');
+    await page.goto(`${process.env.ASKFILES_PAGE_URL}/search/index.html`);
+    await page.getByTestId('query').fill(QUESTION);
+    await page.getByTestId('query').press('Enter');
+    await page.getByTestId('source-open').click();
+    await expect(page.getByTestId('error')).toHaveText('handbook.pdf is no longer in your documents folder.');
+    expect(await page.evaluate(() => window.__opened)).toEqual([
+      {
+        title: 'handbook.pdf',
+        url: 'file:///library/handbook.pdf',
+        sectionTitle: null,
+        sectionIndex: null,
+        page: null,
+      },
+    ]);
   });
 
   test('a stream abort shows the error instead of an answer', async ({ page }) => {

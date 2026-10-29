@@ -2,7 +2,16 @@
 //   SCREENSHOT_DIR=docs/screenshots/search npx playwright test screenshots
 import { test } from '@playwright/test';
 import { REFUSAL_TEXT } from '../../src/renderer/api/client.js';
-import { mockLibrary, pageUrl, answerEvents, refusalEvents, chunk, asVectorResult } from './mocks.js';
+import {
+  mockLibrary,
+  pageUrl,
+  answerEvents,
+  refusalEvents,
+  chunk,
+  asVectorResult,
+  stubBridge,
+  watcherStatus,
+} from './mocks.js';
 
 const dir = process.env.SCREENSHOT_DIR;
 const recent = ['Who approves travel over 500 euros?', 'What is the notice period?', '年假可以结转吗?'];
@@ -86,8 +95,8 @@ for (const scheme of ['light', 'dark']) {
       stream: () => refusalEvents(REFUSAL_TEXT),
       vector: () => near.map(asVectorResult),
     });
+    await stubBridge(page, { status: watcherStatus({ state: 'working', pending: 3, indexed: 11 }) });
     await page.goto(pageUrl({ folder: '/Users/anna/Documents/HR' }));
-    await page.evaluate(() => window.askfiles.setIndexStatus({ state: 'indexing', pending: 3 }));
     await page.getByTestId('query').fill('Can I fly business class?');
     await page.getByTestId('query').press('Enter');
     await page.getByTestId('fallback-item').nth(2).waitFor();

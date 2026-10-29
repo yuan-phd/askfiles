@@ -66,6 +66,10 @@ function revertPatches(applied: string[]): void {
 export interface Upstream {
   baseUrl: string;
   storageDir: string;
+  /** Root of the data directory: server/.env, ports.json, storage/. */
+  dataDir: string;
+  /** For tests that restart the stack, as the shell does after writing the .env. */
+  manager: ProcessManager;
   stop: () => Promise<void>;
 }
 
@@ -103,6 +107,7 @@ export async function startUpstream({ allowedOrigins }: { allowedOrigins: string
         EMBEDDING_MODEL_PREF: EMBED_MODEL,
         VECTOR_DB: 'lancedb',
         DEFAULT_REASONING_EFFORT: 'off',
+        TARGET_OCR_LANG: 'eng,chi_sim',
       },
     },
     signals: { term: 'SIGTERM', kill: 'SIGKILL' },
@@ -134,5 +139,11 @@ export async function startUpstream({ allowedOrigins }: { allowedOrigins: string
   log(
     `upstream healthy: server ${ports.server}, collector ${ports.collector}, ollama ${ports.ollama}; files in ${dir}`,
   );
-  return { baseUrl: `http://127.0.0.1:${ports.server}`, storageDir: path.join(data, 'storage'), stop };
+  return {
+    baseUrl: `http://127.0.0.1:${ports.server}`,
+    storageDir: path.join(data, 'storage'),
+    dataDir: data,
+    manager,
+    stop,
+  };
 }

@@ -20,7 +20,8 @@ env:
   # Pinned in docs/packaging.md step 2; change both together.
   OLLAMA_VERSION: v0.40.4
   OLLAMA_SHA256: a4ceae4b2aaf18df37ebcbfb56ba3a37a87838631112d66c2be07268693c8d58
-  # The same small test models as the cloud environment.
+  # The same small test models as the cloud environment; test/fixtures/presets-smoke.json names
+  # them for the app, these only key the model cache.
   SMOKE_CHAT_MODEL: qwen3:0.6b
   SMOKE_EMBED_MODEL: all-minilm:latest
 
@@ -116,9 +117,10 @@ jobs:
   smoke:
     needs: package
     runs-on: macos-14
-    timeout-minutes: 20
+    # The first run restarts the backend once and OCRs a scanned page on top of the old checks.
+    timeout-minutes: 30
     steps:
-      # For scripts/smoke-mac.sh and the test PDF only; nothing is built here.
+      # For scripts/smoke-mac.sh, the test PDFs and the smoke preset only; nothing is built here.
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
@@ -140,7 +142,7 @@ jobs:
         with:
           path: ~/Library/Application Support/AskFiles/ollama
           key: ollama-models-${{ env.SMOKE_CHAT_MODEL }}-${{ env.SMOKE_EMBED_MODEL }}-v1
-      - name: Smoke test
+      - name: Smoke test (first run, search page, quit)
         run: bash scripts/smoke-mac.sh "$RUNNER_TEMP/app/AskFiles.app" "$RUNNER_TEMP/smoke"
       - uses: actions/upload-artifact@v4
         if: always()

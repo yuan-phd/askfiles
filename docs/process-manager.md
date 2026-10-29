@@ -63,7 +63,7 @@ Variables read by the patches in patches/ (all set for collector, migrate and se
 | Variable | Value set by the manager | Patch |
 | --- | --- | --- |
 | ANYTHING_LLM_BIND_HOST | host (127.0.0.1) | 001: host argument for the server (HTTP and HTTPS) and collector listen calls |
-| DATABASE_URL | file:<storageDir>/anythingllm.db | 002: SQLite path in schema.prisma; prisma generate must run after the patch |
+| DATABASE_URL | file:<storageDir>/askfiles.db | 002: SQLite path in schema.prisma; prisma generate must run after the patch |
 | ANYTHING_LLM_HOTDIR | <dataDir>/collector/hotdir | 003: upload folder, written by the server and read by the collector |
 | ANYTHING_LLM_COLLECTOR_TMP_DIR | <dataDir>/collector/tmp | 003: collector scratch folder, wiped at collector boot |
 | ANYTHING_LLM_ENV_PATH | <dataDir>/server/.env | 004: the server loads this file at start and dumpENV rewrites it on a settings change |

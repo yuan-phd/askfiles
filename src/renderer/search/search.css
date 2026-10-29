@@ -143,6 +143,10 @@ h2 {
   white-space: nowrap;
 }
 
+.status-failed {
+  color: var(--bad);
+}
+
 .status-state {
   display: inline-flex;
   align-items: center;

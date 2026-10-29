@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'"
+    />
+    <title>About AskFiles</title>
+    <link rel="stylesheet" href="../search/search.css" />
+    <link rel="stylesheet" href="../shared/pages.css" />
+    <script type="module" src="./about.js"></script>
+  </head>
+  <body>
+    <main class="page narrow">
+      <h1>AskFiles</h1>
+      <p class="lead" id="version" data-testid="version">Version</p>
+      <p>
+        AskFiles answers questions from your own documents. Everything runs on this Mac: your documents and your
+        questions never leave it.
+      </p>
+
+      <h2>Built on open source</h2>
+      <!-- The one place in the app that names the upstream project, as its MIT license asks. -->
+      <ul class="credits" data-testid="credits">
+        <li>
+          <strong>AnythingLLM</strong> by Mintplex Labs Inc., MIT License. The document search and answering engine runs
+          as the AskFiles backend.
+        </li>
+        <li><strong>Ollama</strong>, MIT License. Runs the language models on this Mac.</li>
+        <li><strong>Electron</strong>, MIT License, with Chromium and Node.js. The application shell.</li>
+        <li>
+          <strong>Tesseract language data</strong> (English, Simplified Chinese), Apache License 2.0. Text recognition
+          in scanned documents.
+        </li>
+      </ul>
+      <p>Every bundled package and its license is listed below.</p>
+
+      <h2>Third-party notices</h2>
+      <pre id="notices" class="notices" data-testid="notices" tabindex="0">Loading</pre>
+    </main>
+  </body>
+</html>

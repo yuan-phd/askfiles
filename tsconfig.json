@@ -8,6 +8,7 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
+    "moduleDetection": "legacy",
     "esModuleInterop": true,
     "skipLibCheck": true,
     "sourceMap": true,

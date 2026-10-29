@@ -8,8 +8,9 @@ export const SPLIT_STRATEGY = 'heading';
 /**
  * The watcher's splitter: Session G's parsers and chunker (src/main/sections). maxChars is the
  * preset's chunkMaxChars and embeddingModel its embedder, both part of the split key.
- * A PDF without a text layer needs OCR, which only the collector does; without an ocr hook such a
- * file fails, so it ends on the dead-letter list instead of being indexed as empty.
+ * A PDF without a text layer needs OCR, which only the collector does (collectorOcr in ocr.ts);
+ * without an ocr hook such a file fails, so it ends on the dead-letter list instead of being
+ * indexed as empty.
  */
 export function sectionSplitter(o: {
   maxChars: number;
@@ -27,7 +28,7 @@ export function sectionSplitter(o: {
     async split(filePath) {
       let parsed = await parseFile(filePath);
       if (parsed.needsOcr) {
-        if (!o.ocr) throw new Error('no text layer; OCR is not wired into the watcher yet');
+        if (!o.ocr) throw new Error('no text layer and no OCR available');
         parsed = {
           ...parsePlainText(await o.ocr(filePath), path.basename(filePath)),
           pages: parsed.pages,
