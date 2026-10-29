@@ -105,9 +105,10 @@ Outcome: one preset per RAM tier, chosen from measured results, with a known rat
 | Max context snippets | 4 | 4, 6, 8, tested in combination with chunk maximum |
 | Chunk strategy | By heading | By heading |
 | Chunk maximum | 2000 characters | 1500, 2000, 2500 characters (capped by the 2048 token embedding limit), tested in combination with max context snippets |
-| LanceDB reranking | Accuracy optimized on | On, off |
+| LanceDB reranking | Accuracy optimized on | On, off. The reranker model (Xenova/ms-marco-MiniLM-L-6-v2, about 24 MB, from huggingface.co; docs/upstream-analysis.md, Workspace settings) is not shipped yet: the phase 2 runs on the Mac download it once. If reranking improves the scores, Session B ships the model files; otherwise reranking is dropped |
 | Chat mode | Query | Query only |
 | Temperature | 0.1 | Fixed |
+| Thinking | Off where the provider supports it | Fixed. The upstream Ollama provider can send think false, but the /v1 chat routes the shell uses do not pass that option (docs/upstream-analysis.md Q9). Either a small /v1 patch in Session C passes it, or the preset uses a chat model without thinking; owner to choose. The search page strips think blocks from the answer regardless |
 | System prompt | Answer only from the provided context, cite the source, say you do not know when the context does not contain the answer | One stricter variant |
 
 **Tasks**
@@ -135,7 +136,7 @@ Outcome: the window loads our page instead of the upstream frontend. The user se
 | --- | --- | --- | --- | --- |
 | 3.1 | API client: library setup, document upload, embed, chat with streaming, sources parsing including section title and index, thread history | src/renderer/api with tests against a running server | All calls covered by tests in the container | CLOUD |
 | 3.2 | Folder watching in the shell: user picks one folder; new, changed and deleted files are split by section, uploaded, re-embedded or removed through the API; index status per file | src/main/watcher with tests | Add, edit, delete a file and see the index update within one minute | CLOUD |
-| 3.3 | Search page: query box, streaming answer, source cards with passage, file name, section title and page, hits from the same section merged into one card, section-listing fallback when nothing is found, open original in Finder, recent questions, index status bar | src/renderer/search as plain HTML, CSS and JS | Playwright tests in headless Chromium against a seeded server | CLOUD |
+| 3.3 | Search page: query box, streaming answer, source cards with passage, file name, section title and page, hits from the same section merged into one card, think blocks stripped from the answer, section-listing fallback when nothing is found, open original in Finder, recent questions, index status bar | src/renderer/search as plain HTML, CSS and JS | Playwright tests in headless Chromium against a seeded server | CLOUD |
 | 3.4 | Onboarding page: pick the folder, show model download and indexing progress, then the search page | src/renderer/onboarding | Flows end to end in CI smoke test | CLOUD |
 | 3.5 | Swap the shell to load our page; keep a hidden developer switch to open the upstream frontend for debugging | Shell config | Packaged app opens on the search page | LOCAL |
 | 3.6 | Visual pass on your Mac: typography, spacing, dark mode, the look you had in your HTML and Obsidian work | CSS | Your sign-off | YOU with LOCAL |
@@ -195,11 +196,11 @@ Implement src/main/process-manager: free port allocation, first-run .env generat
 
 **Session D: search page and API client (tasks 3.1 and 3.3)**
 
-Build src/renderer/search as plain HTML, CSS and JS and src/renderer/api as a small client for the AnythingLLM REST API (endpoints from docs/upstream-analysis.md if present, otherwise from upstream server routes). The page has a query box, a streaming answer area, source cards showing passage, file name, section title and page when present, with hits from the same section merged, a section-listing fallback state when the answer indicates nothing was found, a recent questions list, and an index status bar. Write Playwright tests in headless Chromium against a seeded server started in the container. Design for light and dark mode. Success: tests green; screenshots attached to the PR.
+Build src/renderer/search as plain HTML, CSS and JS and src/renderer/api as a small client for the AnythingLLM REST API (endpoints from docs/upstream-analysis.md if present, otherwise from upstream server routes). The page has a query box, a streaming answer area, source cards showing passage, file name, section title and page when present, with hits from the same section merged, a section-listing fallback state when the answer indicates nothing was found, a recent questions list, and an index status bar. The answer area strips `<think>` blocks, including a block still open while streaming, regardless of preset. Write Playwright tests in headless Chromium against a seeded server started in the container. Design for light and dark mode. Success: tests green; screenshots attached to the PR.
 
 **Session E: wizard and presets (tasks 1.4, 1.5, 1.6), after Session A**
 
-Implement the first-run wizard logic: RAM detection, tier mapping from config/presets.json, ollama pull with progress events, .env writing from the preset, marking onboarding complete using the method found in Session A. Implement the model manager page. Unit tests for tier mapping and .env output; integration test against Linux Ollama. Success: tests green; the wizard runs headless in the container with a fake renderer.
+Implement the first-run wizard logic: RAM detection, tier mapping from config/presets.json, ollama pull with progress events, .env writing from the preset, marking onboarding complete using the method found in Session A. Presets disable thinking where the provider supports it; since the /v1 chat routes cannot pass that option today, the preset either relies on a Session C patch or uses a chat model without thinking (owner choice). Implement the model manager page. Unit tests for tier mapping and .env output; integration test against Linux Ollama. Success: tests green; the wizard runs headless in the container with a fake renderer.
 
 **Session F: CI workflow and folder watcher (tasks 1.8 and 3.2), after Sessions B and C**
 

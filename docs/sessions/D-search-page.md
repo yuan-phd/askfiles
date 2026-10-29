@@ -13,6 +13,8 @@ Build the page the user will actually see: one folder, one question box, an answ
 
 Search, not chat and not workspaces. One library; the client uses one hidden workspace for it and the user never sees the word. No model picker, no settings page. Every answer shows the source passages with file name, section title and page when available. Hits from the same section (sub-chunks that share a section title and section index) are merged into one card. When the answer indicates nothing was found, the page shows a section-listing fallback: the matching sections, each with file name, section title and page, so the user can read them. Clicking a source opens the original file (in this phase: emits an event the shell will handle; in the browser test, logs it).
 
+Thinking output: some chat models return their reasoning inside the answer as `<think>...</think>` (docs/upstream-analysis.md Q9). The answer area always removes these blocks, whatever the preset, including a block that is still open while the stream is running (hide text after an unclosed `<think>` until `</think>` arrives). Add a test with a mocked stream that sends a think block split across several chunks.
+
 Section title and index come from chunk metadata (docs/upstream-analysis.md Q15). If the report says upstream does not return them, show file name and page only, keep the card layout ready for the section title, and note it in the PR. The source of the fallback list (near-miss sources or a search-only endpoint) also comes from Q15; if neither exists, note it in the PR as open.
 
 ## Deliverables

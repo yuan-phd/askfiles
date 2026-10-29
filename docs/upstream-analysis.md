@@ -248,7 +248,8 @@ Streaming format (VERIFIED, 195 events for one answer): each event is one line `
 
 Other facts for the client (VERIFIED unless marked):
 
-- Thinking models: qwen3 output arrives with `<think>...</think>` inside textResponse in both /chat and stream-chat. The client must hide it, or the preset must disable thinking.
+- Thinking models: qwen3 output arrives with `<think>...</think>` inside textResponse in both /chat and stream-chat (VERIFIED). Owner decision: presets disable thinking where possible, and the search page strips think blocks regardless.
+- Thinking control (READ): the upstream Ollama provider can turn thinking off. It sends `think: false` when a chat carries reasoningEffort `off` (upstream/server/utils/helpers/reasoningEffort.js:159-161, used at upstream/server/utils/AiProviders/ollama/index.js:297 and :353), and only for models whose /api/show lists the thinking capability (reasoningEffort.js:306-331). But only the session-auth UI routes read reasoningEffort from the request body (upstream/server/endpoints/chat.js:32, :123). The developer routes /api/v1/workspace/{slug}/chat and stream-chat never pass it (no reasoning reference in upstream/server/utils/chats/apiChatHandler.js or upstream/server/endpoints/api/workspace/index.js), and there is no environment variable or workspace column for it. So the shell, which uses the /v1 API, cannot disable thinking without a patch. Options: a small patch that passes reasoningEffort (or a fixed `off` from an environment variable) through the /v1 chat routes into apiChatHandler, or a preset chat model without thinking.
 - `openAiHistory: 0` is turned into 20 by `openAiHistory || 20` (upstream/server/utils/chats/apiChatHandler.js:269, READ). Earlier answers in the same session can backfill context, so in query mode an answer can be produced from history with `sources: []`. Use a fresh sessionId per question or `reset: true` (READ).
 - The uploaded document's `url` is the hotdir copy (`file://.../collector/hotdir/manual.pdf`), not the user's original path. The shell keeps its own mapping from document to original file.
 
@@ -444,7 +445,14 @@ Table `workspaces` in upstream/server/prisma/schema.prisma:121-152. All writable
 | History | openAiHistory (line 128) | 20 | 0 is treated as 20 in the chat paths |
 | Model override | chatProvider, chatModel (lines 133-134) | null (use env) | provider key and model tag |
 
-Note for the plan: LanceDB reranking (plan, parameters under test) downloads its model from Hugging Face on first use (upstream/server/utils/EmbeddingRerankers/native/index.js:18-49). To keep it local, the model files must be pre-seeded into STORAGE_DIR/models before first use (INFERRED path; LOCAL check), or reranking stays off.
+Reranker model (vectorSearchMode=rerank), for phase 2:
+
+- Model: Xenova/ms-marco-MiniLM-L-6-v2, a cross-encoder (upstream/server/utils/EmbeddingRerankers/native/index.js:21-23), loaded with @xenova/transformers 2.17.2 AutoModelForSequenceClassification (:131-145).
+- Source: https://huggingface.co/Xenova/ms-marco-MiniLM-L-6-v2 ; fallback host https://cdn.anythingllm.com/support/models/ (:18).
+- Size (VERIFIED with the Hugging Face API): onnx/model_quantized.onnx 23.1 MB, tokenizer.json 0.7 MB, vocab.txt 0.2 MB, configs under 5 KB; about 24 MB in total. INFERRED: transformers.js 2.x loads the quantized file by default. The full-precision onnx/model.onnx is 91 MB.
+- Cache: STORAGE_DIR/models/Xenova/ms-marco-MiniLM-L-6-v2 (:24-30). Downloaded on the first rerank call.
+- It is an English MS MARCO model (INFERRED from the model card name); its value on Chinese text must be measured in phase 2.
+- Owner decision: reranking stays a phase 2 candidate and the model is not shipped yet. The phase 2 runs on the Mac download it once; if reranking improves the scores, Session B ships these files, otherwise reranking is dropped.
 
 ## Internet calls by default
 
@@ -478,9 +486,9 @@ Ordered by impact on packaging.
 | 7 | Embedding input silently truncated at 2048 tokens by Ollama | VERIFIED (Q10) | Long Chinese sections partly unindexed without any error | Chunk maximum at or below about 2800 characters, or a 1-line patch adding num_batch |
 | 8 | Bundle size: server 1.07 GB and collector 0.6 GB production node_modules on Linux | VERIFIED (Q3) | Large DMG | Prune other-platform binaries; drop mdpdf, canvas and puppeteer-core only if their code paths are hidden (INFERRED, needs care) |
 | 9 | LanceDB table schema fixed by the first document | VERIFIED (Q13) | Section fields silently dropped if a collector upload lands first | One workspace written only through the section JSON route with fixed keys and types |
-| 10 | Thinking output from qwen3 arrives inside textResponse | VERIFIED (Q9) | Users see reasoning text | Strip `<think>` blocks in the client or choose non-thinking presets |
+| 10 | Thinking output from qwen3 arrives inside textResponse; the /v1 chat routes cannot turn thinking off | VERIFIED (Q9), READ for the routes | Users see reasoning text; slower answers | Search page strips think blocks (Session D); presets disable thinking through a /v1 patch or use a model without thinking (Session E, owner choice) |
 | 11 | Upstream UI redirects to onboarding whenever /api/onboarding fails | READ (Q5) | Onboarding pages and survey call during slow starts | Load the UI only after /api/ping; hide onboarding routes in the 1.9 patch |
-| 12 | Native reranker downloads from Hugging Face | READ (Workspace settings) | Reranking on in phase 2 calls the internet | Test reranking only with a pre-seeded model, or keep it off |
+| 12 | Native reranker downloads from Hugging Face | READ (Workspace settings) | Reranking on in phase 2 calls the internet | Phase 2 on the Mac downloads it once; Session B ships it only if it improves the scores |
 
 ## Commands verified in this environment
 
