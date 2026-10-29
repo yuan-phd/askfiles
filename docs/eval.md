@@ -55,7 +55,7 @@ Options:
 
 The run folder holds results.csv, run.json and, in managed mode, logs/ with the Ollama, collector and server logs. eval-runs/ and the data directory .eval-data/ are ignored by git. Keep run folders of the real corpora out of git: results.csv quotes passages from your documents and the repository is public.
 
-Both passes run inside one run: with passes 2, every question is asked once, then all of them again, and each row carries its pass number. A candidate configuration is one config file; copy default.json, change one or two values, give it a new label, and run it once per corpus.
+Both passes run inside one run: with passes 2, every question is asked once, then all of them again, and each row carries its pass number. A candidate configuration is one config file; copy default.json, change one or two values, give it a new label, and run it once per corpus. To measure reranking, run default.json and rerank.json on the same corpus and compare the two run folders with eval:compare.
 
 ### Configuration
 
@@ -71,7 +71,7 @@ Both passes run inside one run: with passes 2, every question is asked once, the
 | chunkMax | 2000 | Chunk maximum in characters, at least 400. Plan candidates: 1500, 2000, 2500 |
 | chatMode | query | query or chat |
 | temperature | 0.1 | |
-| rerank | false | Upstream accuracy-optimized search. The first rerank run downloads the reranker from huggingface.co |
+| rerank | false | Upstream accuracy-optimized search. The first rerank run downloads the reranker from huggingface.co. scripts/eval/configs/rerank.json is default.json with rerank on, for the phase 2 comparison |
 | reasoningEffort | off | Sent with every question (patch 007); empty uses the server default |
 | passes | 2 | |
 | contextTokens | 0 | Managed mode: OLLAMA_MODEL_TOKEN_LIMIT; 0 keeps upstream's default (the model's context, at most 16384) |

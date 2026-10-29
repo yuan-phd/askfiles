@@ -209,7 +209,7 @@ describe('config', () => {
   });
 
   it('loads the shipped configs', () => {
-    for (const f of ['default.json', 'smoke.json']) {
+    for (const f of ['default.json', 'rerank.json', 'smoke.json']) {
       const raw = JSON.parse(fs.readFileSync(path.join(__dirname, 'configs', f), 'utf8'));
       expect(() => resolveConfig(raw, __dirname, ROOT)).not.toThrow();
     }
