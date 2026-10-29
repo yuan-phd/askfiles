@@ -10,7 +10,7 @@ Session I, 2026-10-29. What the packaged server and collector dependencies weigh
 | AskFiles.app unpacked, mac CI | 2 458 796 KB (2.34 GiB) | 1 967 244 KB (1.88 GiB) |
 | server and collector node_modules, mac CI | 1.15 GB in 93 884 files | 808.4 MB in 56 950 files |
 | server and collector node_modules, Linux packaging | 1.33 GB in 92 594 files | 910.0 MB in 55 659 files |
-| package job, mac CI | 26 min 45 s on main (run 6), of which 22 min 52 s in Build, package and sign; 19 min 20 s in run 8 | 9 min 27 s, of which 6 min 3 s in Build, package and sign (run 11, first run with the new caches, so the node_modules cache still missed) |
+| package job, mac CI | 26 min 45 s on main (run 6), of which 22 min 52 s in Build, package and sign; 19 min 20 s in run 8 | 4 min 15 s with warm caches (run 12), 9 min 27 s with the new caches empty (run 11) |
 
 Before on the mac is CI run 8 (this PR's first push, which only added the measurement step) against main's build. The brief expected about 1.6 GB; that is the size of the unpacked dependency folders, the DMG was already compressed to 664 MiB. Ollama (523 MiB unpacked, kept whole) is the largest part that pruning does not touch.
 
@@ -71,20 +71,18 @@ The tesseract language data is not shipped. docs/plan.md (Session B) says the ap
 
 ## CI time
 
-Timestamps from the package job logs. Run 6 is main after Session F, run 8 this PR's measurement-only push, run 11 the push with pruning, the faster signing and the caches.
+Timestamps from the package job logs. Run 6 is main after Session F, run 8 this PR's measurement-only push, run 11 the push with pruning, the faster signing and the caches (the new caches still empty), run 12 the next push with both new caches hit.
 
-| Package job part | main, run 6 | run 8 | run 11 |
-| --- | --- | --- | --- |
-| build.sh | 3 min 18 s | 1 min 10 s (yarn cache warm) | 2 min 5 s, of which 30 s pruning (frontend and node_modules caches still empty) |
-| electron-builder dir | 55 s | 34 s | 28 s |
-| sign-adhoc.sh | 15 min 34 s, of which 14 min 6 s running file(1) once per file | 12 min 14 s | 44 s (60 Mach-O files instead of 100) |
-| DMG | 3 min 0 s | 2 min 52 s | 2 min 40 s |
-| Build, package and sign step | 22 min 52 s | 16 min 54 s | 6 min 3 s |
-| whole job | 26 min 45 s | 19 min 20 s | 9 min 27 s |
+| Package job part | main, run 6 | run 8 | run 11 | run 12 |
+| --- | --- | --- | --- | --- |
+| build.sh | 3 min 18 s | 1 min 10 s (yarn cache warm) | 2 min 5 s, of which 30 s pruning | 8 s (frontend and node_modules reused, pruning finds nothing) |
+| electron-builder dir | 55 s | 34 s | 28 s | 29 s |
+| sign-adhoc.sh | 15 min 34 s, of which 14 min 6 s running file(1) once per file | 12 min 14 s | 44 s (60 Mach-O files instead of 100) | 52 s |
+| DMG | 3 min 0 s | 2 min 52 s | 2 min 40 s | 1 min 51 s |
+| Build, package and sign step | 22 min 52 s | 16 min 54 s | 6 min 3 s | 2 min 40 s |
+| whole job | 26 min 45 s | 19 min 20 s | 9 min 27 s | 4 min 15 s |
 
-With both new caches hit, build.sh should skip the frontend build and the installs (2 s here in the container); the next run on this PR shows it and the PR description has the number.
-
-The yarn download cache (2 GB) is now restored only when one of the two new caches misses.
+The yarn download cache (2 GB, about 1 min to restore) is now restored only when one of the two new caches misses; run 12 skipped it.
 
 ## Measurements
 
