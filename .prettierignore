@@ -1,0 +1,10 @@
+upstream/
+node_modules/
+dist/
+out/
+release/
+coverage/
+package-lock.json
+# Docs are hand formatted; prettier would rewrap the plan's tables.
+*.md
+cloud-env/

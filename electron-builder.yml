@@ -1,0 +1,80 @@
+# Packaging for macOS arm64. Run only on a Mac: npm run package:mac (see docs/packaging.md).
+# The upstream tree must be prepared first by scripts/build.sh with PACKAGE_TARGET=mac-arm64,
+# which package:mac does.
+appId: io.askfiles.desktop
+productName: AskFiles
+copyright: Copyright AskFiles contributors
+
+directories:
+  output: release
+  buildResources: build
+
+# The root package has no native dependencies, and upstream native modules are N-API or loaded by
+# server and collector under ELECTRON_RUN_AS_NODE, so electron-builder must not rebuild anything.
+npmRebuild: false
+
+files:
+  - package.json
+  - dist/main/**
+  - upstream/server/**
+  - upstream/collector/**
+  - upstream/LICENSE
+  # Runtime data lives in ~/Library/Application Support/AskFiles, never in the bundle.
+  - '!upstream/server/storage/**'
+  - '!upstream/collector/storage/**'
+  - '!upstream/collector/hotdir/**'
+  - '!upstream/**/.env*'
+  - '!upstream/**/__tests__/**'
+  - '!upstream/**/{nodemon.json,eslint.config.mjs,jsconfig.json,yarn.lock}'
+  - '!upstream/server/swagger/**'
+  - '!**/*.map'
+  # onnxruntime-node ships binaries for every platform; only darwin arm64 is used.
+  - '!**/onnxruntime-node/bin/napi-v3/{linux,win32}/**'
+  - '!**/onnxruntime-node/bin/napi-v3/darwin/x64/**'
+
+# Files that native code or a child process must open from a real path, not from inside app.asar.
+# PROVISIONAL: derived from a scan of upstream/server and upstream/collector node_modules in Session B
+# (every *.node file and the libraries beside them). Session A questions Q1 (native modules) and Q2
+# (Prisma engine path) were not answered when this was written; confirm on the first Mac package.
+asarUnpack:
+  - '**/*.node'
+  - '**/*.dylib'
+  # Prisma: query engine library, schema engine binary used by prisma migrate deploy, the CLI that
+  # spawns it, and the schema and migrations it reads.
+  - 'upstream/server/node_modules/.prisma/**'
+  - 'upstream/server/node_modules/@prisma/**'
+  - 'upstream/server/node_modules/prisma/**'
+  - 'upstream/server/prisma/**'
+  # Native addons that load sibling libraries at runtime.
+  - '**/node_modules/@lancedb/**'
+  - '**/node_modules/@img/**'
+  - '**/node_modules/sharp/**'
+  - '**/node_modules/onnxruntime-node/**'
+  - '**/node_modules/canvas/**'
+  - '**/node_modules/@mintplex-labs/mdpdf*/**'
+  # Executables spawned as child processes.
+  - '**/node_modules/@vscode/ripgrep/bin/**'
+  # PLACEHOLDER: tesseract.js starts a worker thread from a file path and loads wasm; unverified
+  # whether that works from inside asar.
+  - '**/node_modules/tesseract.js/**'
+  - '**/node_modules/tesseract.js-core/**'
+
+# The Ollama macOS release, extracted into resources/ollama by hand (not committed; see docs/packaging.md).
+# Ends up at AskFiles.app/Contents/Resources/ollama/.
+extraResources:
+  - from: resources/ollama
+    to: ollama
+
+mac:
+  target:
+    - target: dmg
+      arch: arm64
+  category: public.app-category.productivity
+  # No Apple Developer certificate: electron-builder skips signing and scripts/sign-adhoc.sh signs
+  # the whole bundle afterwards.
+  identity: null
+  hardenedRuntime: false
+  gatekeeperAssess: false
+
+dmg:
+  artifactName: AskFiles-${version}-arm64.dmg
