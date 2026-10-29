@@ -4,6 +4,9 @@
 # prunes Prisma engines for the package target and checks that dev dependencies are gone.
 # Idempotent: every step can run again on an already built tree.
 #
+# electron-builder then copies upstream/server and upstream/collector as plain folders into
+# Contents/Resources (electron-builder.yml, extraResources), so the tree left here is what ships.
+#
 # PACKAGE_TARGET=mac-arm64  keep only darwin-arm64 Prisma engines (set by npm run package:mac).
 # Unset                     keep every engine, so the result still runs on the build machine.
 
@@ -17,6 +20,8 @@ PACKAGE_TARGET="${PACKAGE_TARGET:-}"
 # upstream/collector depends on puppeteer; the product does not scrape the web, so skip Chromium.
 export PUPPETEER_SKIP_DOWNLOAD=1
 export PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=1
+# Prisma CLI telemetry and update check (docs/upstream-analysis.md Q2).
+export CHECKPOINT_DISABLE=1
 
 # Same value as upstream's own production build (upstream/frontend/.env.example, docker/Dockerfile):
 # the frontend is served by the server, so it calls its API on the same origin.
@@ -63,6 +68,7 @@ done
 
 step "4/7 prisma generate"
 (cd "$UPSTREAM/server" && "$NODE_BIN" node_modules/prisma/build/index.js generate --schema prisma/schema.prisma)
+[ -f "$UPSTREAM/server/node_modules/.prisma/client/index.js" ] || fail "prisma generate did not produce node_modules/.prisma/client"
 
 step "5/7 prisma engines"
 if [ "$PACKAGE_TARGET" = "mac-arm64" ]; then
