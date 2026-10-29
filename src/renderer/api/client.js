@@ -169,6 +169,16 @@ export function createClient({ baseUrl, apiKey, fetchImpl = globalThis.fetch }) 
     },
 
     /**
+     * POST /api/v1/workspace/:slug/update  body { ...settings }
+     * Writes workspace columns such as similarityThreshold, topN, chatMode, openAiPrompt, openAiTemp,
+     * vectorSearchMode; upstream drops unknown keys. Returns the updated workspace.
+     */
+    async updateWorkspace(slug, settings) {
+      const data = await request('POST', `${slugPath(slug)}/update`, { json: settings });
+      return data.workspace;
+    },
+
+    /**
      * POST /api/v1/document/upload  multipart: file, addToWorkspaces (comma separated slugs), metadata (JSON)
      * Parses the file in the collector; embeds it too when addToWorkspaces is given.
      * Returns documents: [{ id, location, title, url, docSource, chunkSource, published, wordCount,
@@ -368,6 +378,13 @@ function toInt(v) {
   return Number.isFinite(n) ? n : null;
 }
 
+// Section documents of formats without pages (Word, Markdown) carry page 0, because LanceDB needs
+// the same column types on every row; 0 and below mean no page.
+function toPage(v) {
+  const n = toInt(v);
+  return n !== null && n > 0 ? n : null;
+}
+
 function fileNameOf(url) {
   if (!url) return null;
   const clean = String(url).split(/[?#]/)[0];
@@ -394,10 +411,10 @@ export function normalizeSource(raw = {}) {
     text,
     sectionTitle: firstDefined(meta.sectionTitle, meta.section_title, fields.sectionTitle, fields.section),
     sectionIndex: toInt(firstDefined(meta.sectionIndex, meta.section_index, fields.sectionIndex)),
-    page: toInt(
+    page: toPage(
       firstDefined(meta.pageStart, meta.page, meta.pageNumber, meta.loc?.pageNumber, fields.pageStart, fields.page),
     ),
-    pageEnd: toInt(firstDefined(meta.pageEnd, fields.pageEnd)),
+    pageEnd: toPage(firstDefined(meta.pageEnd, fields.pageEnd)),
     score: typeof meta.score === 'number' ? meta.score : null,
   };
 }

@@ -1,0 +1,17 @@
+{
+  "$comment": "Smoke runs with the small test models of the cloud environment. Answer quality is irrelevant here.",
+  "label": "smoke",
+  "chatModel": "qwen3:0.6b",
+  "embeddingModel": "all-minilm:latest",
+  "similarityThreshold": "low",
+  "topN": 4,
+  "chunkStrategy": "heading",
+  "chunkMax": 1500,
+  "chatMode": "query",
+  "systemPrompt": "Answer only from the provided context. Name the source document and section you used. If the context does not contain the answer, say that the documents do not answer the question and do not guess. Answer in the language of the question.",
+  "temperature": 0.1,
+  "rerank": false,
+  "reasoningEffort": "off",
+  "passes": 2,
+  "contextTokens": 4096
+}

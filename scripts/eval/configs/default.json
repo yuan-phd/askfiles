@@ -1,0 +1,16 @@
+{
+  "$comment": "Starting values from docs/plan.md phase 2 for the 16 GB tier. Copy and change one or two values per candidate.",
+  "label": "16gb-start",
+  "chatModel": "qwen3:8b",
+  "embeddingModel": "bge-m3:latest",
+  "similarityThreshold": "medium",
+  "topN": 4,
+  "chunkStrategy": "heading",
+  "chunkMax": 2000,
+  "chatMode": "query",
+  "systemPrompt": "Answer only from the provided context. Name the source document and section you used. If the context does not contain the answer, say that the documents do not answer the question and do not guess. Answer in the language of the question.",
+  "temperature": 0.1,
+  "rerank": false,
+  "reasoningEffort": "off",
+  "passes": 2
+}

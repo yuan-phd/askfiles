@@ -1,0 +1,164 @@
+{
+  "runId": "20261029T103644Z-eval-s-smoke",
+  "status": "completed",
+  "startedAt": "2026-10-29T10:36:44.904Z",
+  "endedAt": "2026-10-29T10:37:52.409Z",
+  "upstreamVersion": "v1.19.0",
+  "gitCommit": "613a2945d959634781d55280f34343a6de58e7c5",
+  "corpus": {
+    "label": "eval-s",
+    "path": "/home/user/askfiles/test/fixtures/eval-s/corpus"
+  },
+  "questions": {
+    "path": "/home/user/askfiles/test/fixtures/eval-s/questions.csv",
+    "count": 10
+  },
+  "config": {
+    "baseUrl": "",
+    "apiKey": "",
+    "storageDir": "",
+    "dataDir": "/home/user/askfiles/.eval-data",
+    "ollamaBin": "",
+    "contextTokens": 4096,
+    "workspace": "askfiles-eval",
+    "similarityThreshold": 0.25,
+    "topN": 4,
+    "chunkStrategy": "heading",
+    "chunkMax": 1500,
+    "chatMode": "query",
+    "systemPrompt": "Answer only from the provided context. Name the source document and section you used. If the context does not contain the answer, say that the documents do not answer the question and do not guess. Answer in the language of the question.",
+    "temperature": 0.1,
+    "rerank": false,
+    "reasoningEffort": "off",
+    "passes": 2,
+    "label": "smoke",
+    "chatModel": "qwen3:0.6b",
+    "embeddingModel": "all-minilm:latest"
+  },
+  "machine": {
+    "platform": "linux",
+    "arch": "x64",
+    "cpus": 4,
+    "cpuModel": "Intel(R) Xeon(R) Processor @ 2.80GHz",
+    "totalMemGb": 16,
+    "node": "v22.22.0"
+  },
+  "server": {
+    "mode": "managed",
+    "baseUrl": "http://127.0.0.1:46263",
+    "dataDir": "/home/user/askfiles/.eval-data",
+    "logs": "/home/user/askfiles/docs/eval-smoke/eval-s/logs"
+  },
+  "ollama": {
+    "url": "http://127.0.0.1:39523",
+    "version": "0.40.13",
+    "models": {
+      "qwen3:0.6b": {
+        "name": "qwen3:0.6b",
+        "digest": "7df6b6e09427a769808717c0a93cadc4ae99ed4eb8bf5ca557c90846becea435",
+        "size": 522653767,
+        "modified_at": "2026-10-29T06:42:20.438999747Z",
+        "details": {
+          "parent_model": "",
+          "format": "gguf",
+          "family": "qwen3",
+          "families": [
+            "qwen3"
+          ],
+          "parameter_size": "751.63M",
+          "quantization_level": "Q4_K_M",
+          "context_length": 40960,
+          "embedding_length": 1024,
+          "runner": "ggml"
+        }
+      },
+      "all-minilm:latest": {
+        "name": "all-minilm:latest",
+        "digest": "1b226e2802dbb772b5fc32a58f103ca1804ef7501331012de126ab22f67475ef",
+        "size": 45960996,
+        "modified_at": "2026-10-29T06:42:22.82699965Z",
+        "details": {
+          "parent_model": "",
+          "format": "gguf",
+          "family": "bert",
+          "families": [
+            "bert"
+          ],
+          "parameter_size": "23M",
+          "quantization_level": "F16",
+          "context_length": 512,
+          "embedding_length": 384,
+          "runner": "ggml"
+        }
+      }
+    }
+  },
+  "library": {
+    "workspace": "askfiles-eval-acfd61fa",
+    "slug": "askfiles-eval-acfd61fa",
+    "files": [
+      {
+        "file": "budget-2026.xlsx",
+        "outline": "sheets",
+        "pages": 2,
+        "sections": 2,
+        "chunks": 2,
+        "longestChunk": 304,
+        "splitSections": 0,
+        "ocr": false
+      },
+      {
+        "file": "it-handbook.pdf",
+        "outline": "bookmarks",
+        "pages": 2,
+        "sections": 4,
+        "chunks": 4,
+        "longestChunk": 242,
+        "splitSections": 0,
+        "ocr": false
+      },
+      {
+        "file": "leave-policy-v1.md",
+        "outline": "headings",
+        "pages": 0,
+        "sections": 4,
+        "chunks": 4,
+        "longestChunk": 172,
+        "splitSections": 0,
+        "ocr": false
+      },
+      {
+        "file": "leave-policy-v2.md",
+        "outline": "headings",
+        "pages": 0,
+        "sections": 4,
+        "chunks": 4,
+        "longestChunk": 172,
+        "splitSections": 0,
+        "ocr": false
+      },
+      {
+        "file": "报销制度.docx",
+        "outline": "headings",
+        "pages": 0,
+        "sections": 4,
+        "chunks": 4,
+        "longestChunk": 78,
+        "splitSections": 0,
+        "ocr": false
+      }
+    ],
+    "skipped": 0,
+    "chunks": 18,
+    "added": 0,
+    "reused": 18,
+    "removed": 0,
+    "splitMs": 2009,
+    "embedMs": 0
+  },
+  "warmup": {
+    "totalMs": 12047,
+    "error": null
+  },
+  "rows": 20
+}

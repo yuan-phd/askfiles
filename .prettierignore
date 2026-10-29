@@ -8,3 +8,5 @@ package-lock.json
 # Docs are hand formatted; prettier would rewrap the plan's tables.
 *.md
 cloud-env/
+# Generated smoke run output, committed as written by the harness.
+docs/eval-smoke/
