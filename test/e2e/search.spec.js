@@ -109,14 +109,9 @@ test.describe('against a real upstream server', () => {
 
 test.describe('with the chat route mocked', () => {
   test('streams the answer and merges hits from the same section into one card', async ({ page }) => {
+    // Rank order: page 5 of the leave section, then the expense section, then page 4 of the leave
+    // section. Cards follow rank; passages inside the leave card follow document position.
     const sources = [
-      chunk({
-        id: 'a',
-        text: 'Every employee receives 27 days of paid annual leave per year.',
-        sectionTitle: '1 Annual leave',
-        sectionIndex: 1,
-        page: 4,
-      }),
       chunk({
         id: 'b',
         text: 'Unused leave can be carried over until the end of March.',
@@ -130,6 +125,13 @@ test.describe('with the chat route mocked', () => {
         sectionTitle: '2 Expense claims',
         sectionIndex: 2,
         page: 6,
+      }),
+      chunk({
+        id: 'a',
+        text: 'Every employee receives 27 days of paid annual leave per year.',
+        sectionTitle: '1 Annual leave',
+        sectionIndex: 1,
+        page: 4,
       }),
     ];
     const { requests } = await mockLibrary(page, {
@@ -151,7 +153,10 @@ test.describe('with the chat route mocked', () => {
     await expect(merged.getByTestId('source-file')).toHaveText('handbook.pdf');
     await expect(merged.getByTestId('source-section')).toHaveText('1 Annual leave');
     await expect(merged.getByTestId('source-page')).toHaveText('Pages 4 to 5');
-    await expect(merged.getByTestId('source-passage')).toHaveCount(2);
+    await expect(merged.getByTestId('source-passage')).toHaveText([
+      'Every employee receives 27 days of paid annual leave per year.',
+      'Unused leave can be carried over until the end of March.',
+    ]);
     await expect(merged.getByTestId('source-count')).toHaveText('2 passages from this section');
     await expect(cards.nth(1).getByTestId('source-page')).toHaveText('Page 6');
     await expect(cards.nth(1).getByTestId('source-count')).toBeHidden();

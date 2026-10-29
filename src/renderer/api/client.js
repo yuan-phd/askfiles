@@ -406,8 +406,10 @@ export function normalizeSource(raw = {}) {
  * Groups normalized sources so sub-chunks of one section become one entry. Two hits belong to
  * the same section when they come from the same document and share section title and index.
  * Hits without any section information are never merged with each other, only de-duplicated.
- * Returns [{ key, title, url, sectionTitle, sectionIndex, pages: number[], passages: string[], score }]
- * in order of first appearance.
+ * Groups keep search-rank order (first appearance). Passages inside a group follow document
+ * position: section index, then page; hits with the same position keep their rank order, since
+ * upstream returns no finer chunk position.
+ * Returns [{ key, title, url, sectionTitle, sectionIndex, pages: number[], passages: string[], score }].
  */
 export function mergeBySection(sources) {
   const groups = new Map();
@@ -427,6 +429,7 @@ export function mergeBySection(sources) {
         sectionIndex: s.sectionIndex,
         pages: [],
         passages: [],
+        hits: [],
         score: s.score,
       };
       groups.set(key, g);
@@ -435,11 +438,19 @@ export function mergeBySection(sources) {
       const last = s.pageEnd != null && s.pageEnd >= s.page ? s.pageEnd : s.page;
       for (let p = s.page; p <= last; p++) if (!g.pages.includes(p)) g.pages.push(p);
     }
-    if (s.text && !g.passages.includes(s.text)) g.passages.push(s.text);
+    if (s.text && !g.hits.some((h) => h.text === s.text)) {
+      g.hits.push({ text: s.text, sectionIndex: s.sectionIndex, page: s.page, rank: g.hits.length });
+    }
     if (s.score !== null && (g.score === null || s.score > g.score)) g.score = s.score;
   }
-  for (const g of groups.values()) g.pages.sort((a, b) => a - b);
-  return [...groups.values()];
+  const position = (v) => (v == null ? Infinity : v);
+  return [...groups.values()].map(({ hits, ...g }) => {
+    hits.sort(
+      (a, b) =>
+        position(a.sectionIndex) - position(b.sectionIndex) || position(a.page) - position(b.page) || a.rank - b.rank,
+    );
+    return { ...g, pages: g.pages.sort((a, b) => a - b), passages: hits.map((h) => h.text) };
+  });
 }
 
 function normalizeText(s) {

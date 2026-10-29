@@ -141,6 +141,20 @@ describe('mergeBySection', () => {
     });
   });
 
+  it('orders passages by document position inside a card and cards by rank', () => {
+    const groups = mergeBySection([
+      { ...base, id: '1', text: 'leave p5', sectionTitle: 'Leave', sectionIndex: 1, page: 5, score: 0.9 },
+      { ...base, id: '2', text: 'pay p8', sectionTitle: 'Pay', sectionIndex: 2, page: 8, score: 0.8 },
+      { ...base, id: '3', text: 'leave p4 rank 1', sectionTitle: 'Leave', sectionIndex: 1, page: 4, score: 0.7 },
+      { ...base, id: '4', text: 'leave p4 rank 2', sectionTitle: 'Leave', sectionIndex: 1, page: 4, score: 0.6 },
+      { ...base, id: '5', text: 'leave no page', sectionTitle: 'Leave', sectionIndex: 1, page: null, score: 0.5 },
+    ]);
+    expect(groups.map((g) => g.sectionTitle)).toEqual(['Leave', 'Pay']);
+    // Same page keeps rank order (upstream has no finer position); no page sorts last.
+    expect(groups[0].passages).toEqual(['leave p4 rank 1', 'leave p4 rank 2', 'leave p5', 'leave no page']);
+    expect(groups[0]).not.toHaveProperty('hits');
+  });
+
   it('expands page ranges of merged sub-chunks', () => {
     const groups = mergeBySection([
       { ...base, id: '1', text: 'a', sectionTitle: 'S', sectionIndex: 1, page: 2, pageEnd: 3 },
