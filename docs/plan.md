@@ -182,31 +182,31 @@ Outcome: the user can read and navigate their documents without asking a questio
 
 The promotional credits apply only to cloud sessions and expire on 2026-11-04. Sessions A to D have no dependency on each other and can run in parallel this week. Each brief below is written to paste as the session prompt. Before the first session: create the askfiles repository on GitHub (public, so CI is free), add anything-llm as a git subtree pinned to the chosen tag (scripts/vendor-upstream.sh; a submodule cannot be fetched in cloud sessions, which clone only the repositories attached to the session), and commit an empty README. Every session works on its own branch and opens a PR.
 
-**Session A: upstream analysis (task 1.1)**
+**Session A: upstream analysis (task 1.1)** Merged: PR 1, 2026-10-29.
 
 Read the AnythingLLM submodule at the pinned tag and write docs/upstream-analysis.md. Answer each question in the Open questions section of this plan with file paths and line references. Specifically: the server boot sequence and every environment variable it reads; which host and port the server and collector bind to and how to force 127.0.0.1; every native module in server and collector and whether it is N-API; whether the collector pulls puppeteer or other packages over 50 MB; how onboarding completion is stored so a first-run wizard can mark it done; whether PDF parsing keeps page numbers in chunk metadata; how the server's TextSplitter splits text at embed time, whether it is heading-aware, whether a server patch or pre-splitting in the shell is the better override, and whether the header it prepends to every chunk can carry the section title and index; which parsers expose PDF bookmarks, Word heading styles and Markdown headings; whether chunk metadata can carry a section title and index through to the chat sources array; which Ollama models and tags exist for a multilingual embedder; the exact API endpoints and payloads for workspace create, document upload, embed, chat with sources, and thread listing. Do not change upstream code. Success: a report with no unanswered items, or a named experiment for each.
 
-**Session B: skeleton and build script (task 1.2)**
+**Session B: skeleton and build script (task 1.2)** Merged: PR 2, 2026-10-29.
 
 Create the Electron app skeleton with electron-builder targeting darwin arm64, productName AskFiles and appId io.askfiles.desktop, and scripts/build.sh that builds the upstream frontend into server/public, installs server and collector production dependencies, runs prisma generate, removes non darwin-arm64 Prisma engines, prunes dev dependencies, and ships the tesseract language files (eng and chi\_sim, 4.0.0\_best\_int, from the npm packages @tesseract.js-data/eng and @tesseract.js-data/chi\_sim) in the app so OCR never downloads them; the process manager copies them to STORAGE\_DIR/models/tesseract on first run. Session B only applies patches from patches/; it does not write them. Everything up to the packaging step must run on Linux in this container; the packaging step is documented but not run. Add a Makefile with build, test and clean. Write unit tests for the build helpers. Success: make build completes in the container and produces a server/public directory and pruned node\_modules.
 
-**Session C: process manager (task 1.3)**
+**Session C: process manager (task 1.3)** Merged: PR 3, 2026-10-29.
 
 Implement src/main/process-manager: free port allocation, first-run .env generation with random JWT\_SECRET, SIG\_KEY and SIG\_SALT, ordered startup of Ollama, collector and server with health checks and timeouts, prisma migrate deploy before the server starts, graceful shutdown with SIGTERM then SIGKILL after 5 seconds, crash restart with exponential backoff capped at 5 attempts, and logging to a configurable directory. Session C owns every upstream patch found by Session A (docs/upstream-analysis.md, Risks found), one file each in patches/: bind host 127.0.0.1; database path from DATABASE\_URL; upload folder (collector hotdir and collector tmp) from an environment variable; server .env path from an environment variable; cross-origin requests limited to the shell's own origin; the two outbound requests at server start (models.dev and raw.githubusercontent.com) disabled, because no request may leave the machine; the thinking switch (reasoningEffort) passed through the /v1 chat routes, with DEFAULT\_REASONING\_EFFORT as the default. The manager must be platform agnostic: binary paths and signals are injected. Write unit tests with fake processes. Write an integration test that downloads the Linux Ollama binary, starts the three processes from the built upstream code, and asserts 200 from /api/ping. Success: both test suites green in the container.
 
-**Session D: search page and API client (tasks 3.1 and 3.3)**
+**Session D: search page and API client (tasks 3.1 and 3.3)** Merged: PR 4, 2026-10-29.
 
 Build src/renderer/search as plain HTML, CSS and JS and src/renderer/api as a small client for the AnythingLLM REST API (endpoints from docs/upstream-analysis.md if present, otherwise from upstream server routes). The page has a query box, a streaming answer area, source cards showing passage, file name, section title and page when present, with hits from the same section merged, a section-listing fallback state when the answer indicates nothing was found, a recent questions list, and an index status bar. The answer area strips `<think>` blocks, including a block still open while streaming, regardless of preset. Write Playwright tests in headless Chromium against a seeded server started in the container. Design for light and dark mode. Success: tests green; screenshots attached to the PR.
 
-**Session E: wizard and presets (tasks 1.4, 1.5, 1.6), after Session A**
+**Session E: wizard and presets (tasks 1.4, 1.5, 1.6), after Session A** Merged: PR 6, 2026-10-29.
 
 Implement the first-run wizard logic: RAM detection, tier mapping from config/presets.json, ollama pull with progress events, .env writing from the preset, marking onboarding complete using the method found in Session A. Presets turn thinking off by setting DEFAULT\_REASONING\_EFFORT=off, which the /v1 chat routes honour through Session C patch 7. Implement the model manager page. Unit tests for tier mapping and .env output; integration test against Linux Ollama. Success: tests green; the wizard runs headless in the container with a fake renderer.
 
-**Session F: CI workflow and folder watcher (tasks 1.8 and 3.2), after Sessions B and C**
+**Session F: CI workflow and folder watcher (tasks 1.8 and 3.2), after Sessions B and C** Merged: PR 5, 2026-10-29.
 
 Write .github/workflows/mac.yml for macos-14: build, package, ad-hoc sign, upload the DMG, then smoke test by launching the app, polling /api/ping, uploading a sample PDF and making one chat call. Implement src/main/watcher with chokidar or fs.watch: debounce, upload, re-embed, remove, status events. Unit tests for the watcher. Success: workflow file lints; watcher tests green.
 
-**Session G: test harness (task 2.3), after Session A**
+**Session G: test harness (task 2.3), after Session A** Merged: PR 7, 2026-10-29.
 
 Write scripts/eval: given a corpus folder and a questions CSV with an expected\_section column, set up the library, split by section, upload and embed, run each question through the chat API, and write answers, sources (file, section, page) and timings to results.csv. Support a config file for threshold, snippets, chunk strategy, chunk maximum and model so runs can be compared. Categories include section\_listing. Success: runs end to end in the container with a small fixture for corpus S and one for corpus L.
 
@@ -252,12 +252,12 @@ Each is a fact to be read from upstream code, not a judgment call. Session A fil
 
 Estimate: 14 to 25 working days of iteration for phases 1 to 4, about five to seven calendar weeks part time. Roughly a third is your own time, concentrated in phase 2 and the visual passes. Phase 5 is not included.
 
-| Phase | Working days | Your time | Cloud share |
-| --- | --- | --- | --- |
-| 1 Shell | 6 to 11 | Package tests and copy tests | Analysis, skeleton, process manager, wizard logic, presets, model manager, CI workflow |
-| 2 Presets and testing | 2 to 4 | Corpora, questions, scoring, user test | Harness and preset generator |
-| 3 Search interface | 3 to 6 | Visual pass | API client, watcher, search page, onboarding page |
-| 4 Browse view | 3 to 5 | Visual pass | Outline extraction, document and library pages, heading index, keyword search |
+| Phase | Working days | Your time | Cloud share | Measured so far |
+| --- | --- | --- | --- | --- |
+| 1 Shell | 6 to 11 | Package tests and copy tests | Analysis, skeleton, process manager, wizard logic, presets, model manager, CI workflow | Sessions A to G merged on 2026-10-29 (PRs 1 to 7). On the macos-14 CI runner (Session F PR): build 65 s, package job 22 min, smoke test 3 min 45 s, one chat answer 38 s. Session I: DMG DMG_BEFORE before, DMG_AFTER after; package job PKG_BEFORE before, PKG_AFTER after (docs/bundle-report.md) |
+| 2 Presets and testing | 2 to 4 | Corpora, questions, scoring, user test | Harness and preset generator | Evaluation harness merged (Session G, PR 7) |
+| 3 Search interface | 3 to 6 | Visual pass | API client, watcher, search page, onboarding page | Search page, API client and folder watcher merged (Sessions D and F, PRs 4 and 5) |
+| 4 Browse view | 3 to 5 | Visual pass | Outline extraction, document and library pages, heading index, keyword search | No merged work yet |
 
 By code volume, 60 to 70 percent is cloud work. By calendar time, closer to half, because local packaging and debugging take longer per line.
 
