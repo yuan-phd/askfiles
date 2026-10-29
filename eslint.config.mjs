@@ -10,6 +10,22 @@ const nodeGlobals = {
   clearTimeout: 'readonly',
 };
 
+// Web platform names used by the renderer pages and by the code Playwright runs inside the page.
+const browserGlobals = {
+  window: 'readonly',
+  document: 'readonly',
+  fetch: 'readonly',
+  URLSearchParams: 'readonly',
+  FormData: 'readonly',
+  Blob: 'readonly',
+  Response: 'readonly',
+  ReadableStream: 'readonly',
+  TextDecoder: 'readonly',
+  TextEncoder: 'readonly',
+  AbortController: 'readonly',
+  CustomEvent: 'readonly',
+};
+
 export default tseslint.config(
   { ignores: ['upstream/**', 'dist/**', 'out/**', 'release/**', 'node_modules/**', 'coverage/**'] },
   js.configs.recommended,
@@ -18,7 +34,11 @@ export default tseslint.config(
     languageOptions: { ecmaVersion: 2023, sourceType: 'module', globals: nodeGlobals },
   },
   {
-    files: ['**/*.ts'],
+    files: ['src/renderer/**/*.js', 'test/e2e/**/*.{js,mjs,mts}'],
+    languageOptions: { globals: { ...nodeGlobals, ...browserGlobals } },
+  },
+  {
+    files: ['**/*.ts', '**/*.mts'],
     extends: [tseslint.configs.recommended],
   },
 );
