@@ -7,7 +7,7 @@ src/main/process-manager starts, watches and stops the three local processes: Ol
 start() runs these steps in order and stops at the first failure:
 
 1. Allocate three free ports on the host (default 127.0.0.1), one each for Ollama, collector and server. Ports are new at every start.
-2. Write <dataDir>/server/.env if it does not exist: fresh JWT_SECRET, SIG_KEY and SIG_SALT (32 random bytes, base64), the ports of this first run, DISABLE_TELEMETRY. An existing file is never touched.
+2. Write <dataDir>/server/.env if it does not exist: fresh JWT_SECRET, SIG_KEY and SIG_SALT (32 random bytes, base64), the ports of this first run, DISABLE_TELEMETRY. The manager never touches an existing file; the first-run wizard and the model manager (Session E) add the preset values to it, see docs/presets.md.
 3. Ollama: spawn, poll GET /api/tags until 200.
 4. Collector: spawn, poll GET /accepts until 200. The collector has no health route; /accepts is a plain GET route that answers once the app is mounted.
 5. Migrate: run the migrate command (prisma migrate deploy) to completion; exit code 0 required.
@@ -68,7 +68,7 @@ Variables read by the patches in patches/ (all set for collector, migrate and se
 | ANYTHING_LLM_ENV_PATH | <dataDir>/server/.env | 004: the server loads this file at start and dumpENV rewrites it on a settings change |
 | ANYTHING_LLM_ALLOWED_ORIGINS | allowedOrigins joined with commas | 005: browser origins allowed besides the server's own; any other Origin header gets 403 |
 | ANYTHING_LLM_ALLOW_REMOTE_MODEL_DATA | false, always | 006: the models.dev and raw.githubusercontent.com boot fetches run only when this is true |
-| DEFAULT_REASONING_EFFORT | not set by the manager; the preset writes off into .env (Session E) | 007: thinking switch for the /api/v1 chat routes when the request carries no reasoningEffort |
+| DEFAULT_REASONING_EFFORT | not set by the manager; the preset writes off into .env, and the caller must also pass it in the server spec env (presetSpawnEnv) because upstream dumpENV drops it (docs/presets.md) | 007: thinking switch for the /api/v1 chat routes when the request carries no reasoningEffort |
 
 The manager creates storageDir, the hotdir and the collector tmp folder before the first spawn, because multer and the collector expect them to exist.
 

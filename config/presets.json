@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "comment": "One preset per RAM tier. Every value below is a starting value from docs/plan.md phase 2 and docs/upstream-analysis.md Q7 and Q10; phase 2 (task 2.6) replaces each one with a measured value. Tiers are matched on total RAM in GiB: the highest tier whose minRamGb is not above the machine's RAM.",
+  "tiers": [
+    {
+      "id": "8gb",
+      "label": "8 GB",
+      "minRamGb": 8,
+      "comment": "Starting values, not measured. Chat model: 4B class Q4, smallest qwen3 tag of that class (owner choice 2026-10-29). Embedder bge-m3 for all tiers (Q10). Phase 2 replaces every value.",
+      "chatModel": "qwen3:4b",
+      "embeddingModel": "bge-m3:567m",
+      "contextLength": 8192,
+      "chunkMaxChars": 2000,
+      "maxSnippets": 4,
+      "similarityThreshold": 0.5,
+      "chatMode": "query",
+      "temperature": 0.1,
+      "reasoningEffort": "off",
+      "ocrLanguages": "eng,chi_sim",
+      "systemPrompt": "Answer only from the provided context. Cite the source document for what you say. If the context does not contain the answer, say that you do not know."
+    },
+    {
+      "id": "16gb",
+      "label": "16 GB",
+      "minRamGb": 16,
+      "comment": "Starting values, not measured. Chat model: 8B class Q4 (qwen3:8b, owner choice 2026-10-29). Embedder bge-m3 for all tiers (Q10). Phase 2 replaces every value.",
+      "chatModel": "qwen3:8b",
+      "embeddingModel": "bge-m3:567m",
+      "contextLength": 8192,
+      "chunkMaxChars": 2000,
+      "maxSnippets": 4,
+      "similarityThreshold": 0.5,
+      "chatMode": "query",
+      "temperature": 0.1,
+      "reasoningEffort": "off",
+      "ocrLanguages": "eng,chi_sim",
+      "systemPrompt": "Answer only from the provided context. Cite the source document for what you say. If the context does not contain the answer, say that you do not know."
+    },
+    {
+      "id": "32gb",
+      "label": "32 GB and above",
+      "minRamGb": 32,
+      "comment": "Starting values, not measured. Chat model: 14B class Q4 (qwen3:14b, owner choice 2026-10-29). Embedder bge-m3 for all tiers (Q10). Phase 2 replaces every value.",
+      "chatModel": "qwen3:14b",
+      "embeddingModel": "bge-m3:567m",
+      "contextLength": 8192,
+      "chunkMaxChars": 2000,
+      "maxSnippets": 4,
+      "similarityThreshold": 0.5,
+      "chatMode": "query",
+      "temperature": 0.1,
+      "reasoningEffort": "off",
+      "ocrLanguages": "eng,chi_sim",
+      "systemPrompt": "Answer only from the provided context. Cite the source document for what you say. If the context does not contain the answer, say that you do not know."
+    }
+  ]
+}
