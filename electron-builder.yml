@@ -37,10 +37,16 @@ extraResources:
       - '!__tests__/**'
       - '!swagger/**'
       - '!{nodemon.json,eslint.config.mjs,jsconfig.json,yarn.lock}'
-      - '!node_modules/.install_pkgs.sha256'
+  # electron-builder drops a node_modules folder sitting directly under `from`, whatever the
+  # filter says (app-builder-lib util/filter.js, createFilter), so each one is its own entry.
+  - from: upstream/server/node_modules
+    to: server/node_modules
+    filter: &node-modules-filter
+      - '**/*'
+      - '!.install_pkgs.sha256'
       # onnxruntime-node carries binaries for six platforms; only darwin arm64 is used (about 70 MB saved).
-      - '!node_modules/onnxruntime-node/bin/napi-v3/{linux,win32}/**'
-      - '!node_modules/onnxruntime-node/bin/napi-v3/darwin/x64/**'
+      - '!onnxruntime-node/bin/napi-v3/{linux,win32}/**'
+      - '!onnxruntime-node/bin/napi-v3/darwin/x64/**'
   - from: upstream/collector
     to: collector
     filter:
@@ -50,9 +56,9 @@ extraResources:
       - '!.env*'
       - '!__tests__/**'
       - '!{nodemon.json,eslint.config.mjs,yarn.lock}'
-      - '!node_modules/.install_pkgs.sha256'
-      - '!node_modules/onnxruntime-node/bin/napi-v3/{linux,win32}/**'
-      - '!node_modules/onnxruntime-node/bin/napi-v3/darwin/x64/**'
+  - from: upstream/collector/node_modules
+    to: collector/node_modules
+    filter: *node-modules-filter
   # The default logo images are the only tracked files in server/storage worth shipping; Session C
   # can seed the data directory from them. Everything else in storage/ is local runtime data.
   - from: upstream/server/storage/assets

@@ -56,6 +56,7 @@ EOF
 chmod 600 "$DATA/server/.env"
 rm -f "$DATA/ports.json"
 
+LOG_START=$(wc -l <"$LOGS/main.log" 2>/dev/null || echo 0)
 log "launching $APP"
 open "$APP"
 
@@ -63,6 +64,10 @@ log "waiting up to ${START_TIMEOUT}s for $DATA/ports.json"
 t0=$(date +%s)
 until [ -s "$DATA/ports.json" ]; do
   [ $(($(date +%s) - t0)) -lt "$START_TIMEOUT" ] || fail "no ports.json after ${START_TIMEOUT}s"
+  # Only lines written by this launch count; an earlier run may have left a failure in the log.
+  failed=$(tail -n +$((LOG_START + 1)) "$LOGS/main.log" 2>/dev/null | grep -E '\[main\] backend (failed|not started)' || true)
+  [ -z "$failed" ] || fail "the backend did not start: $failed"
+
   # open returns before the process exists; give it a moment before treating absence as an exit.
   if [ $(($(date +%s) - t0)) -gt 15 ] && ! pgrep -f "$APP/Contents/MacOS/AskFiles" >/dev/null; then
     fail "the app exited before the backend was up"
