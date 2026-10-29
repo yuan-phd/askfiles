@@ -6,28 +6,37 @@
 // calls because the developer API cannot create its own first key.
 
 /** Name of the one hidden workspace that holds the library. The user never sees it. */
-export const LIBRARY_NAME = "askfiles-library";
+export const LIBRARY_NAME = 'askfiles-library';
 
-/** Partitions the page's chats from any other API caller, so recent questions are ours only. */
-export const SEARCH_SESSION_ID = "askfiles-search";
+/** Prefix of the session id the page sends with every question. */
+export const SEARCH_SESSION_PREFIX = 'askfiles-search';
+
+/**
+ * A fresh session id per question. Upstream backfills context from earlier answers in the same
+ * session, so a shared id would let query mode answer from a previous question's sources
+ * (docs/upstream-analysis.md Q9).
+ */
+export function newSessionId() {
+  return `${SEARCH_SESSION_PREFIX}-${globalThis.crypto.randomUUID()}`;
+}
 
 /**
  * Text the library workspace answers with when query mode finds nothing. Set on the workspace so
  * the page can detect a refusal without guessing at model wording.
  */
-export const REFUSAL_TEXT = "Nothing in your documents answers this question.";
+export const REFUSAL_TEXT = 'Nothing in your documents answers this question.';
 
 // Upstream's built-in refusal, used when a workspace has no queryRefusalResponse
 // (upstream/server/utils/chats/apiChatHandler.js).
-const UPSTREAM_REFUSAL_TEXT = "There is no relevant information in this workspace to answer your query.";
+const UPSTREAM_REFUSAL_TEXT = 'There is no relevant information in this workspace to answer your query.';
 
 // Appended by upstream to pinned and attached document passages (apiChatHandler.js).
-const CONTINUED_SUFFIX = "...continued on in source document...";
+const CONTINUED_SUFFIX = '...continued on in source document...';
 
 export class ApiError extends Error {
-  constructor(message, { status = 0, route = "", body = null } = {}) {
+  constructor(message, { status = 0, route = '', body = null } = {}) {
     super(message);
-    this.name = "ApiError";
+    this.name = 'ApiError';
     this.status = status;
     this.route = route;
     this.body = body;
@@ -35,7 +44,7 @@ export class ApiError extends Error {
 }
 
 function trimSlash(url) {
-  return String(url || "").replace(/\/+$/, "");
+  return String(url || '').replace(/\/+$/, '');
 }
 
 async function readBody(res) {
@@ -53,16 +62,20 @@ async function readBody(res) {
  * Returns the key secret (string). Response shape: { apiKey: { id, name, secret, ... }, error }.
  * Works only while the server runs single-user without AUTH_TOKEN, which is how AskFiles runs it.
  */
-export async function generateApiKey({ baseUrl, name = "askfiles", fetchImpl = globalThis.fetch }) {
-  const route = "/api/system/generate-api-key";
+export async function generateApiKey({ baseUrl, name = 'askfiles', fetchImpl = globalThis.fetch }) {
+  const route = '/api/system/generate-api-key';
   const res = await fetchImpl(`${trimSlash(baseUrl)}${route}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
   });
   const body = await readBody(res);
   if (!res.ok || !body?.apiKey?.secret) {
-    throw new ApiError(body?.error || `Could not create an API key (${res.status})`, { status: res.status, route, body });
+    throw new ApiError(body?.error || `Could not create an API key (${res.status})`, {
+      status: res.status,
+      route,
+      body,
+    });
   }
   return body.apiKey.secret;
 }
@@ -78,7 +91,7 @@ export function createClient({ baseUrl, apiKey, fetchImpl = globalThis.fetch }) 
     const headers = { Authorization: `Bearer ${apiKey}` };
     let body;
     if (json !== undefined) {
-      headers["Content-Type"] = "application/json";
+      headers['Content-Type'] = 'application/json';
       body = JSON.stringify(json);
     } else if (form) {
       body = form;
@@ -109,7 +122,7 @@ export function createClient({ baseUrl, apiKey, fetchImpl = globalThis.fetch }) 
     /** GET /api/v1/auth. Returns true when the key is valid. Response: { authenticated: true }. */
     async checkAuth() {
       try {
-        const data = await request("GET", "/v1/auth");
+        const data = await request('GET', '/v1/auth');
         return data?.authenticated === true;
       } catch (e) {
         if (e.status === 403 || e.status === 401) return false;
@@ -123,13 +136,13 @@ export function createClient({ baseUrl, apiKey, fetchImpl = globalThis.fetch }) 
      * Returns the workspace: { id, name, slug, chatMode, topN, similarityThreshold, ... }.
      */
     async createWorkspace(name, settings = {}) {
-      const data = await request("POST", "/v1/workspace/new", { json: { name, ...settings } });
+      const data = await request('POST', '/v1/workspace/new', { json: { name, ...settings } });
       return data.workspace;
     },
 
     /** GET /api/v1/workspaces. Returns an array of workspaces, each with threads: []. */
     async listWorkspaces() {
-      const data = await request("GET", "/v1/workspaces");
+      const data = await request('GET', '/v1/workspaces');
       return data.workspaces || [];
     },
 
@@ -140,7 +153,7 @@ export function createClient({ baseUrl, apiKey, fetchImpl = globalThis.fetch }) 
      * and threads: [{ user_id, slug }].
      */
     async getWorkspace(slug) {
-      const data = await request("GET", slugPath(slug));
+      const data = await request('GET', slugPath(slug));
       const ws = data?.workspace;
       return (Array.isArray(ws) ? ws[0] : ws) || null;
     },
@@ -152,7 +165,7 @@ export function createClient({ baseUrl, apiKey, fetchImpl = globalThis.fetch }) 
     async ensureLibrary({ name = LIBRARY_NAME, settings = {} } = {}) {
       const existing = (await this.listWorkspaces()).find((w) => w.name === name);
       if (existing) return existing;
-      return this.createWorkspace(name, { chatMode: "query", queryRefusalResponse: REFUSAL_TEXT, ...settings });
+      return this.createWorkspace(name, { chatMode: 'query', queryRefusalResponse: REFUSAL_TEXT, ...settings });
     },
 
     /**
@@ -164,12 +177,13 @@ export function createClient({ baseUrl, apiKey, fetchImpl = globalThis.fetch }) 
      */
     async uploadDocument(file, { filename, addToWorkspaces = [], metadata } = {}) {
       const form = new FormData();
-      form.append("file", file, filename || file.name || "document");
-      const slugs = Array.isArray(addToWorkspaces) ? addToWorkspaces.join(",") : addToWorkspaces;
-      if (slugs) form.append("addToWorkspaces", slugs);
-      if (metadata) form.append("metadata", JSON.stringify(metadata));
-      const data = await request("POST", "/v1/document/upload", { form });
-      if (data?.success === false) throw new ApiError(data.error || "Upload failed", { route: "/v1/document/upload", body: data });
+      form.append('file', file, filename || file.name || 'document');
+      const slugs = Array.isArray(addToWorkspaces) ? addToWorkspaces.join(',') : addToWorkspaces;
+      if (slugs) form.append('addToWorkspaces', slugs);
+      if (metadata) form.append('metadata', JSON.stringify(metadata));
+      const data = await request('POST', '/v1/document/upload', { form });
+      if (data?.success === false)
+        throw new ApiError(data.error || 'Upload failed', { route: '/v1/document/upload', body: data });
       return data.documents || [];
     },
 
@@ -178,7 +192,7 @@ export function createClient({ baseUrl, apiKey, fetchImpl = globalThis.fetch }) 
      * Embeds adds into the workspace and drops deletes from it. Returns the updated workspace.
      */
     async embedDocuments(slug, { adds = [], deletes = [] } = {}) {
-      const data = await request("POST", `${slugPath(slug)}/update-embeddings`, { json: { adds, deletes } });
+      const data = await request('POST', `${slugPath(slug)}/update-embeddings`, { json: { adds, deletes } });
       return data.workspace;
     },
 
@@ -189,19 +203,23 @@ export function createClient({ baseUrl, apiKey, fetchImpl = globalThis.fetch }) 
      */
     async removeDocuments(slug, locations, { purge = true } = {}) {
       await this.embedDocuments(slug, { deletes: locations });
-      if (purge) await request("DELETE", "/v1/system/remove-documents", { json: { names: locations } });
+      if (purge) await request('DELETE', '/v1/system/remove-documents', { json: { names: locations } });
     },
 
     /**
-     * POST /api/v1/workspace/:slug/chat  body { message, mode, sessionId }
+     * POST /api/v1/workspace/:slug/chat  body { message, mode, sessionId, reasoningEffort? }
+     * reasoningEffort is read by patches/007; without it the server uses DEFAULT_REASONING_EFFORT.
      * Returns { id, type: "textResponse" | "abort", textResponse, sources: [...], close, error, metrics }.
      */
-    async chat(slug, message, { mode = "query", sessionId = SEARCH_SESSION_ID, signal } = {}) {
-      return request("POST", `${slugPath(slug)}/chat`, { json: { message, mode, sessionId }, signal });
+    async chat(slug, message, { mode = 'query', sessionId = newSessionId(), reasoningEffort, signal } = {}) {
+      return request('POST', `${slugPath(slug)}/chat`, {
+        json: chatBody(message, mode, sessionId, reasoningEffort),
+        signal,
+      });
     },
 
     /**
-     * POST /api/v1/workspace/:slug/stream-chat  body { message, mode, sessionId }
+     * POST /api/v1/workspace/:slug/stream-chat  body { message, mode, sessionId, reasoningEffort? }
      * Server-sent events over the POST response, one JSON object per data: line:
      *   { uuid, type: "textResponseChunk", textResponse, sources: [], close, error }
      *   { uuid, type: "finalizeResponseStream", close: true, chatId, metrics, sources }
@@ -210,18 +228,18 @@ export function createClient({ baseUrl, apiKey, fetchImpl = globalThis.fetch }) 
      * Sources usually arrive only on the finalizeResponseStream event.
      * Yields each event object.
      */
-    async *streamChat(slug, message, { mode = "query", sessionId = SEARCH_SESSION_ID, signal } = {}) {
-      const res = await request("POST", `${slugPath(slug)}/stream-chat`, {
-        json: { message, mode, sessionId },
+    async *streamChat(slug, message, { mode = 'query', sessionId = newSessionId(), reasoningEffort, signal } = {}) {
+      const res = await request('POST', `${slugPath(slug)}/stream-chat`, {
+        json: chatBody(message, mode, sessionId, reasoningEffort),
         signal,
         raw: true,
       });
-      const type = res.headers.get("content-type") || "";
-      if (!type.includes("text/event-stream")) {
+      const type = res.headers.get('content-type') || '';
+      if (!type.includes('text/event-stream')) {
         // Validation errors come back as plain JSON with status 400, handled above; anything
         // else non-streaming is treated as one event so callers have a single code path.
         const body = await readBody(res);
-        if (body && typeof body === "object") yield body;
+        if (body && typeof body === 'object') yield body;
         return;
       }
       yield* parseEventStream(res.body);
@@ -237,7 +255,7 @@ export function createClient({ baseUrl, apiKey, fetchImpl = globalThis.fetch }) 
       const json = { query };
       if (topN !== undefined) json.topN = topN;
       if (scoreThreshold !== undefined) json.scoreThreshold = scoreThreshold;
-      const data = await request("POST", `${slugPath(slug)}/vector-search`, { json, signal });
+      const data = await request('POST', `${slugPath(slug)}/vector-search`, { json, signal });
       return data.results || [];
     },
 
@@ -253,14 +271,22 @@ export function createClient({ baseUrl, apiKey, fetchImpl = globalThis.fetch }) 
     /**
      * GET /api/v1/workspace/:slug/chats?apiSessionId=&limit=&orderBy=
      * Returns history: [{ role: "user" | "assistant", content, sentAt, sources?, chatId }].
+     * Without sessionId upstream returns only chats sent without one, so the page's own questions
+     * (one session each) are not listed; the page keeps its recent questions locally.
      */
-    async listChats(slug, { sessionId = SEARCH_SESSION_ID, limit = 50, orderBy = "desc" } = {}) {
+    async listChats(slug, { sessionId = null, limit = 50, orderBy = 'desc' } = {}) {
       const params = new URLSearchParams({ limit: String(limit), orderBy });
-      if (sessionId) params.set("apiSessionId", sessionId);
-      const data = await request("GET", `${slugPath(slug)}/chats?${params}`);
+      if (sessionId) params.set('apiSessionId', sessionId);
+      const data = await request('GET', `${slugPath(slug)}/chats?${params}`);
       return data.history || [];
     },
   };
+}
+
+function chatBody(message, mode, sessionId, reasoningEffort) {
+  const body = { message, mode, sessionId };
+  if (reasoningEffort) body.reasoningEffort = reasoningEffort;
+  return body;
 }
 
 /**
@@ -270,15 +296,15 @@ export function createClient({ baseUrl, apiKey, fetchImpl = globalThis.fetch }) 
 export async function* parseEventStream(stream) {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
-  let buffer = "";
+  let buffer = '';
   try {
     while (true) {
       const { value, done } = await reader.read();
       if (value) buffer += decoder.decode(value, { stream: !done });
       if (done) buffer += decoder.decode();
-      buffer = buffer.replace(/\r\n/g, "\n");
+      buffer = buffer.replace(/\r\n/g, '\n');
       let sep;
-      while ((sep = buffer.indexOf("\n\n")) !== -1) {
+      while ((sep = buffer.indexOf('\n\n')) !== -1) {
         const event = parseEventBlock(buffer.slice(0, sep));
         buffer = buffer.slice(sep + 2);
         if (event) yield event;
@@ -296,10 +322,10 @@ export async function* parseEventStream(stream) {
 
 function parseEventBlock(block) {
   const data = block
-    .split("\n")
-    .filter((line) => line.startsWith("data:"))
-    .map((line) => line.slice(5).replace(/^ /, ""))
-    .join("\n");
+    .split('\n')
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => line.slice(5).replace(/^ /, ''))
+    .join('\n');
   if (!data) return null;
   try {
     return JSON.parse(data);
@@ -313,8 +339,8 @@ function parseEventBlock(block) {
  * Reasoning models (qwen3 among them) stream a <think> block before the answer; upstream keeps it.
  */
 export function splitThinking(text) {
-  let answer = String(text || "").replace(/<think>[\s\S]*?<\/think>/g, "");
-  const open = answer.indexOf("<think>");
+  let answer = String(text || '').replace(/<think>[\s\S]*?<\/think>/g, '');
+  const open = answer.indexOf('<think>');
   const thinking = open !== -1;
   if (thinking) answer = answer.slice(0, open);
   return { answer: answer.trim(), thinking };
@@ -324,15 +350,15 @@ function parseHeader(text) {
   const match = /^\s*<document_metadata>\n?([\s\S]*?)<\/document_metadata>\s*/.exec(text);
   if (!match) return { fields: {}, body: text };
   const fields = {};
-  for (const line of match[1].split("\n")) {
-    const i = line.indexOf(":");
+  for (const line of match[1].split('\n')) {
+    const i = line.indexOf(':');
     if (i > 0) fields[line.slice(0, i).trim()] = line.slice(i + 1).trim();
   }
   return { fields, body: text.slice(match[0].length) };
 }
 
 function firstDefined(...values) {
-  for (const v of values) if (v !== undefined && v !== null && v !== "") return v;
+  for (const v of values) if (v !== undefined && v !== null && v !== '') return v;
   return null;
 }
 
@@ -345,30 +371,34 @@ function toInt(v) {
 function fileNameOf(url) {
   if (!url) return null;
   const clean = String(url).split(/[?#]/)[0];
-  return decodeURIComponent(clean.slice(clean.lastIndexOf("/") + 1)) || null;
+  return decodeURIComponent(clean.slice(clean.lastIndexOf('/') + 1)) || null;
 }
 
 /**
  * Maps a chat source or a vector-search result to one shape:
- * { id, title, url, text, sectionTitle, sectionIndex, page, score }.
- * Section and page are read from metadata keys first, then from the chunk header. A stock
- * v1.19.0 server sets neither, so both are null until section splitting lands and the page hides them.
+ * { id, title, url, text, sectionTitle, sectionIndex, page, pageEnd, score }.
+ * Section and pages are read from metadata keys first, then from the chunk header. Collector
+ * uploads carry neither; section documents written by the shell carry sectionTitle, sectionIndex,
+ * pageStart and pageEnd (docs/upstream-analysis.md Q13, Q15). The page hides what is missing.
  */
 export function normalizeSource(raw = {}) {
-  const meta = raw.metadata && typeof raw.metadata === "object" ? { ...raw.metadata, ...raw } : raw;
-  const { fields, body } = parseHeader(String(raw.text ?? meta.text ?? ""));
+  const meta = raw.metadata && typeof raw.metadata === 'object' ? { ...raw.metadata, ...raw } : raw;
+  const { fields, body } = parseHeader(String(raw.text ?? meta.text ?? ''));
   let text = body.trim();
   if (text.endsWith(CONTINUED_SUFFIX)) text = text.slice(0, -CONTINUED_SUFFIX.length).trimEnd();
   const url = meta.url || null;
   return {
     id: meta.id || null,
-    title: firstDefined(meta.title, fields.sourceDocument, fileNameOf(url), "Untitled document"),
+    title: firstDefined(meta.title, fields.sourceDocument, fileNameOf(url), 'Untitled document'),
     url,
     text,
     sectionTitle: firstDefined(meta.sectionTitle, meta.section_title, fields.sectionTitle, fields.section),
     sectionIndex: toInt(firstDefined(meta.sectionIndex, meta.section_index, fields.sectionIndex)),
-    page: toInt(firstDefined(meta.page, meta.pageNumber, meta.loc?.pageNumber, fields.page)),
-    score: typeof meta.score === "number" ? meta.score : null,
+    page: toInt(
+      firstDefined(meta.pageStart, meta.page, meta.pageNumber, meta.loc?.pageNumber, fields.pageStart, fields.page),
+    ),
+    pageEnd: toInt(firstDefined(meta.pageEnd, fields.pageEnd)),
+    score: typeof meta.score === 'number' ? meta.score : null,
   };
 }
 
@@ -385,7 +415,7 @@ export function mergeBySection(sources) {
     const doc = s.url || s.title;
     const hasSection = s.sectionTitle !== null || s.sectionIndex !== null;
     const key = hasSection
-      ? `${doc}\u0000${s.sectionIndex ?? ""}\u0000${s.sectionTitle ?? ""}`
+      ? `${doc}\u0000${s.sectionIndex ?? ''}\u0000${s.sectionTitle ?? ''}`
       : `${doc}\u0000chunk\u0000${s.id || s.text}`;
     let g = groups.get(key);
     if (!g) {
@@ -401,7 +431,10 @@ export function mergeBySection(sources) {
       };
       groups.set(key, g);
     }
-    if (s.page !== null && !g.pages.includes(s.page)) g.pages.push(s.page);
+    if (s.page != null) {
+      const last = s.pageEnd != null && s.pageEnd >= s.page ? s.pageEnd : s.page;
+      for (let p = s.page; p <= last; p++) if (!g.pages.includes(p)) g.pages.push(p);
+    }
     if (s.text && !g.passages.includes(s.text)) g.passages.push(s.text);
     if (s.score !== null && (g.score === null || s.score > g.score)) g.score = s.score;
   }
@@ -410,7 +443,10 @@ export function mergeBySection(sources) {
 }
 
 function normalizeText(s) {
-  return String(s || "").replace(/\s+/g, " ").trim().toLowerCase();
+  return String(s || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
 }
 
 /**

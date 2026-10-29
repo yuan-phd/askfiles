@@ -2,9 +2,10 @@
    only tunes values here. No web fonts: system stacks cover Latin and Chinese on macOS. */
 
 :root {
-  --font-sans: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "PingFang SC", "Hiragino Sans GB",
-    "Microsoft YaHei", "Noto Sans CJK SC", "Segoe UI", Roboto, Arial, sans-serif;
-  --font-serif: "Iowan Old Style", "Palatino", "Songti SC", "Noto Serif CJK SC", Georgia, serif;
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
+    'Noto Sans CJK SC', 'Segoe UI', Roboto, Arial, sans-serif;
+  --font-serif: 'Iowan Old Style', 'Palatino', 'Songti SC', 'Noto Serif CJK SC', Georgia, serif;
 
   --bg: #f7f6f3;
   --surface: #ffffff;
@@ -155,16 +156,16 @@ h2 {
   background: var(--text-muted);
 }
 
-.status-state[data-state="ready"] .dot {
+.status-state[data-state='ready'] .dot {
   background: var(--ok);
 }
 
-.status-state[data-state="indexing"] .dot {
+.status-state[data-state='indexing'] .dot {
   background: var(--busy);
   animation: pulse 1.4s ease-in-out infinite;
 }
 
-.status-state[data-state="error"] .dot {
+.status-state[data-state='error'] .dot {
   background: var(--bad);
 }
 
@@ -275,7 +276,7 @@ h2 {
 }
 
 .answer-progress::after {
-  content: "";
+  content: '';
   display: inline-block;
   width: 1.2em;
   text-align: left;
@@ -284,16 +285,16 @@ h2 {
 
 @keyframes ellipsis {
   0% {
-    content: "";
+    content: '';
   }
   25% {
-    content: ".";
+    content: '.';
   }
   50% {
-    content: "..";
+    content: '..';
   }
   75% {
-    content: "...";
+    content: '...';
   }
 }
 
@@ -347,7 +348,7 @@ h2 {
 
 .card-section::before,
 .card-page::before {
-  content: "\00B7";
+  content: '\00B7';
   margin-right: var(--space-3);
   color: var(--text-muted);
 }
