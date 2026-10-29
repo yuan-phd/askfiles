@@ -112,12 +112,17 @@ describe('dev files', () => {
     write('nm/@types/node/index.d.ts', 'x');
     write('nm/@types/node/package.json', '{"name":"@types/node"}');
     pkg('nm/@types/odd', { name: '@types/odd' });
+    pkg('nm/nolicense', { name: 'nolicense' });
+    write('nm/nolicense/README.md', 'License: MIT');
+    write('nm/nolicense/CHANGELOG.md', 'x');
     pruneDev(join(root, 'nm'), false);
     expect(exists('nm/a/index.js')).toBe(true);
     expect(exists('nm/a/LICENSE')).toBe(true);
     expect(exists('nm/a/dist/doc/code.js')).toBe(true);
     expect(exists('nm/b/test/main.js')).toBe(true);
     expect(exists('nm/@types/odd/index.js')).toBe(true);
+    expect(exists('nm/nolicense/README.md')).toBe(true);
+    expect(exists('nm/nolicense/CHANGELOG.md')).toBe(false);
     for (const gone of ['nm/a/index.js.map', 'nm/a/index.d.ts', 'nm/a/README.md', 'nm/a/test', 'nm/@types/node']) {
       expect(exists(gone)).toBe(false);
     }

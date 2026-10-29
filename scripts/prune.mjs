@@ -119,6 +119,10 @@ const DEV_ROOT_DIRS = new Set([
 ]);
 const CODE_FILE = /\.(js|mjs|cjs|node|wasm|json)$/;
 
+const README = /^readme(\.(md|markdown|txt))?$/i;
+const isPackageRoot = (dir) => fs.existsSync(path.join(dir, 'package.json'));
+const hasLicenseFile = (dir) => fs.readdirSync(dir).some((n) => /^(licen[cs]e|copying|notice)/i.test(n));
+
 export function isDevFile(name) {
   return DEV_FILE.some((re) => re.test(name));
 }
@@ -208,9 +212,10 @@ export function pruneDev(nodeModules, dryRun) {
     }
   }
   walkFiles(nodeModules, (file, name) => {
-    if (isDevFile(name) && !CODE_FILE.test(name.replace(/\.map$/, '.x'))) {
-      remove(file, 'dev file', fs.statSync(file).size);
-    }
+    if (!isDevFile(name) || CODE_FILE.test(name.replace(/\.map$/, '.x'))) return;
+    // A package without a license file states its license in the readme; that notice must ship.
+    if (README.test(name) && isPackageRoot(path.dirname(file)) && !hasLicenseFile(path.dirname(file))) return;
+    remove(file, 'dev file', fs.statSync(file).size);
   });
   return removed;
 }
