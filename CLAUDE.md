@@ -66,6 +66,6 @@ Upstream targets Node 18 (upstream/.nvmrc, upstream/docker/Dockerfile); Node 22 
 
 - Fresh Ubuntu 24.04 x86_64 VM, about 4 vCPU, 16 GB RAM, 30 GB disk. Node 22 on PATH. No GUI, no shell for the owner; you run every command.
 - CLAUDE_CODE_REMOTE is true in cloud sessions. scripts/install_pkgs.sh installs dependencies only there and skips directories that have not changed.
-- The environment setup script may have installed Ollama with two small test models: qwen3:0.6b for chat and all-minilm for embeddings. Check with ollama list. If Ollama is absent, skip integration tests with a clear message. Never fake a result.
+- The environment setup script installs Ollama with two small test models: qwen3:0.6b for chat and all-minilm for embeddings. scripts/install_pkgs.sh starts ollama serve in the background at session start, so ollama list should work. If it does not, start it with ollama serve in the background. If Ollama is missing, skip integration tests with a clear message; never fake a result.
 - Outbound network is allowlisted. If a download is refused, report the exact host in the PR so it can be added to the environment, and continue with what you can.
 - Foreground commands time out after 10 minutes at most. Run long installs or test suites in the background and poll.

@@ -102,4 +102,10 @@ if [ -d "$ROOT/upstream/server/node_modules" ] && [ -f "$ROOT/upstream/server/pr
   ( cd "$ROOT/upstream/server" && npx prisma generate ) || echo "[install_pkgs] prisma generate failed"
 fi
 
+# Start Ollama for integration tests. The environment cache keeps files, not running processes.
+if command -v ollama >/dev/null 2>&1 && ! curl -fs http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
+  (setsid nohup ollama serve > /tmp/ollama.log 2>&1 &)
+  echo "[install_pkgs] started ollama serve in the background"
+fi
+
 exit 0
