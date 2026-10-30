@@ -51,10 +51,12 @@ npm run package:mac
 This runs, in order:
 
 1. `tsc` for src/main into dist/main
-2. `scripts/build.sh` with PACKAGE_TARGET=mac-arm64: checks resources/ollama, applies patches/, builds the upstream frontend into upstream/server/public, installs server and collector production dependencies, runs prisma generate, removes Prisma engines for every platform except darwin-arm64, checks that dev dependencies are gone, prints sizes
-3. `electron-builder --mac dir --arm64`: creates release/mac-arm64/AskFiles.app without a DMG (layout below)
-4. `scripts/sign-adhoc.sh`: ad-hoc signs every Mach-O file under Contents/Resources, then the whole app, then verifies with `codesign --verify --deep --strict`
-5. `electron-builder --mac dmg --arm64 --prepackaged release/mac-arm64/AskFiles.app`: wraps the signed app into release/AskFiles-0.1.0-arm64.dmg
+2. `scripts/build.sh` with PACKAGE_TARGET=mac-arm64: checks resources/ollama, applies patches/, builds the upstream frontend into upstream/server/public (and records the frontend's packages in frontend/dist/.askfiles-notices.json), installs server and collector production dependencies, runs prisma generate, removes Prisma engines for every platform except darwin-arm64, checks that dev dependencies are gone, prunes for darwin-arm64 (scripts/prune.mjs), prints sizes
+3. `npm run notices -- --strict`: regenerates THIRD-PARTY-NOTICES from the pruned darwin trees (see Third-party notices below)
+4. `vitest run scripts/third-party-notices.test.mjs`: fails the packaging when a listed package that names a license has no text in the file, or when a package the prune step removes is still listed
+5. `electron-builder --mac dir --arm64`: creates release/mac-arm64/AskFiles.app without a DMG (layout below); THIRD-PARTY-NOTICES goes into app.asar here
+6. `scripts/sign-adhoc.sh`: ad-hoc signs every Mach-O file under Contents/Resources, then the whole app, then verifies with `codesign --verify --deep --strict`
+7. `electron-builder --mac dmg --arm64 --prepackaged release/mac-arm64/AskFiles.app`: wraps the signed app into release/AskFiles-0.1.0-arm64.dmg
 
 The DMG is built after signing on purpose: signing the app after the DMG exists would leave an unsigned copy inside the DMG.
 
@@ -62,10 +64,20 @@ Expected time: 3 to 10 minutes on first run, mostly yarn installs. Expected outp
 
 Notes on messages you may see:
 
-- `skipped macOS code signing reason=identity explicitly is set to null`: expected; step 4 signs.
-- In step 2, if it stops with `no query engine for darwin-arm64` or `no schema engine for darwin-arm64`, prisma generate did not download the Mac engines. Run `cd upstream/server && node node_modules/prisma/build/index.js generate` once with network access, then run step 3 again.
+- `skipped macOS code signing reason=identity explicitly is set to null`: expected; step 6 signs.
+- In step 2, if it stops with `no query engine for darwin-arm64` or `no schema engine for darwin-arm64`, prisma generate did not download the Mac engines. Run `cd upstream/server && node node_modules/prisma/build/index.js generate` once with network access, then run `npm run package:mac` again.
 
 To sign an app by hand, for example after a manual electron-builder run: `bash scripts/sign-adhoc.sh release/mac-arm64/AskFiles.app`.
+
+### Third-party notices
+
+THIRD-PARTY-NOTICES is regenerated on every packaging run, on the machine that packages, so the DMG lists the darwin builds it holds (@img/sharp-libvips-darwin-arm64, @lancedb/lancedb-darwin-arm64 and so on), not the linux ones of the committed copy. Nothing to do by hand at release time. The order matters and is fixed in package.json: after scripts/build.sh has pruned the trees, so packages the app does not ship (voyageai, chromadb and the other provider clients) are not listed, and before electron-builder and signing, so the file inside the signed app is the regenerated one. scripts/third-party-notices.mjs refuses an unpruned server tree.
+
+The mac workflow's package job runs the same script and test through `npm run package:mac` on the macOS runner and uploads the generated file as the artifact third-party-notices-mac-<sha>. The repository copy is generated in a cloud session after `PACKAGE_TARGET=linux-x64 bash scripts/build.sh` and then `npm run notices -- --strict`; replace it with the mac artifact if you want the committed file to match the DMG.
+
+The frontend ships only as its built files, and the workflow reuses a cached frontend/dist without frontend/node_modules, so scripts/build.sh records the frontend's packages in frontend/dist/.askfiles-notices.json when it builds and the notices script reads that record. `--strict` fails when a component has neither node_modules nor that record.
+
+Packages that ship no license file get the standard text of the license they name, from scripts/license-texts. A package whose package.json names no license gets the one its readme states under a License heading, marked as such in the list (combine-errors: MIT). One with no license anywhere is listed with the dependency path that brings it in (buffers 0.1.1: exceljs > unzipper > binary > buffers).
 
 ### Bundle layout
 

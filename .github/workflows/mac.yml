@@ -69,7 +69,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: upstream/frontend/dist
-          key: frontend-dist-${{ hashFiles('upstream/frontend/**', 'patches/**') }}
+          # v2: dist also holds .askfiles-notices.json, the frontend packages THIRD-PARTY-NOTICES lists.
+          key: frontend-dist-v2-${{ hashFiles('upstream/frontend/**', 'patches/**') }}
       - name: Cache the pruned server and collector node_modules
         id: upstream-modules
         uses: actions/cache@v4
@@ -117,7 +118,8 @@ jobs:
           tar -xzf "$RUNNER_TEMP/ollama-darwin.tgz" -C resources/ollama
           resources/ollama/ollama --version || true
 
-      # Runs tsc, scripts/build.sh with PACKAGE_TARGET=mac-arm64 (the make build step), electron-builder,
+      # Runs tsc, scripts/build.sh with PACKAGE_TARGET=mac-arm64 (the make build step), then
+      # THIRD-PARTY-NOTICES regenerated from the pruned darwin trees and its test, then electron-builder,
       # scripts/sign-adhoc.sh and the DMG step, in that order (package.json).
       - name: Build, package and sign
         run: npm run package:mac
@@ -134,6 +136,14 @@ jobs:
           ls -l release/*.dmg
           du -sk release/mac-arm64/AskFiles.app release/mac-arm64/AskFiles.app/Contents/Resources/*
           bash scripts/measure-bundle.sh release/mac-arm64/AskFiles.app/Contents/Resources | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # The notices the DMG ships, for comparing with or replacing the committed Linux-generated file.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: third-party-notices-mac-${{ github.sha }}
+          path: THIRD-PARTY-NOTICES
+          if-no-files-found: error
+          retention-days: 14
 
       - uses: actions/upload-artifact@v4
         with:

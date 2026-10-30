@@ -109,8 +109,11 @@ scripts/smoke-mac.sh starts the packaged app on an emptied data directory (the m
 
 ## Third-party notices
 
-THIRD-PARTY-NOTICES at the repository root lists every bundled package with its license and each license text once; the About page shows it. A package that ships no license file gets the standard text of the license its package.json names, from scripts/license-texts (SPDX license-list-data v3.27.0: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, LGPL-3.0 with the GPL-3.0 text it builds on, MPL-2.0, CC0-1.0); scripts/third-party-notices.test.mjs fails when a listed package that names a license has no text in the file. Packages whose package.json names no license at all (UNKNOWN) are listed by name. Regenerate after dependency changes, ideally on the Mac after scripts/build.sh so the darwin platform packages are listed:
+THIRD-PARTY-NOTICES at the repository root lists every bundled package with its license and each license text once; the About page shows it. A package that ships no license file gets the standard text of the license its package.json names, from scripts/license-texts (SPDX license-list-data v3.27.0: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, LGPL-3.0 with the GPL-3.0 text it builds on, MPL-2.0, CC0-1.0); when package.json names none, the license its readme states under a License heading, marked as from the readme. A package with no license anywhere is listed with its dependency path. scripts/third-party-notices.test.mjs fails when a listed package that names a license has no text in the file.
+
+`npm run package:mac` regenerates the file on the Mac after scripts/build.sh has pruned the trees and before electron-builder and signing, and runs the test there; the mac workflow does the same and uploads the result. docs/packaging.md, Third-party notices, has the details. To regenerate the repository copy in a cloud session:
 
 ```
-node scripts/third-party-notices.mjs
+PACKAGE_TARGET=linux-x64 bash scripts/build.sh
+npm run notices -- --strict
 ```

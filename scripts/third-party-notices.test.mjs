@@ -4,7 +4,11 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   collect,
+  fromSnapshot,
   licenseOf,
+  readmeLicense,
+  toSnapshot,
+  unprunedProviders,
   loadStandardTexts,
   render,
   standardLicenseIds,
@@ -73,7 +77,7 @@ describe('third-party notices', () => {
       ['vips@1.0.0', { name: 'vips', version: '1.0.0', license: 'LGPL-3.0-or-later', text: '' }],
       ['dual@1.0.0', { name: 'dual', version: '1.0.0', license: '(MIT OR Apache-2.0)', text: '' }],
       ['own@1.0.0', { name: 'own', version: '1.0.0', license: 'MIT', text: 'Own MIT text' }],
-      ['bare@1.0.0', { name: 'bare', version: '1.0.0', license: 'UNKNOWN', text: '' }],
+      ['bare@1.0.0', { name: 'bare', version: '1.0.0', license: 'UNKNOWN', text: '', path: ['top', 'bare'] }],
     ]);
     const texts = new Map([
       ['LGPL-3.0', 'LGPL TEXT'],
@@ -87,10 +91,74 @@ describe('third-party notices', () => {
     expect(text).toContain('LGPL TEXT');
     expect(text).toContain('MIT TEXT');
     expect(text).toContain('APACHE TEXT');
-    expect(text).toMatch(/name MIT in their package\.json: dual@1\.0\.0\./);
+    expect(text).toMatch(/where the list says so: dual@1\.0\.0\./);
     expect(text).toContain('Own MIT text');
-    expect(text).toContain('- bare@1.0.0 (UNKNOWN)');
-    expect(text).not.toContain('- vips@1.0.0 (');
+    expect(text).toContain(
+      '- bare@1.0.0: no license stated in its package.json, license file or readme; dependency path shell: top > bare',
+    );
+    expect(text).not.toContain('- vips@1.0.0:');
+  });
+
+  it('takes a license from the readme only when package.json names none, and keeps dependency paths', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'askfiles-notices-'));
+    pkg(root, { name: 'app', dependencies: { bree: '1', unzipper: '1', other: '1' } });
+    const nm = path.join(root, 'node_modules');
+    pkg(path.join(nm, 'bree'), { name: 'bree', version: '1.0.0', license: 'MIT', dependencies: { ce: '3' } }, 'MIT A');
+    pkg(path.join(nm, 'ce'), { name: 'ce', version: '3.0.3' });
+    fs.writeFileSync(path.join(nm, 'ce', 'Readme.md'), '# ce\n\nCombines errors.\n\n## License\n\nMIT\n');
+    pkg(
+      path.join(nm, 'unzipper'),
+      { name: 'unzipper', version: '1.0.0', license: 'MIT', dependencies: { buffers: '0' } },
+      'MIT B',
+    );
+    pkg(path.join(nm, 'buffers'), { name: 'buffers', version: '0.1.1' });
+    fs.writeFileSync(
+      path.join(nm, 'buffers', 'README.markdown'),
+      'buffers\n=======\n\nTreat a list of buffers as one.\n',
+    );
+    pkg(path.join(nm, 'other'), { name: 'other', version: '1.0.0', license: 'ISC' });
+    fs.writeFileSync(path.join(nm, 'other', 'README.md'), 'License\n-------\n\nApache-2.0\n');
+
+    expect(readmeLicense(path.join(nm, 'ce'))).toBe('MIT');
+    expect(readmeLicense(path.join(nm, 'buffers'))).toBeNull();
+    expect(readmeLicense(path.join(nm, 'other'))).toBe('Apache-2.0');
+
+    const { packages, missing } = collect(root);
+    expect(packages.get('ce@3.0.3')).toMatchObject({ license: 'MIT', licenseSource: 'readme', path: ['bree', 'ce'] });
+    expect(packages.get('buffers@0.1.1')).toMatchObject({ license: 'UNKNOWN', path: ['unzipper', 'buffers'] });
+    // A license field wins over the readme.
+    expect(packages.get('other@1.0.0')).toMatchObject({ license: 'ISC', licenseSource: 'package.json' });
+
+    const text = render([{ label: 'upstream server', packages, missing }], 'UPSTREAM', new Map([['MIT', 'MIT TEXT']]));
+    expect(text).toContain(
+      '- ce@3.0.3  MIT  [upstream server]  (license stated in its readme; its package.json names none)',
+    );
+    expect(text).toMatch(/where the list says so: ce@3\.0\.3\./);
+    expect(text).toContain(
+      '- buffers@0.1.1: no license stated in its package.json, license file or readme; dependency path upstream server: unzipper > buffers',
+    );
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it('round-trips a snapshot and names pruned dependencies as not shipped', () => {
+    const result = {
+      packages: new Map([['a@1.0.0', { name: 'a', version: '1.0.0', license: 'MIT', text: 'T', path: ['a'] }]]),
+      missing: ['chromadb'],
+    };
+    const back = fromSnapshot(JSON.parse(JSON.stringify(toSnapshot(result))));
+    expect(back).toEqual(result);
+    expect(() => fromSnapshot({ version: 2 })).toThrow(/not a notices snapshot/);
+    const text = render([{ label: 'upstream server', ...back }], 'UPSTREAM', new Map());
+    expect(text).toContain("so not shipped (removed by the build's prune step), for upstream server: chromadb");
+  });
+
+  it('tells an unpruned server tree from a pruned one', () => {
+    const server = fs.mkdtempSync(path.join(os.tmpdir(), 'askfiles-notices-server-'));
+    pkg(path.join(server, 'node_modules', 'express'), { name: 'express', version: '4.0.0' });
+    expect(unprunedProviders(server)).toEqual([]);
+    pkg(path.join(server, 'node_modules', 'chromadb'), { name: 'chromadb', version: '2.0.1' });
+    expect(unprunedProviders(server)).toEqual(['chromadb']);
+    fs.rmSync(server, { recursive: true, force: true });
   });
 
   it('has a license text in THIRD-PARTY-NOTICES for every listed package that names a license', () => {
@@ -101,7 +169,7 @@ describe('third-party notices', () => {
     const covered = new Set();
     for (const m of texts.matchAll(/^=== Used by: (.+) ===$/gm)) for (const k of m[1].split(', ')) covered.add(k);
     for (const m of texts.matchAll(
-      /^These packages ship no license file and name (\S+) in their package\.json: (.+)\.$/gm,
+      /^These packages ship no license file and name (\S+) in their package\.json, or their readme where the list says so: (.+)\.$/gm,
     )) {
       expect(texts, `standard text ${m[1]}`).toContain(standardTextHeading(m[1]));
       for (const k of m[2].split(', ')) covered.add(k);
@@ -110,5 +178,13 @@ describe('third-party notices', () => {
     // Only packages whose package.json names no license may go without a text.
     expect(uncovered.filter((p) => standardLicenseIds(p.license).ids.length > 0)).toEqual([]);
     expect(uncovered.every((p) => p.license === 'UNKNOWN')).toBe(true);
+  });
+
+  it('lists in THIRD-PARTY-NOTICES only what the pruned app ships', () => {
+    const text = fs.readFileSync(NOTICES, 'utf8');
+    // voyageai came only with chromadb, which the build's prune step removes (docs/licenses.md).
+    expect(text).not.toMatch(/voyageai/);
+    expect(text).toContain('- combine-errors@3.0.3  MIT  [upstream server]  (license stated in its readme');
+    expect(text).toMatch(/^- buffers@0\.1\.1: no license stated .*; dependency path upstream server: .*> buffers$/m);
   });
 });
