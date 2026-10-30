@@ -204,7 +204,8 @@ describe.skipIf(reason !== null)('folder watcher against the real server', () =>
       expect(docs[0]!.pageContent).toMatch(/written approval from a director/);
       expect(docs[1]!.pageContent).toMatch(/Dinner is refunded up to 40 euros/);
       expect(docs[1]!.pageContent).not.toMatch(/second class/);
-      expect(images.map((i) => i.name)).toEqual(['scanned-page-1-1.png', 'scanned-page-2-1.png']);
+      // Pages are OCRed in parallel, so they finish in either order.
+      expect(images.map((i) => i.name).sort()).toEqual(['scanned-page-1-1.png', 'scanned-page-2-1.png']);
       expect(uploads).toHaveLength(0);
       // The collector copies of the uploads are gone again; only the section documents are embedded.
       const embedded = [...(await api.workspaceDocuments(ws.slug)).keys()].sort();
