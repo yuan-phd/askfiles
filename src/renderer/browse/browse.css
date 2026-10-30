@@ -1,5 +1,5 @@
-/* AskFiles browse view. Tokens and base rules come from ../search/search.css, so light and dark
-   follow the search page and the visual pass (plan task 4.6) tunes values there and here. */
+/* AskFiles browse view. Tokens and base rules come from ../ask/ask.css, so light and dark
+   follow the Ask page and the visual pass (plan task 4.6) tunes values there and here. */
 
 .browse {
   max-width: calc(var(--measure) + 16rem + var(--space-7));

@@ -7,6 +7,8 @@ export type { BrowseIndexOptions } from './browse-index.js';
 export { buildDocument, buildOutline, documentId, splitHead } from './build.js';
 export type { StoredChunk } from './build.js';
 export { normalizeHeading } from './normalize.js';
+export { idf, rankSections, sectionFrequency } from './rank.js';
+export type { FoldedSection, RankedSection } from './rank.js';
 export { fold, markRanges, queryTerms, snippetOf } from './search.js';
 export * from './types.js';
 

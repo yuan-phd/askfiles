@@ -2,6 +2,22 @@ import { app, dialog, shell, type BrowserWindow } from 'electron';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import util from 'node:util';
+import {
+  AnswerService,
+  crossEncoder,
+  ensureReranker,
+  ollamaChat,
+  rerankerReady,
+  upstreamVectorSearch,
+  type AnswerScope,
+  type DeveloperOverrides,
+  type EvalCase,
+  type PipelineDeps,
+  type Reranker,
+  type RunSettings,
+  type ServiceEvent,
+} from './answer/index.js';
 import { APP_ORIGIN, pageUrl, type PageName } from './app-protocol.js';
 import { chooseStartPage, presetFolder, presetsFilePath, type StartPage } from './app-mode.js';
 import { bundledBackendConfig } from './backend-config.js';
@@ -31,7 +47,7 @@ export interface AppDeps {
 
 /**
  * The packaged app: starts Ollama, collector and server from the bundle, then shows onboarding on
- * the first launch and the search page afterwards, with the folder watcher running behind it.
+ * the first launch and the Ask page afterwards, with the folder watcher running behind it.
  * Implements the bridge handlers the pages call through the preload script.
  */
 export class AppController implements BridgeHandlers {
@@ -46,9 +62,19 @@ export class AppController implements BridgeHandlers {
   private browse: BrowseIndex | null = null;
   private page: StartPage | PageName | null = null;
   private stopped = false;
+  private readonly rerankerDir = path.join(this.dataDir, 'models', 'reranker');
+  private reranker: { repo: string; instance: Reranker } | null = null;
+  private readonly answers: AnswerService;
 
   constructor(private readonly d: AppDeps) {
     this.state = loadShellState(this.dataDir, d.log);
+    this.answers = new AnswerService({
+      pipeline: () => this.pipelineDeps(),
+      settings: () => this.runSettings(),
+      developer: d.env.ASKFILES_DEVELOPER === '1',
+      evalQuestionsFile: d.env.ASKFILES_EVAL_QUESTIONS || path.join(this.dataDir, 'eval-questions.csv'),
+      log: d.log,
+    });
   }
 
   /** The origin the window may show besides askfiles://app: the server, in upstream UI mode only. */
@@ -56,9 +82,9 @@ export class AppController implements BridgeHandlers {
     return this.page === 'upstream' ? this.serverUrl() : null;
   }
 
-  /** True once the search page is the window content; the models window needs a set-up library. */
+  /** True once the Ask page is the window content; the models window needs a set-up library. */
   setUp(): boolean {
-    return this.page === 'search';
+    return this.page === 'ask';
   }
 
   async run(): Promise<void> {
@@ -118,9 +144,10 @@ export class AppController implements BridgeHandlers {
       this.page = 'upstream';
       log('opening the upstream interface (developer switch)');
       void win.loadURL(this.serverUrl()! + '/');
-    } else if (start === 'search') {
+    } else if (start === 'ask') {
       // The page first, so a large folder's reconcile does not keep the start page up.
-      this.show('search');
+      this.show('ask');
+      void this.fetchMissingReranker();
       await this.startLibraryWatcher();
     } else {
       this.firstRun = this.createFirstRun();
@@ -228,16 +255,128 @@ export class AppController implements BridgeHandlers {
     return this.browse?.search(query) ?? { query, terms: [], total: 0, groups: [], truncated: false };
   }
 
+  answerAsk(question: string, emit: (e: ServiceEvent) => void) {
+    return this.answers.ask(question, emit);
+  }
+
+  answerCancel(id: string) {
+    this.answers.cancel(id);
+  }
+
+  answerDeveloper() {
+    return this.answers.developerState();
+  }
+
+  answerSetOverrides(o: DeveloperOverrides) {
+    return this.answers.setOverrides(o);
+  }
+
+  answerSaveCase(c: EvalCase) {
+    return this.answers.saveEvalCase(c);
+  }
+
   appInfo() {
     return { name: 'AskFiles', version: app.getVersion() };
   }
 
   appPageReady(info: { page: string; connected?: boolean; documents?: number | null }) {
-    // The smoke test waits for this line to know the search page reached the library.
+    // The smoke test waits for this line to know the Ask page reached the library.
     this.d.log(`page ready ${info.page} connected=${info.connected ?? '-'} documents=${info.documents ?? '-'}`);
+    const question = this.d.env.ASKFILES_SMOKE_QUESTION;
+    if (question && info.page === 'ask' && info.connected) void this.smokeAnswer(question);
   }
 
   // --- internals -------------------------------------------------------------------------------
+
+  /** Answer scope from the settings store (Session K); Balanced until that store exists. */
+  private answerScope(): AnswerScope {
+    return 'balanced';
+  }
+
+  /** The chat model the server .env names (the model page may have switched it), else the preset's. */
+  private chatModel(): string {
+    try {
+      const env = util.parseEnv(fs.readFileSync(this.envFile(), 'utf8')) as Record<string, string>;
+      if (env.OLLAMA_MODEL_PREF) return env.OLLAMA_MODEL_PREF;
+    } catch {
+      // No .env yet: the preset decides.
+    }
+    return this.preset!.chatModel;
+  }
+
+  private runSettings(): RunSettings {
+    const p = this.preset;
+    if (!p) throw new Error('AskFiles has not loaded its settings yet');
+    return {
+      params: p.answer,
+      scope: this.answerScope(),
+      chatModel: this.chatModel(),
+      contextLength: p.contextLength,
+      chunkMaxChars: p.chunkMaxChars,
+      temperature: p.temperature,
+    };
+  }
+
+  /** The preset's reranker, loaded once; null until its files are in the data directory. */
+  private currentReranker(): Reranker | null {
+    const repo = this.preset?.answer.rerankerModel;
+    if (!repo || !rerankerReady(this.rerankerDir, repo)) return null;
+    if (this.reranker?.repo !== repo) {
+      const instance = crossEncoder({
+        transformersDir: path.join(process.resourcesPath, 'server', 'node_modules', '@xenova', 'transformers'),
+        modelsDir: this.rerankerDir,
+        repo,
+        log: this.d.log,
+      });
+      this.reranker = { repo, instance };
+    }
+    return this.reranker.instance;
+  }
+
+  private pipelineDeps(): PipelineDeps | null {
+    const { apiKey, workspaceSlug } = this.state;
+    const watcher = this.watcher;
+    const browse = this.browse;
+    const ollamaPort = this.manager?.status().ports?.ollama;
+    if (!apiKey || !workspaceSlug || !watcher || !browse || !ollamaPort) return null;
+    return {
+      vectorSearch: upstreamVectorSearch({ baseUrl: () => this.serverUrl(), apiKey, slug: workspaceSlug }),
+      resolveSources: (sources) => watcher.resolveSources(sources),
+      index: browse,
+      reranker: this.currentReranker(),
+      chat: ollamaChat(() => `http://127.0.0.1:${this.manager?.status().ports?.ollama ?? ollamaPort}`),
+    };
+  }
+
+  /**
+   * A library set up before the reranker became part of the first run gets it in the background;
+   * questions take the bypass path until it is in place. Never fetched while answering.
+   */
+  private async fetchMissingReranker(): Promise<void> {
+    const repo = this.preset?.answer.rerankerModel;
+    if (!repo || rerankerReady(this.rerankerDir, repo)) return;
+    this.d.log(`[answer] reranker ${repo} missing, fetching in the background`);
+    try {
+      await ensureReranker({ repo, modelsDir: this.rerankerDir, log: (m) => this.d.log(`[answer] ${m}`) });
+      this.d.log(`[answer] reranker ${repo} ready`);
+    } catch (e) {
+      this.d.log(`[answer] reranker fetch failed: ${(e as Error).message}`);
+    }
+  }
+
+  /** ASKFILES_SMOKE_QUESTION: one question through the pipeline once the page is up, for smoke-mac.sh. */
+  private async smokeAnswer(question: string): Promise<void> {
+    try {
+      const r = await this.answers.askOnce(question);
+      const cites = r.cited.map((c) => c.n);
+      this.d.log(
+        `[answer] smoke notFound=${r.notFound} cited=[${cites.join(',')}] sections=${r.cited.map((c) => JSON.stringify(c.title)).join(',')} ` +
+          `firstTokenMs=${r.timings.firstTokenMs ?? '-'} text=${JSON.stringify(r.text.slice(0, 300))}`,
+      );
+    } catch (e) {
+      this.d.log(`[answer] smoke failed: ${(e as Error).message}`);
+    }
+  }
 
   private serverUrl(): string | null {
     const port = this.manager?.status().ports?.server;
@@ -286,6 +425,8 @@ export class AppController implements BridgeHandlers {
       ollama: this.ollamaClient(),
       envFile: this.envFile(),
       restartServer: () => this.restartBackend(),
+      fetchReranker: (repo, onProgress) =>
+        ensureReranker({ repo, modelsDir: this.rerankerDir, onProgress, log: (m) => log(`[wizard] ${m}`) }),
       log,
     });
     const run = new FirstRun({
@@ -320,7 +461,7 @@ export class AppController implements BridgeHandlers {
       this.d.broadcast(CHANNELS.setupEvent, e);
       if (e.type === 'setup' && e.state === 'done') {
         this.firstRun = null;
-        this.show('search');
+        this.show('ask');
       }
     });
     return run;
@@ -381,7 +522,7 @@ export class AppController implements BridgeHandlers {
 
   /**
    * Restarts the backend so the server reads a changed .env (wizard, model switch). Ports change,
-   * so the watcher pauses meanwhile and the search page reloads to pick up the new address.
+   * so the watcher pauses meanwhile and the Ask page reloads to pick up the new address.
    */
   private async restartBackend(): Promise<string> {
     const manager = this.manager!;
@@ -393,7 +534,7 @@ export class AppController implements BridgeHandlers {
     const url = this.serverUrl()!;
     this.d.log(`backend restarted, server at ${url}`);
     if (watcher) void watcher.start().catch((e: Error) => this.d.log(`watcher restart failed: ${e.message}`));
-    if (this.page === 'search') this.d.win.webContents.reload();
+    if (this.page === 'ask') this.d.win.webContents.reload();
     return url;
   }
 

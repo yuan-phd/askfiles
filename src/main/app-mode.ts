@@ -17,16 +17,16 @@ export const PRESETS_FILE_ENV = 'ASKFILES_PRESETS_FILE';
 /** A library folder chosen ahead: the first run uses it instead of asking (smoke test). */
 export const LIBRARY_FOLDER_ENV = 'ASKFILES_LIBRARY_FOLDER';
 
-export type StartPage = 'upstream' | 'search' | 'onboarding';
+export type StartPage = 'upstream' | 'ask' | 'onboarding';
 
 export function upstreamUiEnabled(env: Env): boolean {
   return env[UPSTREAM_UI_ENV] === '1';
 }
 
-/** First launch, or a first run cut off before done: onboarding. Otherwise the search page. */
+/** First launch, or a first run cut off before done: onboarding. Otherwise the Ask page. */
 export function chooseStartPage(env: Env, state: ShellState): StartPage {
   if (upstreamUiEnabled(env)) return 'upstream';
-  return isSetupComplete(state) ? 'search' : 'onboarding';
+  return isSetupComplete(state) ? 'ask' : 'onboarding';
 }
 
 /** config/presets.json ships inside app.asar (electron-builder.yml, files). */

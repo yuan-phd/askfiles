@@ -1,9 +1,9 @@
 // Browse view (plan phase 4): library, document, headings and find pages against a browse index
 // seeded from corpus S with the real splitter, through a stub of the preload bridge; and the
-// Search and Browse switch on the search page.
+// Ask and Browse switch on the Ask page.
 import { test, expect } from '@playwright/test';
 import { seedBrowse, stubBrowseBridge } from './browse-seed.mjs';
-import { mockLibrary, pageUrl, answerEvents, chunk, watcherStatus } from './mocks.js';
+import { mockLibrary, pageUrl, watcherStatus, stubAnswer, card, answerRun, partsOf } from './mocks.js';
 
 const DAY = 24 * 3600 * 1000;
 const T0 = Date.parse('2026-10-01T12:00:00Z');
@@ -207,20 +207,25 @@ test.describe('browse view', () => {
 test.describe('search and browse in one window', () => {
   test('switches without a reload, keeps each view, and a source card opens its section', async ({ page }) => {
     const v2 = seed.index.listDocuments().find((d) => d.title === 'leave-policy-v2.md');
-    const sources = [
-      {
-        ...chunk({
-          id: 'a',
-          file: 'leave-policy-v2.md',
-          text: 'Each parent may take 16 weeks of paid parental leave.',
-          sectionTitle: 'Parental leave',
-          sectionIndex: 4,
-        }),
-        url: v2.url,
-      },
-    ];
-    await mockLibrary(page, { stream: () => answerEvents('Sixteen weeks.', sources) });
+    const source = card(1, {
+      file: 'leave-policy-v2.md',
+      url: v2.url,
+      documentId: v2.id,
+      sectionIndex: 4,
+      title: 'Parental leave',
+      path: ['Parental leave'],
+      pageStart: null,
+      pageEnd: null,
+      passage: 'Each parent may take 16 weeks of paid parental leave.',
+    });
+    const run = answerRun({
+      sources: [source],
+      deltas: [partsOf('Sixteen weeks.')],
+      result: { claims: [{ text: 'Sixteen weeks.', citations: [1], unsupported: false }], cited: [source] },
+    });
+    await mockLibrary(page);
     await stubBrowseBridge(page, seed.index, { status: watcherStatus({ indexed: 6 }) });
+    await stubAnswer(page, { runs: { 'How long is parental leave?': run } });
     await page.goto(pageUrl());
     await page.evaluate(() => {
       window.__sameDocument = true;
@@ -228,7 +233,7 @@ test.describe('search and browse in one window', () => {
 
     await page.getByTestId('query').fill('How long is parental leave?');
     await page.getByTestId('query').press('Enter');
-    await expect(page.getByTestId('answer-text')).toHaveText('Sixteen weeks.');
+    await expect(page.getByTestId('answer-text')).toHaveText('Sixteen weeks.[1]');
     await expect(page.getByTestId('view-search')).toHaveAttribute('aria-pressed', 'true');
 
     await page.getByTestId('view-browse').click();
@@ -243,7 +248,7 @@ test.describe('search and browse in one window', () => {
 
     await page.getByTestId('view-search').click();
     await expect(page.getByTestId('search-view')).toBeVisible();
-    await expect(page.getByTestId('answer-text')).toHaveText('Sixteen weeks.');
+    await expect(page.getByTestId('answer-text')).toHaveText('Sixteen weeks.[1]');
     await expect(page.getByTestId('query')).toHaveValue('How long is parental leave?');
     await page.getByTestId('view-browse').click();
     await expect(page.getByTestId('find-group')).toHaveCount(2);
@@ -262,9 +267,20 @@ test.describe('search and browse in one window', () => {
   });
 
   test('a source the browse index does not know says so', async ({ page }) => {
-    const sources = [chunk({ id: 'a', file: 'gone.pdf', text: 'Old text.', sectionTitle: 'Intro', sectionIndex: 1 })];
-    await mockLibrary(page, { stream: () => answerEvents('An answer.', sources) });
+    const gone = card(1, {
+      file: 'gone.pdf',
+      url: 'file:///library/gone.pdf',
+      documentId: 'missing',
+      title: 'Intro',
+      path: ['Intro'],
+    });
+    const run = answerRun({
+      sources: [gone],
+      result: { claims: [{ text: 'An answer.', citations: [1], unsupported: false }], cited: [gone] },
+    });
+    await mockLibrary(page);
     await stubBrowseBridge(page, seed.index);
+    await stubAnswer(page, { runs: { 'Anything?': run } });
     await page.goto(pageUrl());
     await page.getByTestId('query').fill('Anything?');
     await page.getByTestId('query').press('Enter');
@@ -276,7 +292,7 @@ test.describe('search and browse in one window', () => {
   });
 });
 
-// Page states for the PR in light and dark mode, through the search page as the app shows them:
+// Page states for the PR in light and dark mode, through the Ask page as the app shows them:
 //   SCREENSHOT_DIR=docs/screenshots/browse npx playwright test browse -g screenshot
 const shots = process.env.SCREENSHOT_DIR;
 for (const scheme of ['light', 'dark']) {

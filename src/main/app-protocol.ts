@@ -10,7 +10,7 @@ import path from 'node:path';
 export const APP_SCHEME = 'askfiles';
 export const APP_ORIGIN = `${APP_SCHEME}://app`;
 
-export type PageName = 'onboarding' | 'search' | 'models' | 'about';
+export type PageName = 'onboarding' | 'ask' | 'models' | 'about';
 
 export function pageUrl(page: PageName): string {
   return `${APP_ORIGIN}/${page}/index.html`;

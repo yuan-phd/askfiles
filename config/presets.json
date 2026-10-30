@@ -17,7 +17,28 @@
       "temperature": 0.1,
       "reasoningEffort": "off",
       "ocrLanguages": "eng,chi_sim",
-      "systemPrompt": "Answer only from the provided context. Cite the source document for what you say. If the context does not contain the answer, say that you do not know."
+      "systemPrompt": "Answer only from the provided context. Cite the source document for what you say. If the context does not contain the answer, say that you do not know.",
+      "answer": {
+        "rerankerModel": "Xenova/ms-marco-MiniLM-L-6-v2",
+        "rerankerBypassCjk": true,
+        "vectorTopK": 30,
+        "keywordTopK": 30,
+        "rrfK": 60,
+        "candidateSections": 12,
+        "sectionCapChars": 0,
+        "sectionCount": {
+          "strict": 2,
+          "balanced": 3,
+          "broad": 5
+        },
+        "rerankFloor": {
+          "strict": 0.5,
+          "balanced": 0.1,
+          "broad": 0.01
+        },
+        "contextBudgetTokens": 0,
+        "promptVariant": "default"
+      }
     },
     {
       "id": "16gb",
@@ -34,7 +55,28 @@
       "temperature": 0.1,
       "reasoningEffort": "off",
       "ocrLanguages": "eng,chi_sim",
-      "systemPrompt": "Answer only from the provided context. Cite the source document for what you say. If the context does not contain the answer, say that you do not know."
+      "systemPrompt": "Answer only from the provided context. Cite the source document for what you say. If the context does not contain the answer, say that you do not know.",
+      "answer": {
+        "rerankerModel": "onnx-community/bge-reranker-v2-m3-ONNX",
+        "rerankerBypassCjk": false,
+        "vectorTopK": 30,
+        "keywordTopK": 30,
+        "rrfK": 60,
+        "candidateSections": 8,
+        "sectionCapChars": 0,
+        "sectionCount": {
+          "strict": 2,
+          "balanced": 3,
+          "broad": 5
+        },
+        "rerankFloor": {
+          "strict": 0.5,
+          "balanced": 0.1,
+          "broad": 0.01
+        },
+        "contextBudgetTokens": 0,
+        "promptVariant": "default"
+      }
     },
     {
       "id": "32gb",
@@ -51,7 +93,28 @@
       "temperature": 0.1,
       "reasoningEffort": "off",
       "ocrLanguages": "eng,chi_sim",
-      "systemPrompt": "Answer only from the provided context. Cite the source document for what you say. If the context does not contain the answer, say that you do not know."
+      "systemPrompt": "Answer only from the provided context. Cite the source document for what you say. If the context does not contain the answer, say that you do not know.",
+      "answer": {
+        "rerankerModel": "onnx-community/bge-reranker-v2-m3-ONNX",
+        "rerankerBypassCjk": false,
+        "vectorTopK": 30,
+        "keywordTopK": 30,
+        "rrfK": 60,
+        "candidateSections": 8,
+        "sectionCapChars": 0,
+        "sectionCount": {
+          "strict": 2,
+          "balanced": 3,
+          "broad": 5
+        },
+        "rerankFloor": {
+          "strict": 0.5,
+          "balanced": 0.1,
+          "broad": 0.01
+        },
+        "contextBudgetTokens": 0,
+        "promptVariant": "default"
+      }
     }
   ]
 }

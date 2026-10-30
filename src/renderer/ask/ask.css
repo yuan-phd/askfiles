@@ -1,4 +1,4 @@
-/* AskFiles search page. All colors and spacing are variables so the visual pass (plan task 3.6)
+/* AskFiles Ask page. All colors and spacing are variables so the visual pass (plan task 3.6)
    only tunes values here. No web fonts: system stacks cover Latin and Chinese on macOS. */
 
 :root {
@@ -509,4 +509,129 @@ button:focus-visible {
   margin: 0;
   font-size: 0.875rem;
   color: var(--text-muted);
+}
+
+/* Citations and unsupported sentences */
+
+.answer-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.cite {
+  margin-left: 0.15em;
+  font-size: 0.8em;
+  vertical-align: super;
+  line-height: 0;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a.cite:hover {
+  text-decoration: underline;
+}
+
+span.cite {
+  color: var(--text-muted);
+}
+
+.claim.unsupported {
+  color: var(--text-muted);
+}
+
+.unsupported-mark {
+  display: inline-block;
+  width: 0.5em;
+  height: 0.5em;
+  margin-left: 0.3em;
+  border: 1px solid var(--text-muted);
+  border-radius: 50%;
+  vertical-align: middle;
+}
+
+.answer-note {
+  margin: var(--space-2) 0 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.card-number {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.considered {
+  margin-top: var(--space-5);
+}
+
+.considered summary {
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin-bottom: var(--space-3);
+}
+
+/* Developer panel (ASKFILES_DEVELOPER=1) */
+
+.dev {
+  grid-column: 1 / -1;
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  font-size: 0.8rem;
+}
+
+.dev-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.dev-controls input {
+  width: 5rem;
+  margin-left: var(--space-1);
+}
+
+.dev-status {
+  color: var(--text-muted);
+}
+
+.dev h3 {
+  margin: var(--space-4) 0 var(--space-2);
+  font-size: 0.8rem;
+}
+
+.dev table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.dev th,
+.dev td {
+  padding: 2px var(--space-2);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.dev tr.selected td {
+  font-weight: 600;
+}
+
+.dev tr.expected td {
+  background: var(--accent-soft);
+}
+
+.dev tr[data-testid='dev-candidate'] {
+  cursor: pointer;
+}
+
+.dev-save {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
 }

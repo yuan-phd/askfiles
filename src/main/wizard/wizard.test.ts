@@ -46,6 +46,24 @@ async function setup(over: Partial<WizardDeps> = {}, fakeOptions: Parameters<typ
 }
 
 describe('Wizard', () => {
+  it('fetches the tier reranker after the Ollama models, as the last download', async () => {
+    const fetched: string[] = [];
+    const t = await setup({
+      fetchReranker: async (repo, onProgress) => {
+        fetched.push(repo);
+        onProgress({ model: 'bge-reranker-v2-m3', status: 'success', completedBytes: 9, totalBytes: 9, percent: 100 });
+      },
+    });
+    await t.wizard.start();
+    expect(fetched).toEqual(['onnx-community/bge-reranker-v2-m3-ONNX']);
+    const done = t.events.filter((e) => e.type === 'progress' && e.percent === 100);
+    expect(done.map((e) => e.type === 'progress' && [e.model, e.index, e.count])).toEqual([
+      ['bge-m3:567m', 0, 3],
+      ['qwen3:8b', 1, 3],
+      ['bge-reranker-v2-m3', 2, 3],
+    ]);
+  });
+
   it('runs every step in order and ends done', async () => {
     const t = await setup();
     const snap = await t.wizard.start();
