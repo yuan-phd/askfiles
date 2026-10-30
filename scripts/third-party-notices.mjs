@@ -24,6 +24,68 @@ const COMPONENTS = [
 
 const LICENSE_FILE = /^(licen[cs]e|copying|notice)([-_.].*)?$/i;
 
+/**
+ * Standard license texts from SPDX license-list-data v3.27.0, one file per id, for packages that
+ * name a license but ship no license file. LGPL-3.0.txt is the SPDX LGPL-3.0-only text, which
+ * carries the GPL-3.0 text it builds on, as LGPL section 4 requires both to accompany the work.
+ */
+export const LICENSE_TEXTS_DIR = path.join(ROOT, 'scripts', 'license-texts');
+
+/** License names seen in package.json fields, mapped to the file in LICENSE_TEXTS_DIR. */
+const LICENSE_ALIASES = {
+  mit: 'MIT',
+  'mit/x11': 'MIT',
+  x11: 'MIT',
+  'apache-2.0': 'Apache-2.0',
+  'apache 2.0': 'Apache-2.0',
+  apache2: 'Apache-2.0',
+  'apache license 2.0': 'Apache-2.0',
+  'bsd-2-clause': 'BSD-2-Clause',
+  'bsd-3-clause': 'BSD-3-Clause',
+  isc: 'ISC',
+  'lgpl-3.0': 'LGPL-3.0',
+  'lgpl-3.0-only': 'LGPL-3.0',
+  'lgpl-3.0-or-later': 'LGPL-3.0',
+  'lgpl-3.0+': 'LGPL-3.0',
+  'mpl-2.0': 'MPL-2.0',
+  'cc0-1.0': 'CC0-1.0',
+};
+
+/**
+ * Standard text ids for a license field such as (MIT OR Apache-2.0) or MIT AND ISC. Every id is
+ * kept, OR included, so the reader has the text of whichever one applies. unresolved holds the
+ * names without a bundled text, UNKNOWN among them.
+ */
+export function standardLicenseIds(license) {
+  const ids = new Set();
+  const unresolved = [];
+  for (const raw of license.split(/\s+(?:OR|AND)\s+|[()]/)) {
+    const name = raw.trim();
+    if (!name) continue;
+    const id = LICENSE_ALIASES[name.toLowerCase()];
+    if (id) ids.add(id);
+    else unresolved.push(name);
+  }
+  return { ids: [...ids], unresolved };
+}
+
+/** id -> text of every file in LICENSE_TEXTS_DIR. */
+export function loadStandardTexts(dir = LICENSE_TEXTS_DIR) {
+  const out = new Map();
+  for (const f of fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith('.txt'))
+    .sort()) {
+    out.set(f.slice(0, -4), fs.readFileSync(path.join(dir, f), 'utf8').trim());
+  }
+  return out;
+}
+
+/** Heading of a standard text in the notices file; the test looks for it. */
+export function standardTextHeading(id) {
+  return `=== Standard license text: ${id} ===`;
+}
+
 function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
@@ -119,7 +181,7 @@ Components without an npm package
   licenses: the Qwen3 chat models (Apache License 2.0) and the bge-m3 embedding model (MIT License).
 `;
 
-export function render(components, upstreamLicense) {
+export function render(components, upstreamLicense, standardTexts = loadStandardTexts()) {
   const all = new Map();
   for (const c of components) {
     for (const [key, p] of c.packages) {
@@ -137,10 +199,16 @@ export function render(components, upstreamLicense) {
   lines.push('', '', 'License texts', '', '=== AnythingLLM ===', '', upstreamLicense.trim(), '');
 
   const byText = new Map();
-  const without = [];
+  const standardUsers = new Map();
+  const unnamed = [];
   for (const [key, e] of entries) {
     if (!e.text) {
-      without.push(`${key} (${e.license})`);
+      const { ids, unresolved } = standardLicenseIds(e.license);
+      for (const id of ids.filter((i) => standardTexts.has(i))) {
+        standardUsers.set(id, [...(standardUsers.get(id) ?? []), key]);
+      }
+      const missing = [...unresolved, ...ids.filter((i) => !standardTexts.has(i))];
+      if (missing.length) unnamed.push(`${key} (${e.license})`);
       continue;
     }
     const h = createHash('sha256').update(e.text.replace(/\s+/g, ' ')).digest('hex');
@@ -149,11 +217,22 @@ export function render(components, upstreamLicense) {
     byText.set(h, g);
   }
   for (const g of byText.values()) lines.push(`=== Used by: ${g.users.join(', ')} ===`, '', g.text, '');
-  if (without.length) {
+  for (const id of [...standardUsers.keys()].sort()) {
     lines.push(
-      '=== Packages that ship no license file; their license is the one named in their package.json ===',
+      standardTextHeading(id),
       '',
-      ...without.map((w) => `- ${w}`),
+      `These packages ship no license file and name ${id} in their package.json: ${standardUsers.get(id).join(', ')}.`,
+      'The standard text follows; their copyright holders are the authors named in each package.',
+      '',
+      standardTexts.get(id),
+      '',
+    );
+  }
+  if (unnamed.length) {
+    lines.push(
+      '=== Packages that ship no license file and name no license with a standard text here ===',
+      '',
+      ...unnamed.map((w) => `- ${w}`),
       '',
     );
   }

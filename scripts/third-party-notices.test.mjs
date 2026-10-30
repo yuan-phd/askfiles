@@ -2,7 +2,16 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { collect, licenseOf, render } from './third-party-notices.mjs';
+import {
+  collect,
+  licenseOf,
+  loadStandardTexts,
+  render,
+  standardLicenseIds,
+  standardTextHeading,
+} from './third-party-notices.mjs';
+
+const NOTICES = path.resolve(import.meta.dirname, '..', 'THIRD-PARTY-NOTICES');
 
 function pkg(dir, json, license) {
   fs.mkdirSync(dir, { recursive: true });
@@ -42,5 +51,64 @@ describe('third-party notices', () => {
     expect(licenseOf({ license: { type: 'BSD' } })).toBe('BSD');
     expect(licenseOf({ licenses: [{ type: 'MIT' }, 'Apache-2.0'] })).toBe('MIT OR Apache-2.0');
     expect(licenseOf({})).toBe('UNKNOWN');
+  });
+
+  it('maps license fields to the bundled standard texts', () => {
+    expect(standardLicenseIds('LGPL-3.0-or-later')).toEqual({ ids: ['LGPL-3.0'], unresolved: [] });
+    expect(standardLicenseIds('(MIT OR Apache-2.0)')).toEqual({ ids: ['MIT', 'Apache-2.0'], unresolved: [] });
+    expect(standardLicenseIds('MIT AND ISC').ids).toEqual(['MIT', 'ISC']);
+    expect(standardLicenseIds('Apache 2.0').ids).toEqual(['Apache-2.0']);
+    expect(standardLicenseIds('MIT/X11').ids).toEqual(['MIT']);
+    expect(standardLicenseIds('UNKNOWN')).toEqual({ ids: [], unresolved: ['UNKNOWN'] });
+    const texts = loadStandardTexts();
+    for (const id of ['MIT', 'Apache-2.0', 'BSD-2-Clause', 'BSD-3-Clause', 'ISC', 'LGPL-3.0', 'MPL-2.0', 'CC0-1.0']) {
+      expect(texts.get(id), id).toBeTruthy();
+    }
+    // LGPL-3.0 builds on the GPL-3.0, and section 4 asks for both texts with the work.
+    expect(texts.get('LGPL-3.0')).toMatch(/GNU LESSER GENERAL PUBLIC LICENSE[\s\S]*GNU GENERAL PUBLIC LICENSE/);
+  });
+
+  it('adds the standard text for packages without a license file', () => {
+    const packages = new Map([
+      ['vips@1.0.0', { name: 'vips', version: '1.0.0', license: 'LGPL-3.0-or-later', text: '' }],
+      ['dual@1.0.0', { name: 'dual', version: '1.0.0', license: '(MIT OR Apache-2.0)', text: '' }],
+      ['own@1.0.0', { name: 'own', version: '1.0.0', license: 'MIT', text: 'Own MIT text' }],
+      ['bare@1.0.0', { name: 'bare', version: '1.0.0', license: 'UNKNOWN', text: '' }],
+    ]);
+    const texts = new Map([
+      ['LGPL-3.0', 'LGPL TEXT'],
+      ['MIT', 'MIT TEXT'],
+      ['Apache-2.0', 'APACHE TEXT'],
+    ]);
+    const text = render([{ label: 'shell', packages, missing: [] }], 'UPSTREAM', texts);
+    expect(text).toContain(
+      `${standardTextHeading('LGPL-3.0')}\n\nThese packages ship no license file and name LGPL-3.0`,
+    );
+    expect(text).toContain('LGPL TEXT');
+    expect(text).toContain('MIT TEXT');
+    expect(text).toContain('APACHE TEXT');
+    expect(text).toMatch(/name MIT in their package\.json: dual@1\.0\.0\./);
+    expect(text).toContain('Own MIT text');
+    expect(text).toContain('- bare@1.0.0 (UNKNOWN)');
+    expect(text).not.toContain('- vips@1.0.0 (');
+  });
+
+  it('has a license text in THIRD-PARTY-NOTICES for every listed package that names a license', () => {
+    const text = fs.readFileSync(NOTICES, 'utf8');
+    const [list, texts] = text.split('\nLicense texts\n');
+    const listed = [...list.matchAll(/^- (\S+@\S+) {2}(.+?) {2}\[/gm)].map((m) => ({ key: m[1], license: m[2] }));
+    expect(listed.length).toBeGreaterThan(100);
+    const covered = new Set();
+    for (const m of texts.matchAll(/^=== Used by: (.+) ===$/gm)) for (const k of m[1].split(', ')) covered.add(k);
+    for (const m of texts.matchAll(
+      /^These packages ship no license file and name (\S+) in their package\.json: (.+)\.$/gm,
+    )) {
+      expect(texts, `standard text ${m[1]}`).toContain(standardTextHeading(m[1]));
+      for (const k of m[2].split(', ')) covered.add(k);
+    }
+    const uncovered = listed.filter((p) => !covered.has(p.key));
+    // Only packages whose package.json names no license may go without a text.
+    expect(uncovered.filter((p) => standardLicenseIds(p.license).ids.length > 0)).toEqual([]);
+    expect(uncovered.every((p) => p.license === 'UNKNOWN')).toBe(true);
   });
 });
