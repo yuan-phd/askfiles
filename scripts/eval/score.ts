@@ -53,6 +53,30 @@ export function metricRowsOf(csv: string, mode: string): MetricRow[] {
       passage: x.passage,
     }));
     const refused = r.refused === 'yes';
+    if (refused && q.category === 'section_listing') {
+      // The refusal with the nearest sections listed is the right output; measure the list.
+      const listed: CitedRecord[] = (
+        r.fallback_json?.trim() ? (JSON.parse(r.fallback_json) as SourceRecord[]) : []
+      ).map((x) => ({
+        file: x.file,
+        path: x.sectionTitle ? [x.sectionTitle] : [],
+        title: x.sectionTitle ?? '',
+        pageStart: x.page,
+        pageEnd: x.pageEnd,
+        passage: x.passage,
+      }));
+      const hit = targetHit(q, listed);
+      return {
+        id: r.id ?? '',
+        category: r.category ?? '',
+        config: 'upstream',
+        targetHit: hit,
+        keyCoverage: keyCoverage(q, listed.map((c) => c.path.join(' > ')).join('\n')),
+        attribution: hit,
+        firstTokenMs: num(r.first_token_ms),
+        totalMs: r.error ? null : num(r.total_ms),
+      };
+    }
     return {
       id: r.id ?? '',
       category: r.category ?? '',

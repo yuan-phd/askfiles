@@ -33,6 +33,7 @@ import {
   expectedRank,
   indexHash,
   runSettings,
+  stage1Sections,
   sweep,
   sweepTable,
 } from './pipeline.js';
@@ -541,10 +542,7 @@ async function runStages(o: Parameters<typeof runPipeline>[0], deps: PipelineDep
     items.push({ q, retrieval });
     const sel = choose(retrieval, base);
     const rank = expectedRank(q, retrieval);
-    const hit = targetHit(
-      q,
-      sel.selected.map((x) => x.section),
-    );
+    const hit = targetHit(q, stage1Sections(q, retrieval, base));
     const row: Record<string, unknown> = {
       run_id: o.runId,
       corpus: o.corpusLabel,

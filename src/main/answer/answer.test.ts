@@ -461,7 +461,9 @@ describe('pipeline', () => {
     const r = await retrieve('What is the capital of France?', settings, deps);
     const result = await answer('q', r, choose(r, settings), settings, deps);
     expect(result).toMatchObject({ notFound: true, skippedModel: true });
-    expect(result.nearest.length).toBeGreaterThan(0);
+    // The listing path has no floor: every candidate, best reranked first, up to NEAREST_COUNT.
+    expect(result.nearest.map((c) => c.title)).toEqual(r.candidates.slice(0, 8).map((c) => c.title));
+    expect(result.nearest.every((c) => (c.rerank ?? 0) < 0.01)).toBe(true);
     expect(calls()).toBe(0);
   });
 
@@ -520,6 +522,33 @@ describe('rerankerProcess', () => {
     try {
       expect(await r.score('q', [])).toEqual([]);
       await expect(r.score('q', ['text'])).rejects.toThrow(/reranker ms-marco-MiniLM-L-6-v2 is not installed/);
+    } finally {
+      r.stop();
+    }
+  });
+});
+
+describe('rerankerProcess idle unload', () => {
+  it('ends the process after the idle time, logs it, and starts again on the next call', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'askfiles-rp-'));
+    cleanups.push(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const logs: string[] = [];
+    const r = rerankerProcess({
+      transformersDir: dir,
+      modelsDir: dir,
+      repo: 'Xenova/ms-marco-MiniLM-L-6-v2',
+      idleMs: 300,
+      log: (m) => logs.push(m),
+    });
+    try {
+      await expect(r.score('q', ['text'])).rejects.toThrow(/not installed/);
+      expect(r.running()).toBe(true);
+      await new Promise((res) => setTimeout(res, 800));
+      expect(r.running()).toBe(false);
+      expect(logs).toContain('[answer] reranker ms-marco-MiniLM-L-6-v2 unloaded after 0 min idle');
+      await expect(r.score('q', ['text'])).rejects.toThrow(/not installed/);
+      expect(r.running()).toBe(true);
+      expect(logs.some((l) => l.startsWith('[answer] reranker ms-marco-MiniLM-L-6-v2 reloading'))).toBe(true);
     } finally {
       r.stop();
     }

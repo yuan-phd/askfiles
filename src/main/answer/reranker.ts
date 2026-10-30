@@ -202,8 +202,10 @@ export function crossEncoder(o: {
 
 /**
  * The cross-encoder in a child process (reranker-worker.ts), started on the first call and kept
- * for the next questions. A crash fails the calls in flight; the next call starts a new process.
- * execPath and env let the app use its own binary with ELECTRON_RUN_AS_NODE=1.
+ * for the next questions. With idleMs, the process ends after that long without a call, which
+ * gives its memory back (up to 2.7 GB for v2-m3); the next call loads the model again. A crash
+ * fails the calls in flight; the next call starts a new process. execPath and env let the app use
+ * its own binary with ELECTRON_RUN_AS_NODE=1.
  */
 export function rerankerProcess(o: {
   transformersDir: string;
@@ -211,11 +213,31 @@ export function rerankerProcess(o: {
   repo: string;
   execPath?: string;
   env?: Record<string, string | undefined>;
+  /** End the process after this long without a call; unset keeps it until stop(). */
+  idleMs?: number;
   log?: (m: string) => void;
-}): Reranker & { model: RerankerModel; stop(): void } {
+}): Reranker & { model: RerankerModel; stop(): void; running(): boolean } {
   const model = rerankerModel(o.repo);
   let child: ChildProcess | null = null;
   let next = 0;
+  let idle: NodeJS.Timeout | null = null;
+  let unloadedAt: number | null = null;
+  const armIdle = () => {
+    if (idle) clearTimeout(idle);
+    idle = null;
+    if (!o.idleMs || pending.size) return;
+    idle = setTimeout(() => {
+      idle = null;
+      if (!child || pending.size) return;
+      const c = child;
+      child = null;
+      unloadedAt = Date.now();
+      c.kill();
+      o.log?.(`[answer] reranker ${model.label} unloaded after ${Math.round(o.idleMs! / 60_000)} min idle`);
+    }, o.idleMs);
+    // An idle timer must not keep a process alive that has nothing else to do.
+    idle.unref();
+  };
   const pending = new Map<number, { resolve: (s: number[]) => void; reject: (e: Error) => void }>();
   const failAll = (e: Error) => {
     for (const p of pending.values()) p.reject(e);
@@ -247,6 +269,7 @@ export function rerankerProcess(o: {
       pending.delete(m.id);
       if (m.scores) p.resolve(m.scores);
       else p.reject(new Error(m.error ?? 'the reranker failed'));
+      armIdle();
     });
     c.on('exit', (code, signal) => {
       if (child === c) child = null;
@@ -259,14 +282,29 @@ export function rerankerProcess(o: {
     model,
     score(query, texts) {
       if (!texts.length) return Promise.resolve([]);
-      child ??= start();
+      if (idle) clearTimeout(idle);
+      idle = null;
+      if (!child) {
+        if (unloadedAt !== null) {
+          o.log?.(
+            `[answer] reranker ${model.label} reloading, unloaded ${Math.round((Date.now() - unloadedAt) / 60_000)} min ago`,
+          );
+          unloadedAt = null;
+        }
+        child = start();
+      }
       const id = ++next;
       return new Promise<number[]>((resolve, reject) => {
         pending.set(id, { resolve, reject });
         child!.send({ id, query, texts });
       });
     },
+    running() {
+      return child !== null;
+    },
     stop() {
+      if (idle) clearTimeout(idle);
+      idle = null;
       const c = child;
       child = null;
       failAll(new Error('the reranker was stopped'));

@@ -37,6 +37,9 @@ import { seedTesseractData } from './tesseract.js';
 import { chokidarWatch, collectorOcr, createLibraryApi, FolderWatcher, sectionSplitter } from './watcher/index.js';
 import { Wizard } from './wizard/index.js';
 
+/** The reranker process ends after this long without a question, to give its memory back. */
+const RERANKER_IDLE_MS = 15 * 60_000;
+
 export interface AppDeps {
   win: BrowserWindow;
   log: Logger;
@@ -330,6 +333,7 @@ export class AppController implements BridgeHandlers {
         repo,
         execPath: process.execPath,
         env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+        idleMs: RERANKER_IDLE_MS,
         log: this.d.log,
       });
       this.reranker = { repo, instance };

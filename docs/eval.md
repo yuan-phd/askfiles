@@ -172,7 +172,7 @@ Per category:
 - absent_related: on the topic of the corpus but not answered by it (the policy covers employees, the question asks about contractors).
 - absent_unrelated: nothing to do with the corpus.
 - version: asks what two versions of the near-duplicate file each say.
-- section_listing: asks which sections cover a topic; the expected result is the list of sections, not a synthesized answer.
+- section_listing: asks which sections cover a topic; the expected result is the list of sections, not a synthesized answer. In the app the correct output is the no-answer state with the closest sections listed. That list has no rerank floor: it is the best reranked candidates, up to 8, whatever their scores. Sections that answer a listing question often score low (0.02 to 0.08 with the bge rerankers on the fixtures), so a floor that keeps them out of the model's sources is expected, not a loss.
 
 ## Metrics
 
@@ -181,6 +181,7 @@ Computed by the harness for pipeline runs (stage 2) and by eval:score for every 
 - Target section hit: every expected section is among the cited sections (stage 2) or among the selected sections (stage 1). A section matches when its file is the expected file and its path ends with expected_section_path (or its title equals expected_section). Not counted for absent questions or questions without an expected section.
 - Key element coverage: the share of key_elements present in the answer text, case and whitespace insensitive. A not-found answer covers nothing. Not counted for questions without key_elements.
 - Attribution accuracy: true when every cited section contains at least one key element, or when the answer is a refusal (the not-found state) to an absent question. An answer that cites nothing, a refusal to an answerable question, and any answer to an absent question are false. This catches a citation that points at the wrong file or section even when the answer text is right.
+- Section listing questions are measured on the listed sections when the answer is the no-answer state: target section hit when they include every expected section, key element coverage over their section paths, attribution correct when the target is listed. In stage 1 they are measured on the nearest list (best reranked candidates, no floor, up to 8) for every count and floor of the sweep. For upstream runs the fallback list plays this part.
 - Latency: median first token and total time. For stage 2, total is the cached retrieval's time plus the model call.
 
 For upstream-route runs eval:score computes the same three metrics with the sources the server returned standing in for the cited sections, so the two routes can be compared on one table.

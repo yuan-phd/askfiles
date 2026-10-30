@@ -11,10 +11,12 @@ import {
   rerankerProcess,
   ensureReranker,
   ollamaChat,
+  NEAREST_COUNT,
   ranked,
   retrieve,
   upstreamVectorSearch,
   type AnswerResult,
+  type AnswerSection,
   type PipelineDeps,
   type Retrieval,
   type RunSettings,
@@ -177,18 +179,15 @@ export function sweep(
     for (const floor of floors) {
       const cell: SweepCell = { count, floor, hit: 0, n: 0, emptyAbsent: 0, nAbsent: 0 };
       for (const { q, retrieval } of items) {
-        const sel = choose(retrieval, runSettings(config, chunkMaxChars, { count, floor }));
-        const hit = targetHit(
-          q,
-          sel.selected.map((x) => x.section),
-        );
+        const s = runSettings(config, chunkMaxChars, { count, floor });
+        const hit = targetHit(q, stage1Sections(q, retrieval, s));
         if (hit !== null) {
           cell.n++;
           if (hit) cell.hit++;
         }
         if (q.category.startsWith('absent')) {
           cell.nAbsent++;
-          if (!sel.selected.length) cell.emptyAbsent++;
+          if (!choose(retrieval, s).selected.length) cell.emptyAbsent++;
         }
       }
       cells.push(cell);
@@ -225,6 +224,19 @@ export function sweepTable(cells: SweepCell[], mark: { count: number; floor: num
   return lines.join('\n');
 }
 
+/**
+ * The sections a question is measured against without the model. For section_listing the correct
+ * output is the no-answer state listing the nearest sections, which takes the best reranked
+ * sections with no floor; for every other category, the selected sections.
+ */
+export function stage1Sections(q: Question, r: Retrieval, s: RunSettings): AnswerSection[] {
+  if (q.category === 'section_listing')
+    return ranked(r)
+      .slice(0, NEAREST_COUNT)
+      .map((x) => x.section);
+  return choose(r, s).selected.map((x) => x.section);
+}
+
 /** Rank (1-based) and rerank score of the first expected section in the final order, or null. */
 export function expectedRank(q: Question, r: Retrieval): { rank: number; rerank: number | null } | null {
   const want = expectedSections(q)[0];
@@ -255,12 +267,27 @@ export async function answerOnce(
   }
 }
 
+/**
+ * The three metrics of one answer. A section_listing question answered with the no-answer state
+ * is measured on the listed sections: target hit when they include the expected ones, coverage
+ * of the key elements in their paths, attribution correct when the target is listed.
+ */
 export function answerMetrics(q: Question, row: AnswerRow) {
   const r = row.result;
-  const cited = (r?.cited ?? []).map(cardRecord);
+  if (!r) return { targetHit: null, keyCoverage: null, attribution: null };
+  if (q.category === 'section_listing' && r.notFound) {
+    const listed = r.nearest.map(cardRecord);
+    const hit = targetHit(q, listed);
+    return {
+      targetHit: hit,
+      keyCoverage: keyCoverage(q, listed.map((c) => c.path.join(' > ')).join('\n')),
+      attribution: hit,
+    };
+  }
+  const cited = r.cited.map(cardRecord);
   return {
-    targetHit: r ? targetHit(q, cited) : null,
-    keyCoverage: r && !r.notFound ? keyCoverage(q, r.text) : r ? (keyCoverage(q, '') === null ? null : 0) : null,
-    attribution: r ? attributionOk(q, { refused: r.notFound, cited }) : null,
+    targetHit: targetHit(q, cited),
+    keyCoverage: r.notFound ? (keyCoverage(q, '') === null ? null : 0) : keyCoverage(q, r.text),
+    attribution: attributionOk(q, { refused: r.notFound, cited }),
   };
 }

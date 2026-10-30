@@ -14,7 +14,7 @@ import {
 } from './answer-metrics.js';
 import { applySets, resolveConfig } from './config.js';
 import { csvHeader, csvLine } from './csv.js';
-import { indexHash, sweep, sweepTable } from './pipeline.js';
+import { answerMetrics, indexHash, sweep, sweepTable } from './pipeline.js';
 import { loadQuestions, parseQuestions, type Question } from './questions.js';
 import { RESULT_COLUMNS } from './results.js';
 import { parseTry } from './run.js';
@@ -236,19 +236,28 @@ describe('stage 1 sweep', () => {
       },
       { q: question('single_fact', 'A'), retrieval: retrieval([['A', 0.08]]) },
       { q: question('absent_related', ''), retrieval: retrieval([['C', 0.02]]) },
+      // A section listing is measured on the nearest list, which has no floor and no count.
+      {
+        q: question('section_listing', 'A; D'),
+        retrieval: retrieval([
+          ['A', 0.03],
+          ['B', 0.02],
+          ['D', 0.01],
+        ]),
+      },
     ];
     const cells = sweep(items, config, 1000, [1, 2], [0, 0.05, 0.5]);
     const at = (count: number, floor: number) => cells.find((c) => c.count === count && c.floor === floor)!;
-    expect(at(1, 0)).toMatchObject({ hit: 1, n: 2, emptyAbsent: 0, nAbsent: 1 });
-    expect(at(2, 0)).toMatchObject({ hit: 2, n: 2 });
-    expect(at(2, 0.05)).toMatchObject({ hit: 2, emptyAbsent: 1 });
-    expect(at(2, 0.5)).toMatchObject({ hit: 0, emptyAbsent: 1 });
+    expect(at(1, 0)).toMatchObject({ hit: 2, n: 3, emptyAbsent: 0, nAbsent: 1 });
+    expect(at(2, 0)).toMatchObject({ hit: 3, n: 3 });
+    expect(at(2, 0.05)).toMatchObject({ hit: 3, emptyAbsent: 1 });
+    expect(at(2, 0.5)).toMatchObject({ hit: 1, emptyAbsent: 1 });
     const table = sweepTable(cells, { count: 2, floor: 0.05 });
     expect(table.split('\n').slice(0, 4)).toEqual([
       '| Sections \\ floor | 0 | 0.05 | 0.5 |',
       '|---|---|---|---|',
-      '| 1 | 50% | 50% | 0% |',
-      '| 2 | 100% | **100%** | 0% |',
+      '| 1 | 67% | 67% | 33% |',
+      '| 2 | 100% | **100%** | 33% |',
     ]);
   });
 
@@ -260,6 +269,54 @@ describe('stage 1 sweep', () => {
     expect(indexHash(applySets(config, ['rerankFloor=0.9']), lib)).toBe(h);
     expect(indexHash(applySets(config, ['candidateSections=5']), lib)).not.toBe(h);
     expect(indexHash(config, { records: [{ sections: [{ location: 'a' }] }] } as never)).not.toBe(h);
+  });
+});
+
+describe('section listing answers', () => {
+  it('measures a no-answer state on the listed sections', () => {
+    const listing = {
+      ...(q({ category: 'section_listing', expected_section: 'A; B', key_elements: 'a; b' }) as Question),
+      id: 'x',
+      question: 'q',
+    };
+    const card = (title: string) => ({
+      n: 1,
+      file: 'handbook.pdf',
+      relPath: 'handbook.pdf',
+      url: 'u',
+      documentId: 'd',
+      sectionIndex: 1,
+      title,
+      path: [title],
+      pageStart: null,
+      pageEnd: null,
+      pageLabel: null,
+      passage: 'p',
+      rerank: 0.01,
+      trimmed: false,
+    });
+    const result = {
+      text: 'NOT_IN_SOURCES',
+      notFound: true,
+      claims: [],
+      cited: [],
+      considered: [],
+      nearest: [card('A'), card('C'), card('B')],
+      skippedModel: true,
+      timings: { firstTokenMs: null, modelMs: 0 },
+      stats: { promptTokens: null, completionTokens: null },
+    };
+    expect(answerMetrics(listing, { result, error: '', totalMs: 10 })).toEqual({
+      targetHit: true,
+      keyCoverage: 1,
+      attribution: true,
+    });
+    const missing = { ...result, nearest: [card('A')] };
+    expect(answerMetrics(listing, { result: missing, error: '', totalMs: 10 })).toEqual({
+      targetHit: false,
+      keyCoverage: 0.5,
+      attribution: false,
+    });
   });
 });
 
