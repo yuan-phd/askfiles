@@ -45,10 +45,6 @@ export function occurrences(hay: string, term: string): number[] {
   return out;
 }
 
-/**
- * A stretch of text around the first match, with the position of every match inside it. When no
- * term occurs in the text (the title matched), the start of the text.
- */
 /** [start, end) in text of every occurrence of the terms, overlapping ones merged, in order. */
 export function markRanges(text: string, terms: string[]): [number, number][] {
   const { folded, map } = foldWithMap(text);
@@ -64,6 +60,10 @@ export function markRanges(text: string, terms: string[]): [number, number][] {
   return merged;
 }
 
+/**
+ * A stretch of text around the first match, with the position of every match inside it. When no
+ * term occurs in the text (the title matched), the start of the text.
+ */
 export function snippetOf(text: string, terms: string[]): { snippet: string; marks: [number, number][] } {
   const ranges = markRanges(text, terms);
   const first = ranges.length ? ranges[0]![0] : 0;
