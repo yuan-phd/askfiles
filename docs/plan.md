@@ -132,7 +132,15 @@ Reranker comparison on the fixture corpora (test/fixtures/eval-s and eval-l, 13 
 | bge-reranker-base | 296 MB | 5/8 | 6/8 | 3/5 | 5/5 | 1.8 s (L) | 1.4 GB |
 | bge-reranker-v2-m3 | 588 MB | 5/8 | 6/8 | 3/5 | 5/5 | 5.9 s (S), 11.7 s (L) | 2.7 GB |
 
-Chinese: to an English question MiniLM scores a Chinese answer passage 0.000. To a Chinese question (scripts/bench-reranker.mjs) MiniLM scores the answer 0.999 but an unrelated Chinese passage 0.801, while bge-reranker-base gives 0.999 and 0.000; MiniLM's Chinese scores do not separate relevant from unrelated, which is why the 8 GB tier bypasses it for Chinese. The fixtures are small; the comparison is repeated on the owner's corpora with the eval (--set rerankerModel=...). Timings on the CI Mac (macos-14 runner) come from the Time the rerankers step of the mac workflow; until a run is recorded here they are unverified.
+Chinese: to an English question MiniLM scores a Chinese answer passage 0.000. To a Chinese question (scripts/bench-reranker.mjs) MiniLM scores the answer 0.999 but an unrelated Chinese passage 0.801, while bge-reranker-base gives 0.999 and 0.000; MiniLM's Chinese scores do not separate relevant from unrelated, which is why the 8 GB tier bypasses it for Chinese. The fixtures are small; the comparison is repeated on the owner's corpora with the eval (--set rerankerModel=...). Timings on the CI Mac (GitHub macos-14 runner, a virtualized M1 with 3 cores and 7 GB; scripts/bench-reranker.mjs in the mac workflow, PR 11 run 41088006962, 2026-10-30), per question, median of 3, sections at the 512 token limit, half English and half Chinese, each model in its own process:
+
+| Reranker | Files | First load and first call | 8 sections | 12 sections | Process RSS | English answer / unrelated | Chinese answer / unrelated |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| ms-marco-MiniLM-L-6-v2 | 24 MB | 0.7 s | 1.3 s | 1.9 s | 443 MB | 1.000 / 0.000 | 0.999 / 0.801 |
+| bge-reranker-base | 296 MB | 3.5 s | 7.6 s | 11.5 s | 1489 MB | 0.995 / 0.001 | 0.999 / 0.000 |
+| bge-reranker-v2-m3 | 588 MB | 10.2 s | 27.9 s | 40.9 s | 1228 MB | 0.991 / 0.000 | 0.995 / 0.000 |
+
+The runner is 3 to 4 times slower than the 4 vCPU Linux container on these models, and a real Mac with more performance cores is expected to be faster than both; that is unverified. At these runner timings bge-reranker-base adds about 8 s and v2-m3 about 28 s to every question of the 16 GB and 32 GB tiers. Measure on the owner's Mac before freezing the reranker per tier (phase 2).
 
 **Tasks**
 
