@@ -7,12 +7,12 @@ PR title: [Session F] macOS CI workflow and folder watcher
 
 ## Part 1: GitHub Actions workflow
 
-Deliverable: .github/workflows/mac.yml on macos-14 (Apple Silicon runner).
+Deliverable: .github/workflows/mac.yml on macos-15 (Apple Silicon runner; the brief said macos-14, which GitHub retires on 2026-11-02).
 
 Jobs and steps:
 1. test: ubuntu-latest, npm ci, npm test, npm run lint. Fast gate before the Mac job.
-2. package: macos-14, needs test. Checkout, Node 22, npm ci, make build with PACKAGE_TARGET=mac-arm64, download the Ollama macOS binary into resources/ (pin the version in a workflow variable and verify its SHA256), npm run package:mac, scripts/sign-adhoc.sh, upload the DMG as an artifact named by commit SHA.
-3. smoke: macos-14, needs package. Download the artifact, mount the DMG with hdiutil, copy the app to a temp dir, launch it with open, poll the shell's health file or log for the server port (define how the shell publishes its port: write <dataDir>/ports.json; add that to the process manager if missing), curl /api/ping, upload test/fixtures/sample.pdf through the API, make one chat call with the test model, assert a non-empty answer, take a screenshot with screencapture, upload it, and kill the app. Fail the job on any step.
+2. package: macos-15, needs test. Checkout, Node 22, npm ci, make build with PACKAGE_TARGET=mac-arm64, download the Ollama macOS binary into resources/ (pin the version in a workflow variable and verify its SHA256), npm run package:mac, scripts/sign-adhoc.sh, upload the DMG as an artifact named by commit SHA.
+3. smoke: macos-15, needs package. Download the artifact, mount the DMG with hdiutil, copy the app to a temp dir, launch it with open, poll the shell's health file or log for the server port (define how the shell publishes its port: write <dataDir>/ports.json; add that to the process manager if missing), curl /api/ping, upload test/fixtures/sample.pdf through the API, make one chat call with the test model, assert a non-empty answer, take a screenshot with screencapture, upload it, and kill the app. Fail the job on any step.
 
 Constraints: no secrets required; the workflow must be green on a fork with no certificates. Keep total runtime under 30 minutes; cache node_modules and the Ollama download. Use the GitHub Actions concurrency key so a new push cancels the previous run.
 

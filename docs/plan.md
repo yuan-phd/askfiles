@@ -88,7 +88,7 @@ Outcome: an unsigned DMG that installs by drag and drop, downloads a model on fi
 | 1.5 | Preset configuration written into server/.env: LLM\_PROVIDER=ollama, OLLAMA\_BASE\_PATH, OLLAMA\_MODEL\_PREF, OLLAMA\_MODEL\_TOKEN\_LIMIT, EMBEDDING\_ENGINE=ollama, EMBEDDING\_MODEL\_PREF, EMBEDDING\_MODEL\_MAX\_CHUNK\_LENGTH, VECTOR\_DB=lancedb, DISABLE\_TELEMETRY=true, TARGET\_OCR\_LANG=eng,chi\_sim, server bound to 127.0.0.1 | config/presets.json plus a generator | Variable names verified against .env.example by task 1.1 | CLOUD |
 | 1.6 | Model manager page in the shell: list, download, switch, delete, wrapping ollama commands | src/renderer/models | Works against a running Ollama in CI | CLOUD |
 | 1.7 | Packaging: electron-builder DMG, asar with unpack rules for native modules, bundled Ollama in Resources, ad-hoc codesign of the whole bundle | DMG artifact | App launches from /Applications on a clean Mac; copies to a second Mac by USB and opens without warnings | LOCAL first, then CI |
-| 1.8 | GitHub Actions workflow on macos-14: build, package, ad-hoc sign, upload DMG, smoke test (open the app, curl /api/ping, upload a PDF, one chat call) | .github/workflows/mac.yml | Green run on a public repo | CLOUD writes it, CI runs it |
+| 1.8 | GitHub Actions workflow on macos-15 (Apple Silicon; moved from macos-14, which GitHub retires on 2026-11-02): build, package, ad-hoc sign, upload DMG, smoke test (open the app, curl /api/ping, upload a PDF, one chat call) | .github/workflows/mac.yml | Green run on a public repo | CLOUD writes it, CI runs it |
 | 1.9 | Hide the upstream LLM and embedder settings pages so users cannot break presets | Small patch file applied at build time, or an env flag if upstream has one | Settings pages absent in the packaged app | CLOUD |
 
 **Hidden work to budget for** (found during 1.7 in most Electron projects): native module ABI, Prisma engine path inside asar, collector pulling puppeteer or other heavy packages, port already in use on relaunch, orphaned ollama process after a crash. Task 1.1 exists to surface these before they cost a day each.
@@ -134,7 +134,7 @@ Reranker comparison on the fixture corpora (test/fixtures/eval-s and eval-l, 13 
 | bge-reranker-base | 296 MB | 5/8 | 6/8 | 3/5 | 5/5 | 1.8 s (L) | 1.4 GB |
 | bge-reranker-v2-m3 | 588 MB | 5/8 | 6/8 | 3/5 | 5/5 | 5.9 s (S), 11.7 s (L) | 2.7 GB |
 
-Chinese: to an English question MiniLM scores a Chinese answer passage 0.000. To a Chinese question (scripts/bench-reranker.mjs) MiniLM scores the answer 0.999 but an unrelated Chinese passage 0.801, while bge-reranker-base gives 0.999 and 0.000; MiniLM's Chinese scores do not separate relevant from unrelated, which is why the 8 GB tier bypasses it for Chinese. The fixtures are small; the comparison is repeated on the owner's corpora with the eval (--set rerankerModel=...). Timings on the CI Mac (GitHub macos-14 runner, a virtualized M1 with 3 cores and 7 GB; scripts/bench-reranker.mjs in the mac workflow, PR 11 run 41088006962, 2026-10-30), per question, median of 3, sections at the 512 token limit, half English and half Chinese, each model in its own process:
+Chinese: to an English question MiniLM scores a Chinese answer passage 0.000. To a Chinese question (scripts/bench-reranker.mjs) MiniLM scores the answer 0.999 but an unrelated Chinese passage 0.801, while bge-reranker-base gives 0.999 and 0.000; MiniLM's Chinese scores do not separate relevant from unrelated, which is why the 8 GB tier bypasses it for Chinese. The fixtures are small; the comparison is repeated on the owner's corpora with the eval (--set rerankerModel=...). Timings on the CI Mac (GitHub macos-14 runner, a virtualized M1 with 3 cores and 7 GB, before the move to macos-15; scripts/bench-reranker.mjs in the mac workflow, PR 11 run 41088006962, 2026-10-30), per question, median of 3, sections at the 512 token limit, half English and half Chinese, each model in its own process:
 
 | Reranker | Files | First load and first call | 8 sections | 12 sections | Process RSS | English answer / unrelated | Chinese answer / unrelated |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -239,7 +239,7 @@ Implement the first-run wizard logic: RAM detection, tier mapping from config/pr
 
 **Session F: CI workflow and folder watcher (tasks 1.8 and 3.2), after Sessions B and C** Merged: PR 5, 2026-10-29.
 
-Write .github/workflows/mac.yml for macos-14: build, package, ad-hoc sign, upload the DMG, then smoke test by launching the app, polling /api/ping, uploading a sample PDF and making one chat call. Implement src/main/watcher with chokidar or fs.watch: debounce, upload, re-embed, remove, status events. Unit tests for the watcher. Success: workflow file lints; watcher tests green.
+Write .github/workflows/mac.yml for macos-15 (originally macos-14): build, package, ad-hoc sign, upload the DMG, then smoke test by launching the app, polling /api/ping, uploading a sample PDF and making one chat call. Implement src/main/watcher with chokidar or fs.watch: debounce, upload, re-embed, remove, status events. Unit tests for the watcher. Success: workflow file lints; watcher tests green.
 
 **Session G: test harness (task 2.3), after Session A** Merged: PR 7, 2026-10-29.
 
@@ -289,7 +289,7 @@ Estimate: 14 to 25 working days of iteration for phases 1 to 4, about five to se
 
 | Phase | Working days | Your time | Cloud share | Measured so far |
 | --- | --- | --- | --- | --- |
-| 1 Shell | 6 to 11 | Package tests and copy tests | Analysis, skeleton, process manager, wizard logic, presets, model manager, CI workflow | Sessions A to G merged on 2026-10-29 (PRs 1 to 7). On the macos-14 CI runner (Session F PR): build 65 s, package job 22 min, smoke test 3 min 45 s, one chat answer 38 s. Session I: DMG 695 967 267 bytes (663.7 MiB) before, 578 415 079 bytes (551.6 MiB) after; package job 26 min 45 s before, 4 min 15 s after with warm caches (9 min 27 s with empty ones) (docs/bundle-report.md) |
+| 1 Shell | 6 to 11 | Package tests and copy tests | Analysis, skeleton, process manager, wizard logic, presets, model manager, CI workflow | Sessions A to G merged on 2026-10-29 (PRs 1 to 7). On the macos-14 CI runner (Session F PR; CI moved to macos-15 on 2026-10-30): build 65 s, package job 22 min, smoke test 3 min 45 s, one chat answer 38 s. Session I: DMG 695 967 267 bytes (663.7 MiB) before, 578 415 079 bytes (551.6 MiB) after; package job 26 min 45 s before, 4 min 15 s after with warm caches (9 min 27 s with empty ones) (docs/bundle-report.md) |
 | 2 Presets and testing | 2 to 4 | Corpora, questions, scoring, user test | Harness and preset generator | Evaluation harness merged (Session G, PR 7) |
 | 3 Search interface | 3 to 6 | Visual pass | API client, watcher, search page, onboarding page | Search page, API client and folder watcher merged (Sessions D and F, PRs 4 and 5) |
 | 4 Browse view | 3 to 5 | Visual pass | Outline extraction, document and library pages, heading index, keyword search | Session J merged (PR 10). Session K: libraries, sidebar layout, indexing fixes, settings |
