@@ -207,19 +207,26 @@ export async function prepareLibrary(opts: {
     records.push({
       path: abs,
       url: docs[0]?.doc.url ?? '',
+      relPath: rel,
+      sourceId: '',
       hash,
       splitKey,
       size: stat.size,
       mtimeMs: stat.mtimeMs,
       indexedAt: new Date().toISOString(),
-      sections: docs.map(({ name, doc }) => ({
+      // The same record fields the watcher writes (src/main/watcher/watcher.ts upsert).
+      sections: docs.map(({ name, doc }, i) => ({
         location: `${DOC_FOLDER}/${name}`,
         docId: null,
         sectionTitle: doc.sectionTitle,
         sectionIndex: doc.sectionIndex,
+        sectionLevel: chunks[i]!.sectionLevel,
+        sectionPath: chunks[i]!.sectionPath ?? [],
         subIndex: doc.subIndex,
         pageStart: doc.pageStart > 0 ? doc.pageStart : null,
         pageEnd: doc.pageEnd > 0 ? doc.pageEnd : null,
+        pageLabelStart: chunks[i]!.pageLabelStart || null,
+        pageLabelEnd: chunks[i]!.pageLabelEnd || null,
       })),
     });
     for (const { name, doc } of docs) {

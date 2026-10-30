@@ -4,7 +4,11 @@ import type { SourceRef } from '../open-original.js';
 import type { ModelEntry } from '../models/index.js';
 import type { PullProgress } from '../ollama/client.js';
 import type { SetupEvent, SetupSnapshot } from '../first-run.js';
-import type { SourceLike, WatcherStatus } from '../watcher/index.js';
+import type { AddResult, LibrariesView, LibraryStatus } from '../libraries.js';
+import type { Preset } from '../presets/index.js';
+import type { SettingsView } from '../settings.js';
+import type { Settings } from '../shell-state.js';
+import type { SourceLike } from '../watcher/index.js';
 
 /**
  * IPC channel names between the preload script and the main process. The preload runs sandboxed
@@ -17,7 +21,6 @@ export const CHANNELS = {
   setupReplay: 'askfiles:setup:replay',
   setupStart: 'askfiles:setup:start',
   setupRetry: 'askfiles:setup:retry',
-  setupChooseFolder: 'askfiles:setup:choose-folder',
   modelsList: 'askfiles:models:list',
   modelsPull: 'askfiles:models:pull',
   modelsProgress: 'askfiles:models:progress',
@@ -27,6 +30,21 @@ export const CHANNELS = {
   watcherStatusEvent: 'askfiles:watcher:status-event',
   libraryResolveSources: 'askfiles:library:resolve-sources',
   libraryOpenOriginal: 'askfiles:library:open-original',
+  librariesList: 'askfiles:libraries:list',
+  librariesEvent: 'askfiles:libraries:event',
+  librariesSelect: 'askfiles:libraries:select',
+  librariesCreate: 'askfiles:libraries:create',
+  librariesRename: 'askfiles:libraries:rename',
+  librariesRemove: 'askfiles:libraries:remove',
+  librariesAddFiles: 'askfiles:libraries:add-files',
+  librariesAddFolder: 'askfiles:libraries:add-folder',
+  librariesAddPaths: 'askfiles:libraries:add-paths',
+  librariesRemoveSource: 'askfiles:libraries:remove-source',
+  librariesReindex: 'askfiles:libraries:reindex',
+  settingsGet: 'askfiles:settings:get',
+  settingsSet: 'askfiles:settings:set',
+  developerInfo: 'askfiles:developer:info',
+  developerOpenModels: 'askfiles:developer:open-models',
   browseDocuments: 'askfiles:browse:documents',
   browseDocument: 'askfiles:browse:document',
   browseHeadings: 'askfiles:browse:headings',
@@ -46,19 +64,37 @@ export const EVENT_CHANNELS: readonly string[] = [
   CHANNELS.setupEvent,
   CHANNELS.modelsProgress,
   CHANNELS.watcherStatusEvent,
+  CHANNELS.librariesEvent,
   CHANNELS.answerEvent,
 ];
 
-/** Read once per page load: the search page needs it before its first request. */
+/**
+ * Read once per page load: the Ask page needs it before its first request. workspace is the
+ * current library's; switching libraries reloads the window, so it never goes stale.
+ */
 export interface ShellConfigValues {
   baseUrl: string | null;
   apiKey: string | null;
   workspace: string | null;
+  /** Kept for pages written before libraries; always null now. */
   folder: string | null;
+  libraryId: string | null;
+  libraryName: string | null;
 }
 
-/** Watcher status as the status bar shows it; error when the folder could not be watched. */
-export type WatcherView = WatcherStatus & { folder: string | null; error?: string };
+/** Watcher status of the current library as the top bar shows it; error when it cannot be read. */
+export type WatcherView = LibraryStatus;
+
+/** The Developer page (ASKFILES_DEVELOPER=1 only). */
+export interface DeveloperInfo {
+  dataDir: string;
+  /** The preset of this Mac's tier as in the presets file. */
+  machinePreset: Preset;
+  /** The preset with the settings applied: what the server runs with. */
+  effectivePreset: Preset;
+  settings: Settings;
+  presetsFile: string;
+}
 
 export interface PageReadyInfo {
   page: string;
@@ -72,8 +108,6 @@ export interface BridgeHandlers {
   setupReplay(): SetupEvent[];
   setupStart(): Promise<SetupSnapshot>;
   setupRetry(): Promise<SetupSnapshot>;
-  /** Native folder dialog; null when the user cancels. */
-  setupChooseFolder(): Promise<{ folder: string } | null>;
   modelsList(): Promise<ModelEntry[]>;
   modelsPull(tag: string): Promise<void>;
   modelsRemove(tag: string): Promise<void>;
@@ -82,6 +116,29 @@ export interface BridgeHandlers {
   libraryResolveSources(sources: SourceLike[]): SourceLike[];
   /** Reveals the original file in Finder; false when no indexed file matches. */
   libraryOpenOriginal(source: SourceRef): Promise<boolean>;
+  librariesList(): LibrariesView;
+  /** Switches the window to another library; the main window reloads. */
+  librariesSelect(id: string): Promise<LibrariesView>;
+  /** Creates a library and switches to it. */
+  librariesCreate(name: string): Promise<LibrariesView>;
+  librariesRename(id: string, name: string): Promise<LibrariesView>;
+  /** Deletes a library's workspace and records; never the original files. */
+  librariesRemove(id: string): Promise<LibrariesView>;
+  /** Native file dialog, then copies the chosen files into the current library; null when cancelled. */
+  librariesAddFiles(): Promise<AddResult | null>;
+  /** Native folder dialog, then links the folder into the current library; null when cancelled. */
+  librariesAddFolder(): Promise<AddResult | null>;
+  /** Dropped paths: folders are linked, files copied. */
+  librariesAddPaths(paths: string[]): Promise<AddResult>;
+  librariesRemoveSource(sourceId: string): Promise<LibrariesView>;
+  /** Splits and embeds every file of the current library again. */
+  librariesReindex(): Promise<LibrariesView>;
+  settingsGet(): SettingsView;
+  /** Stores and applies a change; model and context changes restart the server. */
+  settingsSet(change: Partial<Settings>): Promise<SettingsView>;
+  developerInfo(): DeveloperInfo;
+  /** Opens the Models window, which has no menu entry; refused unless ASKFILES_DEVELOPER=1. */
+  developerOpenModels(): Promise<void>;
   /** Every indexed document with its outline, without section text. */
   browseDocuments(): DocumentSummary[];
   /** One document with its sections, by id or by a source's url and file name; null when unknown. */
@@ -109,6 +166,7 @@ export interface BridgeEvents {
   [CHANNELS.setupEvent]: SetupEvent;
   [CHANNELS.modelsProgress]: PullProgress;
   [CHANNELS.watcherStatusEvent]: WatcherView;
+  [CHANNELS.librariesEvent]: LibrariesView;
   [CHANNELS.answerEvent]: ServiceEvent;
 }
 
@@ -121,7 +179,6 @@ export interface AskfilesBridge {
     onEvent(callback: (e: SetupEvent) => void): () => void;
     start(): Promise<SetupSnapshot>;
     retry(): Promise<SetupSnapshot>;
-    chooseFolder(): Promise<{ folder: string } | null>;
   };
   models: {
     list(): Promise<ModelEntry[]>;
@@ -137,6 +194,29 @@ export interface AskfilesBridge {
   library: {
     resolveSources(sources: SourceLike[]): Promise<SourceLike[]>;
     openOriginal(source: SourceRef): Promise<boolean>;
+  };
+  libraries: {
+    list(): Promise<LibrariesView>;
+    onChange(callback: (v: LibrariesView) => void): () => void;
+    select(id: string): Promise<LibrariesView>;
+    create(name: string): Promise<LibrariesView>;
+    rename(id: string, name: string): Promise<LibrariesView>;
+    remove(id: string): Promise<LibrariesView>;
+    addFiles(): Promise<AddResult | null>;
+    addFolder(): Promise<AddResult | null>;
+    addPaths(paths: string[]): Promise<AddResult>;
+    removeSource(sourceId: string): Promise<LibrariesView>;
+    reindex(): Promise<LibrariesView>;
+    /** The path of a dropped File (webUtils.getPathForFile); empty when it has none. */
+    pathForFile(file: File): string;
+  };
+  settings: {
+    get(): Promise<SettingsView>;
+    set(change: Partial<Settings>): Promise<SettingsView>;
+  };
+  developer: {
+    info(): Promise<DeveloperInfo>;
+    openModels(): Promise<void>;
   };
   browse: {
     documents(): Promise<DocumentSummary[]>;

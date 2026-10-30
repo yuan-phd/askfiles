@@ -5,6 +5,8 @@ export interface OutlineEntry {
   /** The section the entry opens; a folded heading (lead) points at the section it heads. */
   sectionIndex: number;
   page: number | null;
+  /** Printed page label of page, when the PDF defines labels. */
+  pageLabel: string | null;
   children: OutlineEntry[];
 }
 
@@ -19,19 +21,28 @@ export interface BrowseSection {
   lead: string[];
   /** normalizeHeading(title); empty when the section takes no part in the heading index. */
   heading: string;
+  /**
+   * Titles from the top heading down to this section, its own title last (the section records');
+   * empty when the record carries none (src/main/answer/sections.ts then uses the outline).
+   */
+  path: string[];
+  /** PDF page index from 1 (sheet number for spreadsheets), and the printed labels when defined. */
   pageStart: number | null;
   pageEnd: number | null;
+  pageLabelStart: string | null;
+  pageLabelEnd: string | null;
   text: string;
 }
 
-/** One file of <dataDir>/browse, also what the document page receives. */
+/** One file of <libraryDir>/browse, also what the document page receives. */
 export interface BrowseDocument {
-  version: 1;
+  /** 2 since Session K added paths and page labels; other versions are rebuilt. */
+  version: 2;
   /** First 16 hex digits of sha256 of the path; stable while the file keeps its path. */
   id: string;
   path: string;
   url: string;
-  /** Path relative to the library folder. */
+  /** Path shown to the user: the linked folder's name and the path inside it, or the file name. */
   relPath: string;
   /** File name with its extension, as the source cards show it. */
   title: string;
@@ -66,6 +77,8 @@ export interface HeadingEntry {
   title: string;
   pageStart: number | null;
   pageEnd: number | null;
+  pageLabelStart: string | null;
+  pageLabelEnd: string | null;
   /** The section text; only when one group is asked for by its key. */
   text?: string;
 }
@@ -86,6 +99,8 @@ export interface SearchHit {
   titleMarks: [number, number][];
   pageStart: number | null;
   pageEnd: number | null;
+  pageLabelStart: string | null;
+  pageLabelEnd: string | null;
   /** Occurrences of all terms in this section. */
   count: number;
   snippet: string;

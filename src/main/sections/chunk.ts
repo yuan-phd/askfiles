@@ -5,6 +5,23 @@ const MAX_TITLE_IN_TEXT = 200;
 export const MIN_CHUNK_CHARS = 400;
 
 /**
+ * Sets each section's path: the titles of the headings above it by level, then its own title.
+ * Run before folding, so a heading-only chapter title still heads the paths of its subsections.
+ * Level 0 text (before the first heading) has no path.
+ */
+export function withPaths(sections: Section[]): Section[] {
+  const stack: { level: number; title: string }[] = [];
+  return sections.map((s) => {
+    if (s.path) return s;
+    if (s.level <= 0) return { ...s, path: [] };
+    while (stack.length && stack[stack.length - 1]!.level >= s.level) stack.pop();
+    const title = s.title.replace(/\s+/g, ' ').trim();
+    stack.push({ level: s.level, title });
+    return { ...s, path: stack.map((e) => e.title) };
+  });
+}
+
+/**
  * Removes heading-only sections. A heading with no body joins the next section as its lead (the
  * lines above its title, such as a chapter heading above its first subsection), or the previous
  * section's end when nothing follows, so no document is ever only a heading (Session F
@@ -82,12 +99,16 @@ function pagesOf(pieces: Piece[]): [number, number] {
  * into sub-chunks that each start with the section title, so every sub-chunk is embedded with
  * the context of its section.
  */
-export function chunkSections(sections: Section[], { maxChars }: { maxChars: number }): Chunk[] {
+export function chunkSections(
+  sections: Section[],
+  { maxChars, pageLabels }: { maxChars: number; pageLabels?: string[] },
+): Chunk[] {
   if (!Number.isInteger(maxChars) || maxChars < MIN_CHUNK_CHARS) {
     throw new Error(`chunk maximum must be an integer of at least ${MIN_CHUNK_CHARS} characters, got ${maxChars}`);
   }
   const chunks: Chunk[] = [];
-  foldEmptySections(sections).forEach((section, i) => {
+  const label = (page: number) => (page > 0 ? (pageLabels?.[page - 1] ?? '') : '');
+  foldEmptySections(withPaths(sections)).forEach((section, i) => {
     const headOf = (titles: string[]) =>
       titles
         .map((t) => t.replace(/\s+/g, ' ').trim().slice(0, MAX_TITLE_IN_TEXT))
@@ -127,10 +148,13 @@ export function chunkSections(sections: Section[], { maxChars }: { maxChars: num
         sectionTitle: section.title,
         sectionIndex: i + 1,
         sectionLevel: section.level,
+        sectionPath: section.path ?? [],
         subIndex: k + 1,
         subCount: bodies.length,
         pageStart: g.pages[0],
         pageEnd: g.pages[1],
+        pageLabelStart: label(g.pages[0]),
+        pageLabelEnd: label(g.pages[1]),
         text: head + g.body,
       });
     });

@@ -1,6 +1,7 @@
 // Pure state for the onboarding page: folds first-run events into what the page shows. The events
 // are the wizard's (src/main/wizard, WizardEvent: state, tier, progress) and the first run's
-// (src/main/first-run.ts, SetupEvent: setup, indexing). No DOM here, so it is unit tested in Node.
+// (src/main/first-run.ts, SetupEvent: setup). No DOM here, so it is unit tested in Node. There is
+// no folder step (Session K): the app opens on the empty All files library.
 
 /** Wizard steps, then the steps the first run adds after the models are in place. */
 export const STEPS = [
@@ -9,9 +10,7 @@ export const STEPS = [
   { name: 'pullModels', label: 'Downloading the language models' },
   { name: 'writeConfig', label: 'Saving the settings' },
   { name: 'markOnboarded', label: 'Starting the search engine' },
-  { name: 'chooseFolder', label: 'Choosing your documents folder' },
   { name: 'createLibrary', label: 'Preparing your library' },
-  { name: 'indexing', label: 'Reading your documents' },
 ];
 
 const NAMES = STEPS.map((s) => s.name);
@@ -21,13 +20,11 @@ const SETUP = NAMES.slice(5);
 export function initialState() {
   return {
     steps: Object.fromEntries(NAMES.map((n) => [n, 'pending'])),
-    phase: 'idle', // idle | running | folder | error | done
+    phase: 'idle', // idle | running | error | done
     error: null,
     attempt: 1,
     tier: null,
     progress: null,
-    folder: null,
-    indexing: null,
   };
 }
 
@@ -61,7 +58,6 @@ function reduceWizard(state, next, event) {
 }
 
 function reduceSetup(state, next, event) {
-  if (event.folder) next.folder = event.folder;
   const s = event.state;
   if (s === 'models') {
     if (state.phase === 'idle' || state.phase === 'error') {
@@ -71,8 +67,7 @@ function reduceSetup(state, next, event) {
   } else if (SETUP.includes(s)) {
     for (const n of WIZARD) next.steps[n] = 'done';
     markUpTo(next, SETUP, s);
-    // Without a folder the run waits for the user's choice.
-    next.phase = s === 'chooseFolder' && !next.folder ? 'folder' : 'running';
+    next.phase = 'running';
     next.error = null;
   } else if (s === 'error') {
     // A failed model step is already marked by the wizard's own error event.
@@ -106,15 +101,6 @@ export function reduce(state, event) {
         percent: event.percent,
       };
       return next;
-    case 'indexing': {
-      const st = event.status || {};
-      next.indexing = {
-        indexed: Number(st.indexed) || 0,
-        pending: Number(st.pending) || 0,
-        failed: Array.isArray(st.deadLetters) ? st.deadLetters.length : 0,
-      };
-      return next;
-    }
     case 'state':
       return reduceWizard(state, next, event);
     case 'setup':
@@ -136,15 +122,4 @@ export function progressText(p) {
   const head = p.count > 1 ? `Download ${p.index + 1} of ${p.count}` : 'Download';
   if (p.totalBytes <= 0) return `${head}: starting`;
   return `${head}: ${formatBytes(p.completedBytes)} of ${formatBytes(p.totalBytes)} (${p.percent}%)`;
-}
-
-const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-
-/** For example: 12 documents read, 3 to go, 1 could not be read. */
-export function indexingText(ix) {
-  if (!ix) return '';
-  const parts = [`${plural(ix.indexed, 'document', 'documents')} read`];
-  if (ix.pending > 0) parts.push(`${ix.pending} to go`);
-  if (ix.failed > 0) parts.push(`${ix.failed} could not be read`);
-  return parts.join(', ');
 }

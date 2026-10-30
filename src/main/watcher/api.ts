@@ -40,6 +40,23 @@ export function createLibraryApi(options: {
     return data;
   }
 
+  /** POST /v1/document/upload without addToWorkspaces: the collector parses, nothing is embedded. */
+  async function uploadParseOnly(bytes: Buffer, fileName: string): Promise<{ text: string; locations: string[] }> {
+    const form = new FormData();
+    form.append('file', new Blob([new Uint8Array(bytes)]), fileName);
+    const data = (await request('POST', '/v1/document/upload', undefined, form)) as {
+      success?: boolean;
+      error?: string;
+      documents?: { location?: string; pageContent?: string }[];
+    } | null;
+    if (data?.success === false) throw new Error(`upload of ${fileName} failed: ${data.error}`);
+    const docs = data?.documents ?? [];
+    return {
+      text: docs.map((d) => d.pageContent ?? '').join('\n\n'),
+      locations: docs.map((d) => d.location).filter((l): l is string => !!l),
+    };
+  }
+
   const slugPath = (slug: string) => `/v1/workspace/${encodeURIComponent(slug)}`;
 
   return {
@@ -61,20 +78,17 @@ export function createLibraryApi(options: {
       for (const d of ws.documents ?? []) if (d.docpath) out.set(d.docpath, d.docId ?? '');
       return out;
     },
-    async uploadForText(filePath) {
-      const form = new FormData();
-      form.append('file', new Blob([fs.readFileSync(filePath)]), path.basename(filePath));
-      const data = (await request('POST', '/v1/document/upload', undefined, form)) as {
-        success?: boolean;
-        error?: string;
-        documents?: { location?: string; pageContent?: string }[];
-      } | null;
-      if (data?.success === false) throw new Error(`upload of ${path.basename(filePath)} failed: ${data.error}`);
-      const docs = data?.documents ?? [];
-      return {
-        text: docs.map((d) => d.pageContent ?? '').join('\n\n'),
-        locations: docs.map((d) => d.location).filter((l): l is string => !!l),
-      };
+    uploadForText(filePath) {
+      return uploadParseOnly(fs.readFileSync(filePath), path.basename(filePath));
+    },
+    async uploadImageForText(image, fileName) {
+      try {
+        return await uploadParseOnly(image, fileName);
+      } catch (e) {
+        // The collector refuses an image without text; for a blank page that is no text, not a failure.
+        if (/No text content found/i.test((e as Error).message)) return { text: '', locations: [] };
+        throw e;
+      }
     },
     async purgeDocuments(locations) {
       if (locations.length === 0) return;

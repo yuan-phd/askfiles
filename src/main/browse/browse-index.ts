@@ -17,10 +17,10 @@ import type {
 } from './types.js';
 
 export interface BrowseIndexOptions {
-  /** <dataDir>/browse: one JSON file per document, named by its id. */
+  /** <libraryDir>/browse: one JSON file per document, named by its id. */
   dir: string;
-  /** The library folder, for paths relative to it. */
-  root: string;
+  /** Only for watcher records without relPath (written before Session K): the folder they are under. */
+  root?: string;
   /** Reads a section document the watcher wrote (STORAGE_DIR/documents/<location>). */
   readChunk: (location: string) => StoredChunk | null;
   log?: (msg: string) => void;
@@ -39,19 +39,21 @@ export class BrowseIndex {
   private readonly docs = new Map<string, BrowseDocument>();
   /** Folded title and text per section, built on the first search after a change. */
   private readonly folded = new Map<string, string[]>();
-  private readonly root: string;
+  private readonly root: string | undefined;
   private readonly log: (msg: string) => void;
 
   constructor(private readonly o: BrowseIndexOptions) {
     this.log = o.log ?? ((msg) => console.log(`[browse] ${msg}`));
-    // The watcher keys files by their real path (macOS /var is /private/var).
-    let root = path.resolve(o.root);
-    try {
-      root = fs.realpathSync(root);
-    } catch {
-      // A folder that is gone still lists what was indexed from it.
+    if (o.root) {
+      // The watcher keys files by their real path (macOS /var is /private/var).
+      let root = path.resolve(o.root);
+      try {
+        root = fs.realpathSync(root);
+      } catch {
+        // A folder that is gone still lists what was indexed from it.
+      }
+      this.root = root;
     }
-    this.root = root;
   }
 
   /** Reads every stored document. Unreadable files are skipped; the next sync rebuilds them. */
@@ -68,7 +70,8 @@ export class BrowseIndex {
     for (const name of names) {
       try {
         const doc = JSON.parse(fs.readFileSync(path.join(this.o.dir, name), 'utf8')) as BrowseDocument;
-        if (doc?.version === 1 && typeof doc.id === 'string' && Array.isArray(doc.sections)) this.docs.set(doc.id, doc);
+        // Older versions lack paths and labels; skipped here, the next sync rebuilds them.
+        if (doc?.version === 2 && typeof doc.id === 'string' && Array.isArray(doc.sections)) this.docs.set(doc.id, doc);
       } catch (e) {
         this.log(`skipped ${name}: ${(e as Error).message}`);
       }
@@ -101,7 +104,14 @@ export class BrowseIndex {
   update(rec: FileRecord): boolean {
     const id = documentId(rec.path);
     const old = this.docs.get(id);
-    if (old && old.hash === rec.hash && old.splitKey === rec.splitKey && old.path === rec.path) {
+    const relPath = rec.relPath || old?.relPath;
+    if (
+      old &&
+      old.hash === rec.hash &&
+      old.splitKey === rec.splitKey &&
+      old.path === rec.path &&
+      old.relPath === relPath
+    ) {
       if (old.size !== rec.size || old.mtimeMs !== rec.mtimeMs) {
         this.store({ ...old, size: rec.size, mtimeMs: rec.mtimeMs });
       }
@@ -145,9 +155,10 @@ export class BrowseIndex {
 
   /**
    * Sections grouped by normalized heading over all documents, the groups found in most documents
-   * first. Without a key the entries carry no text; with one, only that group, with the text.
+   * first. Without a key: only headings found in at least minDocuments documents (default 2, the
+   * Headings page), entries without text. With a key: only that group, with the text.
    */
-  headings(o: { key?: string | null } = {}): HeadingGroup[] {
+  headings(o: { key?: string | null; minDocuments?: number } = {}): HeadingGroup[] {
     const groups = new Map<string, HeadingEntry[]>();
     for (const d of this.docs.values()) {
       for (const s of d.sections) {
@@ -161,6 +172,8 @@ export class BrowseIndex {
           title: s.title,
           pageStart: s.pageStart,
           pageEnd: s.pageEnd,
+          pageLabelStart: s.pageLabelStart,
+          pageLabelEnd: s.pageLabelEnd,
           ...(o.key ? { text: s.text } : {}),
         };
         groups.set(s.heading, [...(groups.get(s.heading) ?? []), entry]);
@@ -171,6 +184,7 @@ export class BrowseIndex {
         entries.sort((a, b) => a.relPath.localeCompare(b.relPath) || a.sectionIndex - b.sectionIndex);
         return { key, label: mostCommon(entries.map((e) => e.title)), documents: distinct(entries), entries };
       })
+      .filter((g) => o.key || g.documents >= (o.minDocuments ?? 2))
       .sort((a, b) => b.documents - a.documents || a.label.localeCompare(b.label));
   }
 
@@ -205,6 +219,8 @@ export class BrowseIndex {
           titleMarks,
           pageStart: s.pageStart,
           pageEnd: s.pageEnd,
+          pageLabelStart: s.pageLabelStart,
+          pageLabelEnd: s.pageLabelEnd,
           count,
           ...snippetOf(s.text, terms),
         });

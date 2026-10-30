@@ -1,0 +1,383 @@
+/* Top bar of the main window and the page frame around the views (src/renderer/shared/topbar.js).
+   Tokens come from the page's own stylesheet (ask.css). The bar never scrolls away: the body is
+   a column of the bar and the view, and only the view scrolls. */
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+[data-app-view] {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.topbar {
+  flex: none;
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-5);
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.topbar button {
+  font: inherit;
+  color: inherit;
+}
+
+.topbar-library,
+.topbar-add {
+  position: relative;
+  min-width: 0;
+}
+
+.topbar-library {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: 1;
+}
+
+.library-switcher {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  max-width: 100%;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.library-switcher:disabled {
+  cursor: default;
+}
+
+.library-switcher::after {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--text-muted);
+  border-bottom: 1.5px solid var(--text-muted);
+  transform: translateY(-2px) rotate(45deg);
+}
+
+.library-switcher:disabled::after {
+  display: none;
+}
+
+.library-name {
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  white-space: nowrap;
+}
+
+.topbar .status-state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.topbar .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.topbar .status-state[data-state='ready'] .dot {
+  background: var(--ok);
+}
+
+.topbar .status-state[data-state='indexing'] .dot {
+  background: var(--busy);
+  animation: topbar-pulse 1.4s ease-in-out infinite;
+}
+
+.topbar .status-state[data-state='error'] .dot {
+  background: var(--bad);
+}
+
+@keyframes topbar-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.topbar .status-failed {
+  color: var(--bad);
+  white-space: nowrap;
+}
+
+.add-button {
+  padding: var(--space-1) var(--space-4);
+  border: 0;
+  border-radius: var(--radius-small);
+  background: var(--accent);
+  color: var(--accent-text) !important;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.add-result {
+  margin: 0;
+  max-width: 28rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+/* Menus */
+
+.topbar-menu {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  left: 0;
+  z-index: 4;
+  min-width: 18rem;
+  max-width: 26rem;
+  max-height: 70vh;
+  overflow: auto;
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+  color: var(--text);
+}
+
+.add-menu {
+  left: auto;
+  right: 0;
+  min-width: 16rem;
+}
+
+.add-menu button,
+.library-option {
+  display: flex;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-small);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.add-menu button {
+  flex-direction: column;
+  font-weight: 600;
+}
+
+.add-menu button span {
+  font-weight: 400;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.add-menu button:hover,
+.library-option:hover {
+  background: var(--surface-sunken);
+}
+
+.library-options,
+.source-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.library-option {
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.library-option[aria-checked='true'] .option-name {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.option-count {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.menu-form {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-1);
+}
+
+.menu-form input {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.menu-form button {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface-sunken);
+  cursor: pointer;
+}
+
+.menu-section {
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-1) 0;
+  border-top: 1px solid var(--border);
+}
+
+.menu-title {
+  margin: 0 0 var(--space-2);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.source-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: var(--space-2);
+  align-items: baseline;
+  padding: var(--space-1) 0;
+}
+
+.source-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-kind,
+.menu-note {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.menu-actions {
+  display: flex;
+  gap: var(--space-4);
+  padding: var(--space-2) 0;
+}
+
+.topbar button.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.topbar button.link.danger {
+  color: var(--bad);
+}
+
+.menu-error {
+  margin: var(--space-2) var(--space-1) 0;
+  color: var(--bad);
+}
+
+/* Ask and Browse switch */
+
+.topbar .view-switch {
+  display: inline-flex;
+  flex: none;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface-sunken);
+}
+
+.topbar .view-switch button {
+  padding: 2px var(--space-3);
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.topbar .view-switch button[aria-pressed='true'] {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+/* Empty library */
+
+.library-empty {
+  flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  padding: var(--space-6);
+}
+
+.empty-text {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 1.05rem;
+}
+
+.empty-menu {
+  top: auto;
+  left: 50%;
+  right: auto;
+  transform: translate(-50%, 2.6rem);
+}
+
+/* Drop target while files are dragged over the window */
+
+body[data-dropping='true']::after {
+  content: 'Drop to add to this library';
+  position: fixed;
+  inset: var(--space-3);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  color: var(--accent);
+  font-size: 1.2rem;
+  font-weight: 600;
+  pointer-events: none;
+}

@@ -22,6 +22,8 @@ export interface LibraryApi {
 export interface OcrApi {
   /** POST /v1/document/upload without addToWorkspaces. Returns the parsed text and stored copies. */
   uploadForText(filePath: string): Promise<{ text: string; locations: string[] }>;
+  /** The same for one image (a scanned page as PNG); the collector OCRs it. No text gives empty text. */
+  uploadImageForText(image: Buffer, fileName: string): Promise<{ text: string; locations: string[] }>;
   /** DELETE /v1/system/remove-documents for copies no workspace uses. */
   purgeDocuments(locations: string[]): Promise<void>;
 }
@@ -51,16 +53,27 @@ export interface SectionRecord {
   docId: string | null;
   sectionTitle: string;
   sectionIndex: number;
+  /** Heading level, 1 for the top; 0 for the text before the first heading. */
+  sectionLevel: number;
+  /** Titles from the top heading down to this section, its own title last; empty for level 0. */
+  sectionPath: string[];
   /** Position of this chunk inside a section longer than the chunk maximum, from 1. */
   subIndex: number;
-  /** First and last page, or null for formats without pages. */
+  /** First and last page (PDF page index from 1, sheet number for spreadsheets), or null. */
   pageStart: number | null;
   pageEnd: number | null;
+  /** Printed page labels of pageStart and pageEnd when the PDF defines them, else null. */
+  pageLabelStart: string | null;
+  pageLabelEnd: string | null;
 }
 
 export interface FileRecord {
   path: string;
   url: string;
+  /** Path shown to the user: the folder's name and the path inside it, or the file name. */
+  relPath: string;
+  /** Id of the library source (WatchRoot) the file was found in. */
+  sourceId: string;
   hash: string;
   /** Splitter.splitKey the file was indexed with; another key means it is split again. */
   splitKey: string;
@@ -93,6 +106,8 @@ export interface WatcherStatus {
   current: string | null;
   indexed: number;
   deadLetters: DeadLetter[];
+  /** Folders of the library that could not be read at start; their files stay in the index. */
+  unavailable: string[];
 }
 
 export interface FileEvent {

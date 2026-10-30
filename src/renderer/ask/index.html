@@ -11,32 +11,14 @@
     <title>AskFiles</title>
     <link rel="stylesheet" href="./ask.css" />
     <link rel="stylesheet" href="../browse/browse.css" />
+    <link rel="stylesheet" href="../shared/topbar.css" />
     <script type="module" src="./ask.js"></script>
   </head>
   <body>
-    <header class="status" data-testid="status-bar">
-      <div class="view-switch" role="group" aria-label="View">
-        <button type="button" id="view-search-button" data-view="search" data-testid="view-search" aria-pressed="true">
-          Search
-        </button>
-        <button type="button" id="view-browse-button" data-view="browse" data-testid="view-browse" aria-pressed="false">
-          Browse
-        </button>
-      </div>
-      <div class="status-folder">
-        <span class="status-label">Library</span>
-        <span class="status-value" id="status-folder" data-testid="status-folder">No folder chosen</span>
-      </div>
-      <div class="status-meta">
-        <span id="status-count" data-testid="status-count">Connecting</span>
-        <span class="status-failed" id="status-failed" data-testid="status-failed" hidden></span>
-        <span class="status-state" id="status-state" data-testid="status-state" data-state="connecting">
-          <span class="dot" aria-hidden="true"></span><span id="status-state-text">Connecting</span>
-        </span>
-      </div>
-    </header>
+    <!-- Library switcher, Add, and the Ask and Browse switch: src/renderer/shared/topbar.js -->
+    <header id="top-bar"></header>
 
-    <main class="layout" id="view-search" data-testid="search-view">
+    <main class="layout" id="view-search" data-testid="search-view" data-app-view>
       <section class="search" aria-label="Search">
         <form id="query-form" class="query" autocomplete="off">
           <label class="visually-hidden" for="query">Ask a question about your documents</label>
@@ -108,7 +90,7 @@
       </aside>
     </main>
 
-    <div id="view-browse" data-testid="browse-view" hidden></div>
+    <div id="view-browse" data-testid="browse-view" data-app-view hidden></div>
 
     <template id="card-template">
       <li class="card" data-testid="source-card">

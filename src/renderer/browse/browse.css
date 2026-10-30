@@ -1,10 +1,42 @@
 /* AskFiles browse view. Tokens and base rules come from ../ask/ask.css, so light and dark
    follow the Ask page and the visual pass (plan task 4.6) tunes values there and here. */
 
+/* A fixed sidebar and a content area that scrolls on its own; the view fills its container. */
 .browse {
-  max-width: calc(var(--measure) + 16rem + var(--space-7));
-  margin: 0 auto;
-  padding: var(--space-5) var(--space-5) var(--space-7);
+  display: grid;
+  grid-template-columns: 16rem minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+
+[data-app-view].browse {
+  overflow: hidden;
+}
+
+.browse-standalone {
+  height: 100vh;
+}
+
+.browse-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-4) var(--space-3);
+  border-right: 1px solid var(--border);
+  background: var(--surface-sunken);
+}
+
+.browse-content {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-5) var(--space-6) var(--space-7);
+}
+
+.browse-content > .browse-page {
+  max-width: calc(var(--measure) + 12rem);
 }
 
 .browse h1 {
@@ -33,23 +65,18 @@ button.link:hover {
   color: var(--text-muted);
 }
 
-/* Tabs inside the browse view */
-
-.browse-tabs {
-  display: flex;
-  gap: var(--space-5);
-  margin-bottom: var(--space-5);
-  border-bottom: 1px solid var(--border);
-}
+/* Sidebar entries */
 
 .browse-tab {
-  padding: var(--space-2) 0;
-  margin-bottom: -1px;
+  display: block;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
   border: 0;
-  border-bottom: 2px solid transparent;
+  border-radius: var(--radius-small);
   background: none;
   color: var(--text-muted);
   font-weight: 600;
+  text-align: left;
   cursor: pointer;
 }
 
@@ -58,8 +85,33 @@ button.link:hover {
 }
 
 .browse-tab.active {
+  background: var(--surface);
   color: var(--text);
-  border-bottom-color: var(--accent);
+  box-shadow: var(--shadow);
+}
+
+.sidebar-doc {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.doc-tab {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rail-empty {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-3);
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.sidebar-doc > .outline {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-3);
 }
 
 /* Library */
@@ -212,27 +264,6 @@ button.link:hover {
 
 /* Document page */
 
-.doc-layout {
-  display: grid;
-  grid-template-columns: 16rem minmax(0, 1fr);
-  gap: var(--space-6);
-  align-items: start;
-}
-
-.doc-rail {
-  position: sticky;
-  top: 64px;
-  max-height: calc(100vh - 80px);
-  overflow: auto;
-  padding-right: var(--space-2);
-}
-
-.rail-empty {
-  margin: 0;
-  font-size: 0.875rem;
-  color: var(--text-muted);
-}
-
 .doc-body {
   min-width: 0;
   max-width: var(--measure);
@@ -259,7 +290,6 @@ button.link:hover {
 }
 
 .doc-section {
-  scroll-margin-top: 64px;
   padding: var(--space-2) 0 var(--space-3);
 }
 
@@ -312,17 +342,6 @@ h6.doc-heading {
   overflow-wrap: anywhere;
 }
 
-@media (max-width: 900px) {
-  .doc-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .doc-rail {
-    position: static;
-    max-height: none;
-  }
-}
-
 /* Headings page */
 
 .headings-layout {
@@ -330,15 +349,6 @@ h6.doc-heading {
   grid-template-columns: 18rem minmax(0, 1fr);
   gap: var(--space-6);
   align-items: start;
-}
-
-.headings-all {
-  display: flex;
-  gap: var(--space-2);
-  align-items: center;
-  margin-bottom: var(--space-3);
-  font-size: 0.85rem;
-  color: var(--text-muted);
 }
 
 .headings-list {
@@ -525,36 +535,4 @@ h6.doc-heading {
   background: var(--accent-soft);
   color: var(--text);
   border-radius: 2px;
-}
-
-/* Search and Browse switch in the status bar */
-
-.view-switch {
-  display: inline-flex;
-  flex: none;
-  padding: 2px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-small);
-  background: var(--surface-sunken);
-}
-
-.view-switch button {
-  padding: 2px var(--space-3);
-  border: 0;
-  border-radius: 4px;
-  background: none;
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.view-switch button[aria-pressed='true'] {
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: var(--shadow);
-}
-
-.view-switch + .status-folder {
-  flex: 1;
 }

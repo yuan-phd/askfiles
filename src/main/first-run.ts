@@ -1,10 +1,9 @@
 import { EventEmitter } from 'node:events';
 import type { Preset } from './presets/index.js';
 import type { ShellState } from './shell-state.js';
-import type { WatcherStatus } from './watcher/index.js';
 import type { WizardEvent, WizardSnapshot } from './wizard/index.js';
 
-export const SETUP_STEPS = ['models', 'chooseFolder', 'createLibrary', 'indexing'] as const;
+export const SETUP_STEPS = ['models', 'createLibrary'] as const;
 export type SetupStep = (typeof SETUP_STEPS)[number];
 export type SetupState = 'idle' | SetupStep | 'done' | 'error';
 
@@ -16,55 +15,39 @@ export interface WizardLike {
   on(event: 'event', listener: (e: WizardEvent) => void): unknown;
 }
 
-/** The parts of FolderWatcher the first run waits on. */
-export interface WatcherLike {
-  status(): WatcherStatus;
-  whenIdle(): Promise<void>;
-  on(event: 'status', listener: (s: WatcherStatus) => void): unknown;
-}
-
 export interface FirstRunDeps {
   wizard: WizardLike;
   loadState(): ShellState;
   saveState(state: ShellState): void;
-  /** ASKFILES_LIBRARY_FOLDER: a folder chosen ahead, used instead of the dialog (smoke test). */
-  presetFolder?: string | null;
-  isDirectory(p: string): boolean;
-  /** API key (the stored one if still valid) and the library workspace with the preset settings. */
+  /** API key (the stored one if still valid) and the default library's workspace with the preset. */
   setupLibrary(o: { preset: Preset; storedKey: string | null }): Promise<{ apiKey: string; workspaceSlug: string }>;
-  /** Starts the folder watcher; resolves once it has queued the folder's files. */
-  startWatcher(o: { folder: string; workspaceSlug: string; apiKey: string; preset: Preset }): Promise<WatcherLike>;
   now?: () => Date;
   log?: (message: string) => void;
 }
 
 export type SetupEvent =
-  | { type: 'setup'; state: SetupState; failedStep: SetupStep | null; error: string | null; folder: string | null }
-  | { type: 'indexing'; status: WatcherStatus }
-  | WizardEvent;
+  { type: 'setup'; state: SetupState; failedStep: SetupStep | null; error: string | null } | WizardEvent;
 
 export interface SetupSnapshot {
   state: SetupState;
   failedStep: SetupStep | null;
   error: string | null;
-  folder: string | null;
 }
 
 /**
  * The whole first run as a state machine around the wizard:
  *
- *   idle -> models (the wizard) -> chooseFolder -> createLibrary -> indexing -> done
+ *   idle -> models (the wizard) -> createLibrary -> done
  *   any step --throws--> error --retry()--> the step that failed
  *
- * chooseFolder waits for setFolder() unless a folder is already stored or preset. done writes
- * setupCompletedAt into shell.json, the marker later launches check. Every step is safe to run
- * again, so a first run cut off by a quit simply starts over at the next launch.
+ * No folder is asked for (Session K): the app opens on the empty All files library and the user
+ * adds files or folders there. done writes setupCompletedAt into shell.json, the marker later
+ * launches check. Every step is safe to run again, so a first run cut off by a quit simply starts
+ * over at the next launch.
  */
 export class FirstRun extends EventEmitter<{ event: [SetupEvent] }> {
-  private s: SetupSnapshot = { state: 'idle', failedStep: null, error: null, folder: null };
+  private s: SetupSnapshot = { state: 'idle', failedStep: null, error: null };
   private running: Promise<SetupSnapshot> | null = null;
-  private folderWaiter: ((folder: string) => void) | null = null;
-  private watcher: WatcherLike | null = null;
   private lastWizard: { tier?: WizardEvent; progress?: WizardEvent; state?: WizardEvent } = {};
 
   constructor(private readonly d: FirstRunDeps) {
@@ -86,7 +69,6 @@ export class FirstRun extends EventEmitter<{ event: [SetupEvent] }> {
     const out: SetupEvent[] = [];
     for (const e of [this.lastWizard.tier, this.lastWizard.state, this.lastWizard.progress]) if (e) out.push(e);
     out.push({ type: 'setup', ...this.s });
-    if (this.watcher) out.push({ type: 'indexing', status: this.watcher.status() });
     return out;
   }
 
@@ -104,23 +86,6 @@ export class FirstRun extends EventEmitter<{ event: [SetupEvent] }> {
       throw new Error(`retry() needs state error, not ${this.s.state}`);
     }
     return this.launch(this.s.failedStep);
-  }
-
-  /** The folder the user picked. Only valid while the run waits in chooseFolder. */
-  setFolder(folder: string): SetupSnapshot {
-    if (this.s.state !== 'chooseFolder' || !this.folderWaiter) {
-      throw new Error(`setFolder() needs state chooseFolder, not ${this.s.state}`);
-    }
-    if (!this.d.isDirectory(folder)) throw new Error(`${folder} is not a folder`);
-    const resolve = this.folderWaiter;
-    this.folderWaiter = null;
-    resolve(folder);
-    return this.snapshot();
-  }
-
-  /** The watcher started by the indexing step, kept running after done. */
-  startedWatcher(): WatcherLike | null {
-    return this.watcher;
   }
 
   private launch(from: SetupStep): Promise<SetupSnapshot> {
@@ -163,42 +128,16 @@ export class FirstRun extends EventEmitter<{ event: [SetupEvent] }> {
         if (snap.state !== 'done') throw new Error(snap.error ?? `the model setup ended in ${snap.state}`);
         return;
       }
-      case 'chooseFolder': {
-        const stored = d.loadState().folder;
-        const preset = d.presetFolder ?? null;
-        let folder: string;
-        if (stored && d.isDirectory(stored)) folder = stored;
-        else if (preset && d.isDirectory(preset)) folder = preset;
-        else folder = await new Promise<string>((resolve) => (this.folderWaiter = resolve));
-        this.s.folder = folder;
-        d.saveState({ ...d.loadState(), folder });
-        this.log(`library folder ${folder}`);
-        // Tell the page which folder before the next step starts.
-        this.setState('chooseFolder');
-        return;
-      }
       case 'createLibrary': {
         const state = d.loadState();
         const lib = await d.setupLibrary({ preset: this.preset(), storedKey: state.apiKey });
-        d.saveState({ ...d.loadState(), apiKey: lib.apiKey, workspaceSlug: lib.workspaceSlug });
+        const now = d.loadState();
+        d.saveState({
+          ...now,
+          apiKey: lib.apiKey,
+          libraries: now.libraries.map((l, i) => (i === 0 ? { ...l, workspaceSlug: lib.workspaceSlug } : l)),
+        });
         this.log(`library workspace ${lib.workspaceSlug}`);
-        return;
-      }
-      case 'indexing': {
-        if (!this.watcher) {
-          const state = d.loadState();
-          if (!state.folder || !state.workspaceSlug || !state.apiKey) throw new Error('the library is not set up');
-          const w = await d.startWatcher({
-            folder: state.folder,
-            workspaceSlug: state.workspaceSlug,
-            apiKey: state.apiKey,
-            preset: this.preset(),
-          });
-          w.on('status', (status) => this.emit('event', { type: 'indexing', status }));
-          this.watcher = w;
-        }
-        this.emit('event', { type: 'indexing', status: this.watcher.status() });
-        await this.watcher.whenIdle();
         return;
       }
     }

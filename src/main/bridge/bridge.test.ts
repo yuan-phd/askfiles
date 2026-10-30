@@ -63,6 +63,13 @@ function loadPreload(handlers: BridgeHandlers) {
       subscribed.get(channel)?.delete(listener);
     },
   };
+  // A dropped File carries its path only through webUtils in Electron 32 and later.
+  const webUtils = {
+    getPathForFile: (file: { fakePath?: string }) => {
+      if (!file?.fakePath) throw new Error('not a File');
+      return file.fakePath;
+    },
+  };
   const exposed: Record<string, Record<string, unknown>> = {};
   const contextBridge = {
     exposeInMainWorld(key: string, api: Record<string, unknown>) {
@@ -80,7 +87,7 @@ function loadPreload(handlers: BridgeHandlers) {
   });
   const requireStub = (name: string) => {
     if (name !== 'electron') throw new Error(`a sandboxed preload cannot require ${name}`);
-    return { contextBridge, ipcRenderer };
+    return { contextBridge, ipcRenderer, webUtils };
   };
   new Function('require', 'process', 'Buffer', 'global', 'setImmediate', 'clearImmediate', outputText)(
     requireStub,
@@ -104,21 +111,27 @@ function recordingHandlers() {
       calls.push([name, ...args]);
       return result;
     };
-  const snap = { state: 'idle', failedStep: null, error: null, folder: null };
+  const snap = { state: 'idle', failedStep: null, error: null };
+  const libs = { current: 'all-files', libraries: [] };
+  const settings = {
+    values: { answerScope: 'balanced', answerModel: 'better', contextLength: null },
+    models: { faster: null, better: { choice: 'better', model: 'qwen3:4b', tierLabel: '8 GB' } },
+    contextDefault: 8192,
+    contextChoices: [4096, 8192, 16384],
+    scopes: ['strict', 'balanced', 'broad'],
+  } as const;
   const h: BridgeHandlers = {
     shellConfig: rec('shellConfig', {
       baseUrl: 'http://127.0.0.1:5000',
       apiKey: 'K',
       workspace: 'lib',
-      folder: '/Docs',
+      folder: null,
+      libraryId: 'all-files',
+      libraryName: 'All files',
     }),
     setupReplay: rec('setupReplay', [{ type: 'setup', ...snap }]),
     setupStart: rec('setupStart', Promise.resolve(snap)) as BridgeHandlers['setupStart'],
     setupRetry: rec('setupRetry', Promise.resolve(snap)) as BridgeHandlers['setupRetry'],
-    setupChooseFolder: async () => {
-      calls.push(['setupChooseFolder']);
-      throw new Error('/x is not a folder');
-    },
     modelsList: rec('modelsList', Promise.resolve([])),
     modelsPull: rec('modelsPull', Promise.resolve()) as BridgeHandlers['modelsPull'],
     modelsRemove: rec('modelsRemove', Promise.resolve()) as BridgeHandlers['modelsRemove'],
@@ -126,6 +139,24 @@ function recordingHandlers() {
     watcherStatus: rec('watcherStatus', null),
     libraryResolveSources: rec('libraryResolveSources', [{ title: 'a.pdf', sectionTitle: 'Intro' }]),
     libraryOpenOriginal: rec('libraryOpenOriginal', Promise.resolve(true)) as BridgeHandlers['libraryOpenOriginal'],
+    librariesList: rec('librariesList', libs),
+    librariesSelect: rec('librariesSelect', Promise.resolve(libs)),
+    librariesCreate: async (name) => {
+      calls.push(['librariesCreate', name]);
+      if (!name) throw new Error('A library needs a name.');
+      return libs;
+    },
+    librariesRename: rec('librariesRename', Promise.resolve(libs)),
+    librariesRemove: rec('librariesRemove', Promise.resolve(libs)),
+    librariesAddFiles: rec('librariesAddFiles', Promise.resolve(null)),
+    librariesAddFolder: rec('librariesAddFolder', Promise.resolve(null)),
+    librariesAddPaths: rec('librariesAddPaths', Promise.resolve({ added: 1, skipped: [] })),
+    librariesRemoveSource: rec('librariesRemoveSource', Promise.resolve(libs)),
+    librariesReindex: rec('librariesReindex', Promise.resolve(libs)),
+    settingsGet: rec('settingsGet', settings) as unknown as BridgeHandlers['settingsGet'],
+    settingsSet: rec('settingsSet', Promise.resolve(settings)) as unknown as BridgeHandlers['settingsSet'],
+    developerInfo: rec('developerInfo', {}) as unknown as BridgeHandlers['developerInfo'],
+    developerOpenModels: rec('developerOpenModels', Promise.resolve()) as BridgeHandlers['developerOpenModels'],
     browseDocuments: rec('browseDocuments', []),
     browseDocument: rec('browseDocument', null),
     browseHeadings: rec('browseHeadings', [{ key: 'scope', label: 'Scope', documents: 2, entries: [] }]),
@@ -196,13 +227,28 @@ describe('preload bridge', () => {
         'askfiles.browse.documents',
         'askfiles.browse.headings',
         'askfiles.browse.search',
+        'askfiles.developer.info',
+        'askfiles.developer.openModels',
+        'askfiles.libraries.addFiles',
+        'askfiles.libraries.addFolder',
+        'askfiles.libraries.addPaths',
+        'askfiles.libraries.create',
+        'askfiles.libraries.list',
+        'askfiles.libraries.onChange',
+        'askfiles.libraries.pathForFile',
+        'askfiles.libraries.reindex',
+        'askfiles.libraries.remove',
+        'askfiles.libraries.removeSource',
+        'askfiles.libraries.rename',
+        'askfiles.libraries.select',
         'askfiles.library.openOriginal',
         'askfiles.models.list',
         'askfiles.models.onProgress',
         'askfiles.models.pull',
         'askfiles.models.remove',
         'askfiles.models.switchChat',
-        'askfiles.setup.chooseFolder',
+        'askfiles.settings.get',
+        'askfiles.settings.set',
         'askfiles.setup.onEvent',
         'askfiles.setup.retry',
         'askfiles.setup.start',
@@ -228,7 +274,6 @@ describe('preload bridge', () => {
     a.setup.onEvent(() => {});
     await a.setup.start();
     await a.setup.retry();
-    await a.setup.chooseFolder().catch(() => {});
     await a.models.list();
     await a.models.pull('qwen3:8b');
     a.models.onProgress(() => {});
@@ -238,6 +283,21 @@ describe('preload bridge', () => {
     a.watcher.onStatus(() => {});
     await a.library.resolveSources([]);
     await a.library.openOriginal({ title: 'a.pdf' });
+    await a.libraries.list();
+    a.libraries.onChange(() => {});
+    await a.libraries.select('lib-1');
+    await a.libraries.create('Work');
+    await a.libraries.rename('lib-1', 'Work 2');
+    await a.libraries.remove('lib-1');
+    await a.libraries.addFiles();
+    await a.libraries.addFolder();
+    await a.libraries.addPaths(['/a.pdf']);
+    await a.libraries.removeSource('folder-1');
+    await a.libraries.reindex();
+    await a.settings.get();
+    await a.settings.set({ answerScope: 'strict' });
+    await a.developer.info();
+    await a.developer.openModels();
     await a.browse.documents();
     await a.browse.document({ id: 'abc' });
     await a.browse.headings();
@@ -261,12 +321,18 @@ describe('preload bridge', () => {
     const { exposed } = loadPreload(t.h);
     const a = exposed.askfiles as unknown as import('./contract.js').AskfilesBridge;
     const shell = exposed.shellConfig as unknown as import('./contract.js').ShellConfig;
-    expect(shell).toMatchObject({ baseUrl: 'http://127.0.0.1:5000', apiKey: 'K', workspace: 'lib', folder: '/Docs' });
+    expect(shell).toMatchObject({
+      baseUrl: 'http://127.0.0.1:5000',
+      apiKey: 'K',
+      workspace: 'lib',
+      libraryId: 'all-files',
+      libraryName: 'All files',
+    });
 
     await a.models.pull('qwen3:8b');
     expect(t.calls).toContainEqual(['modelsPull', 'qwen3:8b']);
     await expect(a.models.pull('  ')).rejects.toThrow(/^a model name is required$/);
-    await expect(a.setup.chooseFolder()).rejects.toThrow(/^\/x is not a folder$/);
+    await expect(a.libraries.create('')).rejects.toThrow(/^A library needs a name\.$/);
 
     expect(await shell.resolveSources([{ title: 'a.pdf', text: 'x' }])).toEqual([
       { title: 'a.pdf', sectionTitle: 'Intro' },
@@ -306,6 +372,24 @@ describe('preload bridge', () => {
     expect((searches[1]![1] as string).length).toBe(500);
   });
 
+  it('checks the library and settings arguments a page sends', async () => {
+    const t = recordingHandlers();
+    const a = loadPreload(t.h).exposed.askfiles as unknown as import('./contract.js').AskfilesBridge;
+    await expect(a.libraries.select('')).rejects.toThrow(/^a library or source id is required$/);
+    await expect(a.libraries.removeSource('x'.repeat(201))).rejects.toThrow(/id is required/);
+    await a.libraries.rename('lib-1', 'n'.repeat(300));
+    expect(t.calls).toContainEqual(['librariesRename', 'lib-1', 'n'.repeat(200)]);
+    await a.libraries.addPaths(['/a.pdf', '', 'x'.repeat(5000), '/b'] as string[]);
+    expect(t.calls).toContainEqual(['librariesAddPaths', ['/a.pdf', '/b']]);
+    await a.settings.set(null as never);
+    expect(t.calls).toContainEqual(['settingsSet', {}]);
+    await a.settings.set({ answerScope: 'broad' });
+    expect(t.calls).toContainEqual(['settingsSet', { answerScope: 'broad' }]);
+    // A dropped file's path comes from webUtils in the preload; anything else gives none.
+    expect(a.libraries.pathForFile({ fakePath: '/Users/u/a.pdf' } as never)).toBe('/Users/u/a.pdf');
+    expect(a.libraries.pathForFile({} as never)).toBe('');
+  });
+
   it('replays setup state to a late subscriber, delivers live events, and unsubscribes', async () => {
     const t = recordingHandlers();
     const p = loadPreload(t.h);
@@ -313,16 +397,21 @@ describe('preload bridge', () => {
     const seen: unknown[] = [];
     const off = a.setup.onEvent((e) => seen.push(e));
     await new Promise((r) => setTimeout(r, 0));
-    expect(seen).toEqual([{ type: 'setup', state: 'idle', failedStep: null, error: null, folder: null }]);
+    expect(seen).toEqual([{ type: 'setup', state: 'idle', failedStep: null, error: null }]);
     p.send(CHANNELS.setupEvent, { type: 'setup', state: 'models' });
     off();
-    p.send(CHANNELS.setupEvent, { type: 'setup', state: 'chooseFolder' });
+    p.send(CHANNELS.setupEvent, { type: 'setup', state: 'createLibrary' });
     expect(seen).toHaveLength(2);
 
     const statuses: unknown[] = [];
     a.watcher.onStatus((s) => statuses.push(s));
     p.send(CHANNELS.watcherStatusEvent, { state: 'idle', indexed: 2 });
     expect(statuses).toEqual([{ state: 'idle', indexed: 2 }]);
+
+    const views: unknown[] = [];
+    a.libraries.onChange((v) => views.push(v));
+    p.send(CHANNELS.librariesEvent, { current: 'lib-1', libraries: [] });
+    expect(views).toEqual([{ current: 'lib-1', libraries: [] }]);
   });
 
   it('sends answer events to the asking page and checks the answer arguments', async () => {
@@ -354,6 +443,6 @@ describe('preload bridge', () => {
       throw new Error('no state');
     };
     const shell = loadPreload(t.h).exposed.shellConfig!;
-    expect(shell).toMatchObject({ baseUrl: null, apiKey: null, workspace: null, folder: null });
+    expect(shell).toMatchObject({ baseUrl: null, apiKey: null, workspace: null, libraryId: null, libraryName: null });
   });
 });

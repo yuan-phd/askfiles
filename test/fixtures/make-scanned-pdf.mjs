@@ -1,11 +1,14 @@
-// Writes test/fixtures/scanned.pdf: one page that is only a JPEG image, no text layer, like a
-// scanner's output. The image test/fixtures/scanned-page.jpg was rendered in the cloud container:
+// Writes test/fixtures/scanned.pdf: two pages that are only JPEG images, no text layer, like a
+// scanner's output, so per-page OCR can be checked for real page numbers (Session K).
+// The images test/fixtures/scanned-page.jpg and scanned-page-2.jpg were rendered in the cloud
+// container, the first with:
 //   convert -size 1240x700 xc:white -font DejaVu-Sans -pointsize 44 -fill black \
 //     -annotate +100+150 'Travel policy' -pointsize 34 \
 //     -annotate +100+260 'Train journeys are booked in second class.' \
 //     -annotate +100+330 'Flights need written approval from a director.' \
 //     -annotate +100+400 'Hotel costs are refunded up to 120 euros a night.' \
 //     -colorspace Gray -quality 70 scanned-page.jpg
+// and the second the same way with the lines of SCANNED_TEXT_2.
 // Built by hand like make-handbook-pdf.mjs, so the fixture needs no dependency.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -15,6 +18,13 @@ export const SCANNED_TEXT = [
   'Train journeys are booked in second class.',
   'Flights need written approval from a director.',
   'Hotel costs are refunded up to 120 euros a night.',
+];
+
+export const SCANNED_TEXT_2 = [
+  'Meals',
+  'Lunch on a work trip is refunded up to 25 euros.',
+  'Dinner is refunded up to 40 euros.',
+  'Receipts must show the date and the restaurant.',
 ];
 
 /** Width, height and components from the first start-of-frame marker of a baseline JPEG. */
@@ -32,20 +42,26 @@ function jpegSize(jpg) {
   throw new Error('no start-of-frame marker');
 }
 
-export function buildScannedPdf(jpg) {
-  const { width, height, components } = jpegSize(jpg);
-  // 72 dpi page with the image scaled to the page width of A4 landscape-ish proportions.
-  const pageW = 595;
-  const pageH = Math.round((pageW * height) / width);
-  const content = `q ${pageW} 0 0 ${pageH} 0 0 cm /Im0 Do Q`;
-  const objects = [
-    null,
-    '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageW} ${pageH}] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>`,
-    null,
-    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
-  ];
+/** One page per JPEG, each page only the image scaled to a 595 point wide page. */
+export function buildScannedPdf(...jpgs) {
+  // Objects: 1 catalog, 2 pages, then per page: page, image, content.
+  const n = jpgs.length;
+  const pageObj = (i) => 3 + i * 3;
+  const objects = [null, '<< /Type /Catalog /Pages 2 0 R >>'];
+  objects.push(`<< /Type /Pages /Kids [${jpgs.map((_, i) => `${pageObj(i)} 0 R`).join(' ')}] /Count ${n} >>`);
+  const images = new Map();
+  jpgs.forEach((jpg, i) => {
+    const { width, height, components } = jpegSize(jpg);
+    const pageW = 595;
+    const pageH = Math.round((pageW * height) / width);
+    const content = `q ${pageW} 0 0 ${pageH} 0 0 cm /Im0 Do Q`;
+    objects.push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageW} ${pageH}] /Resources << /XObject << /Im0 ${pageObj(i) + 1} 0 R >> >> /Contents ${pageObj(i) + 2} 0 R >>`,
+    );
+    objects.push(null);
+    images.set(pageObj(i) + 1, { jpg, width, height, components });
+    objects.push(`<< /Length ${content.length} >>\nstream\n${content}\nendstream`);
+  });
   const parts = [Buffer.from('%PDF-1.4\n%\xe2\xe3\xcf\xd3\n', 'latin1')];
   const offsets = [];
   let size = parts[0].length;
@@ -53,20 +69,21 @@ export function buildScannedPdf(jpg) {
     parts.push(b);
     size += b.length;
   };
-  for (let n = 1; n < objects.length; n++) {
-    offsets[n] = size;
-    if (n === 4) {
-      const cs = components === 1 ? '/DeviceGray' : '/DeviceRGB';
+  for (let k = 1; k < objects.length; k++) {
+    offsets[k] = size;
+    const img = images.get(k);
+    if (img) {
+      const cs = img.components === 1 ? '/DeviceGray' : '/DeviceRGB';
       push(
         Buffer.from(
-          `4 0 obj\n<< /Type /XObject /Subtype /Image /Width ${width} /Height ${height} /ColorSpace ${cs} /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpg.length} >>\nstream\n`,
+          `${k} 0 obj\n<< /Type /XObject /Subtype /Image /Width ${img.width} /Height ${img.height} /ColorSpace ${cs} /BitsPerComponent 8 /Filter /DCTDecode /Length ${img.jpg.length} >>\nstream\n`,
           'latin1',
         ),
       );
-      push(jpg);
+      push(img.jpg);
       push(Buffer.from('\nendstream\nendobj\n', 'latin1'));
     } else {
-      push(Buffer.from(`${n} 0 obj\n${objects[n]}\nendobj\n`, 'latin1'));
+      push(Buffer.from(`${k} 0 obj\n${objects[k]}\nendobj\n`, 'latin1'));
     }
   }
   const xref = size;
@@ -82,7 +99,8 @@ export function buildScannedPdf(jpg) {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const jpg = readFileSync(new URL('./scanned-page.jpg', import.meta.url));
+  const jpg2 = readFileSync(new URL('./scanned-page-2.jpg', import.meta.url));
   const out = new URL('./scanned.pdf', import.meta.url);
-  writeFileSync(out, buildScannedPdf(jpg));
+  writeFileSync(out, buildScannedPdf(jpg, jpg2));
   console.log(`wrote ${fileURLToPath(out)}`);
 }

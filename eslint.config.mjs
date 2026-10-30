@@ -24,6 +24,9 @@ const browserGlobals = {
   TextEncoder: 'readonly',
   AbortController: 'readonly',
   CustomEvent: 'readonly',
+  DataTransfer: 'readonly',
+  DragEvent: 'readonly',
+  File: 'readonly',
 };
 
 export default tseslint.config(
