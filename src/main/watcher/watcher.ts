@@ -148,6 +148,12 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
     return structuredClone(Object.values(this.data.files));
   }
 
+  /** A copy of one file's record, or null when the file is not in the index. */
+  file(filePath: string): FileRecord | null {
+    const rec = this.data.files[filePath];
+    return rec ? structuredClone(rec) : null;
+  }
+
   /** Resolves once nothing is settling, queued, waiting for a retry or running. */
   whenIdle(): Promise<void> {
     if (this.isIdle() || this.state === 'stopped') return Promise.resolve();

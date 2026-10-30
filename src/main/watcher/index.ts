@@ -5,7 +5,7 @@ export { chokidarWatch } from './fs-watch.js';
 export { createSourceResolver } from './sources.js';
 export type { SourceLike } from './sources.js';
 export { SUPPORTED_EXTENSIONS, isIndexable } from './file-types.js';
-export { DOCS_FOLDER } from './section-docs.js';
+export { DOCS_FOLDER, readSectionDocument } from './section-docs.js';
 export { sectionSplitter, SPLIT_STRATEGY } from './splitter.js';
 export { collectorOcr } from './ocr.js';
 export type {

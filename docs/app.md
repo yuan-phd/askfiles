@@ -64,6 +64,10 @@ One preload script, src/main/preload.ts, for every window. Windows run with cont
 | `askfiles.watcher.status()`, `.onStatus(cb)` | Watcher status plus `folder`, and `error` when the folder cannot be watched |
 | `askfiles.library.resolveSources(sources)` | FolderWatcher.resolveSources: section title and pages for vector-search results |
 | `askfiles.library.openOriginal(source)` | Reveals the original file in Finder, mapped through index.json from the file URL, the stored document path or the upload file name (src/main/open-original.ts); false when no indexed file matches |
+| `askfiles.browse.documents()` | BrowseIndex.listDocuments: every document with path, title, size, modified time and outline, no section text |
+| `askfiles.browse.document(ref)` | BrowseIndex.getDocument: one document with its sections, by `{ id }` or by a source's `{ url, title }`; null when unknown |
+| `askfiles.browse.headings(key)` | BrowseIndex.headings: headings grouped across documents, most documents first; with a key, that group only, with section text |
+| `askfiles.browse.search(query)` | BrowseIndex.search: keyword hits grouped by document and section, with snippet and match positions |
 | `askfiles.app.info()` | `{ name, version }` for the About page |
 | `askfiles.app.pageReady(info)` | Logs `[main] page ready search connected=true documents=N`; the smoke test waits for it |
 | `window.shellConfig` | `{ baseUrl, apiKey, workspace, folder, resolveSources, openSource }`, read once per page load |
@@ -74,6 +78,25 @@ src/main/bridge/bridge.test.ts runs the preload in the same function wrapper the
 
 Folder, indexed file count, indexing state (Indexing, N left; Up to date; Folder not available) and the number of files on the dead-letter list, with their errors in the tooltip, all from watcher events through the bridge.
 
+## Browse view
+
+The switch at the left of the status bar shows Search or Browse in the same page (src/renderer/search/index.html); both stay in the page, so each keeps its state and nothing reloads. Browse (src/renderer/browse/view.js, also standalone at browse/index.html) has a library page (every document, outline collapsed, sort by name or last change, indexing state), a document page (sections in order with an outline rail, an anchor per section, Open original), a headings page (headings found in two or more documents, optionally all; a heading shows that section from every document side by side) and a find page (keyword search, hits grouped by document and section). Source cards and the section list on the search page have Read section, which opens the cited section on the document page. No model and no server call: everything comes from the browse index.
+
+The browse index (src/main/browse) is one JSON file per document in `<dataDir>/browse/<id>.json`, id the first 16 hex digits of sha256 of the file path:
+
+| Key | Content |
+| --- | --- |
+| `version`, `id`, `path`, `url`, `relPath`, `title` | 1; the id; the file's path, file URL, path in the library folder and file name |
+| `size`, `mtimeMs`, `hash`, `splitKey`, `indexedAt` | From the index.json record; hash and splitKey decide when the sections are read again |
+| `outline` | `{ title, level, sectionIndex, page, children }`, nested by heading level; a heading the splitter folded into the next section (a chapter heading right above its first subsection) gets an entry one level up pointing at that section; text before the first heading gets none |
+| `sections` | `{ index, title, level, lead, heading, pageStart, pageEnd, text }`: index is the sectionIndex of the section documents and search sources; text is the section's sub-chunks joined again, the heading lines the chunker put in front of each taken off; heading is the normalized key, empty for text before the first heading and for the Page N sections of a PDF without headings |
+
+Built from the index.json record and the section documents under STORAGE_DIR/documents, so it shows exactly the split that retrieval embeds, OCR text included. Kept current from the watcher's file events (indexed, unchanged, removed); after every watcher start, sync drops entries for files the watcher no longer has and builds missing ones. Loaded before the watcher starts, so the library shows during a long reconcile.
+
+Heading normalization (src/main/browse/normalize.ts): NFKC, which turns full-width letters, digits and punctuation into half-width; lower case; numbering prefixes removed, repeatedly (1, 1., 1.2.3, 1), 1、, (1), (a), a), I., IV), Chapter 3, Section 2.1, Part II, Article 5, Appendix A, § 4, 第一章, 第12节, 第三条, 第二部分, 一、, (一)); then punctuation and symbols removed and whitespace collapsed. Number parts have at most three digits, so 2026 Budget keeps its year. A heading that is only numbering (第一章 alone) keeps it.
+
+Keyword search (src/main/browse/search.ts): the query is split at whitespace; each term, folded the same way (NFKC, lower case), must occur as a substring of the section title or text. No word boundaries, so Chinese matches inside a sentence. Documents with the most matches come first, sections in document order; at most 200 sections are returned, the total is always counted.
+
 ## OCR in the watcher
 
 A PDF without a text layer is uploaded once to the collector without embedding, its text kept and the collector's copy deleted; the text is cached by file hash in `<dataDir>/ocr-cache`. The splitter then treats it as plain text, so its sections record page 0, stored as no page in index.json. The same path the eval harness takes (scripts/eval/library.ts). Languages: TARGET_OCR_LANG from the preset (eng,chi_sim), written into server/.env by the wizard.
@@ -82,12 +105,15 @@ The language data never downloads: @tesseract.js-data/eng and @tesseract.js-data
 
 ## Smoke test
 
-scripts/smoke-mac.sh starts the packaged app on an emptied data directory (the model cache is kept) with ASKFILES_PRESETS_FILE=test/fixtures/presets-smoke.json (qwen3:0.6b, all-minilm, threshold 0) and ASKFILES_LIBRARY_FOLDER set to a temp folder holding test/fixtures/handbook.pdf and test/fixtures/scanned.pdf. It waits for the first run to finish, for the search page's ready line in main.log, then checks the library, the index and the OCR result and asks one question with the stored key.
+scripts/smoke-mac.sh starts the packaged app on an emptied data directory (the model cache is kept) with ASKFILES_PRESETS_FILE=test/fixtures/presets-smoke.json (qwen3:0.6b, all-minilm, threshold 0) and ASKFILES_LIBRARY_FOLDER set to a temp folder holding test/fixtures/handbook.pdf and test/fixtures/scanned.pdf. It waits for the first run to finish, for the search page's ready line in main.log, then checks the library, the index, the browse index (both PDFs listed in `<dataDir>/browse`) and the OCR result and asks one question with the stored key.
 
 ## Third-party notices
 
-THIRD-PARTY-NOTICES at the repository root lists every bundled package with its license and each license text once; the About page shows it. Regenerate after dependency changes, ideally on the Mac after scripts/build.sh so the darwin platform packages are listed:
+THIRD-PARTY-NOTICES at the repository root lists every bundled package with its license and each license text once; the About page shows it. A package that ships no license file gets the standard text of the license its package.json names, from scripts/license-texts (SPDX license-list-data v3.27.0: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, LGPL-3.0 with the GPL-3.0 text it builds on, MPL-2.0, CC0-1.0); when package.json names none, the license its readme states under a License heading, marked as from the readme. A package with no license anywhere is listed with its dependency path. scripts/third-party-notices.test.mjs fails when a listed package that names a license has no text in the file.
+
+`npm run package:mac` regenerates the file on the Mac after scripts/build.sh has pruned the trees and before electron-builder and signing, and runs the test there; the mac workflow does the same and uploads the result. docs/packaging.md, Third-party notices, has the details. To regenerate the repository copy in a cloud session:
 
 ```
-node scripts/third-party-notices.mjs
+PACKAGE_TARGET=linux-x64 bash scripts/build.sh
+npm run notices -- --strict
 ```

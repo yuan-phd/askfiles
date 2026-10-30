@@ -20,14 +20,14 @@ None of the models is inside the DMG: the first-run wizard pulls them from the O
 
 Read by hand; the table below is the script's output.
 
-- LGPL-3.0-or-later, @img/sharp-libvips-* (collector, through sharp 0.33) and the libvips inside server/node_modules/sharp/vendor (sharp 0.32.6, whose own field says Apache-2.0; vendor/8.14.5/linux-x64/THIRD-PARTY-NOTICES.md lists libvips as LGPLv3). Dynamically linked shared libraries, shipped unmodified. The owner accepts this provided the LGPL text ships in the notices. Checked 2026-10-29: it does not yet. THIRD-PARTY-NOTICES names both @img/sharp-libvips packages under "Packages that ship no license file" with LGPL-3.0-or-later, but contains no LGPL-3.0 text, and the packages themselves ship none. Open for Session H's notices generator.
+- LGPL-3.0-or-later, @img/sharp-libvips-* (collector, through sharp 0.33) and the libvips inside server/node_modules/sharp/vendor (sharp 0.32.6, whose own field says Apache-2.0; vendor/8.14.5/linux-x64/THIRD-PARTY-NOTICES.md lists libvips as LGPLv3). Dynamically linked shared libraries, shipped unmodified. The owner accepts this provided the LGPL text ships in the notices. Checked 2026-10-29: it did not then. Since Session J the notices generator adds the standard LGPL-3.0 text, with the GPL-3.0 text it builds on, for every package that names LGPL-3.0 and ships no license file, and the mac package job regenerates the file from the darwin trees (docs/packaging.md, Third-party notices).
 - MPL-2.0, web-push (server). Accepted by the owner as long as its files are not modified (they are not). Not pruned: server/utils/PushNotifications/index.js requires it at module scope and is loaded at server start, so it is on a path AskFiles uses.
 - BlueOak-1.0.0, sax, jackspeak, path-scurry, package-json-from-dist: permissive, not on the allowed list.
 - MIT-0 (@csstools/color-helpers, nodemailer), (MIT AND Zlib) (pako), BSD without a variant (duck): permissive, not on the allowed list as written.
 - No license statement in the package (no license field, no license file, and the readme states none):
   - voyageai 0.0.3: removed by prune step 5; it came only with chromadb.
   - buffers 0.1.1: server, exceljs > unzipper > binary > buffers. exceljs is required only by utils/agents/aibitat/plugins/create-files/xlsx/create-excel-file.js, inside a function (the agent's create-spreadsheet skill). Not on a path AskFiles uses. Left in place.
-  - combine-errors 3.0.3: server, @mintplex-labs/bree > combine-errors. bree is required at module scope by utils/BackgroundWorkers, which utils/boot loads at every server start. On a path AskFiles uses. Left in place.
+  - combine-errors 3.0.3: server, @mintplex-labs/bree > combine-errors. Its readme states MIT under a License heading; THIRD-PARTY-NOTICES records MIT from the readme since Session J. bree is required at module scope by utils/BackgroundWorkers, which utils/boot loads at every server start. On a path AskFiles uses. Left in place.
 - Development dependencies (MPL-2.0 lightningcss, WTFPL truncate-utf8-bytes, BlueOak-1.0.0) are never shipped.
 
 ## Licenses outside the allowed list

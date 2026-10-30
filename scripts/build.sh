@@ -61,7 +61,11 @@ FRONTEND_HASH=$( (echo "VITE_API_BASE=$VITE_API_BASE"; git -C "$ROOT" ls-files -
   git -C "$ROOT" diff HEAD -- upstream/frontend patches) |
   "$NODE_BIN" -e 'process.stdout.write(require("crypto").createHash("sha256").update(require("fs").readFileSync(0)).digest("hex"))')
 STAMP="$UPSTREAM/frontend/dist/.askfiles-source-hash"
-if [ -f "$UPSTREAM/frontend/dist/_index.html" ] && [ "$(cat "$STAMP" 2>/dev/null)" = "$FRONTEND_HASH" ]; then
+# The frontend's packages as this build bundled them, for THIRD-PARTY-NOTICES: a reused dist comes
+# without frontend/node_modules (the mac workflow caches dist alone).
+NOTICES_SNAPSHOT="$UPSTREAM/frontend/dist/.askfiles-notices.json"
+if [ -f "$UPSTREAM/frontend/dist/_index.html" ] && [ -f "$NOTICES_SNAPSHOT" ] &&
+  [ "$(cat "$STAMP" 2>/dev/null)" = "$FRONTEND_HASH" ]; then
   echo "[build] frontend sources unchanged since the last build, reusing frontend/dist"
 else
   rm -rf "$UPSTREAM/frontend/dist"
@@ -72,11 +76,12 @@ else
     "$NODE_BIN" node_modules/vite/bin/vite.js build --logLevel warn)
   (cd "$UPSTREAM/frontend" && "$NODE_BIN" scripts/postbuild.js)
   [ -f "$UPSTREAM/frontend/dist/_index.html" ] || fail "frontend build did not produce dist/_index.html"
+  "$NODE_BIN" "$ROOT/scripts/third-party-notices.mjs" --snapshot frontend || fail "could not record the frontend packages"
   printf '%s' "$FRONTEND_HASH" > "$STAMP"
 fi
 rm -rf "$UPSTREAM/server/public"
 cp -R "$UPSTREAM/frontend/dist" "$UPSTREAM/server/public"
-rm -f "$UPSTREAM/server/public/.askfiles-source-hash"
+rm -f "$UPSTREAM/server/public/.askfiles-source-hash" "$UPSTREAM/server/public/.askfiles-notices.json"
 
 # Everything that decides what steps 3 to 7 leave in server and collector node_modules, plus each
 # tree's .yarn-integrity, which any later yarn install rewrites. Step 7 writes it into

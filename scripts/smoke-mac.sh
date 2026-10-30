@@ -4,8 +4,8 @@
 # run picks the test preset (ASKFILES_PRESETS_FILE), pulls its models into the app's own Ollama,
 # takes the library folder from ASKFILES_LIBRARY_FOLDER instead of the dialog, creates the library
 # and its API key, and indexes a temp folder holding a text PDF and a scanned PDF (OCR). Then it
-# checks that the search page reached the library, asks one question through the server API with
-# the key the app stored, takes a screenshot and quits the app.
+# checks that the search page reached the library and that the browse index lists both PDFs, asks
+# one question through the server API with the key the app stored, takes a screenshot and quits.
 # Mac only. Usage: scripts/smoke-mac.sh path/to/AskFiles.app path/to/out-dir
 
 set -euo pipefail
@@ -112,6 +112,18 @@ for f in handbook.pdf scanned.pdf; do
 done
 scanned_page=$(json "Object.values(d.files).find(r=>r.path.endsWith('/scanned.pdf')).sections[0].pageStart" <"$index")
 [ -z "$scanned_page" ] || fail "the OCR text of scanned.pdf should record no page, got $scanned_page"
+# The browse index (src/main/browse): one JSON file per document under the data directory, written
+# in the same watcher event as the index.json record, so allow a few seconds for the last one.
+browse="$DATA/browse"
+browse_titles() {
+  node -e 'const fs=require("fs"),p=require("path");const d=process.argv[1];let out=[];try{out=fs.readdirSync(d).filter(n=>n.endsWith(".json")).map(n=>JSON.parse(fs.readFileSync(p.join(d,n),"utf8"))).filter(x=>x.sections.length>0).map(x=>x.title)}catch{}process.stdout.write(out.sort().join(","))' "$browse"
+}
+t_browse=$(date +%s)
+until [ "$(browse_titles)" = "handbook.pdf,scanned.pdf" ]; do
+  [ $(($(date +%s) - t_browse)) -lt 30 ] || fail "the browse index in $browse lists [$(browse_titles)], expected handbook.pdf and scanned.pdf"
+  sleep 1
+done
+log "browse index lists $(browse_titles)"
 dead=$(new_log | grep -c 'dead-letter' || true)
 [ "$dead" = "0" ] || fail "the watcher gave up on files: $(new_log | grep 'dead-letter')"
 for lang in eng chi_sim; do

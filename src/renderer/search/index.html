@@ -10,10 +10,19 @@
     />
     <title>AskFiles</title>
     <link rel="stylesheet" href="./search.css" />
+    <link rel="stylesheet" href="../browse/browse.css" />
     <script type="module" src="./search.js"></script>
   </head>
   <body>
     <header class="status" data-testid="status-bar">
+      <div class="view-switch" role="group" aria-label="View">
+        <button type="button" id="view-search-button" data-view="search" data-testid="view-search" aria-pressed="true">
+          Search
+        </button>
+        <button type="button" id="view-browse-button" data-view="browse" data-testid="view-browse" aria-pressed="false">
+          Browse
+        </button>
+      </div>
       <div class="status-folder">
         <span class="status-label">Library</span>
         <span class="status-value" id="status-folder" data-testid="status-folder">No folder chosen</span>
@@ -27,7 +36,7 @@
       </div>
     </header>
 
-    <main class="layout">
+    <main class="layout" id="view-search" data-testid="search-view">
       <section class="search" aria-label="Search">
         <form id="query-form" class="query" autocomplete="off">
           <label class="visually-hidden" for="query">Ask a question about your documents</label>
@@ -72,6 +81,8 @@
       </aside>
     </main>
 
+    <div id="view-browse" data-testid="browse-view" hidden></div>
+
     <template id="card-template">
       <li class="card" data-testid="source-card">
         <div class="card-meta">
@@ -82,6 +93,7 @@
         <div class="card-passages" data-testid="source-passages"></div>
         <div class="card-actions">
           <span class="card-count" data-testid="source-count" hidden></span>
+          <button type="button" class="link read" data-testid="source-read">Read section</button>
           <button type="button" class="open" data-testid="source-open">Open file</button>
         </div>
       </li>
@@ -97,6 +109,7 @@
           </span>
           <span class="section-preview" data-testid="fallback-preview"></span>
         </div>
+        <button type="button" class="link read" data-testid="fallback-read">Read</button>
         <button type="button" class="open" data-testid="fallback-open">Open</button>
       </li>
     </template>

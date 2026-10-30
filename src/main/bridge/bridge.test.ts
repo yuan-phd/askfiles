@@ -124,6 +124,10 @@ function recordingHandlers() {
     watcherStatus: rec('watcherStatus', null),
     libraryResolveSources: rec('libraryResolveSources', [{ title: 'a.pdf', sectionTitle: 'Intro' }]),
     libraryOpenOriginal: rec('libraryOpenOriginal', Promise.resolve(true)) as BridgeHandlers['libraryOpenOriginal'],
+    browseDocuments: rec('browseDocuments', []),
+    browseDocument: rec('browseDocument', null),
+    browseHeadings: rec('browseHeadings', [{ key: 'scope', label: 'Scope', documents: 2, entries: [] }]),
+    browseSearch: rec('browseSearch', { query: 'q', terms: ['q'], total: 0, groups: [], truncated: false }),
     appInfo: rec('appInfo', { name: 'AskFiles', version: '0.1.0' }),
     appPageReady: rec('appPageReady', undefined) as BridgeHandlers['appPageReady'],
   };
@@ -171,6 +175,11 @@ describe('preload bridge', () => {
       [
         'askfiles.app.info',
         'askfiles.app.pageReady',
+        'askfiles.browse.document',
+        'askfiles.browse.documents',
+        'askfiles.browse.headings',
+        'askfiles.browse.search',
+        'askfiles.library.openOriginal',
         'askfiles.models.list',
         'askfiles.models.onProgress',
         'askfiles.models.pull',
@@ -213,6 +222,10 @@ describe('preload bridge', () => {
     a.watcher.onStatus(() => {});
     await a.library.resolveSources([]);
     await a.library.openOriginal({ title: 'a.pdf' });
+    await a.browse.documents();
+    await a.browse.document({ id: 'abc' });
+    await a.browse.headings();
+    await a.browse.search('leave');
     await a.app.info();
     a.app.pageReady({ page: 'search' });
     const all = new Set([...REQUEST_CHANNELS, ...EVENT_CHANNELS]);
@@ -241,6 +254,34 @@ describe('preload bridge', () => {
     expect(t.calls).toContainEqual(['libraryOpenOriginal', { title: 'a.pdf', url: 'file:///Docs/a.pdf' }]);
     a.app.pageReady({ page: 'search', connected: true, documents: 3 });
     expect(t.calls).toContainEqual(['appPageReady', { page: 'search', connected: true, documents: 3 }]);
+  });
+
+  it('checks the browse arguments a page sends before the handlers see them', async () => {
+    const t = recordingHandlers();
+    const a = loadPreload(t.h).exposed.askfiles as unknown as import('./contract.js').AskfilesBridge;
+    expect(await a.browse.documents()).toEqual([]);
+    expect(await a.browse.document({ url: 'file:///Docs/a.pdf', title: 'a.pdf' })).toBeNull();
+    expect(t.calls).toContainEqual(['browseDocument', { id: null, url: 'file:///Docs/a.pdf', title: 'a.pdf' }]);
+    await a.browse.document(null as never);
+    expect(t.calls).toContainEqual(['browseDocument', { id: null, url: null, title: null }]);
+    await a.browse.document({ id: 42 } as never);
+    expect(t.calls.filter((c) => c[0] === 'browseDocument').pop()).toEqual([
+      'browseDocument',
+      { id: null, url: null, title: null },
+    ]);
+
+    expect(await a.browse.headings()).toEqual([{ key: 'scope', label: 'Scope', documents: 2, entries: [] }]);
+    await a.browse.headings('scope');
+    expect(t.calls.filter((c) => c[0] === 'browseHeadings')).toEqual([
+      ['browseHeadings', null],
+      ['browseHeadings', 'scope'],
+    ]);
+
+    await a.browse.search('年假 leave');
+    await a.browse.search('x'.repeat(2000));
+    const searches = t.calls.filter((c) => c[0] === 'browseSearch');
+    expect(searches[0]).toEqual(['browseSearch', '年假 leave']);
+    expect((searches[1]![1] as string).length).toBe(500);
   });
 
   it('replays setup state to a late subscriber, delivers live events, and unsubscribes', async () => {

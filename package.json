@@ -17,8 +17,9 @@
     "test:integration": "vitest run --config vitest.integration.config.mjs",
     "lint": "tsc -p tsconfig.json --noEmit && tsc -p scripts/eval/tsconfig.json && eslint . && prettier --check .",
     "format": "prettier --write .",
-    "package:mac": "npm run build:main && PACKAGE_TARGET=mac-arm64 bash scripts/build.sh && electron-builder --config electron-builder.yml --mac dir --arm64 && bash scripts/sign-adhoc.sh && electron-builder --config electron-builder.yml --mac dmg --arm64 --prepackaged release/mac-arm64/AskFiles.app",
+    "package:mac": "npm run build:main && PACKAGE_TARGET=mac-arm64 bash scripts/build.sh && npm run notices -- --strict && vitest run scripts/third-party-notices.test.mjs && electron-builder --config electron-builder.yml --mac dir --arm64 && bash scripts/sign-adhoc.sh && electron-builder --config electron-builder.yml --mac dmg --arm64 --prepackaged release/mac-arm64/AskFiles.app",
     "test:e2e": "npm run build:main && playwright test",
+    "notices": "node scripts/third-party-notices.mjs",
     "eval": "tsx scripts/eval/run.ts",
     "eval:score": "tsx scripts/eval/score.ts",
     "eval:compare": "tsx scripts/eval/compare.ts"

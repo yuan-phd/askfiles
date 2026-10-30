@@ -24,6 +24,16 @@ export function writeSectionDocument(storageDir: string, location: string, doc: 
   fs.writeFileSync(file, JSON.stringify(doc));
 }
 
+/** A section document as written, or null when it is missing or unreadable. */
+export function readSectionDocument(storageDir: string, location: string): Record<string, unknown> | null {
+  try {
+    const doc = JSON.parse(fs.readFileSync(path.join(documentsDir(storageDir), location), 'utf8')) as unknown;
+    return doc && typeof doc === 'object' ? (doc as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function readSectionText(storageDir: string, location: string): string | null {
   try {
     const doc = JSON.parse(fs.readFileSync(path.join(documentsDir(storageDir), location), 'utf8')) as {

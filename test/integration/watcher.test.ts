@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 // @ts-expect-error plain JavaScript client from Session D without type declarations
 import { createClient, generateApiKey, normalizeSource, REFUSAL_TEXT } from '../../src/renderer/api/client.js';
+import { BrowseIndex, chunkReader, followWatcher } from '../../src/main/browse/index.js';
 import { seedTesseractData } from '../../src/main/tesseract.js';
 import {
   chokidarWatch,
@@ -190,6 +191,67 @@ describe.skipIf(reason !== null)('folder watcher against the real server', () =>
       // The collector copy of the upload is gone again; only the section document is embedded.
       const embedded = [...(await api.workspaceDocuments(ws.slug)).keys()];
       expect(embedded).toEqual([rec!.sections[0]!.location]);
+    } finally {
+      await watcher.stop();
+    }
+  }, 300_000);
+
+  it('groups a heading shared by two dropped files in the browse heading index', async () => {
+    const up = upstream!;
+    const apiKey = await generateApiKey({ baseUrl: up.baseUrl, name: 'askfiles-browse-it' });
+    const client = createClient({ baseUrl: up.baseUrl, apiKey });
+    const ws = await client.createWorkspace('askfiles-browse-it', {
+      chatMode: 'query',
+      queryRefusalResponse: REFUSAL_TEXT,
+    });
+    const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'askfiles-browse-it-')));
+    const folder = path.join(tmp, 'Documents');
+    fs.mkdirSync(folder);
+    const api = createLibraryApi({ baseUrl: up.baseUrl, apiKey });
+    const watcher = new FolderWatcher({
+      root: folder,
+      dataDir: path.join(tmp, 'shell'),
+      storageDir: up.storageDir,
+      workspaceSlug: ws.slug,
+      api,
+      splitter: sectionSplitter({ maxChars: 1000, embeddingModel: 'all-minilm:latest' }),
+      watch: chokidarWatch,
+      log: (m) => log(`[watcher] ${m}`),
+    });
+    const browse = new BrowseIndex({
+      dir: path.join(tmp, 'shell', 'browse'),
+      root: folder,
+      readChunk: chunkReader(up.storageDir),
+      log: (m) => log(`[browse] ${m}`),
+    });
+    followWatcher(browse, watcher, (m) => log(`[browse] ${m}`));
+    await watcher.start();
+    browse.sync(watcher.files());
+    try {
+      fs.writeFileSync(
+        path.join(folder, 'policy-2025.md'),
+        '# Leave policy 2025\n\nIntro.\n\n## 1. Annual Leave\n\nEmployees get 25 days.\n\n## 2. Sick leave\n\nCall in.\n',
+      );
+      fs.writeFileSync(
+        path.join(folder, '制度-2026.md'),
+        '# 休假制度\n\n总则。\n\n## 第二章 年假\n\n每年二十七天。\n\n## Annual leave：\n\nBook it in the portal.\n',
+      );
+      const grouped = await until('heading grouped', 120_000, async () => {
+        const g = browse.headings({ key: 'annual leave' })[0];
+        return g && g.documents === 2 ? g : null;
+      });
+      log(`heading grouped after ${grouped.elapsed} ms: ${JSON.stringify(grouped.value.entries.map((e) => e.title))}`);
+      expect(grouped.value.entries.map((e) => [e.documentTitle, e.title, e.text])).toEqual([
+        ['policy-2025.md', '1. Annual Leave', 'Employees get 25 days.'],
+        ['制度-2026.md', 'Annual leave：', 'Book it in the portal.'],
+      ]);
+      // Every section the browse index shows was embedded in the server's workspace.
+      await watcher.whenIdle();
+      const embedded = await api.workspaceDocuments(ws.slug);
+      const locations = watcher.files().flatMap((f) => f.sections.map((s) => s.location));
+      expect(locations.every((l) => embedded.has(l))).toBe(true);
+      expect(browse.search('二十七').groups.map((g) => g.document.title)).toEqual(['制度-2026.md']);
+      expect(fs.readdirSync(path.join(tmp, 'shell', 'browse'))).toHaveLength(2);
     } finally {
       await watcher.stop();
     }
