@@ -83,7 +83,7 @@ export function metricRowsOf(csv: string, mode: string): MetricRow[] {
       config: 'upstream',
       targetHit: refused ? targetHit(q, []) : targetHit(q, cited),
       keyCoverage: keyCoverage(q, refused ? '' : (r.answer ?? '')),
-      attribution: attributionOk(q, { refused, cited }),
+      attribution: attributionOk(q, { refused, answer: r.answer ?? '', cited }),
       firstTokenMs: num(r.first_token_ms),
       totalMs: r.error ? null : num(r.total_ms),
     };

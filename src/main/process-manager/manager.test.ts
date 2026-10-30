@@ -1,5 +1,7 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import http from 'node:http';
+import type { AddressInfo } from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -17,8 +19,11 @@ function manager(cfg: ConstructorParameters<typeof ProcessManager>[0]): { m: Pro
   return { m, events };
 }
 
+const cleanupServers: http.Server[] = [];
+
 afterEach(async () => {
   await Promise.all(managers.splice(0).map((m) => m.stop()));
+  for (const s of cleanupServers.splice(0)) s.close();
 });
 
 describe('ProcessManager start', () => {
@@ -55,6 +60,38 @@ describe('ProcessManager start', () => {
     expect(new Set(ports).size).toBe(3);
     for (const p of ports) expect([3001, 8888, 11434]).not.toContain(p);
     expect(Object.values(status.processes).every((p) => p.state === 'healthy' && p.pid)).toBe(true);
+  });
+
+  it('uses an external Ollama without spawning or stopping it, and fails when none answers', async () => {
+    const dir = tmpDir();
+    // A stand-in for the Mac's own Ollama, already running before the manager starts.
+    const port = await new Promise<number>((resolve) => {
+      const srv = http.createServer((_req, res) => res.end('{"models":[]}'));
+      cleanupServers.push(srv);
+      srv.listen(0, '127.0.0.1', () => resolve((srv.address() as AddressInfo).port));
+    });
+    const { m, events } = manager(fakeConfig(dir, { ollama: undefined, externalOllamaPort: port }));
+    const status = await m.start();
+    expect(status.ports!.ollama).toBe(port);
+    expect(readRecord(dir).some((r) => r.name === 'ollama')).toBe(false);
+    const env = readRecord(dir).find((r) => r.name === 'server' && r.event === 'start')!.env!;
+    expect(env.OLLAMA_BASE_PATH).toBe(`http://127.0.0.1:${port}`);
+    expect(events.filter((e) => e.process === 'ollama').map((e) => e.state)).toEqual(['starting', 'healthy']);
+    await m.stop();
+
+    const closed = await new Promise<number>((resolve) => {
+      const srv = http.createServer();
+      srv.listen(0, '127.0.0.1', () => {
+        const p = (srv.address() as AddressInfo).port;
+        srv.close(() => resolve(p));
+      });
+    });
+    const dir2 = tmpDir();
+    const { m: m2 } = manager(
+      fakeConfig(dir2, { ollama: undefined, externalOllamaPort: closed, timeoutsMs: { ollama: 300 } }),
+    );
+    await expect(m2.start()).rejects.toMatchObject({ step: 'ollama' });
+    expect(readRecord(dir2).some((r) => r.name === 'collector')).toBe(false);
   });
 
   it('passes storage dir and the .env secrets to the server', async () => {

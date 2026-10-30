@@ -36,6 +36,11 @@
           "balanced": 0.0,
           "broad": 0.0
         },
+        "vectorFloor": {
+          "strict": 0,
+          "balanced": 0,
+          "broad": 0
+        },
         "contextBudgetTokens": 0,
         "promptVariant": "default"
       }

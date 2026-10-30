@@ -43,6 +43,9 @@ import {
   type Reranker,
   type RunSettings,
   type TermStats,
+  NO_RERANKER,
+  setFloor,
+  assembleSection,
 } from './index.js';
 
 const cleanups: (() => void)[] = [];
@@ -120,7 +123,7 @@ describe('extractTerms', () => {
 });
 
 describe('fuse', () => {
-  it('scores a section by the reciprocal ranks of all its chunks and its keyword hit', () => {
+  it('scores a section by its best chunk and its keyword hit, with a capped bonus for more chunks', () => {
     const a = sectionKey('d1', 1);
     const b = sectionKey('d1', 2);
     const c = sectionKey('d2', 1);
@@ -137,11 +140,70 @@ describe('fuse', () => {
       ],
       60,
     );
-    expect(fused.map((f) => f.key)).toEqual([b, a, c]);
-    expect(fused[0]!.score).toBeCloseTo(rrf(1, 60) + rrf(3, 60));
-    expect(fused[1]).toMatchObject({ vectorRank: 2, keywordRank: 2, terms: ['leave'] });
-    expect(fused[1]!.score).toBeCloseTo(rrf(2, 60) + rrf(2, 60));
-    expect(fused[0]!.hitTexts).toEqual(['x', 'z']);
+    // a: found by both lists; b: two sub-chunks, the second worth at most 10 percent; c: keyword only.
+    expect(fused.map((f) => f.key)).toEqual([a, b, c]);
+    expect(fused[0]).toMatchObject({ vectorRank: 2, keywordRank: 2, terms: ['leave'] });
+    expect(fused[0]!.score).toBeCloseTo(rrf(2, 60) + rrf(2, 60));
+    expect(fused[1]!.score).toBeCloseTo(rrf(1, 60) * 1.1);
+    expect(fused[1]!.extraVector).toBeCloseTo(rrf(3, 60));
+    expect(fused[1]!.hitTexts).toEqual(['x', 'z']);
+  });
+
+  it('ranks the section first in both lists above a long one with several weaker hits', () => {
+    const target = sectionKey('regs', 84);
+    const long = sectionKey('rfb', 18);
+    const vector = [
+      { id: 't', text: 't', score: 0.8, section: target },
+      ...Array.from({ length: 9 }, (_, i) => ({ id: `f${i}`, text: `f${i}`, score: 0.7, section: `filler#${i}` })),
+      ...[11, 12, 13].map((r) => ({ id: `l${r}`, text: `l${r}`, score: 0.6, section: long })),
+    ];
+    const fused = fuse(
+      vector,
+      [
+        { section: target, score: 9, terms: ['5.79'] },
+        ...Array.from({ length: 26 }, (_, i) => ({ section: `kw#${i}`, score: 1, terms: [] })),
+        { section: long, score: 1, terms: [] },
+      ],
+      60,
+    );
+    expect(fused[0]!.key).toBe(target);
+    const l = fused.find((f) => f.key === long)!;
+    const base = rrf(11, 60) + rrf(28, 60);
+    expect(l.score).toBeCloseTo(base * 1.1);
+  });
+});
+
+describe('assembleSection', () => {
+  const part = (n: number) => `Part ${n} body sentence number ${n}. `.repeat(8).trim();
+  const parts = Array.from({ length: 10 }, (_, i) => part(i + 1));
+  const len = parts[0]!.length;
+
+  it('sends a section whole when it fits twice the chunk maximum', () => {
+    const few = parts.slice(0, 3);
+    expect(assembleSection(few, { cap: 10_000, wholeChars: 10_000 })).toBe(few.join('\n\n'));
+  });
+
+  it('takes matched parts with one neighbour each side, in document order, without repeats', () => {
+    const out = assembleSection(parts, {
+      cap: 10_000,
+      wholeChars: len * 3,
+      hitTexts: [`Heading\n${parts[6]}`],
+      terms: ['part 2 body'],
+    });
+    expect(out).toBe([parts[0], parts[1], parts[2], '...', parts[5], parts[6], parts[7], '...'].join('\n\n'));
+  });
+
+  it('keeps matched parts before neighbours when the cap is tight, and the start without a match', () => {
+    const out = assembleSection(parts, {
+      cap: len * 2 + 20,
+      wholeChars: 0,
+      hitTexts: [parts[6]!],
+      terms: ['part 2 body'],
+    });
+    expect(out).toContain(parts[6]);
+    expect(out).toContain(parts[1]);
+    expect(out).not.toContain(parts[5]);
+    expect(assembleSection(parts, { cap: len + 10, wholeChars: 0 }).startsWith(parts[0]!.slice(0, 40))).toBe(true);
   });
 });
 
@@ -214,7 +276,7 @@ describe('selectSections', () => {
       count: DEFAULT_PARAMS.sectionCount[scope],
       floor: DEFAULT_PARAMS.rerankFloor[scope],
       budgetTokens,
-      bypass: false,
+      floorOn: 'rerank',
     });
 
   it('maps each scope to its count and floor', () => {
@@ -245,9 +307,21 @@ describe('selectSections', () => {
   it('ignores the floor when reranking was bypassed', () => {
     const sel = selectSections(
       ranked.map((r) => ({ ...r, rerank: null })),
-      { count: 3, floor: 0.5, budgetTokens: 100_000, bypass: true },
+      { count: 3, floor: 0.5, budgetTokens: 100_000, floorOn: 'none' },
     );
     expect(sel.selected.map((s) => s.section.key)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('applies the floor to vector similarity without a reranker; keyword-only sections pass only 0', () => {
+    const vectors = [0.71, null, 0.55, 0.62, 0.4, 0.3];
+    const byVector = ranked.map((r, i) => ({ ...r, rerank: null, vector: vectors[i] }));
+    const pick = (floor: number) =>
+      selectSections(byVector, { count: 3, floor, budgetTokens: 100_000, floorOn: 'vector' }).selected.map(
+        (s) => s.section.key,
+      );
+    expect(pick(0.5)).toEqual(['a', 'c', 'd']);
+    expect(pick(0.7)).toEqual(['a']);
+    expect(pick(0)).toEqual(['a', 'b', 'c']);
   });
 
   it('derives the budget from the context length unless set', () => {
@@ -493,6 +567,29 @@ describe('pipeline', () => {
     expect(r.bypassReason).toBe('question is mainly CJK');
     const sel = choose(r, settings);
     expect(sel.selected[0]!.section.file).toBe('制度.docx');
+  });
+
+  it('with rerankerModel none never calls the reranker and floors on vector similarity', async () => {
+    let scored = false;
+    const { deps } = setup({
+      reranker: {
+        score: async (_q, t) => {
+          scored = true;
+          return t.map(() => 1);
+        },
+      },
+    });
+    const off = (floor: number): RunSettings => ({
+      ...settings,
+      params: setFloor(structuredClone({ ...DEFAULT_PARAMS, rerankerModel: NO_RERANKER }), 'balanced', floor),
+    });
+    const r = await retrieve('How many days of annual leave?', off(0), deps);
+    expect(scored).toBe(false);
+    expect(r.bypassReason).toBe('reranker disabled');
+    // Fused order: Annual leave (vector 0.4 and keyword) above Travel (vector 0.5 only).
+    expect(choose(r, off(0.3)).selected.map((s) => s.section.title)).toEqual(['Annual leave', 'Travel']);
+    expect(choose(r, off(0.45)).selected.map((s) => s.section.title)).toEqual(['Travel']);
+    expect(choose(r, off(0.6)).selected).toEqual([]);
   });
 });
 

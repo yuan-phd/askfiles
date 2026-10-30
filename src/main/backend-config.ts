@@ -15,6 +15,8 @@ export interface BundlePaths {
   serverEnv?: Record<string, string>;
   /** Browser origins allowed to call the server, the shell's own pages (patch 005). */
   allowedOrigins?: string[];
+  /** A dev run: use the Ollama already on this port instead of the bundled one. */
+  externalOllamaPort?: number;
 }
 
 /**
@@ -38,12 +40,16 @@ export function bundledBackendConfig(p: BundlePaths): ProcessManagerConfig {
     dataDir: p.dataDir,
     logDir: p.logDir,
     allowedOrigins: p.allowedOrigins ?? [],
-    ollama: {
-      command: path.join(p.resourcesPath, 'ollama', 'ollama'),
-      args: ['serve'],
-      cwd: p.dataDir,
-      env: { OLLAMA_MODELS: path.join(p.dataDir, 'ollama') },
-    },
+    ...(p.externalOllamaPort
+      ? { externalOllamaPort: p.externalOllamaPort }
+      : {
+          ollama: {
+            command: path.join(p.resourcesPath, 'ollama', 'ollama'),
+            args: ['serve'],
+            cwd: p.dataDir,
+            env: { OLLAMA_MODELS: path.join(p.dataDir, 'ollama') },
+          },
+        }),
     collector: { command: p.nodePath, args: [path.join(collector, 'index.js')], cwd: collector, env: asNode },
     migrate: {
       command: p.nodePath,

@@ -150,6 +150,7 @@ export class ProcessManager extends EventEmitter<{ state: [StateEvent] }> {
       } catch (e) {
         throw new StartError('ports', (e as Error).message, []);
       }
+      if (this.cfg.externalOllamaPort !== null) ollama = this.cfg.externalOllamaPort;
       this.ports = { ollama, collector, server };
       this.mlog(`ports ollama=${ollama} collector=${collector} server=${server}`);
 
@@ -161,7 +162,8 @@ export class ProcessManager extends EventEmitter<{ state: [StateEvent] }> {
         fs.mkdirSync(d, { recursive: true });
       }
 
-      await this.startStep('ollama');
+      if (this.cfg.externalOllamaPort !== null) await this.checkExternalOllama();
+      else await this.startStep('ollama');
       await this.startStep('collector');
       await this.runMigrate();
       await this.startStep('server');
@@ -207,6 +209,22 @@ export class ProcessManager extends EventEmitter<{ state: [StateEvent] }> {
     this.phase = 'stopped';
     this.mlog('stopped');
     for (const l of this.logs.values()) l.close();
+  }
+
+  private async checkExternalOllama(): Promise<void> {
+    const slot = this.slots.ollama;
+    this.setState(slot, 'starting', 'external');
+    const timeoutMs = this.cfg.timeoutsMs.ollama;
+    const r = await waitForHealthy(this.healthUrl('ollama'), {
+      timeoutMs,
+      intervalMs: this.cfg.healthIntervalMs,
+    });
+    if (this.phase !== 'starting') throw new StartError('ollama', 'stopped during start', []);
+    if (r !== 'healthy') {
+      throw new StartError('ollama', `no Ollama answering at ${this.healthUrl('ollama')} within ${timeoutMs} ms`, []);
+    }
+    this.mlog(`using the Ollama already running on ${this.ports!.ollama}`);
+    this.setState(slot, 'healthy', 'external');
   }
 
   private async startStep(name: ProcessName): Promise<void> {

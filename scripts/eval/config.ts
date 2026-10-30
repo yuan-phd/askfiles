@@ -26,6 +26,8 @@ export interface EvalConfig {
   dataDir: string;
   /** Managed mode: ollama binary; empty means ollama on PATH. */
   ollamaBin: string;
+  /** Managed mode: port of an Ollama already running (11434 for the Mac's own); 0 starts one. */
+  ollamaPort: number;
   /** Managed mode: OLLAMA_MODEL_TOKEN_LIMIT, the chat context window; 0 keeps upstream's default. */
   contextTokens: number;
   /** Base name of the hidden workspace; the harness appends a hash of the embedding model. */
@@ -58,6 +60,7 @@ const DEFAULTS: Omit<EvalConfig, 'label' | 'chatModel' | 'embeddingModel'> = {
   storageDir: '',
   dataDir: '',
   ollamaBin: '',
+  ollamaPort: 0,
   contextTokens: 0,
   workspace: 'askfiles-eval',
   similarityThreshold: THRESHOLDS.medium!,
@@ -107,6 +110,7 @@ export function resolveConfig(raw: Record<string, unknown>, baseDir: string, rep
   num('temperature', (n) => n >= 0, '0 or more');
   num('passes', (n) => Number.isInteger(n) && n >= 1, 'an integer of at least 1');
   num('contextTokens', (n) => Number.isInteger(n) && n >= 0, 'an integer, 0 for the default');
+  num('ollamaPort', (n) => Number.isInteger(n) && n >= 0 && n < 65536, 'a port number, 0 to start Ollama');
   if (c.chunkStrategy !== 'heading') problems.push('chunkStrategy must be heading');
   if (c.chatMode !== 'query' && c.chatMode !== 'chat') problems.push('chatMode must be query or chat');
   if (!isScope(c.scope)) problems.push(`scope must be one of ${SCOPES.join(', ')}`);

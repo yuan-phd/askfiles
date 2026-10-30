@@ -28,7 +28,13 @@ export interface ProcessManagerConfig {
   allowedOrigins?: string[];
   /** Environment inherited by every child. Default process.env. */
   baseEnv?: NodeJS.ProcessEnv;
-  ollama: CommandSpec;
+  /** How to spawn Ollama; required unless externalOllamaPort is set. */
+  ollama?: CommandSpec;
+  /**
+   * Port of an Ollama already running on host, for example the Mac's own on 11434 in a developer
+   * run: it is checked healthy at start, never spawned, restarted or stopped.
+   */
+  externalOllamaPort?: number;
   collector: CommandSpec;
   /** Runs to completion before the server starts, normally prisma migrate deploy. */
   migrate: CommandSpec;
@@ -65,6 +71,7 @@ export interface ResolvedConfig {
   host: string;
   allowedOrigins: string[];
   baseEnv: NodeJS.ProcessEnv;
+  externalOllamaPort: number | null;
   specs: Record<StepName, CommandSpec>;
   signals: { term: NodeJS.Signals; kill: NodeJS.Signals };
   killProcessGroup: boolean;
@@ -81,6 +88,8 @@ export function resolveConfig(c: ProcessManagerConfig): ResolvedConfig {
   const delaysMs = c.restart?.delaysMs ?? [1000, 2000, 4000, 8000, 16000];
   if (delaysMs.length === 0) throw new Error('restart.delaysMs must not be empty');
   const storageDir = c.storageDir ?? path.join(c.dataDir, 'storage');
+  const externalOllamaPort = c.externalOllamaPort ?? null;
+  if (!c.ollama && externalOllamaPort === null) throw new Error('ollama or externalOllamaPort is required');
   return {
     dataDir: c.dataDir,
     storageDir,
@@ -93,7 +102,14 @@ export function resolveConfig(c: ProcessManagerConfig): ResolvedConfig {
     host: c.host ?? '127.0.0.1',
     allowedOrigins: c.allowedOrigins ?? [],
     baseEnv: c.baseEnv ?? process.env,
-    specs: { ollama: c.ollama, collector: c.collector, migrate: c.migrate, server: c.server },
+    externalOllamaPort,
+    // Never spawned when external; the placeholder keeps specs total.
+    specs: {
+      ollama: c.ollama ?? { command: '', args: [], cwd: c.dataDir },
+      collector: c.collector,
+      migrate: c.migrate,
+      server: c.server,
+    },
     signals: { term: c.signals?.term ?? 'SIGTERM', kill: c.signals?.kill ?? 'SIGKILL' },
     killProcessGroup: c.killProcessGroup ?? false,
     timeoutsMs: {

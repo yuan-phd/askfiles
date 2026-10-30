@@ -1,0 +1,44 @@
+{
+  "$comment": "The 32 GB tier of config/presets.json on the owner's Mac: qwen3:14b, bge-m3, reranker off (rerankerModel none: fused order with a vector floor) until onnxruntime-node stops crashing there, and the Mac's own Ollama on 11434 instead of a second one. Same answer block as the preset; tune with --set and copy the result into config/presets.json.",
+  "label": "mac-32gb",
+  "chatModel": "qwen3:14b",
+  "embeddingModel": "bge-m3:567m",
+  "ollamaPort": 11434,
+  "similarityThreshold": "medium",
+  "topN": 4,
+  "chunkStrategy": "heading",
+  "chunkMax": 2000,
+  "chatMode": "query",
+  "systemPrompt": "Answer only from the provided context. Name the source document and section you used. If the context does not contain the answer, say that the documents do not answer the question and do not guess. Answer in the language of the question.",
+  "temperature": 0.1,
+  "rerank": false,
+  "reasoningEffort": "off",
+  "passes": 2,
+  "scope": "balanced",
+  "answer": {
+    "rerankerModel": "none",
+    "rerankerBypassCjk": false,
+    "vectorTopK": 30,
+    "keywordTopK": 30,
+    "rrfK": 60,
+    "candidateSections": 8,
+    "sectionCapChars": 0,
+    "sectionCount": {
+      "strict": 3,
+      "balanced": 5,
+      "broad": 6
+    },
+    "rerankFloor": {
+      "strict": 0.5,
+      "balanced": 0.1,
+      "broad": 0.01
+    },
+    "vectorFloor": {
+      "strict": 0.6,
+      "balanced": 0.55,
+      "broad": 0.5
+    },
+    "contextBudgetTokens": 0,
+    "promptVariant": "default"
+  }
+}

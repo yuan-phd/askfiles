@@ -123,6 +123,66 @@ export function marksFromFontSize(lines: Line[]): Mark[] {
     .map((l) => ({ title: l.text, level: sizes.indexOf(Math.round(l.size * 2) / 2) + 1, page: l.page, y: l.y + 1 }));
 }
 
+/** Text quality of one page's text layer, both shares from 0 to 1. */
+export interface PageQuality {
+  /** Letters, digits and CJK over all non-space characters, runs of three or more of one punctuation mark left out. */
+  charShare: number;
+  /** Plausible words over all words that are not pure numbers or punctuation. */
+  wordShare: number;
+  /** Non-space characters on the page. */
+  chars: number;
+}
+
+const CJK = /[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uac00-\ud7af]/u;
+const WORD_CHAR = /[\p{L}\p{N}]/u;
+
+/**
+ * A word is plausible when it holds any CJK, or when, with punctuation trimmed from both ends, it
+ * is two or more letters with at most an apostrophe, hyphen or period between them (don't,
+ * e-mail, U.S.). Numbers and punctuation-only tokens count for neither side: tables of figures
+ * and dotted contents lines are not garbage.
+ */
+export function pageQuality(text: string): PageQuality {
+  // Dot leaders and rules in contents pages and forms (....., . . . ., ____) are layout, not text.
+  const chars = [...text.replace(/([^\p{L}\p{N}\s])(?:\s*\1){2,}/gu, '').replace(/\s+/g, '')];
+  const good = chars.filter((c) => WORD_CHAR.test(c) || CJK.test(c)).length;
+  let words = 0;
+  let plausible = 0;
+  for (const raw of text.split(/\s+/)) {
+    const w = raw.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
+    if (!w || /^[\p{N}.,:/%-]+$/u.test(w)) continue;
+    words++;
+    if (CJK.test(w) || /^\p{L}+(?:['’.-]\p{L}+)*\.?$/u.test(w)) plausible++;
+  }
+  return {
+    charShare: chars.length ? good / chars.length : 1,
+    wordShare: words ? plausible / words : 1,
+    chars: chars.length,
+  };
+}
+
+/**
+ * Thresholds for a garbled text layer, measured on the owner's first corpus (docs/eval.md, Garbled
+ * text layers): on its eight digital PDFs (599 pages) no page went below 0.92 for characters or
+ * 0.88 for words; the scanned one has pages down to 0.52 and 0.55. A page is garbled when either
+ * share is below 0.85. Pages with fewer than GARBLED_MIN_CHARS characters are too short to judge
+ * by share; see SPARSE_CHARS.
+ */
+export const GARBLED_CHAR_SHARE = 0.85;
+export const GARBLED_WORD_SHARE = 0.85;
+export const GARBLED_MIN_CHARS = 40;
+/**
+ * In a PDF that has at least one garbled page, a page with fewer characters than this that draws
+ * an image is a scan whose text layer lost most of the text (the owner's page 7: 56 characters on
+ * a full memorandum), and is OCRed too. Not applied to clean PDFs, so a cover with a logo keeps
+ * its own text.
+ */
+export const SPARSE_CHARS = 200;
+
+export function isGarbled(q: PageQuality): boolean {
+  return q.chars >= GARBLED_MIN_CHARS && (q.charShare < GARBLED_CHAR_SHARE || q.wordShare < GARBLED_WORD_SHARE);
+}
+
 /** Sections when nothing marks headings: one per page, titled Page N. */
 export function sectionsByPage(lines: Line[]): Section[] {
   const pages = [...new Set(lines.map((l) => l.page))];
@@ -139,9 +199,14 @@ interface OutlineNode {
   items: OutlineNode[];
 }
 
+interface PdfPage {
+  getTextContent(): Promise<{ items: unknown[] }>;
+  getOperatorList(): Promise<{ fnArray: number[] }>;
+}
+
 interface PdfDoc {
   numPages: number;
-  getPage(n: number): Promise<{ getTextContent(): Promise<{ items: unknown[] }> }>;
+  getPage(n: number): Promise<PdfPage>;
   getOutline(): Promise<OutlineNode[] | null>;
   getPageLabels(): Promise<string[] | null>;
   getDestination(name: string): Promise<unknown[] | null>;
@@ -182,11 +247,49 @@ async function pageLabelsOf(doc: PdfDoc): Promise<{ pageLabels?: string[] }> {
   return clean.some((l, i) => l !== '' && l !== String(i + 1)) ? { pageLabels: clean } : {};
 }
 
+/** True when the page paints an image; the image itself is not decoded. */
+async function drawsImage(page: PdfPage, ops: Record<string, number>): Promise<boolean> {
+  try {
+    const { fnArray } = await page.getOperatorList();
+    return fnArray.some((f) => f === ops.paintImageXObject || f === ops.paintInlineImageXObject);
+  } catch {
+    return false;
+  }
+}
+
+/** The most common font size by characters, the body size of marksFromFontSize. */
+function bodySize(lines: Line[]): number {
+  const weight = new Map<number, number>();
+  for (const l of lines) weight.set(l.size, (weight.get(l.size) ?? 0) + l.text.length);
+  let body = 10;
+  let best = -1;
+  for (const [s, w] of weight) if (w > best) [body, best] = [s, w];
+  return body;
+}
+
+/**
+ * Lines for a page whose text came from OCR: one per paragraph at the body size, far enough apart
+ * to start a new block each, so they never pass for headings.
+ */
+function ocrLines(text: string, page: number, size: number): Line[] {
+  return text
+    .split(/\n\s*\n/)
+    .map((p) => p.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .map((t, i) => ({ page, y: 10_000 - i * size * 3, size, text: t }));
+}
+
 /**
  * Sections of a PDF with their pages: from bookmarks when the file has them, else from font size,
- * else one per page. A PDF with no text at all is reported as needsOcr.
+ * else one per page. A PDF with no text at all is reported as needsOcr. Pages whose text layer
+ * is garbled (isGarbled, SPARSE_CHARS) are listed in ocrPages; a caller that has OCR text for them
+ * passes it back as pageText, which then replaces those pages' text layer.
  */
-export async function parsePdf(buffer: Buffer, fileName: string): Promise<ParsedDocument> {
+export async function parsePdf(
+  buffer: Buffer,
+  fileName: string,
+  o: { pageText?: Map<number, string> } = {},
+): Promise<ParsedDocument> {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const task = pdfjs.getDocument({
     data: new Uint8Array(buffer),
@@ -196,13 +299,27 @@ export async function parsePdf(buffer: Buffer, fileName: string): Promise<Parsed
   });
   try {
     const doc = (await task.promise) as unknown as PdfDoc;
-    const lines: Line[] = [];
+    let lines: Line[] = [];
+    const garbled: number[] = [];
+    const sparse: number[] = [];
     for (let p = 1; p <= doc.numPages; p++) {
-      const content = await (await doc.getPage(p)).getTextContent();
-      lines.push(...linesFromItems(content.items as TextItem[], p));
+      const page = await doc.getPage(p);
+      const pageLines = linesFromItems((await page.getTextContent()).items as TextItem[], p);
+      lines.push(...pageLines);
+      const q = pageQuality(pageLines.map((l) => l.text).join('\n'));
+      if (isGarbled(q)) garbled.push(p);
+      else if (q.chars < SPARSE_CHARS && (await drawsImage(page, pdfjs.OPS))) sparse.push(p);
     }
     if (!lines.some((l) => /\S/.test(l.text)))
       return { sections: [], outline: 'none', pages: doc.numPages, needsOcr: true, ...(await pageLabelsOf(doc)) };
+    const ocrPages = garbled.length ? [...garbled, ...sparse].sort((a, b) => a - b) : [];
+    if (o.pageText?.size) {
+      const size = bodySize(lines.filter((l) => !o.pageText!.has(l.page)));
+      const replaced = [...o.pageText.entries()].flatMap(([p, text]) => ocrLines(text, p, size));
+      lines = [...lines.filter((l) => !o.pageText!.has(l.page)), ...replaced].sort(
+        (a, b) => a.page - b.page || b.y - a.y,
+      );
+    }
     const docTitle = docTitleOf(fileName);
     const marks: Mark[] = [];
     await resolveMarks(doc, (await doc.getOutline()) ?? [], 1, marks);
@@ -217,7 +334,14 @@ export async function parsePdf(buffer: Buffer, fileName: string): Promise<Parsed
       outline = 'pages';
       sections = sectionsByPage(lines);
     }
-    return { sections, outline, pages: doc.numPages, needsOcr: false, ...(await pageLabelsOf(doc)) };
+    return {
+      sections,
+      outline,
+      pages: doc.numPages,
+      needsOcr: false,
+      ...(ocrPages.length ? { ocrPages } : {}),
+      ...(await pageLabelsOf(doc)),
+    };
   } finally {
     await task.destroy();
   }

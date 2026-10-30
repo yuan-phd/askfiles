@@ -43,11 +43,14 @@ export interface Question {
   notes: string;
 }
 
-/** A list cell: values separated by semicolons (ASCII or full-width), blanks dropped. */
+/**
+ * A list cell: values separated by semicolons (ASCII or full-width), blanks dropped. A backslash
+ * before a semicolon keeps it inside the value, for a section title that holds one.
+ */
 export function listOf(cell: string | undefined): string[] {
   return (cell ?? '')
-    .split(/[;；]/)
-    .map((s) => s.trim())
+    .split(/(?<!\\)[;；]/)
+    .map((s) => s.replace(/\\([;；])/g, '$1').trim())
     .filter(Boolean);
 }
 

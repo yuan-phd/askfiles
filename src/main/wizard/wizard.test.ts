@@ -45,10 +45,18 @@ async function setup(over: Partial<WizardDeps> = {}, fakeOptions: Parameters<typ
   return { fake, wizard, events, states, envFile, applied, restarts: () => restarts };
 }
 
+/** The shipped presets with the 16 GB tier's reranker set, since the presets may turn it off. */
+function withReranker(repo: string): typeof presets {
+  const p = structuredClone(presets);
+  p.tiers.find((t) => t.id === '16gb')!.answer.rerankerModel = repo;
+  return p;
+}
+
 describe('Wizard', () => {
   it('fetches the tier reranker after the Ollama models, as the last download', async () => {
     const fetched: string[] = [];
     const t = await setup({
+      presets: withReranker('Xenova/bge-reranker-base'),
       fetchReranker: async (repo, onProgress) => {
         fetched.push(repo);
         onProgress({ model: 'bge-reranker-v2-m3', status: 'success', completedBytes: 9, totalBytes: 9, percent: 100 });
@@ -61,6 +69,23 @@ describe('Wizard', () => {
       ['bge-m3:567m', 0, 3],
       ['qwen3:8b', 1, 3],
       ['bge-reranker-v2-m3', 2, 3],
+    ]);
+  });
+
+  it('fetches no reranker when the tier has rerankerModel none', async () => {
+    const fetched: string[] = [];
+    const t = await setup({
+      presets: withReranker('none'),
+      fetchReranker: async (repo) => {
+        fetched.push(repo);
+      },
+    });
+    await t.wizard.start();
+    expect(fetched).toEqual([]);
+    const done = t.events.filter((e) => e.type === 'progress' && e.percent === 100);
+    expect(done.map((e) => e.type === 'progress' && [e.model, e.index, e.count])).toEqual([
+      ['bge-m3:567m', 0, 2],
+      ['qwen3:8b', 1, 2],
     ]);
   });
 

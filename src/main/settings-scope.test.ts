@@ -4,7 +4,7 @@
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { fixtureLibrary } from './answer/__fixtures__/library.js';
-import { AnswerService, type PipelineDeps } from './answer/index.js';
+import { AnswerService, floorOf, type PipelineDeps } from './answer/index.js';
 import { chooseTier, loadPresets } from './presets/index.js';
 import { runSettingsFor } from './settings.js';
 import { ANSWER_SCOPES, defaultSettings, type Settings } from './shell-state.js';
@@ -67,7 +67,7 @@ describe('answer scope from the settings store', () => {
       const trace = await traceFor({ ...defaultSettings(), answerScope: scope });
       expect(trace.scope).toBe(scope);
       expect(trace.count).toBe(machine.answer.sectionCount[scope]);
-      expect(trace.floor).toBe(machine.answer.rerankFloor[scope]);
+      expect(trace.floor).toBe(floorOf(machine.answer, scope));
       expect(trace.candidates.filter((c) => c.selected).length).toBeLessThanOrEqual(machine.answer.sectionCount[scope]);
     });
   }

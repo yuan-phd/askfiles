@@ -1,5 +1,14 @@
 import path from 'node:path';
-import { chunkSections, paragraphs, parseFile, splitKeyOf, SPLITTER_VERSION, docTitleOf } from '../sections/index.js';
+import {
+  chunkSections,
+  paragraphs,
+  parseFile,
+  splitKeyOf,
+  SPLITTER_VERSION,
+  docTitleOf,
+  type Chunk,
+  type ParsedDocument,
+} from '../sections/index.js';
 import type { Section } from '../sections/index.js';
 import type { OcrPage } from './ocr.js';
 import type { Splitter } from './types.js';
@@ -22,6 +31,51 @@ export function sectionsFromOcr(pages: OcrPage[], fileName: string): Section[] {
     .filter((s) => s.blocks.length);
 }
 
+/** OCR of a whole scanned PDF, or with pages of those pages only (collectorOcr). */
+export type OcrFn = (filePath: string, pages?: number[]) => Promise<OcrPage[]>;
+
+/**
+ * Parses and chunks one file; shared by the watcher and the eval harness so both index the same
+ * split. A PDF without a text layer is OCRed whole. A PDF with garbled pages (ocrPages) gets those
+ * pages OCRed and is parsed again with their OCR text; a page whose OCR finds nothing keeps its
+ * text layer. Without an ocr hook a garbled page stays as it is.
+ */
+export async function splitWithOcr(
+  filePath: string,
+  o: { maxChars: number; ocr?: OcrFn; log?: (msg: string) => void },
+): Promise<{ parsed: ParsedDocument; chunks: Chunk[]; ocrReplaced: number[] }> {
+  let parsed = await parseFile(filePath);
+  let sections = parsed.sections;
+  let ocrReplaced: number[] = [];
+  if (parsed.needsOcr) {
+    if (!o.ocr) throw new Error('no text layer and no OCR available');
+    sections = sectionsFromOcr(await o.ocr(filePath), path.basename(filePath));
+  } else if (parsed.ocrPages?.length) {
+    const name = path.basename(filePath);
+    if (!o.ocr) {
+      o.log?.(`${name}: garbled text layer on pages ${parsed.ocrPages.join(', ')}, kept (no OCR available)`);
+    } else {
+      const pages = await o.ocr(filePath, parsed.ocrPages);
+      const text = new Map(pages.filter((p) => p.page > 0 && p.text.trim()).map((p) => [p.page, p.text]));
+      ocrReplaced = [...text.keys()].sort((a, b) => a - b);
+      const kept = parsed.ocrPages.filter((p) => !text.has(p));
+      o.log?.(
+        `${name}: garbled text layer on pages ${parsed.ocrPages.join(', ')}; replaced with OCR: ${ocrReplaced.join(', ') || 'none'}` +
+          (kept.length ? `; kept (OCR found no text): ${kept.join(', ')}` : ''),
+      );
+      if (text.size) {
+        parsed = { ...(await parseFile(filePath, { pageText: text })), ocrPages: parsed.ocrPages };
+        sections = parsed.sections;
+      }
+    }
+  }
+  return {
+    parsed,
+    chunks: chunkSections(sections, { maxChars: o.maxChars, pageLabels: parsed.pageLabels }),
+    ocrReplaced,
+  };
+}
+
 /**
  * The watcher's splitter: Session G's parsers and chunker (src/main/sections). maxChars is the
  * preset's chunkMaxChars and embeddingModel its embedder, both part of the split key.
@@ -32,7 +86,8 @@ export function sectionsFromOcr(pages: OcrPage[], fileName: string): Section[] {
 export function sectionSplitter(o: {
   maxChars: number;
   embeddingModel: string;
-  ocr?: (filePath: string) => Promise<OcrPage[]>;
+  ocr?: OcrFn;
+  log?: (msg: string) => void;
 }): Splitter {
   const splitKey = splitKeyOf({
     splitterVersion: SPLITTER_VERSION,
@@ -43,13 +98,7 @@ export function sectionSplitter(o: {
   return {
     splitKey,
     async split(filePath) {
-      const parsed = await parseFile(filePath);
-      let sections = parsed.sections;
-      if (parsed.needsOcr) {
-        if (!o.ocr) throw new Error('no text layer and no OCR available');
-        sections = sectionsFromOcr(await o.ocr(filePath), path.basename(filePath));
-      }
-      return chunkSections(sections, { maxChars: o.maxChars, pageLabels: parsed.pageLabels });
+      return (await splitWithOcr(filePath, o)).chunks;
     },
   };
 }

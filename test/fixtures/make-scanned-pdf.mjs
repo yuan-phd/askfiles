@@ -42,11 +42,26 @@ function jpegSize(jpg) {
   throw new Error('no start-of-frame marker');
 }
 
+/** Escapes a line for a PDF string literal. */
+const pdfString = (t) => `(${t.replace(/[\\()]/g, (c) => `\\${c}`)})`;
+
 /** One page per JPEG, each page only the image scaled to a 595 point wide page. */
 export function buildScannedPdf(...jpgs) {
-  // Objects: 1 catalog, 2 pages, then per page: page, image, content.
+  return buildScannedPdfWithText(jpgs.map((jpg) => ({ jpg })));
+}
+
+/**
+ * The same with an optional text layer per page (lines in Helvetica over the image), like a scan
+ * whose own OCR layer may be poor: { jpg, text: ['line', ...] }. Without any text the bytes equal
+ * buildScannedPdf's.
+ */
+export function buildScannedPdfWithText(pages) {
+  const jpgs = pages.map((p) => p.jpg);
+  const anyText = pages.some((p) => p.text?.length);
+  // Objects: 1 catalog, 2 pages, then per page: page, image, content; then the font when needed.
   const n = jpgs.length;
   const pageObj = (i) => 3 + i * 3;
+  const fontObj = 3 + n * 3;
   const objects = [null, '<< /Type /Catalog /Pages 2 0 R >>'];
   objects.push(`<< /Type /Pages /Kids [${jpgs.map((_, i) => `${pageObj(i)} 0 R`).join(' ')}] /Count ${n} >>`);
   const images = new Map();
@@ -54,14 +69,20 @@ export function buildScannedPdf(...jpgs) {
     const { width, height, components } = jpegSize(jpg);
     const pageW = 595;
     const pageH = Math.round((pageW * height) / width);
-    const content = `q ${pageW} 0 0 ${pageH} 0 0 cm /Im0 Do Q`;
+    const lines = pages[i].text ?? [];
+    const text = lines.length
+      ? ` BT /F1 10 Tf ${lines.map((l, k) => `1 0 0 1 40 ${pageH - 40 - k * 14} Tm ${pdfString(l)} Tj`).join(' ')} ET`
+      : '';
+    const content = `q ${pageW} 0 0 ${pageH} 0 0 cm /Im0 Do Q${text}`;
+    const font = anyText ? ` /Font << /F1 ${fontObj} 0 R >>` : '';
     objects.push(
-      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageW} ${pageH}] /Resources << /XObject << /Im0 ${pageObj(i) + 1} 0 R >> >> /Contents ${pageObj(i) + 2} 0 R >>`,
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageW} ${pageH}] /Resources << /XObject << /Im0 ${pageObj(i) + 1} 0 R >>${font} >> /Contents ${pageObj(i) + 2} 0 R >>`,
     );
     objects.push(null);
     images.set(pageObj(i) + 1, { jpg, width, height, components });
     objects.push(`<< /Length ${content.length} >>\nstream\n${content}\nendstream`);
   });
+  if (anyText) objects.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
   const parts = [Buffer.from('%PDF-1.4\n%\xe2\xe3\xcf\xd3\n', 'latin1')];
   const offsets = [];
   let size = parts[0].length;

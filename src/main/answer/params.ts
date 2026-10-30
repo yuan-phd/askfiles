@@ -5,6 +5,9 @@
  */
 import { RERANKER_MODELS } from './reranker-models.js';
 
+/** rerankerModel value that turns the cross-encoder off: fused order, vectorFloor instead of rerankFloor. */
+export const NO_RERANKER = 'none';
+
 export const SCOPES = ['strict', 'balanced', 'broad'] as const;
 export type AnswerScope = (typeof SCOPES)[number];
 
@@ -14,7 +17,10 @@ export type PromptVariant = (typeof PROMPT_VARIANTS)[number];
 export type PerScope<T> = Record<AnswerScope, T>;
 
 export interface AnswerParams {
-  /** Hugging Face repository of the cross-encoder, stored under <dataDir>/models/reranker. */
+  /**
+   * Hugging Face repository of the cross-encoder, stored under <dataDir>/models/reranker, or none:
+   * sections are then taken in fused order and vectorFloor replaces rerankFloor.
+   */
   rerankerModel: string;
   /**
    * Skip reranking for a question when it or any candidate section is mainly Chinese, Japanese or
@@ -35,6 +41,11 @@ export interface AnswerParams {
   sectionCount: PerScope<number>;
   /** Lowest rerank score a section needs, per answer scope. */
   rerankFloor: PerScope<number>;
+  /**
+   * With rerankerModel none: lowest vector similarity a section's best sub-chunk needs, per answer
+   * scope. A section found by the keyword index alone has none and passes only a floor of 0.
+   */
+  vectorFloor: PerScope<number>;
   /** Tokens for the numbered sources; 0 derives it from the context length. */
   contextBudgetTokens: number;
   promptVariant: PromptVariant;
@@ -50,6 +61,7 @@ export const DEFAULT_PARAMS: AnswerParams = {
   sectionCapChars: 0,
   sectionCount: { strict: 2, balanced: 3, broad: 5 },
   rerankFloor: { strict: 0.5, balanced: 0.1, broad: 0.01 },
+  vectorFloor: { strict: 0, balanced: 0, broad: 0 },
   contextBudgetTokens: 0,
   promptVariant: 'default',
 };
@@ -67,6 +79,22 @@ export function contextBudget(params: AnswerParams, contextLength: number): numb
 
 export function sectionCap(params: AnswerParams, chunkMaxChars: number): number {
   return params.sectionCapChars > 0 ? params.sectionCapChars : chunkMaxChars * 2;
+}
+
+export function rerankerOff(params: Pick<AnswerParams, 'rerankerModel'>): boolean {
+  return params.rerankerModel === NO_RERANKER;
+}
+
+/** The floor that decides selection: vectorFloor without a reranker, else rerankFloor. */
+export function floorOf(params: AnswerParams, scope: AnswerScope): number {
+  return rerankerOff(params) ? params.vectorFloor[scope] : params.rerankFloor[scope];
+}
+
+/** Sets the floor that decides selection for one scope; returns params for chaining. */
+export function setFloor(params: AnswerParams, scope: AnswerScope, floor: number): AnswerParams {
+  if (rerankerOff(params)) params.vectorFloor[scope] = floor;
+  else params.rerankFloor[scope] = floor;
+  return params;
 }
 
 export function isScope(v: unknown): v is AnswerScope {
@@ -100,7 +128,9 @@ const perScope =
 
 const CHECKS: Record<keyof AnswerParams, (v: unknown) => Problem> = {
   rerankerModel: (v) =>
-    typeof v === 'string' && v in RERANKER_MODELS ? null : `must be one of ${Object.keys(RERANKER_MODELS).join(', ')}`,
+    typeof v === 'string' && (v === NO_RERANKER || v in RERANKER_MODELS)
+      ? null
+      : `must be one of ${[NO_RERANKER, ...Object.keys(RERANKER_MODELS)].join(', ')}`,
   rerankerBypassCjk: (v) => (typeof v === 'boolean' ? null : 'must be true or false'),
   vectorTopK: intAtLeast(1),
   keywordTopK: intAtLeast(0),
@@ -109,6 +139,7 @@ const CHECKS: Record<keyof AnswerParams, (v: unknown) => Problem> = {
   sectionCapChars: intAtLeast(0),
   sectionCount: perScope(intAtLeast(1)),
   rerankFloor: perScope(numIn(0, 1)),
+  vectorFloor: perScope(numIn(0, 1)),
   contextBudgetTokens: intAtLeast(0),
   promptVariant: (v) =>
     (PROMPT_VARIANTS as readonly unknown[]).includes(v) ? null : `must be ${PROMPT_VARIANTS.join(' or ')}`,

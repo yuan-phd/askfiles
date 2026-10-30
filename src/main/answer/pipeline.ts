@@ -8,10 +8,18 @@
  * retrieve (candidates, fusion, sections, rerank), choose (floor, count, budget), answer.
  */
 import type { BrowseDocument, BrowseSection, DocumentRef, RankedSection } from '../browse/index.js';
-import { citationOrder, claimsOf, CitationStream, type Claim, type Part } from './citations.js';
+import { citationOrder, claimsOf, CitationStream, parseCitations, type Claim, type Part } from './citations.js';
 import { fuse, sectionKey, type FusedSection, type KeywordCandidate, type VectorCandidate } from './fusion.js';
 import type { ChatFn } from './ollama-chat.js';
-import { contextBudget, sectionCap, type AnswerParams, type AnswerScope, type RunSettings } from './params.js';
+import {
+  contextBudget,
+  floorOf,
+  rerankerOff,
+  sectionCap,
+  type AnswerParams,
+  type AnswerScope,
+  type RunSettings,
+} from './params.js';
 import { buildMessages, isNotFound, NOT_FOUND_MARKER } from './prompt.js';
 import type { Reranker } from './reranker.js';
 import { toAnswerSection, type AnswerSection } from './sections.js';
@@ -124,11 +132,18 @@ export async function retrieve(
     if (candidates.length >= p.candidateSections) break;
     const [docId, idx] = [f.key.slice(0, f.key.lastIndexOf('#')), Number(f.key.slice(f.key.lastIndexOf('#') + 1))];
     const found = deps.index.section(docId, idx);
-    if (found) candidates.push(toAnswerSection(found.document, found.section, cap, f.hitTexts));
+    if (found)
+      candidates.push(
+        toAnswerSection(found.document, found.section, cap, f.hitTexts, {
+          wholeChars: 2 * s.chunkMaxChars,
+          terms: f.terms,
+        }),
+      );
   }
 
   let bypassReason: string | null = null;
-  if (!deps.reranker) bypassReason = 'no reranker installed';
+  if (rerankerOff(p)) bypassReason = 'reranker disabled';
+  else if (!deps.reranker) bypassReason = 'no reranker installed';
   else if (p.rerankerBypassCjk && isMainlyCjk(question)) bypassReason = 'question is mainly CJK';
   else if (p.rerankerBypassCjk && candidates.some((c) => isMainlyCjk(c.text)))
     bypassReason = 'a candidate section is mainly CJK';
@@ -156,9 +171,16 @@ export async function retrieve(
 
 /** Candidates in final rank order: by rerank score, or in fused order when bypassed. */
 export function ranked(r: Retrieval): Ranked[] {
-  const list = r.candidates.map((section, i) => ({ section, rerank: r.rerank[i] ?? null, order: i }));
+  // fuse() records the score of a section's best-ranked chunk, which is its highest similarity.
+  const vectorOf = new Map(r.fused.map((f) => [f.key, f.vectorScore]));
+  const list = r.candidates.map((section, i) => ({
+    section,
+    rerank: r.rerank[i] ?? null,
+    vector: vectorOf.get(section.key) ?? null,
+    order: i,
+  }));
   if (!r.bypass) list.sort((a, b) => (b.rerank ?? 0) - (a.rerank ?? 0) || a.order - b.order);
-  return list.map(({ section, rerank }) => ({ section, rerank }));
+  return list.map(({ section, rerank, vector }) => ({ section, rerank, vector }));
 }
 
 export interface ChoiceSettings {
@@ -168,11 +190,13 @@ export interface ChoiceSettings {
 }
 
 export function choose(r: Retrieval, s: ChoiceSettings): Selection {
+  // A per-question bypass (CJK, model files missing) keeps its old meaning: no floor at all.
+  const floorOn = rerankerOff(s.params) ? 'vector' : r.bypass ? 'none' : 'rerank';
   return selectSections(ranked(r), {
     count: s.params.sectionCount[s.scope],
-    floor: s.params.rerankFloor[s.scope],
+    floor: floorOf(s.params, s.scope),
     budgetTokens: contextBudget(s.params, s.contextLength),
-    bypass: r.bypass,
+    floorOn,
   });
 }
 
@@ -226,6 +250,8 @@ export interface AnswerResult {
   considered: SourceCard[];
   /** For the not-found state: the best reranked sections. */
   nearest: SourceCard[];
+  /** For the not-found state: the sources the reply cites as checked, in citation order. */
+  checked: SourceCard[];
   /** True when no section passed the floor, so the model was not asked. */
   skippedModel: boolean;
   timings: { firstTokenMs: number | null; modelMs: number };
@@ -255,7 +281,14 @@ export async function answer(
     .slice(0, NEAREST_COUNT)
     .map((x, i) => cardOf(i + 1, x.section, x.rerank));
   emit({ type: 'sources', sources });
-  const base = { claims: [], cited: [], considered: [], nearest, timings: { firstTokenMs: null, modelMs: 0 } };
+  const base = {
+    claims: [],
+    cited: [],
+    considered: [],
+    nearest,
+    checked: [],
+    timings: { firstTokenMs: null, modelMs: 0 },
+  };
   if (!sources.length) {
     const result: AnswerResult = {
       ...base,
@@ -319,6 +352,7 @@ export async function answer(
     cited: order.map((n) => sources[n - 1]!),
     considered: sources.filter((c) => !order.includes(c.n)),
     nearest,
+    checked: notFound ? citationOrder(parseCitations(text), sources.length).map((n) => sources[n - 1]!) : [],
     skippedModel: false,
     timings: { firstTokenMs, modelMs },
     stats,

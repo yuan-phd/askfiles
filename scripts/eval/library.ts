@@ -5,10 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { REFUSAL_TEXT } from '../../src/renderer/api/client.js';
 import {
-  chunkSections,
   isSupported,
-  parseFile,
-  parsePlainText,
   sectionDocuments,
   sha256,
   splitKeyOf,
@@ -16,7 +13,7 @@ import {
   type Chunk,
   type ParsedDocument,
 } from '../../src/main/sections/index.js';
-import type { FileRecord } from '../../src/main/watcher/index.js';
+import { splitWithOcr, type FileRecord, type OcrFn } from '../../src/main/watcher/index.js';
 import type { EvalConfig } from './config.js';
 
 /** Folder under STORAGE_DIR/documents for the harness's documents; the app's library uses another. */
@@ -30,7 +27,6 @@ export interface LibraryClient {
   updateWorkspace(slug: string, settings: Record<string, unknown>): Promise<unknown>;
   getWorkspace(slug: string): Promise<{ documents?: { docpath: string }[] } | null>;
   embedDocuments(slug: string, body: { adds?: string[]; deletes?: string[] }): Promise<unknown>;
-  uploadDocument(file: Blob, opts: { filename: string }): Promise<{ location: string; pageContent: string }[]>;
 }
 
 export interface FileReport {
@@ -43,6 +39,8 @@ export interface FileReport {
   /** Sections cut into more than one chunk. */
   splitSections: number;
   ocr: boolean;
+  /** PDF pages whose garbled text layer was replaced with OCR text. */
+  ocrPages?: number[];
   skipped?: string;
 }
 
@@ -116,28 +114,10 @@ export function diffDocuments(present: string[], wanted: string[]): { adds: stri
   return { adds: wanted.filter((d) => !have.has(d)), deletes: present.filter((d) => !want.has(d)) };
 }
 
-async function ocrText(
-  client: LibraryClient,
-  removeDocuments: (names: string[]) => Promise<void>,
-  file: string,
-  cacheDir: string,
-  hash: string,
-): Promise<string> {
-  const cached = path.join(cacheDir, `${hash}.txt`);
-  if (fs.existsSync(cached)) return fs.readFileSync(cached, 'utf8');
-  // The collector OCRs a PDF without a text layer on upload. The upload is not added to any
-  // workspace and is deleted again; only its text is kept, cached by file hash.
-  const docs = await client.uploadDocument(new Blob([fs.readFileSync(file)]), { filename: path.basename(file) });
-  const text = docs.map((d) => d.pageContent).join('\n\n');
-  await removeDocuments(docs.map((d) => d.location));
-  fs.mkdirSync(cacheDir, { recursive: true });
-  fs.writeFileSync(cached, text);
-  return text;
-}
-
 export async function prepareLibrary(opts: {
   client: LibraryClient;
-  removeDocuments: (names: string[]) => Promise<void>;
+  /** The app's OCR (collectorOcr): whole scanned PDFs and the garbled pages of others, page by page. */
+  ocr?: OcrFn;
   config: EvalConfig;
   corpusDir: string;
   storageDir: string;
@@ -151,7 +131,6 @@ export async function prepareLibrary(opts: {
     embeddingModel: config.embeddingModel,
   });
   const docDir = path.join(storageDir, 'documents', DOC_FOLDER);
-  const cacheDir = path.join(storageDir, 'askfiles-eval-cache', 'ocr');
   fs.mkdirSync(docDir, { recursive: true });
   const published = new Date().toLocaleString('en-US');
 
@@ -179,13 +158,11 @@ export async function prepareLibrary(opts: {
     }
     const hash = sha256(fs.readFileSync(abs));
     let parsed: ParsedDocument;
+    let chunks: Chunk[];
+    let ocrReplaced: number[];
     try {
-      parsed = await parseFile(abs);
-      if (parsed.needsOcr) {
-        log(`${rel}: no text layer, OCR through the collector`);
-        const text = await ocrText(client, opts.removeDocuments, abs, cacheDir, hash);
-        parsed = { ...parsePlainText(text, rel), pages: parsed.pages, needsOcr: true };
-      }
+      // The watcher's own split (src/main/watcher/splitter.ts), so the eval measures what the app indexes.
+      ({ parsed, chunks, ocrReplaced } = await splitWithOcr(abs, { maxChars: config.chunkMax, ocr: opts.ocr, log }));
     } catch (e) {
       files.push({
         file: rel,
@@ -201,7 +178,6 @@ export async function prepareLibrary(opts: {
       log(`skip ${rel}: ${(e as Error).message}`);
       continue;
     }
-    const chunks: Chunk[] = chunkSections(parsed.sections, { maxChars: config.chunkMax });
     const docs = sectionDocuments(chunks, { path: abs, relPath: rel, hash }, { splitKey, published });
     const stat = fs.statSync(abs);
     records.push({
@@ -251,8 +227,11 @@ export async function prepareLibrary(opts: {
       longestChunk: Math.max(0, ...chunks.map((c) => c.text.length)),
       splitSections: new Set(chunks.filter((c) => c.subCount > 1).map((c) => c.sectionIndex)).size,
       ocr: parsed.needsOcr,
+      ocrPages: ocrReplaced,
     });
-    log(`${rel}: ${parsed.outline}, ${chunks.length} chunk(s)${parsed.needsOcr ? ', OCR' : ''}`);
+    log(
+      `${rel}: ${parsed.outline}, ${chunks.length} chunk(s)${parsed.needsOcr ? ', OCR' : ''}${ocrReplaced.length ? `, OCR pages ${ocrReplaced.join(', ')}` : ''}`,
+    );
   }
   const splitMs = Math.round(performance.now() - t0);
 

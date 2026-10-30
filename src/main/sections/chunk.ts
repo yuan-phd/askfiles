@@ -46,6 +46,47 @@ export function foldEmptySections(sections: Section[]): Section[] {
   return out;
 }
 
+/** A section without sub-headings longer than this many chunk maximums is split by page. */
+export const PAGE_SPLIT_FACTOR = 3;
+
+/** The page sub-section title: parent title and page number. */
+export function pageTitle(title: string, page: number): string {
+  return `${title} (page ${page})`;
+}
+
+/**
+ * Splits each section whose own text (up to the next heading of any level, so it holds no
+ * sub-heading) is longer than PAGE_SPLIT_FACTOR chunk maximums and spans more than one page into
+ * one sub-section per page, titled pageTitle. They sit one level below the parent, whose title
+ * becomes the first one's lead, so the outline keeps the parent heading and a nine-page cover
+ * section no longer exists. A section with sub-sections after it is split too: the owner's
+ * nine-page cover was such a section. Run after folding, on sections that carry their paths.
+ */
+export function splitLongByPage(sections: Section[], maxChars: number): Section[] {
+  return sections.flatMap((s) => {
+    const length = s.blocks.reduce((n, b) => n + b.text.length, 0);
+    const pages = [...new Set(s.blocks.map((b) => b.page).filter((p) => p > 0))];
+    if (length <= PAGE_SPLIT_FACTOR * maxChars || pages.length < 2) return [s];
+    const title = s.title.replace(/\s+/g, ' ').trim();
+    return pages.map((page, k) => {
+      const sub = pageTitle(title, page);
+      return {
+        title: sub,
+        level: s.level + 1,
+        // Blocks of unknown page (0) stay with the page before them.
+        blocks: s.blocks.filter((b, bi) => (b.page || pageBefore(s.blocks, bi)) === page),
+        ...(k === 0 ? { lead: [...(s.lead ?? []), title] } : {}),
+        path: [...(s.path ?? []), sub],
+      };
+    });
+  });
+}
+
+function pageBefore(blocks: Block[], i: number): number {
+  for (let j = i - 1; j >= 0; j--) if (blocks[j]!.page > 0) return blocks[j]!.page;
+  return blocks.find((b) => b.page > 0)?.page ?? 0;
+}
+
 // After a line break; after Chinese end punctuation and closing quotes; after Latin end
 // punctuation followed by whitespace (so 3.5 and e.g. inside words do not split).
 const BREAK = /\n|[。！？；…]+[」』”’）)]*|[.!?;]+["')\]]*\s+/g;
@@ -108,7 +149,7 @@ export function chunkSections(
   }
   const chunks: Chunk[] = [];
   const label = (page: number) => (page > 0 ? (pageLabels?.[page - 1] ?? '') : '');
-  foldEmptySections(withPaths(sections)).forEach((section, i) => {
+  splitLongByPage(foldEmptySections(withPaths(sections)), maxChars).forEach((section, i) => {
     const headOf = (titles: string[]) =>
       titles
         .map((t) => t.replace(/\s+/g, ' ').trim().slice(0, MAX_TITLE_IN_TEXT))

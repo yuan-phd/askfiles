@@ -39,7 +39,7 @@ export function resolveOllama(config: EvalConfig): string | null {
 
 /** Why managed mode cannot run here, or null. */
 export function managedSkipReason(root: string, config: EvalConfig): string | null {
-  if (!resolveOllama(config))
+  if (!config.ollamaPort && !resolveOllama(config))
     return 'no ollama binary (set ollamaBin in the config, OLLAMA_BIN, or put ollama on PATH)';
   const server = path.join(root, 'upstream', 'server');
   for (const p of [
@@ -101,7 +101,9 @@ export async function startManaged(root: string, config: EvalConfig, logDir: str
     dataDir: config.dataDir,
     logDir,
     // Default model directory, so models pulled with the ollama CLI are visible.
-    ollama: { command: resolveOllama(config)!, args: ['serve'], cwd: config.dataDir },
+    ...(config.ollamaPort
+      ? { externalOllamaPort: config.ollamaPort }
+      : { ollama: { command: resolveOllama(config)!, args: ['serve'], cwd: config.dataDir } }),
     collector: { command: process.execPath, args: [path.join(collector, 'index.js')], cwd: collector },
     migrate: {
       command: process.execPath,

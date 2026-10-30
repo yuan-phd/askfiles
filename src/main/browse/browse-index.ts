@@ -70,8 +70,8 @@ export class BrowseIndex {
     for (const name of names) {
       try {
         const doc = JSON.parse(fs.readFileSync(path.join(this.o.dir, name), 'utf8')) as BrowseDocument;
-        // Older versions lack paths and labels; skipped here, the next sync rebuilds them.
-        if (doc?.version === 2 && typeof doc.id === 'string' && Array.isArray(doc.sections)) this.docs.set(doc.id, doc);
+        // Older versions lack paths, labels or sub-chunks; skipped here, the next sync rebuilds them.
+        if (doc?.version === 3 && typeof doc.id === 'string' && Array.isArray(doc.sections)) this.docs.set(doc.id, doc);
       } catch (e) {
         this.log(`skipped ${name}: ${(e as Error).message}`);
       }

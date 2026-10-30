@@ -13,8 +13,11 @@ import {
   ollamaChat,
   NEAREST_COUNT,
   ranked,
+  rerankerOff,
   retrieve,
+  setFloor,
   upstreamVectorSearch,
+  type AnswerParams,
   type AnswerResult,
   type AnswerSection,
   type PipelineDeps,
@@ -41,6 +44,12 @@ import type { Question } from './questions.js';
 export const DEFAULT_CONTEXT = 8192;
 export const DEFAULT_COUNTS = [1, 2, 3, 4, 5, 6];
 export const DEFAULT_FLOORS = [0, 0.01, 0.05, 0.1, 0.2, 0.3, 0.5, 0.7];
+/** Without a reranker the floor is on vector similarity, where bge-m3 scores sit between about 0.3 and 0.8. */
+export const DEFAULT_VECTOR_FLOORS = [0, 0.3, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65];
+
+export function defaultFloors(params: Pick<AnswerParams, 'rerankerModel'>): number[] {
+  return rerankerOff(params) ? DEFAULT_VECTOR_FLOORS : DEFAULT_FLOORS;
+}
 
 export function runSettings(
   config: EvalConfig,
@@ -49,7 +58,7 @@ export function runSettings(
 ): RunSettings {
   const params = structuredClone(config.answer);
   if (o.count !== undefined) params.sectionCount[config.scope] = o.count;
-  if (o.floor !== undefined) params.rerankFloor[config.scope] = o.floor;
+  if (o.floor !== undefined) setFloor(params, config.scope, o.floor);
   return {
     params,
     scope: config.scope,
@@ -119,13 +128,16 @@ export async function buildPipeline(o: {
     readText: (l) => readSectionText(o.storageDir, l),
   });
   const repo = o.config.answer.rerankerModel;
-  await ensureReranker({ repo, modelsDir: o.config.rerankerDir, log: o.log });
-  const reranker = rerankerProcess({
-    transformersDir: path.join(o.root, 'upstream', 'server', 'node_modules', '@xenova', 'transformers'),
-    modelsDir: o.config.rerankerDir,
-    repo,
-    log: o.log,
-  });
+  let reranker: PipelineDeps['reranker'] = null;
+  if (!rerankerOff(o.config.answer)) {
+    await ensureReranker({ repo, modelsDir: o.config.rerankerDir, log: o.log });
+    reranker = rerankerProcess({
+      transformersDir: path.join(o.root, 'upstream', 'server', 'node_modules', '@xenova', 'transformers'),
+      modelsDir: o.config.rerankerDir,
+      repo,
+      log: o.log,
+    });
+  }
   return {
     vectorSearch: upstreamVectorSearch({ baseUrl: () => o.baseUrl, apiKey: o.apiKey, slug: o.library.slug }),
     resolveSources: (s) => resolver(s),
@@ -166,7 +178,7 @@ export interface SweepCell {
   nAbsent: number;
 }
 
-/** Target-section hit rate per section count and rerank floor, from cached retrievals only. */
+/** Target-section hit rate per section count and floor (rerank, or vector without a reranker), from cached retrievals only. */
 export function sweep(
   items: { q: Question; retrieval: Retrieval }[],
   config: EvalConfig,
@@ -288,6 +300,6 @@ export function answerMetrics(q: Question, row: AnswerRow) {
   return {
     targetHit: targetHit(q, cited),
     keyCoverage: r.notFound ? (keyCoverage(q, '') === null ? null : 0) : keyCoverage(q, r.text),
-    attribution: attributionOk(q, { refused: r.notFound, cited }),
+    attribution: attributionOk(q, { refused: r.notFound, answer: r.text, cited }),
   };
 }

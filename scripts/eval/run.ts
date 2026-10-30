@@ -29,6 +29,8 @@ import {
   cardRecord,
   DEFAULT_COUNTS,
   DEFAULT_FLOORS,
+  DEFAULT_VECTOR_FLOORS,
+  defaultFloors,
   describeCards,
   expectedRank,
   indexHash,
@@ -38,7 +40,8 @@ import {
   sweepTable,
 } from './pipeline.js';
 import { ANSWER_COLUMNS, RESULT_COLUMNS, RETRIEVAL_COLUMNS } from './results.js';
-import { choose, type PipelineDeps, type Retrieval } from '../../src/main/answer/index.js';
+import { choose, floorOf, rerankerOff, type PipelineDeps, type Retrieval } from '../../src/main/answer/index.js';
+import { collectorOcr, createLibraryApi } from '../../src/main/watcher/index.js';
 import { targetHit } from './answer-metrics.js';
 import { startManaged, type Stack } from './stack.js';
 
@@ -54,7 +57,8 @@ const USAGE = `usage: npm run eval -- <corpus folder> <questions.csv> [options]
   --answer        stage 2: also run the model and score the answers (default: stage 1, retrieval only)
   --try spec      stage 2 configuration, repeatable: --try count=3,floor=0.1 (default: the config's scope values)
   --counts list   stage 1 sweep of section counts (default ${DEFAULT_COUNTS.join(',')})
-  --floors list   stage 1 sweep of rerank floors (default ${DEFAULT_FLOORS.join(',')})
+  --floors list   stage 1 sweep of rerank floors (default ${DEFAULT_FLOORS.join(',')}), or of vector
+                  floors with rerankerModel none (default ${DEFAULT_VECTOR_FLOORS.join(',')})
   --upstream      ask through the upstream chat route instead, as before the answer pipeline
   --corpus-label  name of the corpus recorded in run.json (default: corpus folder name)
   --out           run folder (default eval-runs/<time>-<corpus>-<config label>)`;
@@ -307,7 +311,7 @@ export async function main(argv: string[]): Promise<number> {
   const mode = values.upstream ? 'upstream' : values.answer ? 'pipeline-answer' : 'pipeline-retrieval';
   const tries = values.try!.map(parseTry);
   const counts = numberList(values.counts, DEFAULT_COUNTS, 'counts');
-  const floors = numberList(values.floors, DEFAULT_FLOORS, 'floors');
+  const floors = numberList(values.floors, defaultFloors(config.answer), 'floors');
   // A folder named corpus is labelled by its parent, so test/fixtures/eval-s/corpus becomes eval-s.
   const corpusLabel =
     values['corpus-label'] ??
@@ -390,17 +394,15 @@ export async function main(argv: string[]): Promise<number> {
     );
     save();
 
-    const removeDocuments = async (names: string[]) => {
-      const r = await fetch(`${stack!.baseUrl}/api/v1/system/remove-documents`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ names }),
-      });
-      if (!r.ok) log(`could not remove OCR upload ${names.join(', ')}: ${r.status}`);
-    };
+    // The app's OCR path: scanned pages go to the collector one by one, cached by file hash.
+    const ocr = collectorOcr({
+      api: createLibraryApi({ baseUrl: stack.baseUrl, apiKey }),
+      cacheDir: path.join(stack.storageDir, 'askfiles-eval-cache', 'ocr-pages'),
+      log,
+    });
     const library: Library = await prepareLibrary({
       client: client as unknown as LibraryClient,
-      removeDocuments,
+      ocr,
       config,
       corpusDir,
       storageDir: stack.storageDir,
@@ -528,7 +530,7 @@ async function runStages(o: Parameters<typeof runPipeline>[0], deps: PipelineDep
   run.indexHash = hash;
   run.retrievalCache = cacheDir;
   const base = runSettings(config, config.chunkMax);
-  const mark = { count: base.params.sectionCount[config.scope], floor: base.params.rerankFloor[config.scope] };
+  const mark = { count: base.params.sectionCount[config.scope], floor: floorOf(base.params, config.scope) };
 
   // Stage 1: retrieval once per question, cached; its rows go to retrieval.csv.
   const stage1File = path.join(o.outDir, o.answerStage ? 'retrieval.csv' : 'results.csv');
@@ -579,7 +581,7 @@ async function runStages(o: Parameters<typeof runPipeline>[0], deps: PipelineDep
   };
   o.save();
   console.log(
-    `\nTarget section hit rate in the selected sections, scope ${config.scope} (bold: the config's values)\n`,
+    `\nTarget section hit rate in the selected sections, scope ${config.scope}, ${rerankerOff(base.params) ? 'vector' : 'rerank'} floor (bold: the config's values)\n`,
   );
   console.log(sweepTable(cells, mark));
   if (!o.answerStage) return 0;

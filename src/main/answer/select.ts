@@ -14,6 +14,8 @@ export interface Ranked {
   section: AnswerSection;
   /** Cross-encoder score from 0 to 1; null when reranking was bypassed for this question. */
   rerank: number | null;
+  /** Best vector similarity of the section's sub-chunks; null when only the keyword index found it. */
+  vector?: number | null;
 }
 
 export type DropReason = 'below-floor' | 'over-count' | 'over-budget';
@@ -43,17 +45,19 @@ function trimTo(s: AnswerSection, tokens: number): AnswerSection {
 }
 
 /**
- * ranked must be in rank order, best first. With bypass (no rerank scores) the floor does not
- * apply. Always returns at least one section when any passes the floor, trimmed to the budget.
+ * ranked must be in rank order, best first. floorOn says which score the floor applies to: rerank,
+ * vector (no reranker configured), or none (reranking bypassed for this question). Always returns
+ * at least one section when any passes the floor, trimmed to the budget.
  */
 export function selectSections(
   ranked: Ranked[],
-  o: { count: number; floor: number; budgetTokens: number; bypass: boolean },
+  o: { count: number; floor: number; budgetTokens: number; floorOn: 'rerank' | 'vector' | 'none' },
 ): Selection {
   const dropped: Selection['dropped'] = [];
   const passing: Ranked[] = [];
+  const score = (r: Ranked) => (o.floorOn === 'vector' ? (r.vector ?? 0) : (r.rerank ?? 0));
   for (const r of ranked) {
-    if (!o.bypass && (r.rerank ?? 0) < o.floor) dropped.push({ key: r.section.key, reason: 'below-floor' });
+    if (o.floorOn !== 'none' && score(r) < o.floor) dropped.push({ key: r.section.key, reason: 'below-floor' });
     else if (passing.length >= o.count) dropped.push({ key: r.section.key, reason: 'over-count' });
     else passing.push(r);
   }

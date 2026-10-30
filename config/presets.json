@@ -6,7 +6,7 @@
       "id": "8gb",
       "label": "8 GB",
       "minRamGb": 8,
-      "comment": "Starting values, not measured. Chat model: 4B class Q4, smallest qwen3 tag of that class (owner choice 2026-10-29). Embedder bge-m3 for all tiers (Q10). Phase 2 replaces every value.",
+      "comment": "Starting values, not measured. Chat model: 4B class Q4, smallest qwen3 tag of that class (owner choice 2026-10-29). Embedder bge-m3 for all tiers (Q10). Phase 2 replaces every value. Reranker off for now (rerankerModel none, selection by fused order with vectorFloor): onnxruntime-node 1.14 crashes with EXC_BREAKPOINT on the owner's Mac when a bge reranker loads (2026-10-30). sectionCount and vectorFloor measured on 2026-10-31 (docs/plan.md phase 2, retrieval tuning): balanced 5 / 0.55, strict 3 / 0.6, broad 6 / 0.5. Was Xenova/bge-reranker-base (16 GB), onnx-community/bge-reranker-v2-m3-ONNX (32 GB), Xenova/ms-marco-MiniLM-L-6-v2 (8 GB).",
       "chatModel": "qwen3:4b",
       "embeddingModel": "bge-m3:567m",
       "contextLength": 8192,
@@ -19,7 +19,7 @@
       "ocrLanguages": "eng,chi_sim",
       "systemPrompt": "Answer only from the provided context. Cite the source document for what you say. If the context does not contain the answer, say that you do not know.",
       "answer": {
-        "rerankerModel": "Xenova/ms-marco-MiniLM-L-6-v2",
+        "rerankerModel": "none",
         "rerankerBypassCjk": true,
         "vectorTopK": 30,
         "keywordTopK": 30,
@@ -27,14 +27,19 @@
         "candidateSections": 12,
         "sectionCapChars": 0,
         "sectionCount": {
-          "strict": 2,
-          "balanced": 3,
-          "broad": 5
+          "strict": 3,
+          "balanced": 5,
+          "broad": 6
         },
         "rerankFloor": {
           "strict": 0.5,
           "balanced": 0.1,
           "broad": 0.01
+        },
+        "vectorFloor": {
+          "strict": 0.6,
+          "balanced": 0.55,
+          "broad": 0.5
         },
         "contextBudgetTokens": 0,
         "promptVariant": "default"
@@ -44,7 +49,7 @@
       "id": "16gb",
       "label": "16 GB",
       "minRamGb": 16,
-      "comment": "Starting values, not measured. Chat model: 8B class Q4 (qwen3:8b, owner choice 2026-10-29). Embedder bge-m3 for all tiers (Q10). Phase 2 replaces every value.",
+      "comment": "Starting values, not measured. Chat model: 8B class Q4 (qwen3:8b, owner choice 2026-10-29). Embedder bge-m3 for all tiers (Q10). Phase 2 replaces every value. Reranker off for now (rerankerModel none, selection by fused order with vectorFloor): onnxruntime-node 1.14 crashes with EXC_BREAKPOINT on the owner's Mac when a bge reranker loads (2026-10-30). sectionCount and vectorFloor measured on 2026-10-31 (docs/plan.md phase 2, retrieval tuning): balanced 5 / 0.55, strict 3 / 0.6, broad 6 / 0.5. Was Xenova/bge-reranker-base (16 GB), onnx-community/bge-reranker-v2-m3-ONNX (32 GB), Xenova/ms-marco-MiniLM-L-6-v2 (8 GB).",
       "chatModel": "qwen3:8b",
       "embeddingModel": "bge-m3:567m",
       "contextLength": 8192,
@@ -57,7 +62,7 @@
       "ocrLanguages": "eng,chi_sim",
       "systemPrompt": "Answer only from the provided context. Cite the source document for what you say. If the context does not contain the answer, say that you do not know.",
       "answer": {
-        "rerankerModel": "Xenova/bge-reranker-base",
+        "rerankerModel": "none",
         "rerankerBypassCjk": false,
         "vectorTopK": 30,
         "keywordTopK": 30,
@@ -65,14 +70,19 @@
         "candidateSections": 8,
         "sectionCapChars": 0,
         "sectionCount": {
-          "strict": 2,
-          "balanced": 3,
-          "broad": 5
+          "strict": 3,
+          "balanced": 5,
+          "broad": 6
         },
         "rerankFloor": {
           "strict": 0.5,
           "balanced": 0.1,
           "broad": 0.01
+        },
+        "vectorFloor": {
+          "strict": 0.6,
+          "balanced": 0.55,
+          "broad": 0.5
         },
         "contextBudgetTokens": 0,
         "promptVariant": "default"
@@ -82,7 +92,7 @@
       "id": "32gb",
       "label": "32 GB and above",
       "minRamGb": 32,
-      "comment": "Starting values, not measured. Chat model: 14B class Q4 (qwen3:14b, owner choice 2026-10-29). Embedder bge-m3 for all tiers (Q10). Phase 2 replaces every value.",
+      "comment": "Starting values, not measured. Chat model: 14B class Q4 (qwen3:14b, owner choice 2026-10-29). Embedder bge-m3 for all tiers (Q10). Phase 2 replaces every value. Reranker off for now (rerankerModel none, selection by fused order with vectorFloor): onnxruntime-node 1.14 crashes with EXC_BREAKPOINT on the owner's Mac when a bge reranker loads (2026-10-30). sectionCount and vectorFloor measured on 2026-10-31 (docs/plan.md phase 2, retrieval tuning): balanced 5 / 0.55, strict 3 / 0.6, broad 6 / 0.5. Was Xenova/bge-reranker-base (16 GB), onnx-community/bge-reranker-v2-m3-ONNX (32 GB), Xenova/ms-marco-MiniLM-L-6-v2 (8 GB).",
       "chatModel": "qwen3:14b",
       "embeddingModel": "bge-m3:567m",
       "contextLength": 8192,
@@ -95,7 +105,7 @@
       "ocrLanguages": "eng,chi_sim",
       "systemPrompt": "Answer only from the provided context. Cite the source document for what you say. If the context does not contain the answer, say that you do not know.",
       "answer": {
-        "rerankerModel": "onnx-community/bge-reranker-v2-m3-ONNX",
+        "rerankerModel": "none",
         "rerankerBypassCjk": false,
         "vectorTopK": 30,
         "keywordTopK": 30,
@@ -103,14 +113,19 @@
         "candidateSections": 8,
         "sectionCapChars": 0,
         "sectionCount": {
-          "strict": 2,
-          "balanced": 3,
-          "broad": 5
+          "strict": 3,
+          "balanced": 5,
+          "broad": 6
         },
         "rerankFloor": {
           "strict": 0.5,
           "balanced": 0.1,
           "broad": 0.01
+        },
+        "vectorFloor": {
+          "strict": 0.6,
+          "balanced": 0.55,
+          "broad": 0.5
         },
         "contextBudgetTokens": 0,
         "promptVariant": "default"

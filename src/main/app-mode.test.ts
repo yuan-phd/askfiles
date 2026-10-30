@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { chooseStartPage, developerEnabled, presetFolder, presetsFilePath } from './app-mode.js';
+import { chooseStartPage, devBackend, developerEnabled, presetFolder, presetsFilePath } from './app-mode.js';
 import {
   emptyShellState,
   isSetupComplete,
@@ -132,5 +132,21 @@ describe('shell.json version 2', () => {
     expect(s.currentLibrary).toBe('all-files');
     expect(s.settings).toEqual({ answerScope: 'balanced', answerModel: 'faster', contextLength: null });
     fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('devBackend', () => {
+  it('is off unless ASKFILES_DEV=1, and takes the backend from the repository', () => {
+    expect(devBackend({}, '/repo')).toBeNull();
+    expect(devBackend({ ASKFILES_DEV: '1', npm_node_execpath: '/n/node' }, '/repo')).toEqual({
+      resourcesPath: path.join('/repo', 'upstream'),
+      nodePath: '/n/node',
+      externalOllamaPort: 11434,
+    });
+    expect(devBackend({ ASKFILES_DEV: '1', ASKFILES_OLLAMA_PORT: '11500' }, '/repo')).toMatchObject({
+      nodePath: 'node',
+      externalOllamaPort: 11500,
+    });
+    expect(() => devBackend({ ASKFILES_DEV: '1', ASKFILES_OLLAMA_PORT: 'x' }, '/repo')).toThrow(/port/);
   });
 });

@@ -77,13 +77,18 @@ export function keyCoverage(q: MetricQuestion, answer: string): number | null {
 }
 
 /**
- * True when every cited section contains at least one key element, or when the answer is a
- * refusal to a question whose answer is absent. A refusal to an answerable question, or an answer
- * citing nothing, is false. Null when the question lists no key elements and is not absent.
+ * Checks the citations against what the answer says. The stated elements are the key elements
+ * found in the answer text; attribution is true when the answer states at least one, every cited
+ * section contains at least one of the stated ones, and every stated one is in a cited section. So
+ * a citation of a section that holds some other key element, but not the fact the answer gives,
+ * fails. A refusal (the not-found marker, with or without the sections it checked) to an absent
+ * question is true; any other answer to one is false, and so is a refusal to an answerable
+ * question or an answer citing nothing. Null when the question lists no key elements and is not
+ * absent.
  */
 export function attributionOk(
   q: MetricQuestion,
-  o: { refused: boolean; cited: Pick<CitedRecord, 'passage'>[] },
+  o: { refused: boolean; answer: string; cited: Pick<CitedRecord, 'passage'>[] },
 ): boolean | null {
   const absent = (ABSENT as readonly string[]).includes(q.category);
   if (o.refused) return absent;
@@ -91,10 +96,13 @@ export function attributionOk(
   const elements = listOf(q.key_elements).map(squash);
   if (!elements.length) return null;
   if (!o.cited.length) return false;
-  return o.cited.every((c) => {
-    const hay = squash(c.passage);
-    return elements.some((e) => hay.includes(e));
-  });
+  const said = squash(o.answer);
+  const stated = elements.filter((e) => said.includes(e));
+  if (!stated.length) return false;
+  const passages = o.cited.map((c) => squash(c.passage));
+  return (
+    passages.every((p) => stated.some((e) => p.includes(e))) && stated.every((e) => passages.some((p) => p.includes(e)))
+  );
 }
 
 export interface MetricRow {

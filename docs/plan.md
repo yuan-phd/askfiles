@@ -118,13 +118,13 @@ Outcome: one preset per RAM tier, chosen from measured results, with a known rat
 
 **Answer pipeline** (Session L; docs/app.md, Answer pipeline; docs/eval.md for the tuning loop)
 
-Answer scope maps to the number of sections the model reads and the lowest rerank score a section needs. Starting values, the same in every tier; phase 2 tunes them with the stage 1 sweep of the eval. Read through the bridge from the settings store Session K adds; Balanced until it exists.
+Answer scope maps to the number of sections the model reads and the lowest score a section needs: the rerank score with a reranker, the vector similarity of its best sub-chunk without one (rerankerModel none, every tier since 2026-10-30 because onnxruntime-node crashes on the owner's Mac). Read through the bridge from the settings store Session K adds. Values in every tier since 2026-10-31, measured on the owner's first corpus (Retrieval tuning below); the rerank floors are the starting values and apply only when a reranker is configured again.
 
-| Answer scope | Sections (sectionCount) | Rerank floor (rerankFloor) |
-| --- | --- | --- |
-| Strict | 2 | 0.5 |
-| Balanced | 3 | 0.1 |
-| Broad | 5 | 0.01 |
+| Answer scope | Sections (sectionCount) | Vector floor (vectorFloor) | Rerank floor (rerankFloor) | Stage 1 target section hit |
+| --- | --- | --- | --- | --- |
+| Strict | 3 | 0.6 | 0.5 | 67% (6/9) |
+| Balanced | 5 | 0.55 | 0.1 | 78% (7/9) |
+| Broad | 6 | 0.5 | 0.01 | 89% (8/9) |
 
 Reranker comparison on the fixture corpora (test/fixtures/eval-s and eval-l, 13 answerable questions in all, all-minilm embedder, CJK bypass off, 8 candidate sections), 2026-10-30, measured in the cloud container (4 vCPU x86, Linux, while the stack ran beside it). Target section hit is the share of answerable questions whose expected sections were all among the selected sections, at floor 0:
 
@@ -156,6 +156,35 @@ The runner is 3 to 4 times slower than the 4 vCPU Linux container on these model
 | 2.6 | Freeze presets per tier, including chunk maximum and snippet count, into config/presets.json and record the measured rates in this document | CLOUD |
 
 **Pass criteria to aim for** (adjust after the first run): 80 percent correct on single fact and table questions at the 16 GB tier, 90 percent correct refusals on unrelated questions, 70 percent on related-but-absent questions, expected section listed on 80 percent of section listing questions, citation correct whenever the answer is correct. Reported separately for corpus S and corpus L.
+
+### Retrieval tuning, 2026-10-31: 32 GB tier, MacBook Pro (MacBookPro18,2, Apple M1 Max, 64 GB, macOS 14.8.5)
+
+Corpus: the owner's first test library (12 files: 8 digital PDFs, 1 scanned PDF, 2 Word files, 1 macro workbook; 1262 chunks, embedded in 130 s), ten questions (~/AskFiles-eval/questions.csv, outside the repository; 9 answerable, 1 absent_related). qwen3:14b Q4_K_M and bge-m3:567m F16 on Ollama 0.40.11, reranker off (rerankerModel none), chunk maximum 2000, context 8192. UPSTREAM_VERSION v1.19.0; base commit 616b5e17 with the branch local/retrieval-tuning changes (the commit that adds this record). Run folders in ~/AskFiles-eval/runs.
+
+Changes measured against the run of 2026-10-30 (same corpus and questions): fusion by best sub-chunk with a tie-breaker of at most 10 percent instead of the sum (Q02 and Q05: the target was first in both lists but fourth to sixth after summing); passages assembled from the matched sub-chunks and their neighbours instead of one window around the best hit (Q01: the effective date fell outside the window); long sections without sub-headings split by page (the nine-page cover sections of the Policy, Directive and Procedure); garbled PDF pages replaced by OCR (26 of 50 pages of the scanned file; the JBIG2 scans gave no page image at all until pdfPageImages passed wasmUrl, a bug since the pdfjs-dist 6 update); a stricter not-found rule in the prompt; attribution now requires the cited sections to hold the key elements the answer states. Q01, Q04 and Q08 expect the new page sections; their facts are the same.
+
+Stage 1, target section hit rate over the 9 answerable questions, 2026-10-30 before the arrow (->), 2026-10-31 after (counts 4, 6 and 8 only on 2026-10-31):
+
+| Sections \ vector floor | 0 | 0.3 | 0.4 | 0.45 | 0.5 | 0.55 | 0.6 | 0.65 |
+|---|---|---|---|---|---|---|---|---|
+| 2 | 33 -> 56% | 33 -> 56% | 33 -> 56% | 33 -> 56% | 33 -> 56% | 33 -> 56% | 44 -> 56% | 44 -> 56% |
+| 3 | 44 -> 67% | 44 -> 67% | 44 -> 67% | 44 -> 67% | 44 -> 67% | 44 -> 67% | 56 -> 67% | 56 -> 67% |
+| 4 | 78% | 78% | 78% | 78% | 78% | 78% | 78% | 67% |
+| 5 | 78 -> 78% | 78 -> 78% | 78 -> 78% | 78 -> 78% | 78 -> 78% | 89 -> 78% | 89 -> 78% | 67 -> 67% |
+| 6 | 89% | 89% | 89% | 89% | 89% | 89% | 89% | 78% |
+| 8 | 100% | 100% | 100% | 100% | 100% | 89% | 89% | 78% |
+
+The 89 percent of 5 / 0.55 on 2026-10-30 counted a Q08 hit on the old garbled section (pages 7 and 8, from the scan's bad text layer); the page 7 section after OCR ranks eighth. Q04 needs six sections now: the Directive's page 7 ranks sixth behind its definitions page. The absent question gets sections at every floor below 0.65 (the template is on topic). Presets: Balanced is the best of the original grid (2, 3, 5 sections), 5 / 0.55, inside the 0 to 0.6 plateau; Strict one step tighter, 3 / 0.6; Broad one step looser, 6 / 0.5. Eight sections reach 100 percent in stage 1 but were not run through the model and exceed the 6656 token source budget at full section size.
+
+Stage 2 at 5 sections, vector floor 0.55, two passes; latency is pass 1 (pass 2 repeats the prompts and Ollama answers from its prompt cache, first token about 0.2 s):
+
+| Run | Target section cited | Key element coverage | Attribution (new rule) | Median first token / total, pass 1 | Median prompt tokens |
+| --- | --- | --- | --- | --- | --- |
+| 2026-10-30 | 56% (10/18) | 56% | 55% (11/20); 70% under the old rule | 23.1 s / 27.0 s | 4088 |
+| 2026-10-31 | 67% (12/18) | 64% | 60% (12/20) | 14.9 s / 20.3 s | 2789 |
+| 2026-10-31, firmer not-found wording (not kept) | 44% (8/18) | 47% | 60% (12/20) | 14.9 s / 17.5 s | 2830 |
+
+Per question, 2026-10-31 (pass 1; both passes agree): Q01 effective date found (was not found); Q02 cites the Standstill Period (was a Request for Bids section); Q03 right section, attribution fails because the Contents page is cited too; Q04 cites the Policy page and the Directive's page 3, not page 7; Q05 and Q06 correct; Q07 says the formula is not in the sources (true: the split keeps cached values only) without the marker; Q08 not found, the page 7 OCR is poor (SUBJECT read as SETRITN; the scan is about 100 dpi); Q09 SMART and the signing rule right, the Contract Management Plan section was selected but not cited; Q10 states the placeholders correctly in its own words instead of the marker, so the harness scores it false. The firmer wording (start with the marker, never explain in own words, one example) made Q10 correct but refused Q03, Q04 and Q07, whose one missing part (a page number, a formula) is not the whole question.
 
 **User test**: give the DMG by USB to one or two real target users with a one-page task sheet (install, add a folder, ask five questions). Do not help. Record where they stop and time to first answer. Executor: YOU.
 

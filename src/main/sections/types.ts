@@ -26,6 +26,11 @@ export interface ParsedDocument {
   pages: number;
   /** A PDF without any text layer: the caller has to OCR it. sections is empty then. */
   needsOcr: boolean;
+  /**
+   * PDF pages whose text layer is garbled or nearly empty on a scanned page (sections/pdf.ts,
+   * isGarbled): the splitter OCRs them and parses again with their OCR text. Absent when none.
+   */
+  ocrPages?: number[];
   /** Printed page label per PDF page (pdfjs getPageLabels), index 0 for page 1; absent when none. */
   pageLabels?: string[];
 }

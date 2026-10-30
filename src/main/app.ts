@@ -6,6 +6,7 @@ import util from 'node:util';
 import {
   AnswerService,
   ensureReranker,
+  NO_RERANKER,
   ollamaChat,
   rerankerProcess,
   rerankerReady,
@@ -18,7 +19,14 @@ import {
   type ServiceEvent,
 } from './answer/index.js';
 import { APP_ORIGIN, pageUrl, type PageName } from './app-protocol.js';
-import { chooseStartPage, developerEnabled, presetFolder, presetsFilePath, type StartPage } from './app-mode.js';
+import {
+  chooseStartPage,
+  developerEnabled,
+  presetFolder,
+  presetsFilePath,
+  type DevBackend,
+  type StartPage,
+} from './app-mode.js';
 import { bundledBackendConfig } from './backend-config.js';
 import { BrowseIndex, chunkReader, followWatcher, type DocumentRef } from './browse/index.js';
 import { CHANNELS, type BridgeHandlers, type DeveloperInfo, type WatcherView } from './bridge/contract.js';
@@ -67,6 +75,8 @@ export interface AppDeps {
    * entry; only the Developer page opens it.
    */
   openModelsWindow(): void;
+  /** npm run dev: backend from the repository and the Mac's own Ollama, not from the bundle. */
+  dev?: DevBackend | null;
 }
 
 /**
@@ -90,8 +100,10 @@ export class AppController implements BridgeHandlers {
   private readonly rerankerDir = path.join(this.dataDir, 'models', 'reranker');
   private reranker: { repo: string; instance: Reranker & { stop(): void } } | null = null;
   private readonly answers: AnswerService;
+  private readonly resourcesPath: string;
 
   constructor(private readonly d: AppDeps) {
+    this.resourcesPath = d.dev?.resourcesPath ?? process.resourcesPath;
     const loaded = loadShellState(this.dataDir, d.log);
     const { migrated, ...state } = loaded;
     this.state = state;
@@ -150,10 +162,11 @@ export class AppController implements BridgeHandlers {
     log(`start page ${start}`);
     this.manager = new ProcessManager(
       bundledBackendConfig({
-        resourcesPath: process.resourcesPath,
+        resourcesPath: this.resourcesPath,
         dataDir: this.dataDir,
         logDir: app.getPath('logs'),
-        nodePath: process.execPath,
+        nodePath: this.d.dev?.nodePath ?? process.execPath,
+        externalOllamaPort: this.d.dev?.externalOllamaPort,
         serverEnv,
         allowedOrigins: [APP_ORIGIN],
       }),
@@ -445,12 +458,12 @@ export class AppController implements BridgeHandlers {
   /** The preset's reranker, loaded once; null until its files are in the data directory. */
   private currentReranker(): Reranker | null {
     const repo = this.machinePreset?.answer.rerankerModel;
-    if (!repo || !rerankerReady(this.rerankerDir, repo)) return null;
+    if (!repo || repo === NO_RERANKER || !rerankerReady(this.rerankerDir, repo)) return null;
     if (this.reranker?.repo !== repo) {
       this.reranker?.instance.stop();
       // A child process of the app's own binary: a model call would block the main process.
       const instance = rerankerProcess({
-        transformersDir: path.join(process.resourcesPath, 'server', 'node_modules', '@xenova', 'transformers'),
+        transformersDir: path.join(this.resourcesPath, 'server', 'node_modules', '@xenova', 'transformers'),
         modelsDir: this.rerankerDir,
         repo,
         execPath: process.execPath,
@@ -485,7 +498,7 @@ export class AppController implements BridgeHandlers {
    */
   private async fetchMissingReranker(): Promise<void> {
     const repo = this.machinePreset?.answer.rerankerModel;
-    if (!repo || rerankerReady(this.rerankerDir, repo)) return;
+    if (!repo || repo === NO_RERANKER || rerankerReady(this.rerankerDir, repo)) return;
     this.d.log(`[answer] reranker ${repo} missing, fetching in the background`);
     try {
       await ensureReranker({ repo, modelsDir: this.rerankerDir, log: (m) => this.d.log(`[answer] ${m}`) });
@@ -610,6 +623,7 @@ export class AppController implements BridgeHandlers {
               cacheDir: path.join(this.dataDir, 'ocr-cache'),
               log: (m) => log(`[watcher] ${m}`),
             }),
+            log: (m) => log(`[watcher] ${m}`),
           }),
           watch: chokidarWatch,
           log: (m) => log(`[watcher] ${m}`),

@@ -5,7 +5,7 @@
 import { randomUUID } from 'node:crypto';
 import { appendEvalCase, type EvalCase } from './eval-case.js';
 import { answer, choose, retrieve, type AnswerEvent, type AnswerResult, type PipelineDeps } from './pipeline.js';
-import type { RunSettings } from './params.js';
+import { floorOf, setFloor, type RunSettings } from './params.js';
 import { buildTrace, type Trace } from './trace.js';
 
 export type ServiceEvent =
@@ -100,7 +100,8 @@ export class AnswerService {
     if (!this.d.developer) return s;
     const params = structuredClone(s.params);
     if (typeof this.overrides.sectionCount === 'number') params.sectionCount[s.scope] = this.overrides.sectionCount;
-    if (typeof this.overrides.rerankFloor === 'number') params.rerankFloor[s.scope] = this.overrides.rerankFloor;
+    // The panel's floor field sets whichever floor decides selection: vector without a reranker.
+    if (typeof this.overrides.rerankFloor === 'number') setFloor(params, s.scope, this.overrides.rerankFloor);
     return { ...s, params };
   }
 
@@ -123,7 +124,7 @@ export class AnswerService {
       const sel = choose(r, s);
       const trace = buildTrace(r, sel, {
         scope: s.scope,
-        floor: s.params.rerankFloor[s.scope],
+        floor: floorOf(s.params, s.scope),
         count: s.params.sectionCount[s.scope],
       });
       this.lastTrace = trace;

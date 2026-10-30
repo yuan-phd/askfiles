@@ -77,6 +77,7 @@ describe('questions', () => {
 
   it('splits lists on ASCII and full-width semicolons and expands page ranges', () => {
     expect(listOf('a; b；c;;')).toEqual(['a', 'b', 'c']);
+    expect(listOf('A\\;B (page 7); C')).toEqual(['A;B (page 7)', 'C']);
     expect(pagesOf('2;4-6')).toEqual([2, 4, 5, 6]);
   });
 });
@@ -386,9 +387,6 @@ describe('library', () => {
         for (const d of body.deletes ?? []) ws.delete(d);
         return {};
       },
-      uploadDocument: async () => {
-        throw new Error('no OCR expected');
-      },
     };
     const cfg = resolveConfig(
       { label: 't', chatModel: 'm', embeddingModel: 'e', systemPrompt: 'p', chunkMax: 1500 },
@@ -396,7 +394,10 @@ describe('library', () => {
       ROOT,
     );
     const corpusDir = path.join(FIXTURES, 'eval-l', 'corpus');
-    const opts = { client, removeDocuments: async () => {}, corpusDir, storageDir: storage, log: () => {} };
+    const ocr = async () => {
+      throw new Error('no OCR expected');
+    };
+    const opts = { client, ocr, corpusDir, storageDir: storage, log: () => {} };
     const first = await prepareLibrary({ ...opts, config: cfg });
     expect(first.stats.added).toBe(first.stats.chunks);
     expect(first.files[0]!.splitSections).toBeGreaterThan(0);

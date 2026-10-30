@@ -48,7 +48,7 @@ describe('validatePresets failures', () => {
     };
     delete (d.tiers[1]!.answer as Record<string, unknown>).rrfK;
     expect(problemsOf(d)).toEqual([
-      expect.stringMatching(/^tiers\[0\]\.answer\.rerankerModel must be one of Xenova\/ms-marco-MiniLM-L-6-v2, /),
+      expect.stringMatching(/^tiers\[0\]\.answer\.rerankerModel must be one of none, Xenova\/ms-marco-MiniLM-L-6-v2, /),
       'tiers[0].answer.rerankFloor.strict must be a number from 0 to 1',
       'tiers[0].answer.extra is not a known field',
       'tiers[1].answer.rrfK is missing',

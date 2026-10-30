@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -11,8 +12,12 @@ export interface OcrPage {
   text: string;
 }
 
-/** Bumped when the cached shape changes; older cache files are ignored and OCR runs again. */
-const CACHE_VERSION = 2;
+/**
+ * Bumped when the cached shape changes, or when earlier results were wrong; older cache files are
+ * ignored and OCR runs again. 3: JBIG2 page images decode since pdfPageImages passes wasmUrl;
+ * before, those pages gave no image and no text.
+ */
+const CACHE_VERSION = 3;
 
 /**
  * Pages OCRed at the same time. The collector OCRs a whole PDF on min(CPUs, 4) workers
@@ -21,7 +26,9 @@ const CACHE_VERSION = 2;
 export const OCR_CONCURRENCY = Math.max(1, Math.min(4, os.cpus().length));
 
 /**
- * The ocr hook of sectionSplitter for a PDF with no text layer. Only the collector OCRs (with the
+ * The ocr hook of sectionSplitter for a PDF with no text layer, or, with pages, for those pages
+ * of a PDF whose text layer is garbled (ParsedDocument.ocrPages); those never fall back to the
+ * whole file and may return no pages. Only the collector OCRs (with the
  * seeded tesseract data and TARGET_OCR_LANG from the preset), so each page's images are taken out
  * of the PDF here (pdfPageImages), uploaded one by one as PNG without embedding, their text kept
  * and the stored copies deleted again; every section then carries its page. A page without images
@@ -35,10 +42,11 @@ export function collectorOcr(o: {
   cacheDir: string;
   log?: (msg: string) => void;
   concurrency?: number;
-}): (filePath: string) => Promise<OcrPage[]> {
-  return async (filePath) => {
+}): (filePath: string, only?: number[]) => Promise<OcrPage[]> {
+  return async (filePath, only) => {
     const hash = await hashFile(filePath);
-    const cached = path.join(o.cacheDir, `${hash}.pages.json`);
+    const subset = only ? `-${createHash('sha256').update(only.join(',')).digest('hex').slice(0, 12)}` : '';
+    const cached = path.join(o.cacheDir, `${hash}${subset}.pages.json`);
     try {
       const c = JSON.parse(fs.readFileSync(cached, 'utf8')) as { version?: number; pages?: OcrPage[] };
       if (c.version === CACHE_VERSION && Array.isArray(c.pages)) return c.pages;
@@ -63,7 +71,7 @@ export function collectorOcr(o: {
         texts.set(page, list);
       }
     };
-    for await (const p of pdfPageImages(fs.readFileSync(filePath))) {
+    for await (const p of pdfPageImages(fs.readFileSync(filePath), { pages: only })) {
       if (p.error) o.log?.(`OCR: page ${p.page} of ${filePath} unreadable: ${p.error}`);
       for (const [i, png] of p.images.entries()) {
         imagesSeen++;
@@ -80,7 +88,7 @@ export function collectorOcr(o: {
     const pages: OcrPage[] = [...texts.entries()]
       .sort(([a], [b]) => a - b)
       .map(([page, list]) => ({ page, text: list.filter(Boolean).join('\n\n') }));
-    if (imagesSeen) {
+    if (imagesSeen || only) {
       o.log?.(`OCR: ${filePath}, ${pages.length} pages with text, ${imagesSeen} images in ${Date.now() - t0} ms`);
     } else {
       o.log?.(`OCR: no page images in ${filePath}, sending the whole file`);
@@ -88,7 +96,7 @@ export function collectorOcr(o: {
       await o.api.purgeDocuments(locations);
       if (text.trim()) pages.push({ page: 0, text });
     }
-    if (!pages.length) throw new Error('OCR found no text');
+    if (!pages.length && !only) throw new Error('OCR found no text');
     fs.mkdirSync(o.cacheDir, { recursive: true });
     const tmp = `${cached}.tmp-${process.pid}`;
     fs.writeFileSync(tmp, JSON.stringify({ version: CACHE_VERSION, pages }));

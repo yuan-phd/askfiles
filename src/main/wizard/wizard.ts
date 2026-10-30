@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { NO_RERANKER } from '../answer/params.js';
 import { normalizeTag, OllamaClient, type FetchLike, type PullProgress } from '../ollama/client.js';
 import {
   chooseTier,
@@ -178,7 +179,9 @@ export class Wizard extends EventEmitter<{ event: [WizardEvent] }> {
     // Embedder first: it is the smaller download and indexing needs it before any question.
     const tags = [...new Set([p.embeddingModel, p.chatModel])];
     const fetchReranker = this.deps.fetchReranker;
-    const count = tags.length + (fetchReranker ? 1 : 0);
+    // rerankerModel none has nothing to fetch.
+    const withReranker = fetchReranker && p.answer.rerankerModel !== NO_RERANKER;
+    const count = tags.length + (withReranker ? 1 : 0);
     const installed = await this.deps.ollama.list();
     for (const [index, tag] of tags.entries()) {
       const base = { type: 'progress' as const, index, count };
@@ -199,7 +202,7 @@ export class Wizard extends EventEmitter<{ event: [WizardEvent] }> {
       await this.deps.ollama.pull(tag, (pr) => this.emit('event', { ...base, ...pr }));
       this.log(`pulled ${tag}`);
     }
-    if (fetchReranker) {
+    if (withReranker) {
       const repo = p.answer.rerankerModel;
       this.log(`fetching reranker ${repo}`);
       await fetchReranker(repo, (pr) => this.emit('event', { type: 'progress', index: tags.length, count, ...pr }));
