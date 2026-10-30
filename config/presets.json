@@ -57,7 +57,7 @@
       "ocrLanguages": "eng,chi_sim",
       "systemPrompt": "Answer only from the provided context. Cite the source document for what you say. If the context does not contain the answer, say that you do not know.",
       "answer": {
-        "rerankerModel": "onnx-community/bge-reranker-v2-m3-ONNX",
+        "rerankerModel": "Xenova/bge-reranker-base",
         "rerankerBypassCjk": false,
         "vectorTopK": 30,
         "keywordTopK": 30,

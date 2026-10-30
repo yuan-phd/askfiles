@@ -5,9 +5,9 @@ import path from 'node:path';
 import util from 'node:util';
 import {
   AnswerService,
-  crossEncoder,
   ensureReranker,
   ollamaChat,
+  rerankerProcess,
   rerankerReady,
   upstreamVectorSearch,
   type AnswerScope,
@@ -63,7 +63,7 @@ export class AppController implements BridgeHandlers {
   private page: StartPage | PageName | null = null;
   private stopped = false;
   private readonly rerankerDir = path.join(this.dataDir, 'models', 'reranker');
-  private reranker: { repo: string; instance: Reranker } | null = null;
+  private reranker: { repo: string; instance: Reranker & { stop(): void } } | null = null;
   private readonly answers: AnswerService;
 
   constructor(private readonly d: AppDeps) {
@@ -322,10 +322,14 @@ export class AppController implements BridgeHandlers {
     const repo = this.preset?.answer.rerankerModel;
     if (!repo || !rerankerReady(this.rerankerDir, repo)) return null;
     if (this.reranker?.repo !== repo) {
-      const instance = crossEncoder({
+      this.reranker?.instance.stop();
+      // A child process of the app's own binary: a model call would block the main process.
+      const instance = rerankerProcess({
         transformersDir: path.join(process.resourcesPath, 'server', 'node_modules', '@xenova', 'transformers'),
         modelsDir: this.rerankerDir,
         repo,
+        execPath: process.execPath,
+        env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
         log: this.d.log,
       });
       this.reranker = { repo, instance };
@@ -546,6 +550,7 @@ export class AppController implements BridgeHandlers {
       this.d.log('stopping backend before quit');
       void (async () => {
         try {
+          this.reranker?.instance.stop();
           await this.watcher?.stop();
           await this.manager?.stop();
         } finally {

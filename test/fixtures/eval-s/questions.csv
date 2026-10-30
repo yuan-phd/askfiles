@@ -1,11 +1,11 @@
-id,category,question,expected_answer,expected_source_file,expected_section,expected_page,notes
-s01,single_fact,How often must passwords be changed?,Every 90 days,it-handbook.pdf,1 Accounts,1,PDF with bookmarks
-s02,single_fact,上海的住宿报销上限是多少？,每晚650元,报销制度.docx,2 差旅报销,,Chinese Word file with a table
-s03,table_number,What is the total 2026 budget for Engineering?,510000,budget-2026.xlsx,Budget 2026,1,Spreadsheet; the page column holds the sheet number
-s04,cross_document,"How many days do I have to submit an expense claim, and how quickly must a lost laptop be reported?",30 days for expense claims; 24 hours for a lost laptop,报销制度.docx;it-handbook.pdf,3 提交期限;2.1 Lost devices,2,Answer needs two files
-s05,middle_of_long_doc,How often are laptops replaced?,Every 4 years,it-handbook.pdf,2 Laptops,1,
-s06,absent_related,How many days of annual leave do contractors get?,Not in the documents,,,,The leave policy covers permanent employees only
-s07,absent_unrelated,What is the capital of Australia?,Not in the documents,,,,
-s08,version,"How many days of annual leave does version 1 of the leave policy give, and how many does version 2 give?",Version 1: 25 days; version 2: 27 days,leave-policy-v1.md;leave-policy-v2.md,Annual leave,,Near-duplicate files
-s09,section_listing,Which sections describe leave?,Annual leave; Sick leave; Parental leave,leave-policy-v1.md;leave-policy-v2.md,Annual leave;Sick leave;Parental leave,,
-s10,section_listing,哪些章节涉及报销？,2 差旅报销; 3 提交期限,报销制度.docx,2 差旅报销;3 提交期限,,
+id,category,question,expected_answer,expected_source_file,expected_section,expected_section_path,expected_page,key_elements,notes
+s01,single_fact,How often must passwords be changed?,Every 90 days,it-handbook.pdf,1 Accounts,,1,90 days,PDF with bookmarks
+s02,single_fact,上海的住宿报销上限是多少？,每晚650元,报销制度.docx,2 差旅报销,,,650,Chinese Word file with a table
+s03,table_number,What is the total 2026 budget for Engineering?,510000,budget-2026.xlsx,Budget 2026,,1,510,Spreadsheet; the page column holds the sheet number
+s04,cross_document,"How many days do I have to submit an expense claim, and how quickly must a lost laptop be reported?",30 days for expense claims; 24 hours for a lost laptop,报销制度.docx;it-handbook.pdf,3 提交期限;2.1 Lost devices,,2,30; 24 hours,Answer needs two files
+s05,middle_of_long_doc,How often are laptops replaced?,Every 4 years,it-handbook.pdf,2 Laptops,,1,4 years,
+s06,absent_related,How many days of annual leave do contractors get?,Not in the documents,,,,,,The leave policy covers permanent employees only
+s07,absent_unrelated,What is the capital of Australia?,Not in the documents,,,,,,
+s08,version,"How many days of annual leave does version 1 of the leave policy give, and how many does version 2 give?",Version 1: 25 days; version 2: 27 days,leave-policy-v1.md;leave-policy-v2.md,Annual leave,,,25; 27,Near-duplicate files
+s09,section_listing,Which sections describe leave?,Annual leave; Sick leave; Parental leave,leave-policy-v1.md;leave-policy-v2.md,Annual leave;Sick leave;Parental leave,,,annual leave; sick leave; parental leave,
+s10,section_listing,哪些章节涉及报销？,2 差旅报销; 3 提交期限,报销制度.docx,2 差旅报销;3 提交期限,,,差旅报销; 提交期限,

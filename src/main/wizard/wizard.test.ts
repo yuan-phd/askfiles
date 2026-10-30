@@ -55,7 +55,7 @@ describe('Wizard', () => {
       },
     });
     await t.wizard.start();
-    expect(fetched).toEqual(['onnx-community/bge-reranker-v2-m3-ONNX']);
+    expect(fetched).toEqual(['Xenova/bge-reranker-base']);
     const done = t.events.filter((e) => e.type === 'progress' && e.percent === 100);
     expect(done.map((e) => e.type === 'progress' && [e.model, e.index, e.count])).toEqual([
       ['bge-m3:567m', 0, 3],

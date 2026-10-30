@@ -64,4 +64,4 @@ ModelManager lists installed models (GET /api/tags) with their role from the ser
 ## Not done here
 
 - Electron wiring (LOCAL): a preload script exposing window.askfiles.wizard and window.askfiles.models over IPC, src/main/index.ts starting the process manager, running the wizard when GET /api/onboarding is false, passing presetSpawnEnv in the server spec env, and loading the onboarding page. Not written because none of it can run in a cloud session.
-- Visual pass on the onboarding and models pages (LOCAL, plan task 3.6). Both pages take their tokens from src/renderer/search/search.css.
+- Visual pass on the onboarding and models pages (LOCAL, plan task 3.6). Both pages take their tokens from src/renderer/ask/ask.css.

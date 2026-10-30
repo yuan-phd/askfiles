@@ -1,4 +1,7 @@
-const WATCH_DIRECTORY = require("path").resolve(__dirname, "../hotdir");
+const WATCH_DIRECTORY = require("path").resolve(
+  process.env.ANYTHING_LLM_HOTDIR ||
+    require("path").resolve(__dirname, "../hotdir")
+);
 
 const ACCEPTED_MIMES = {
   "text/plain": [".txt", ".md", ".org", ".adoc", ".rst"],

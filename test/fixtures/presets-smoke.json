@@ -6,7 +6,7 @@
       "id": "smoke",
       "label": "Smoke test",
       "minRamGb": 0,
-      "comment": "Starting values for the smoke test only. all-minilm reads 256 word pieces, so chunks stay small; threshold 0 so its low scores still return sources.",
+      "comment": "Starting values for the smoke test only. all-minilm reads 256 word pieces, so chunks stay small; threshold 0 so its low scores still return sources. One section per answer and floor 0, so the small model's citation can only be [1] (scripts/smoke-mac.sh checks it).",
       "chatModel": "qwen3:0.6b",
       "embeddingModel": "all-minilm:latest",
       "contextLength": 4096,
@@ -27,9 +27,9 @@
         "candidateSections": 12,
         "sectionCapChars": 0,
         "sectionCount": {
-          "strict": 2,
-          "balanced": 3,
-          "broad": 5
+          "strict": 1,
+          "balanced": 1,
+          "broad": 1
         },
         "rerankFloor": {
           "strict": 0.5,

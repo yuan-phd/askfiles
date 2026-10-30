@@ -51,6 +51,8 @@ These were settled in discussion and are not reopened unless the analysis sessio
 | Section chunking implementation | The shell splits documents itself: it parses PDF and Word for headings and pages, writes one document JSON per section into the server storage with section title, section index and page numbers in its metadata, then calls update-embeddings. No upstream patch | Upstream drops page numbers and headings and its splitter is not heading-aware; custom metadata in the document JSON reaches the chat sources unchanged (docs/upstream-analysis.md Q6, Q13, Q15) |
 | Interface | Phase 1 uses the upstream frontend to validate retrieval; phase 3 replaces it with our own search page calling the API | Avoid building UI before thresholds and models are chosen |
 | No compiled wiki | No LLM-written pages about the documents; the browse view (phase 4) renders the documents themselves | Compilation needs a large model, a large model means the cloud, and that breaks the privacy promise; local small models are not accurate enough and the pages are hard to maintain |
+| Answer pipeline | The shell owns retrieval, prompt assembly and the model call (src/main/answer, Session L). Upstream remains the document store, parser, OCR, embedder and vector database; upstream code is not modified and its chat route is no longer used by the app. Candidates come from upstream vector search (no score floor) and from a keyword index over the shell's section records (BM25), fused by reciprocal rank and grouped into sections; a cross-encoder reranks the sections; the answer scope picks how many the model reads; the model gets numbered sources without file names or pages and cites [n]; source cards come from the section records only | Owner's test on a real corpus, 2026-10-30, 10 questions: 2 pass, 4 partial, 4 fail. Vector-only retrieval missed exact terms the keyword index finds; many similar passages crowded out the few sections that prove the answer; the model attributed one file's text to another when it wrote the citations itself |
+| Reranker | A cross-encoder per RAM tier in the preset (answer.rerankerModel): 8 GB Xenova/ms-marco-MiniLM-L-6-v2 (English only, 23 MB) with the CJK bypass (no reranking when the question or a candidate section is mainly Chinese; selection by fusion score, no floor); 16 GB Xenova/bge-reranker-base (Chinese and English, 296 MB); 32 GB and up onnx-community/bge-reranker-v2-m3-ONNX (multilingual, 588 MB). The bge tiers rerank 8 candidate sections. Not bundled in the DMG: the first-run wizard downloads the files from huggingface.co at a pinned revision with sha256 checks into the data directory, like the Ollama models, with progress; a library set up before this fetches it once in the background. Nothing is downloaded while answering. Runs in a child process of the app binary, because onnxruntime-node blocks its thread for the whole model call | Owner decision 2026-10-30 (Session L). v2-m3 needs about 2.7 GB of RAM, which the 8 GB tier does not have. bge-reranker-base matched v2-m3 on both fixture corpora (table under Phase 2, Answer pipeline) at a third to a sixth of the time, so it takes the 16 GB tier |
 | Telemetry | DISABLE\_TELEMETRY=true | Privacy promise |
 | Windows | After the Mac build has real users | Engine packaging and process management differ; no Windows test machine today |
 
@@ -105,11 +107,32 @@ Outcome: one preset per RAM tier, chosen from measured results, with a known rat
 | Max context snippets | 4 | 4, 6, 8, tested in combination with chunk maximum |
 | Chunk strategy | By heading | By heading |
 | Chunk maximum | 2000 characters | 1500, 2000, 2500 characters (capped by the 2048 token embedding limit), tested in combination with max context snippets |
-| LanceDB reranking | Accuracy optimized on | On, off. The reranker model (Xenova/ms-marco-MiniLM-L-6-v2, about 24 MB, from huggingface.co; docs/upstream-analysis.md, Workspace settings) is not shipped yet: the phase 2 runs on the Mac download it once. If reranking improves the scores, Session B ships the model files; otherwise reranking is dropped |
+| LanceDB reranking | Superseded | The upstream chat route is no longer used (Decisions, Answer pipeline); the shell reranks sections itself. Still selectable for the upstream-route comparison (rerank.json with --upstream) |
+| Answer pipeline values | config/presets.json answer block | Section count and rerank floor per answer scope, and the scope mapping, are what phase 2 tunes (table below); vector top-k, keyword top-k, RRF k, candidate sections and the section cap are set generously and rarely worth changing. docs/eval.md lists every value with its effect |
 | Chat mode | Query | Query only |
 | Temperature | 0.1 | Fixed |
-| Thinking | Off where the provider supports it | Fixed. The upstream Ollama provider can send think false, but the /v1 chat routes the shell uses do not pass that option (docs/upstream-analysis.md Q9). Decided: Session C patch 7 passes it through the /v1 chat routes, and the preset sets DEFAULT\_REASONING\_EFFORT=off. The search page strips think blocks from the answer regardless |
+| Thinking | Off where the provider supports it | Fixed. The upstream Ollama provider can send think false, but the /v1 chat routes the shell uses do not pass that option (docs/upstream-analysis.md Q9). Decided: Session C patch 7 passes it through the /v1 chat routes, and the preset sets DEFAULT\_REASONING\_EFFORT=off. The Ask page's pipeline sends think false to Ollama directly and strips think blocks regardless |
 | System prompt | Answer only from the provided context, cite the source, say you do not know when the context does not contain the answer | One stricter variant |
+
+**Answer pipeline** (Session L; docs/app.md, Answer pipeline; docs/eval.md for the tuning loop)
+
+Answer scope maps to the number of sections the model reads and the lowest rerank score a section needs. Starting values, the same in every tier; phase 2 tunes them with the stage 1 sweep of the eval. Read through the bridge from the settings store Session K adds; Balanced until it exists.
+
+| Answer scope | Sections (sectionCount) | Rerank floor (rerankFloor) |
+| --- | --- | --- |
+| Strict | 2 | 0.5 |
+| Balanced | 3 | 0.1 |
+| Broad | 5 | 0.01 |
+
+Reranker comparison on the fixture corpora (test/fixtures/eval-s and eval-l, 13 answerable questions in all, all-minilm embedder, CJK bypass off, 8 candidate sections), 2026-10-30, measured in the cloud container (4 vCPU x86, Linux, while the stack ran beside it). Target section hit is the share of answerable questions whose expected sections were all among the selected sections, at floor 0:
+
+| Reranker | Files | S: 1 section | S: 3 sections | L: 1 section | L: 2 sections | Rerank time per question (8 sections) | RAM |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| ms-marco-MiniLM-L-6-v2 | 24 MB | 5/8 | 5/8 | 3/5 | 3/5 | 0.5 s (8 sections at the 512 token limit) | 0.4 GB |
+| bge-reranker-base | 296 MB | 5/8 | 6/8 | 3/5 | 5/5 | 1.8 s (L) | 1.4 GB |
+| bge-reranker-v2-m3 | 588 MB | 5/8 | 6/8 | 3/5 | 5/5 | 5.9 s (S), 11.7 s (L) | 2.7 GB |
+
+Scores for a Chinese answer passage: to an English question MiniLM gives 0.000; to a Chinese question bge-reranker-base gives 0.993 and v2-m3 0.979. MiniLM still scored the Chinese questions s02 and s10 against their Chinese sections at 0.999 and 0.998, so the CJK bypass of the 8 GB tier may be more cautious than needed; phase 2 can try rerankerBypassCjk false there. The fixtures are small; the comparison is repeated on the owner's corpora with the eval (--set rerankerModel=...). Timings on the CI Mac (macos-14 runner) come from the Time the rerankers step of the mac workflow; until a run is recorded here they are unverified.
 
 **Tasks**
 

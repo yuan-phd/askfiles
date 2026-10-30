@@ -23,6 +23,7 @@ import {
   isNotFound,
   NOT_FOUND_MARKER,
   parseCitations,
+  rerankerProcess,
   resolveParams,
   retrieve,
   answer,
@@ -508,6 +509,20 @@ describe('appendEvalCase', () => {
     );
     expect(lines[1]).toContain(`${id1},single_fact,"How long, really?",,a.pdf,Annual,Leave > Annual,3,,`);
     expect(lines[1]).not.toBe(lines[2]);
+  });
+});
+
+describe('rerankerProcess', () => {
+  it('runs the cross-encoder in a child process and reports its errors back', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'askfiles-rp-'));
+    cleanups.push(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const r = rerankerProcess({ transformersDir: dir, modelsDir: dir, repo: 'Xenova/ms-marco-MiniLM-L-6-v2' });
+    try {
+      expect(await r.score('q', [])).toEqual([]);
+      await expect(r.score('q', ['text'])).rejects.toThrow(/reranker ms-marco-MiniLM-L-6-v2 is not installed/);
+    } finally {
+      r.stop();
+    }
   });
 });
 

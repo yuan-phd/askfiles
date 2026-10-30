@@ -4,8 +4,10 @@
 # run picks the test preset (ASKFILES_PRESETS_FILE), pulls its models into the app's own Ollama,
 # takes the library folder from ASKFILES_LIBRARY_FOLDER instead of the dialog, creates the library
 # and its API key, and indexes a temp folder holding a text PDF and a scanned PDF (OCR). Then it
-# checks that the search page reached the library and that the browse index lists both PDFs, asks
-# one question through the server API with the key the app stored, takes a screenshot and quits.
+# checks that the Ask page reached the library, that the browse index lists both PDFs and that the
+# first run fetched the reranker; the app asks one question through the answer pipeline
+# (ASKFILES_SMOKE_QUESTION) and the script checks the logged answer cites [1]. Then it takes a
+# screenshot and quits.
 # Mac only. Usage: scripts/smoke-mac.sh path/to/AskFiles.app path/to/out-dir
 
 set -euo pipefail
@@ -50,7 +52,7 @@ log "library folder $FOLDER"
 
 LOG_START=$(wc -l <"$LOGS/main.log" 2>/dev/null || echo 0)
 log "launching $APP with $PRESETS"
-ASKFILES_PRESETS_FILE="$PRESETS" ASKFILES_LIBRARY_FOLDER="$FOLDER" \
+ASKFILES_PRESETS_FILE="$PRESETS" ASKFILES_LIBRARY_FOLDER="$FOLDER" ASKFILES_SMOKE_QUESTION="$QUESTION" \
   "$APP/Contents/MacOS/AskFiles" >"$OUT/app-stdout.log" 2>&1 &
 
 log "waiting up to ${START_TIMEOUT}s for the backend"
@@ -79,14 +81,14 @@ until [ -n "$done_at" ]; do
 done
 log "first run done after $(($(date +%s) - t1))s at $done_at"
 
-# The marker that the search page loaded: it reports back through the bridge once it reached the
+# The marker that the Ask page loaded: it reports back through the bridge once it reached the
 # library with the stored key (src/main/app.ts, appPageReady).
 t2=$(date +%s)
-until new_log | grep -q '\[main\] page ready search connected=true'; do
-  [ $(($(date +%s) - t2)) -lt 60 ] || fail "the search page did not report ready within 60s"
+until new_log | grep -q '\[main\] page ready ask connected=true'; do
+  [ $(($(date +%s) - t2)) -lt 60 ] || fail "the Ask page did not report ready within 60s"
   sleep 1
 done
-log "search page ready: $(new_log | grep '\[main\] page ready search' | tail -n 1)"
+log "Ask page ready: $(new_log | grep '\[main\] page ready ask' | tail -n 1)"
 
 # The wizard restarted the backend, so the ports are the ones written after setup.
 SERVER_PORT=$(json d.server <"$DATA/ports.json")
@@ -130,17 +132,29 @@ for lang in eng chi_sim; do
   [ -s "$DATA/storage/models/tesseract/$lang.traineddata" ] || fail "no seeded $lang.traineddata"
 done
 
+# The first run fetched the smoke preset's reranker into the data directory (src/main/answer).
+reranker="$DATA/models/reranker/Xenova/ms-marco-MiniLM-L-6-v2"
+[ -s "$reranker/.askfiles-verified.json" ] && [ -s "$reranker/onnx/model_quantized.onnx" ] ||
+  fail "the first run did not fetch the reranker into $reranker"
+
+# ASKFILES_SMOKE_QUESTION: the app asked $QUESTION through the answer pipeline once the Ask page was
+# ready and logs one [answer] smoke line with the cited sources and the answer text.
 t3=$(date +%s)
-answer=$(curl -fsS --max-time 300 -X POST "$B/v1/workspace/$SLUG/chat" "${auth[@]}" -H 'Content-Type: application/json' \
-  -d "{\"message\":\"$QUESTION\",\"mode\":\"query\",\"sessionId\":\"smoke-$(date +%s)\"}") || fail "chat call failed"
-echo "$answer" >"$OUT/chat.json"
-text=$(echo "$answer" | json 'd.textResponse.replace(/<think>[\s\S]*?<\/think>/g,"").trim()')
-sources=$(echo "$answer" | json '(d.sources||[]).length')
-section=$(echo "$answer" | json '((d.sources||[])[0]||{}).sectionTitle')
-log "chat answered in $(($(date +%s) - t3))s with $sources source(s), first section '$section': ${text:0:200}"
-[ -n "$text" ] || fail "empty answer: $answer"
-[ "$sources" -ge 1 ] || fail "answer has no sources: $answer"
-[ -n "$section" ] || fail "the first source carries no section title: $answer"
+until new_log | grep -q '\[answer\] smoke'; do
+  [ $(($(date +%s) - t3)) -lt 300 ] || fail "no [answer] smoke line within 300s"
+  running || fail "the app exited before answering"
+  sleep 2
+done
+smoke=$(new_log | grep '\[answer\] smoke' | tail -n 1)
+echo "$smoke" >"$OUT/answer.log"
+log "pipeline answer after $(($(date +%s) - t3))s: ${smoke:0:400}"
+case "$smoke" in
+*"smoke failed"*) fail "the answer pipeline failed: $smoke" ;;
+esac
+echo "$smoke" | grep -q 'notFound=false' || fail "the pipeline found no answer: $smoke"
+echo "$smoke" | grep -q 'cited=\[1' || fail "the answer cites no source [1]: $smoke"
+echo "$smoke" | grep -q 'text=".*\[1\]' || fail "the answer text has no [1] citation: $smoke"
+new_log | grep -q '\[answer\] .* cited of .* selected' || fail "main.log has no [answer] summary line"
 
 screencapture -x "$OUT/smoke.png" || fail "screencapture failed"
 log "screenshot $OUT/smoke.png"
@@ -157,4 +171,4 @@ if pgrep -fl "$APP/Contents"; then
 fi
 [ ! -e "$DATA/ports.json" ] || fail "ports.json still present after quit"
 rm -rf "$FOLDER"
-log "ok: first run, search page and quit all clean"
+log "ok: first run, Ask page, pipeline answer and quit all clean"

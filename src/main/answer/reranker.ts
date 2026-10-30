@@ -4,6 +4,7 @@
  * uses), so the shell adds no dependency and the bundle carries the library once. The model files
  * come from <dataDir>/models/reranker, put there by the first-run wizard (ensureReranker).
  */
+import { fork, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -195,6 +196,81 @@ export function crossEncoder(o: {
         for (const [s] of logits.sigmoid().tolist()) out.push(s!);
       }
       return out;
+    },
+  };
+}
+
+/**
+ * The cross-encoder in a child process (reranker-worker.ts), started on the first call and kept
+ * for the next questions. A crash fails the calls in flight; the next call starts a new process.
+ * execPath and env let the app use its own binary with ELECTRON_RUN_AS_NODE=1.
+ */
+export function rerankerProcess(o: {
+  transformersDir: string;
+  modelsDir: string;
+  repo: string;
+  execPath?: string;
+  env?: Record<string, string | undefined>;
+  log?: (m: string) => void;
+}): Reranker & { model: RerankerModel; stop(): void } {
+  const model = rerankerModel(o.repo);
+  let child: ChildProcess | null = null;
+  let next = 0;
+  const pending = new Map<number, { resolve: (s: number[]) => void; reject: (e: Error) => void }>();
+  const failAll = (e: Error) => {
+    for (const p of pending.values()) p.reject(e);
+    pending.clear();
+  };
+  const start = (): ChildProcess => {
+    // Compiled: the .js beside this file. From sources (eval, tests): the .ts through tsx.
+    const js = path.join(__dirname, 'reranker-worker.js');
+    const script = fs.existsSync(js) ? js : path.join(__dirname, 'reranker-worker.ts');
+    const c = fork(script, [], {
+      execPath: o.execPath,
+      execArgv: script.endsWith('.ts') ? ['--import', 'tsx'] : [],
+      env: {
+        ...(o.env ?? process.env),
+        ASKFILES_RERANKER_TRANSFORMERS: o.transformersDir,
+        ASKFILES_RERANKER_MODELS: o.modelsDir,
+        ASKFILES_RERANKER_REPO: o.repo,
+      },
+      stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+    });
+    const forward = (b: Buffer) => {
+      for (const line of b.toString().split('\n')) if (line.trim()) o.log?.(line.trim());
+    };
+    c.stdout?.on('data', forward);
+    c.stderr?.on('data', forward);
+    c.on('message', (m: { id: number; scores?: number[]; error?: string }) => {
+      const p = pending.get(m.id);
+      if (!p) return;
+      pending.delete(m.id);
+      if (m.scores) p.resolve(m.scores);
+      else p.reject(new Error(m.error ?? 'the reranker failed'));
+    });
+    c.on('exit', (code, signal) => {
+      if (child === c) child = null;
+      if (pending.size) failAll(new Error(`the reranker process ended (${signal ?? code})`));
+    });
+    c.on('error', (e) => failAll(e));
+    return c;
+  };
+  return {
+    model,
+    score(query, texts) {
+      if (!texts.length) return Promise.resolve([]);
+      child ??= start();
+      const id = ++next;
+      return new Promise<number[]>((resolve, reject) => {
+        pending.set(id, { resolve, reject });
+        child!.send({ id, query, texts });
+      });
+    },
+    stop() {
+      const c = child;
+      child = null;
+      failAll(new Error('the reranker was stopped'));
+      c?.kill();
     },
   };
 }

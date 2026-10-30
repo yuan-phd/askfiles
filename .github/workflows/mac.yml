@@ -42,7 +42,8 @@ jobs:
   package:
     needs: test
     runs-on: macos-14
-    timeout-minutes: 30
+    # The reranker timing step adds a few minutes, more on a cold model cache (about 0.9 GB).
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -137,6 +138,16 @@ jobs:
           du -sk release/mac-arm64/AskFiles.app release/mac-arm64/AskFiles.app/Contents/Resources/*
           bash scripts/measure-bundle.sh release/mac-arm64/AskFiles.app/Contents/Resources | tee -a "$GITHUB_STEP_SUMMARY"
 
+      # Timings of the three rerankers the presets may name, on this Mac, through the shell's own code
+      # (dist/main/answer) and the pruned server's @xenova/transformers; docs/plan.md records them.
+      - name: Cache the reranker models
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/reranker
+          key: reranker-models-${{ hashFiles('src/main/answer/reranker-models.ts') }}
+      - name: Time the rerankers
+        run: node scripts/bench-reranker.mjs "$RUNNER_TEMP/reranker" | tee -a "$GITHUB_STEP_SUMMARY"
+
       # The notices the DMG ships, for comparing with or replacing the committed Linux-generated file.
       - uses: actions/upload-artifact@v4
         with:
@@ -180,7 +191,7 @@ jobs:
         with:
           path: ~/Library/Application Support/AskFiles/ollama
           key: ollama-models-${{ env.SMOKE_CHAT_MODEL }}-${{ env.SMOKE_EMBED_MODEL }}-v1
-      - name: Smoke test (first run, search page, quit)
+      - name: Smoke test (first run, Ask page, pipeline answer, quit)
         run: bash scripts/smoke-mac.sh "$RUNNER_TEMP/app/AskFiles.app" "$RUNNER_TEMP/smoke"
       - uses: actions/upload-artifact@v4
         if: always()

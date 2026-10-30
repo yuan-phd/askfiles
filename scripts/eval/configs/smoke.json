@@ -13,5 +13,15 @@
   "rerank": false,
   "reasoningEffort": "off",
   "passes": 2,
-  "contextTokens": 4096
+  "contextTokens": 4096,
+  "scope": "balanced",
+  "answer": {
+    "rerankerModel": "Xenova/ms-marco-MiniLM-L-6-v2",
+    "rerankerBypassCjk": true,
+    "rerankFloor": {
+      "strict": 0.5,
+      "balanced": 0,
+      "broad": 0
+    }
+  }
 }
