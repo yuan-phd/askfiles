@@ -397,7 +397,6 @@ function apiWorkspaceThreadEndpoints(app) {
           userId,
           attachments = [],
           reset = false,
-          reasoningEffort = null,
         } = reqBody(request);
         const workspace = await Workspace.get({ slug: String(slug) });
         if (!workspace) {
@@ -455,8 +454,6 @@ function apiWorkspaceThreadEndpoints(app) {
           thread,
           attachments,
           reset,
-          reasoningEffort:
-            typeof reasoningEffort === "string" ? reasoningEffort : null,
         });
         await Telemetry.sendTelemetry("sent_chat", {
           LLMSelection: process.env.LLM_PROVIDER || "openai",
@@ -583,7 +580,6 @@ function apiWorkspaceThreadEndpoints(app) {
           userId,
           attachments = [],
           reset = false,
-          reasoningEffort = null,
         } = reqBody(request);
         const workspace = await Workspace.get({ slug: String(slug) });
         if (!workspace) {
@@ -646,8 +642,6 @@ function apiWorkspaceThreadEndpoints(app) {
           thread,
           attachments,
           reset,
-          reasoningEffort:
-            typeof reasoningEffort === "string" ? reasoningEffort : null,
         });
         await Telemetry.sendTelemetry("sent_chat", {
           LLMSelection: process.env.LLM_PROVIDER || "openai",

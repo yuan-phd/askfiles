@@ -103,10 +103,6 @@ You can fix this by restarting AnythingLLM so the model map is re-pulled.
    * @returns {Record<string, Record<string, number>>} - The formatted model map
    */
   async #pullRemoteModelMap() {
-    if (process.env.ANYTHING_LLM_ALLOW_REMOTE_MODEL_DATA !== "true") {
-      this.log("Remote model map sync disabled");
-      return null;
-    }
     try {
       this.log("Pulling remote model map...");
       const response = await fetch(ContextWindowFinder.remoteUrl);

@@ -235,4 +235,4 @@ For two upstream-route runs: each category's headline rate for A and B with the 
 - The harness measures latency on the machine it runs on; the Electron app adds nothing to it but window rendering. The reranker runs in the harness's Node process here and in the app's main process there.
 - The stage 1 cache is keyed by question text and index hash only: after changing the pipeline code itself, delete .eval-data/retrieval-cache.
 - With rerankerBypassCjk on, a library that mixes Chinese and English sections bypasses the reranker for most questions, and the floor columns of the sweep then show the same numbers.
-- Smoke runs in the cloud container use qwen3:0.6b and all-minilm on CPU and only test the pipeline; their answers say nothing about quality. Their output is in docs/eval-smoke.
+- Smoke runs in the cloud container use qwen3:0.6b and all-minilm on CPU and only test the pipeline; their answers say nothing about quality. Their output is in docs/eval-smoke: eval-s and eval-l through the upstream route (Session G), pipeline-s and pipeline-l through the answer pipeline, stages 1 and 2 (Session L).

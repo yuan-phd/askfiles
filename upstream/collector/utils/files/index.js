@@ -156,9 +156,7 @@ function writeToServerDocuments({
 // force remove them.
 async function wipeCollectorStorage() {
   const cleanHotDir = new Promise((resolve) => {
-    const directory = path.resolve(
-      process.env.ANYTHING_LLM_HOTDIR || path.resolve(__dirname, "../../hotdir")
-    );
+    const directory = path.resolve(__dirname, "../../hotdir");
 
     if (!fs.existsSync(directory)) return resolve();
     fs.readdir(directory, (err, files) => {
@@ -175,10 +173,7 @@ async function wipeCollectorStorage() {
   });
 
   const cleanTmpDir = new Promise((resolve) => {
-    const directory = path.resolve(
-      process.env.ANYTHING_LLM_COLLECTOR_TMP_DIR ||
-        path.resolve(__dirname, "../../storage/tmp")
-    );
+    const directory = path.resolve(__dirname, "../../storage/tmp");
     fs.readdir(directory, (err, files) => {
       if (err) return resolve();
 

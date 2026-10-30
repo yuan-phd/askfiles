@@ -32,16 +32,7 @@ if (
     })
   );
 }
-const allowedOrigins = (process.env.ANYTHING_LLM_ALLOWED_ORIGINS || "")
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
-app.use((request, response, next) => {
-  const origin = request.headers.origin;
-  if (!origin || allowedOrigins.includes(origin)) return next();
-  response.status(403).json({ error: "Origin not allowed" });
-});
-app.use(cors({ origin: allowedOrigins }));
+app.use(cors({ origin: true }));
 app.use(
   bodyParser.text({ limit: FILE_LIMIT }),
   bodyParser.json({ limit: FILE_LIMIT }),
@@ -232,7 +223,7 @@ app.all("*", function (_, response) {
 });
 
 app
-  .listen(COLLECTOR_PORT, process.env.ANYTHING_LLM_BIND_HOST || "127.0.0.1", async () => {
+  .listen(COLLECTOR_PORT, async () => {
     await wipeCollectorStorage();
     console.log(`Document processor app listening on port ${COLLECTOR_PORT}`);
   })

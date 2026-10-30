@@ -132,7 +132,7 @@ Reranker comparison on the fixture corpora (test/fixtures/eval-s and eval-l, 13 
 | bge-reranker-base | 296 MB | 5/8 | 6/8 | 3/5 | 5/5 | 1.8 s (L) | 1.4 GB |
 | bge-reranker-v2-m3 | 588 MB | 5/8 | 6/8 | 3/5 | 5/5 | 5.9 s (S), 11.7 s (L) | 2.7 GB |
 
-Scores for a Chinese answer passage: to an English question MiniLM gives 0.000; to a Chinese question bge-reranker-base gives 0.993 and v2-m3 0.979. MiniLM still scored the Chinese questions s02 and s10 against their Chinese sections at 0.999 and 0.998, so the CJK bypass of the 8 GB tier may be more cautious than needed; phase 2 can try rerankerBypassCjk false there. The fixtures are small; the comparison is repeated on the owner's corpora with the eval (--set rerankerModel=...). Timings on the CI Mac (macos-14 runner) come from the Time the rerankers step of the mac workflow; until a run is recorded here they are unverified.
+Chinese: to an English question MiniLM scores a Chinese answer passage 0.000. To a Chinese question (scripts/bench-reranker.mjs) MiniLM scores the answer 0.999 but an unrelated Chinese passage 0.801, while bge-reranker-base gives 0.999 and 0.000; MiniLM's Chinese scores do not separate relevant from unrelated, which is why the 8 GB tier bypasses it for Chinese. The fixtures are small; the comparison is repeated on the owner's corpora with the eval (--set rerankerModel=...). Timings on the CI Mac (macos-14 runner) come from the Time the rerankers step of the mac workflow; until a run is recorded here they are unverified.
 
 **Tasks**
 

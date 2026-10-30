@@ -1,10 +1,6 @@
 process.env.NODE_ENV === "development"
   ? require("dotenv").config({ path: `.env.${process.env.NODE_ENV}` })
-  : require("dotenv").config(
-      process.env.ANYTHING_LLM_ENV_PATH
-        ? { path: process.env.ANYTHING_LLM_ENV_PATH }
-        : undefined
-    );
+  : require("dotenv").config();
 
 require("./utils/logger")();
 require("./utils/boot/patchSdkTimeouts")();
@@ -68,20 +64,7 @@ if (
     })
   );
 }
-const allowedOrigins = [
-  `http://127.0.0.1:${process.env.SERVER_PORT || 3001}`,
-  `http://localhost:${process.env.SERVER_PORT || 3001}`,
-  ...(process.env.ANYTHING_LLM_ALLOWED_ORIGINS || "")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean),
-];
-app.use((request, response, next) => {
-  const origin = request.headers.origin;
-  if (!origin || allowedOrigins.includes(origin)) return next();
-  response.status(403).json({ error: "Origin not allowed" });
-});
-app.use(cors({ origin: allowedOrigins }));
+app.use(cors({ origin: true }));
 // Embed endpoints are public-facing and only accept small payloads, so parse them
 // first with a tight limit. The global parsers below skip already-parsed bodies.
 app.use("/api/embed", [

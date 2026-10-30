@@ -1714,8 +1714,7 @@ function dumpENV() {
     .map(([key, value]) => `${key}='${sanitizeValue(value)}'`)
     .join("\n");
 
-  const envPath =
-    process.env.ANYTHING_LLM_ENV_PATH || path.join(__dirname, "../../.env");
+  const envPath = path.join(__dirname, "../../.env");
   fs.writeFileSync(envPath, envResult, { encoding: "utf8", flag: "w" });
   return true;
 }

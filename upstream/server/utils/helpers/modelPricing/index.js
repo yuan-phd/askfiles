@@ -227,10 +227,6 @@ class ModelPricing {
   }
 
   async #refresh() {
-    if (process.env.ANYTHING_LLM_ALLOW_REMOTE_MODEL_DATA !== "true") {
-      log("Remote pricing sync disabled");
-      return;
-    }
     try {
       const headers = {};
       if (this.#hasDiskCache && fs.existsSync(CACHE_FILES.etag)) {

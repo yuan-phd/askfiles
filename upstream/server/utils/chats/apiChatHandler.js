@@ -3,7 +3,6 @@ const { DocumentManager } = require("../DocumentManager");
 const { WorkspaceChats } = require("../../models/workspaceChats");
 const { getVectorDbClass, resolveProviderConnector } = require("../helpers");
 const { addChatCostToMetrics } = require("../helpers/modelPricing");
-const { resolveReasoningEffort } = require("../helpers/reasoningEffort");
 const { writeResponseChunk } = require("../helpers/chat/responses");
 const { abortConnectorOnClientDisconnect } = require("../helpers/abortSignals");
 const {
@@ -135,7 +134,6 @@ function generatedImageOutputs(agentHandler) {
  *  sessionId: string|null,
  *  attachments: { name: string; mime: string; contentString: string }[],
  *  reset: boolean,
- *  reasoningEffort: string|null,
  * }} parameters
  * @returns {Promise<ResponseObject>}
  */
@@ -148,7 +146,6 @@ async function chatSync({
   sessionId = null,
   attachments = [],
   reset = false,
-  reasoningEffort = null,
 }) {
   const uuid = uuidv4();
   const chatMode = mode ?? workspace?.chatMode ?? "automatic";
@@ -452,14 +449,9 @@ async function chatSync({
   );
 
   // Send the text completion.
-  const resolvedEffort = await resolveReasoningEffort(
-    LLMConnector,
-    reasoningEffort ?? process.env.DEFAULT_REASONING_EFFORT ?? null
-  );
   const { textResponse, metrics: completionMetrics } =
     await LLMConnector.getChatCompletion(messages, {
       user: user,
-      reasoningEffort: resolvedEffort,
     });
   const performanceMetrics = addChatCostToMetrics(completionMetrics, {
     routingMetadata,
@@ -518,7 +510,6 @@ async function chatSync({
  *  sessionId: string|null,
  *  attachments: { name: string; mime: string; contentString: string }[],
  *  reset: boolean,
- *  reasoningEffort: string|null,
  * }} parameters
  * @returns {Promise<VoidFunction>}
  */
@@ -532,7 +523,6 @@ async function streamChat({
   sessionId = null,
   attachments = [],
   reset = false,
-  reasoningEffort = null,
 }) {
   const uuid = uuidv4();
   const chatMode = mode ?? workspace?.chatMode ?? "automatic";
@@ -850,11 +840,6 @@ async function streamChat({
     rawHistory
   );
 
-  const resolvedEffort = await resolveReasoningEffort(
-    LLMConnector,
-    reasoningEffort ?? process.env.DEFAULT_REASONING_EFFORT ?? null
-  );
-
   // If streaming is not explicitly enabled for connector
   // we do regular waiting of a response and send a single chunk.
   if (LLMConnector.streamingEnabled() !== true) {
@@ -864,7 +849,6 @@ async function streamChat({
     const { textResponse, metrics: performanceMetrics } =
       await LLMConnector.getChatCompletion(messages, {
         user: user,
-        reasoningEffort: resolvedEffort,
       });
     completeText = textResponse;
     metrics = addChatCostToMetrics(performanceMetrics, {
@@ -884,7 +868,6 @@ async function streamChat({
   } else {
     const stream = await LLMConnector.streamGetChatCompletion(messages, {
       user: user,
-      reasoningEffort: resolvedEffort,
     });
     completeText = await LLMConnector.handleStream(response, stream, { uuid });
     metrics = addChatCostToMetrics(stream.metrics, {

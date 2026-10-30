@@ -1,0 +1,55 @@
+﻿run_id,corpus,id,category,question,expected_answer,expected_source_file,expected_section,expected_section_path,expected_page,key_elements,terms,bypass,candidates,expected_rank,expected_rerank,selected,target_hit,cached,vector_ms,keyword_ms,rerank_ms
+20261030T160733Z-eval-l-smoke,eval-l,l01,middle_of_long_doc,Which bay must be used to unload pallets heavier than 850 kg?,Bay 3 with the forklift,operations-manual.docx,1.1 Receiving goods,,,bay 3; forklift,bay [1]; used [1]; unload [1]; pallets [1]; heavier [1]; 850 [1]; pallets heavier [1]; 850 kg [1],a candidate section is mainly CJK,"1. operations-manual.docx | Operations manual 运营手册 > 1 Warehouse > 1.1 Receiving goods
+2. operations-manual.docx | Operations manual 运营手册
+3. operations-manual.docx | Operations manual 运营手册 > 1 Warehouse > 1.2 Storage
+4. operations-manual.docx | Operations manual 运营手册 > 2 Shipping 发货 > 2.1 国内发货
+5. operations-manual.docx | Operations manual 运营手册 > 3 Safety 安全 > 3.2 急救
+6. operations-manual.docx | Operations manual 运营手册 > 2 Shipping 发货 > 2.2 International shipping
+7. operations-manual.docx | Operations manual 运营手册 > 3 Safety 安全 > 3.1 Fire drills",1,,"1. operations-manual.docx | Operations manual 运营手册 > 1 Warehouse > 1.1 Receiving goods
+2. operations-manual.docx | Operations manual 运营手册
+3. operations-manual.docx | Operations manual 运营手册 > 1 Warehouse > 1.2 Storage",yes,no,326,6,3
+20261030T160733Z-eval-l-smoke,eval-l,l02,middle_of_long_doc,What do clerks record for chilled goods?,The core temperature of one carton per pallet,operations-manual.docx,1.1 Receiving goods,,,core temperature,record [1]; chilled [1]; chilled goods [1],a candidate section is mainly CJK,"1. operations-manual.docx | Operations manual 运营手册 > 1 Warehouse > 1.1 Receiving goods
+2. operations-manual.docx | Operations manual 运营手册 > 2 Shipping 发货 > 2.1 国内发货
+3. operations-manual.docx | Operations manual 运营手册 > 1 Warehouse > 1.2 Storage
+4. operations-manual.docx | Operations manual 运营手册
+5. operations-manual.docx | Operations manual 运营手册 > 2 Shipping 发货 > 2.2 International shipping
+6. operations-manual.docx | Operations manual 运营手册 > 3 Safety 安全 > 3.2 急救
+7. operations-manual.docx | Operations manual 运营手册 > 3 Safety 安全 > 3.1 Fire drills",1,,"1. operations-manual.docx | Operations manual 运营手册 > 1 Warehouse > 1.1 Receiving goods
+2. operations-manual.docx | Operations manual 运营手册 > 2 Shipping 发货 > 2.1 国内发货
+3. operations-manual.docx | Operations manual 运营手册 > 1 Warehouse > 1.2 Storage",yes,no,74,0,0
+20261030T160733Z-eval-l-smoke,eval-l,l03,single_fact,国内订单几点前确认可以当天发货？,下午3点前,operations-manual.docx,2.1 国内发货,,,3点,国内订单 [1]; 点前确认 [1]; 当天发货 [1],question is mainly CJK,"1. operations-manual.docx | Operations manual 运营手册 > 1 Warehouse > 1.1 Receiving goods
+2. operations-manual.docx | Operations manual 运营手册 > 2 Shipping 发货 > 2.1 国内发货
+3. operations-manual.docx | Operations manual 运营手册 > 3 Safety 安全 > 3.2 急救
+4. operations-manual.docx | Operations manual 运营手册 > 2 Shipping 发货 > 2.2 International shipping
+5. operations-manual.docx | Operations manual 运营手册
+6. operations-manual.docx | Operations manual 运营手册 > 1 Warehouse > 1.2 Storage
+7. operations-manual.docx | Operations manual 运营手册 > 3 Safety 安全 > 3.1 Fire drills",2,,"1. operations-manual.docx | Operations manual 运营手册 > 1 Warehouse > 1.1 Receiving goods
+2. operations-manual.docx | Operations manual 运营手册 > 2 Shipping 发货 > 2.1 国内发货
+3. operations-manual.docx | Operations manual 运营手册 > 3 Safety 安全 > 3.2 急救",yes,no,56,2,0
+20261030T160733Z-eval-l-smoke,eval-l,l04,section_listing,Which sections are about safety?,3.1 Fire drills; 3.2 急救,operations-manual.docx,3.1 Fire drills;3.2 急救,,,fire drills; 急救,,a candidate section is mainly CJK,"1. operations-manual.docx | Operations manual 运营手册 > 1 Warehouse > 1.1 Receiving goods
+2. operations-manual.docx | Operations manual 运营手册 > 3 Safety 安全 > 3.1 Fire drills
+3. operations-manual.docx | Operations manual 运营手册
+4. operations-manual.docx | Operations manual 运营手册 > 1 Warehouse > 1.2 Storage
+5. operations-manual.docx | Operations manual 运营手册 > 2 Shipping 发货 > 2.1 国内发货
+6. operations-manual.docx | Operations manual 运营手册 > 3 Safety 安全 > 3.2 急救
+7. operations-manual.docx | Operations manual 运营手册 > 2 Shipping 发货 > 2.2 International shipping",2,,"1. operations-manual.docx | Operations manual 运营手册 > 1 Warehouse > 1.1 Receiving goods
+2. operations-manual.docx | Operations manual 运营手册 > 3 Safety 安全 > 3.1 Fire drills
+3. operations-manual.docx | Operations manual 运营手册",no,no,63,0,0
+20261030T160733Z-eval-l-smoke,eval-l,l05,section_listing,Which sections describe shipping?,2.1 国内发货; 2.2 International shipping,operations-manual.docx,2.1 国内发货;2.2 International shipping,,,国内发货; international shipping,shipping [1],a candidate section is mainly CJK,"1. operations-manual.docx | Operations manual 运营手册 > 1 Warehouse > 1.1 Receiving goods
+2. operations-manual.docx | Operations manual 运营手册 > 2 Shipping 发货 > 2.2 International shipping
+3. operations-manual.docx | Operations manual 运营手册 > 1 Warehouse > 1.2 Storage
+4. operations-manual.docx | Operations manual 运营手册
+5. operations-manual.docx | Operations manual 运营手册 > 2 Shipping 发货 > 2.1 国内发货
+6. operations-manual.docx | Operations manual 运营手册 > 3 Safety 安全 > 3.2 急救
+7. operations-manual.docx | Operations manual 运营手册 > 3 Safety 安全 > 3.1 Fire drills",5,,"1. operations-manual.docx | Operations manual 运营手册 > 1 Warehouse > 1.1 Receiving goods
+2. operations-manual.docx | Operations manual 运营手册 > 2 Shipping 发货 > 2.2 International shipping
+3. operations-manual.docx | Operations manual 运营手册 > 1 Warehouse > 1.2 Storage",no,no,55,0,0
+20261030T160733Z-eval-l-smoke,eval-l,l06,absent_unrelated,Who won the football world cup in 2010?,Not in the documents,,,,,,,a candidate section is mainly CJK,"1. operations-manual.docx | Operations manual 运营手册 > 1 Warehouse > 1.1 Receiving goods
+2. operations-manual.docx | Operations manual 运营手册 > 3 Safety 安全 > 3.1 Fire drills
+3. operations-manual.docx | Operations manual 运营手册 > 2 Shipping 发货 > 2.1 国内发货
+4. operations-manual.docx | Operations manual 运营手册 > 3 Safety 安全 > 3.2 急救
+5. operations-manual.docx | Operations manual 运营手册 > 2 Shipping 发货 > 2.2 International shipping
+6. operations-manual.docx | Operations manual 运营手册 > 1 Warehouse > 1.2 Storage
+7. operations-manual.docx | Operations manual 运营手册",,,"1. operations-manual.docx | Operations manual 运营手册 > 1 Warehouse > 1.1 Receiving goods
+2. operations-manual.docx | Operations manual 运营手册 > 3 Safety 安全 > 3.1 Fire drills
+3. operations-manual.docx | Operations manual 运营手册 > 2 Shipping 发货 > 2.1 国内发货",,no,52,0,0
