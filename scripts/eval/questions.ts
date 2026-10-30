@@ -22,7 +22,9 @@ export const QUESTION_COLUMNS = [
   'expected_answer',
   'expected_source_file',
   'expected_section',
+  'expected_section_path',
   'expected_page',
+  'key_elements',
   'notes',
 ] as const;
 
@@ -33,7 +35,11 @@ export interface Question {
   expected_answer: string;
   expected_source_file: string;
   expected_section: string;
+  /** Headings from the outside in, separated by >; several sections separated by semicolons. */
+  expected_section_path: string;
   expected_page: string;
+  /** Phrases a correct answer contains, separated by semicolons (docs/eval.md). */
+  key_elements: string;
   notes: string;
 }
 

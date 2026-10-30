@@ -23,6 +23,11 @@ const INVOKE: Record<string, keyof BridgeHandlers> = {
   [CHANNELS.browseDocument]: 'browseDocument',
   [CHANNELS.browseHeadings]: 'browseHeadings',
   [CHANNELS.browseSearch]: 'browseSearch',
+  [CHANNELS.answerAsk]: 'answerAsk',
+  [CHANNELS.answerCancel]: 'answerCancel',
+  [CHANNELS.answerDeveloper]: 'answerDeveloper',
+  [CHANNELS.answerSetOverrides]: 'answerSetOverrides',
+  [CHANNELS.answerSaveCase]: 'answerSaveCase',
   [CHANNELS.appInfo]: 'appInfo',
 };
 
@@ -35,6 +40,8 @@ export const REQUEST_CHANNELS: readonly string[] = [
 
 /** Longest keyword query and heading key a page may send. */
 const MAX_QUERY = 500;
+/** Longest question a page may send. */
+const MAX_QUESTION = 4000;
 
 const str = (v: unknown, max = MAX_QUERY): string | null => (typeof v === 'string' ? v.slice(0, max) : null);
 
@@ -68,6 +75,30 @@ export function registerBridge(ipc: IpcMainLike, h: BridgeHandlers): void {
           return h.browseHeadings(str(args[0]) || null);
         case 'browseSearch':
           return h.browseSearch(str(args[0]) ?? '');
+        case 'answerAsk': {
+          const question = str(args[0], MAX_QUESTION)?.trim();
+          if (!question) throw new Error('a question is required');
+          // Events go to the page that asked, not to every window.
+          const sender = (_event as { sender?: { send(channel: string, payload: unknown): void } } | null)?.sender;
+          return h.answerAsk(question, (e) => sender?.send(CHANNELS.answerEvent, e));
+        }
+        case 'answerCancel':
+          return h.answerCancel(str(args[0], 100) ?? '');
+        case 'answerSetOverrides': {
+          const o = (args[0] && typeof args[0] === 'object' ? args[0] : {}) as Record<string, unknown>;
+          const num = (v: unknown) => (typeof v === 'number' ? v : null);
+          return h.answerSetOverrides({ sectionCount: num(o.sectionCount), rerankFloor: num(o.rerankFloor) });
+        }
+        case 'answerSaveCase': {
+          const c = (args[0] && typeof args[0] === 'object' ? args[0] : {}) as Record<string, unknown>;
+          const question = str(c.question, MAX_QUESTION)?.trim();
+          const file = str(c.file, 1024);
+          const sectionPath = Array.isArray(c.path) ? c.path.filter((t) => typeof t === 'string').slice(0, 20) : [];
+          if (!question || !file || !sectionPath.length)
+            throw new Error('a question, a file and a section path are required');
+          const page = typeof c.pageStart === 'number' && c.pageStart > 0 ? c.pageStart : null;
+          return h.answerSaveCase({ question, file, path: sectionPath as string[], pageStart: page });
+        }
         default:
           return (h[name] as () => unknown)();
       }

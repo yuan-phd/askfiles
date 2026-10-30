@@ -29,6 +29,11 @@ export interface WizardDeps {
   restartServer(): Promise<string>;
   /** Writes the library workspace settings through the API; optional until the library exists. */
   applyWorkspaceSettings?(settings: Record<string, string | number>): Promise<void>;
+  /**
+   * Fetches the preset's reranker (src/main/answer, ensureReranker) after the Ollama models, with
+   * the same progress events; skipped when absent, as in tests that only cover Ollama.
+   */
+  fetchReranker?(repo: string, onProgress: (p: PullProgress) => void): Promise<void>;
   /** Pretend total RAM in bytes; default os.totalmem(). */
   totalMemBytes?: number;
   fetch?: FetchLike;
@@ -172,9 +177,11 @@ export class Wizard extends EventEmitter<{ event: [WizardEvent] }> {
     const p = this.s.tier!.preset;
     // Embedder first: it is the smaller download and indexing needs it before any question.
     const tags = [...new Set([p.embeddingModel, p.chatModel])];
+    const fetchReranker = this.deps.fetchReranker;
+    const count = tags.length + (fetchReranker ? 1 : 0);
     const installed = await this.deps.ollama.list();
     for (const [index, tag] of tags.entries()) {
-      const base = { type: 'progress' as const, index, count: tags.length };
+      const base = { type: 'progress' as const, index, count };
       const have = installed.find((m) => normalizeTag(m.name) === normalizeTag(tag));
       if (have) {
         this.log(`${tag} already installed`);
@@ -191,6 +198,12 @@ export class Wizard extends EventEmitter<{ event: [WizardEvent] }> {
       this.log(`pulling ${tag}`);
       await this.deps.ollama.pull(tag, (pr) => this.emit('event', { ...base, ...pr }));
       this.log(`pulled ${tag}`);
+    }
+    if (fetchReranker) {
+      const repo = p.answer.rerankerModel;
+      this.log(`fetching reranker ${repo}`);
+      await fetchReranker(repo, (pr) => this.emit('event', { type: 'progress', index: tags.length, count, ...pr }));
+      this.log(`reranker ${repo} ready`);
     }
   }
 

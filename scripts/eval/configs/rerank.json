@@ -1,5 +1,5 @@
 {
-  "$comment": "default.json with upstream reranking on (vectorSearchMode rerank), for the phase 2 comparison. The first run downloads the reranker from huggingface.co.",
+  "$comment": "default.json with upstream reranking on (vectorSearchMode rerank), for the phase 2 comparison of the upstream route: run with --upstream. The first run downloads the reranker from huggingface.co.",
   "label": "16gb-rerank",
   "chatModel": "qwen3:8b",
   "embeddingModel": "bge-m3:latest",

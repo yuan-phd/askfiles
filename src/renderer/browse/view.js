@@ -1,6 +1,6 @@
 // Browse view: read the library without asking anything. Library, document, headings and find
 // pages, all drawn from the shell's browse index through window.askfiles.browse; no model and no
-// server call. Mounted by the search page next to Search, and by browse/index.html on its own.
+// server call. Mounted by the Ask page next to Ask, and by browse/index.html on its own.
 
 const MARKUP = `
 <nav class="browse-tabs" aria-label="Browse">

@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { answerParamProblems, type AnswerParams } from '../answer/params.js';
 
 export interface Preset {
   id: string;
@@ -20,6 +21,8 @@ export interface Preset {
   reasoningEffort: 'off';
   ocrLanguages: string;
   systemPrompt: string;
+  /** Answer pipeline values (src/main/answer/params.ts); the reranker is fetched at first run. */
+  answer: AnswerParams;
 }
 
 export interface PresetFile {
@@ -87,6 +90,8 @@ const PRESET_FIELDS: Record<keyof Preset, Check> = {
   reasoningEffort: oneOf('off'),
   ocrLanguages: (v) => envStr(v) ?? (OCR_LANGS.test(v as string) ? null : 'must be comma separated tesseract codes'),
   systemPrompt: str,
+  // Checked in full below, with one problem per bad key.
+  answer: () => null,
 };
 
 /** Returns the presets typed, or throws PresetError listing every problem found. */
@@ -118,6 +123,7 @@ export function validatePresets(data: unknown): PresetFile {
     for (const key of Object.keys(tier)) {
       if (!(key in PRESET_FIELDS)) problems.push(`${at}.${key} is not a known field`);
     }
+    if ('answer' in tier) problems.push(...answerParamProblems(tier.answer, `${at}.answer`));
     if (typeof tier.id === 'string') {
       if (ids.has(tier.id)) problems.push(`${at}.id ${tier.id} is used twice`);
       ids.add(tier.id);

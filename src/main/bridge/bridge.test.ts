@@ -27,6 +27,9 @@ function loadPreload(handlers: BridgeHandlers) {
 
   const used = new Set<string>();
   const subscribed = new Map<string, Set<Listener>>();
+  const toPage = (channel: string, payload: unknown) => {
+    for (const l of subscribed.get(channel) ?? []) l({}, structuredClone(payload));
+  };
   const ipcRenderer = {
     async invoke(channel: string, ...args: unknown[]) {
       used.add(channel);
@@ -34,7 +37,8 @@ function loadPreload(handlers: BridgeHandlers) {
       if (!h) throw new Error(`No handler registered for '${channel}'`);
       try {
         // Arguments and results are copied across the bridge, as structured clone does.
-        return structuredClone(await h({}, ...structuredClone(args)));
+        // The sender is the page; the answer events of a question go back to it only.
+        return structuredClone(await h({ sender: { send: toPage } }, ...structuredClone(args)));
       } catch (e) {
         // Electron's wording for a handler that threw.
         throw new Error(`Error invoking remote method '${channel}': ${String(e)}`, { cause: e });
@@ -87,9 +91,7 @@ function loadPreload(handlers: BridgeHandlers) {
     clearImmediate,
   );
   /** Main pushing an event to the page. */
-  const send = (channel: string, payload: unknown) => {
-    for (const l of subscribed.get(channel) ?? []) l({}, structuredClone(payload));
-  };
+  const send = toPage;
   return { exposed, used, subscribed, send, outputText };
 }
 
@@ -128,6 +130,15 @@ function recordingHandlers() {
     browseDocument: rec('browseDocument', null),
     browseHeadings: rec('browseHeadings', [{ key: 'scope', label: 'Scope', documents: 2, entries: [] }]),
     browseSearch: rec('browseSearch', { query: 'q', terms: ['q'], total: 0, groups: [], truncated: false }),
+    answerAsk: (question: string, emit: (e: never) => void) => {
+      calls.push(['answerAsk', question]);
+      emit({ id: 'r1', type: 'stage', stage: 'retrieving' } as never);
+      return { id: 'r1' };
+    },
+    answerCancel: rec('answerCancel', undefined) as BridgeHandlers['answerCancel'],
+    answerDeveloper: rec('answerDeveloper', { enabled: true, overrides: {}, trace: null }),
+    answerSetOverrides: rec('answerSetOverrides', { sectionCount: 2, rerankFloor: null }),
+    answerSaveCase: rec('answerSaveCase', { id: 'case-1', file: '/d/q.csv' }),
     appInfo: rec('appInfo', { name: 'AskFiles', version: '0.1.0' }),
     appPageReady: rec('appPageReady', undefined) as BridgeHandlers['appPageReady'],
   };
@@ -173,6 +184,12 @@ describe('preload bridge', () => {
     // The scan must see the pages; an empty result would pass vacuously.
     expect([...calls.keys()].sort()).toEqual(
       [
+        'askfiles.answer.ask',
+        'askfiles.answer.cancel',
+        'askfiles.answer.developer',
+        'askfiles.answer.onEvent',
+        'askfiles.answer.saveCase',
+        'askfiles.answer.setOverrides',
         'askfiles.app.info',
         'askfiles.app.pageReady',
         'askfiles.browse.document',
@@ -192,7 +209,6 @@ describe('preload bridge', () => {
         'askfiles.watcher.onStatus',
         'askfiles.watcher.status',
         'shellConfig.openSource',
-        'shellConfig.resolveSources',
       ].sort(),
     );
     for (const call of calls.keys()) {
@@ -226,8 +242,14 @@ describe('preload bridge', () => {
     await a.browse.document({ id: 'abc' });
     await a.browse.headings();
     await a.browse.search('leave');
+    a.answer.onEvent(() => {});
+    await a.answer.ask('How long is leave?');
+    await a.answer.cancel('r1');
+    await a.answer.developer();
+    await a.answer.setOverrides({ sectionCount: 2 });
+    await a.answer.saveCase({ question: 'q', file: 'a.pdf', path: ['Leave'], pageStart: 3 });
     await a.app.info();
-    a.app.pageReady({ page: 'search' });
+    a.app.pageReady({ page: 'ask' });
     const all = new Set([...REQUEST_CHANNELS, ...EVENT_CHANNELS]);
     expect([...p.used].sort()).toEqual([...all].sort());
     expect(new Set(Object.values(CHANNELS))).toEqual(all);
@@ -301,6 +323,29 @@ describe('preload bridge', () => {
     a.watcher.onStatus((s) => statuses.push(s));
     p.send(CHANNELS.watcherStatusEvent, { state: 'idle', indexed: 2 });
     expect(statuses).toEqual([{ state: 'idle', indexed: 2 }]);
+  });
+
+  it('sends answer events to the asking page and checks the answer arguments', async () => {
+    const t = recordingHandlers();
+    const p = loadPreload(t.h);
+    const a = p.exposed.askfiles as unknown as import('./contract.js').AskfilesBridge;
+    const seen: unknown[] = [];
+    a.answer.onEvent((e) => seen.push(e));
+    expect(await a.answer.ask('  How long is leave?  ')).toEqual({ id: 'r1' });
+    expect(t.calls).toContainEqual(['answerAsk', 'How long is leave?']);
+    expect(seen).toEqual([{ id: 'r1', type: 'stage', stage: 'retrieving' }]);
+    await expect(a.answer.ask('   ')).rejects.toThrow(/^a question is required$/);
+
+    await a.answer.setOverrides({ sectionCount: '3', rerankFloor: 0.2 } as never);
+    expect(t.calls).toContainEqual(['answerSetOverrides', { sectionCount: null, rerankFloor: 0.2 }]);
+    await expect(a.answer.saveCase({ question: 'q', file: 'a.pdf', path: [], pageStart: null })).rejects.toThrow(
+      /a question, a file and a section path are required/,
+    );
+    await a.answer.saveCase({ question: 'q', file: 'a.pdf', path: ['A', 7 as never, 'B'], pageStart: -1 });
+    expect(t.calls).toContainEqual([
+      'answerSaveCase',
+      { question: 'q', file: 'a.pdf', path: ['A', 'B'], pageStart: null },
+    ]);
   });
 
   it('answers the sync config request even when the handler fails', () => {

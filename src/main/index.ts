@@ -16,7 +16,7 @@ protocol.registerSchemesAsPrivileged([
 
 /**
  * Handlers for a developer run against a server started by hand (ASKFILES_PORT or the config
- * file): the search page talks to that server and makes its own key; no setup, no watcher.
+ * file): the Ask page talks to that server and makes its own key; no setup, no watcher.
  */
 function externalHandlers(baseUrl: string | null, log: (m: string) => void): BridgeHandlers {
   const unavailable = async (): Promise<never> => {
@@ -39,6 +39,17 @@ function externalHandlers(baseUrl: string | null, log: (m: string) => void): Bri
     browseDocument: () => null,
     browseHeadings: () => [],
     browseSearch: (query) => ({ query, terms: [], total: 0, groups: [], truncated: false }),
+    answerAsk: () => {
+      throw new Error('answers need the AskFiles library, which an external server does not have');
+    },
+    answerCancel: () => {},
+    answerDeveloper: () => ({ enabled: false, overrides: {}, trace: null }),
+    answerSetOverrides: () => {
+      throw new Error('not available when AskFiles connects to an external server');
+    },
+    answerSaveCase: () => {
+      throw new Error('not available when AskFiles connects to an external server');
+    },
     appInfo: () => ({ name: 'AskFiles', version: app.getVersion() }),
     appPageReady: (info) => log(`page ready ${info.page} connected=${info.connected ?? '-'}`),
   };
@@ -128,7 +139,7 @@ function main(): void {
       void win.loadURL(messagePage('No server to connect to.', configError));
     } else if (external) {
       handlers = externalHandlers(external, log);
-      const target = upstreamUiEnabled(process.env) ? external + '/' : pageUrl('search');
+      const target = upstreamUiEnabled(process.env) ? external + '/' : pageUrl('ask');
       log(`opening ${target}`);
       void win.loadURL(target);
     } else if (app.isPackaged) {

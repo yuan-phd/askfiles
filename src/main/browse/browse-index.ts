@@ -3,9 +3,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FileRecord } from '../watcher/index.js';
 import { buildDocument, documentId, type StoredChunk } from './build.js';
+import { rankSections, sectionFrequency, type FoldedSection, type RankedSection } from './rank.js';
 import { fold, markRanges, occurrences, queryTerms, snippetOf } from './search.js';
 import type {
   BrowseDocument,
+  BrowseSection,
   DocumentRef,
   DocumentSummary,
   HeadingEntry,
@@ -211,6 +213,39 @@ export class BrowseIndex {
     }
     result.groups = scored.sort((a, b) => b.score - a.score).map((x) => x.group);
     return result;
+  }
+
+  /** Number of sections over all documents. */
+  sectionTotal(): number {
+    let n = 0;
+    for (const d of this.docs.values()) n += d.sections.length;
+    return n;
+  }
+
+  /** Number of sections whose folded title or text contains the folded term. */
+  sectionFrequency(term: string): number {
+    return sectionFrequency(this.foldedSections(), fold(term));
+  }
+
+  /** BM25 over all sections for terms (any term matches); see rank.ts. */
+  rankSections(terms: string[], limit: number): RankedSection[] {
+    return rankSections(this.foldedSections(), terms.map(fold), limit);
+  }
+
+  /** One section of a document by its 1-based index. */
+  section(documentId: string, sectionIndex: number): { document: BrowseDocument; section: BrowseSection } | null {
+    const document = this.docs.get(documentId);
+    const section = document?.sections.find((s) => s.index === sectionIndex);
+    return document && section ? { document, section } : null;
+  }
+
+  private foldedSections(): FoldedSection[] {
+    const out: FoldedSection[] = [];
+    for (const d of [...this.docs.values()].sort((a, b) => a.relPath.localeCompare(b.relPath))) {
+      const hay = this.foldedOf(d);
+      d.sections.forEach((s, i) => out.push({ documentId: d.id, sectionIndex: s.index, folded: hay[i]! }));
+    }
+    return out;
   }
 
   private foldedOf(d: BrowseDocument): string[] {

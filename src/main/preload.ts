@@ -1,7 +1,7 @@
 // Preload script of every AskFiles window. The windows run sandboxed with context isolation and
 // without Node integration, so this file may load nothing but electron: the channel names below
 // repeat CHANNELS in bridge/contract.ts (bridge.test.ts keeps the two in step). It exposes
-// window.askfiles, the API the onboarding, models, search, browse and about pages call, and
+// window.askfiles, the API the onboarding, models, ask, browse and about pages call, and
 // window.shellConfig, the values the search page reads at load.
 //
 // The file has no import or export, so with moduleDetection legacy (tsconfig.json) tsc emits a
@@ -64,6 +64,14 @@ const askfiles: AskfilesBridge = {
     document: (ref) => invoke('askfiles:browse:document', ref),
     headings: (key) => invoke('askfiles:browse:headings', key ?? null),
     search: (query) => invoke('askfiles:browse:search', String(query)),
+  },
+  answer: {
+    ask: (question) => invoke('askfiles:answer:ask', String(question)),
+    onEvent: (callback) => subscribe('askfiles:answer:event', callback),
+    cancel: (id) => invoke('askfiles:answer:cancel', String(id)),
+    developer: () => invoke('askfiles:answer:developer'),
+    setOverrides: (o) => invoke('askfiles:answer:set-overrides', o),
+    saveCase: (c) => invoke('askfiles:answer:save-case', c),
   },
   app: {
     info: () => invoke('askfiles:app:info'),

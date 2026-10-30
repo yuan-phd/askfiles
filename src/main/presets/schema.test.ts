@@ -37,6 +37,24 @@ describe('config/presets.json', () => {
 });
 
 describe('validatePresets failures', () => {
+  it('checks the answer block key by key, including the reranker name', () => {
+    const d = base();
+    const answer = d.tiers[0]!.answer as Record<string, unknown>;
+    d.tiers[0]!.answer = {
+      ...answer,
+      rerankerModel: 'nope',
+      rerankFloor: { strict: 2, balanced: 0, broad: 0 },
+      extra: 1,
+    };
+    delete (d.tiers[1]!.answer as Record<string, unknown>).rrfK;
+    expect(problemsOf(d)).toEqual([
+      expect.stringMatching(/^tiers\[0\]\.answer\.rerankerModel must be one of Xenova\/ms-marco-MiniLM-L-6-v2, /),
+      'tiers[0].answer.rerankFloor.strict must be a number from 0 to 1',
+      'tiers[0].answer.extra is not a known field',
+      'tiers[1].answer.rrfK is missing',
+    ]);
+  });
+
   it('rejects a non-object and an empty tier list', () => {
     expect(problemsOf(null)).toEqual(['top level must be an object']);
     expect(problemsOf({ version: 1, comment: 'x', tiers: [] })).toEqual(['tiers must be a non-empty array']);

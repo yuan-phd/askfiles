@@ -1,7 +1,7 @@
-id,category,question,expected_answer,expected_source_file,expected_section,expected_page,notes
-l01,middle_of_long_doc,Which bay must be used to unload pallets heavier than 850 kg?,Bay 3 with the forklift,operations-manual.docx,1.1 Receiving goods,,Fact in the middle of the longest section
-l02,middle_of_long_doc,What do clerks record for chilled goods?,The core temperature of one carton per pallet,operations-manual.docx,1.1 Receiving goods,,
-l03,single_fact,国内订单几点前确认可以当天发货？,下午3点前,operations-manual.docx,2.1 国内发货,,
-l04,section_listing,Which sections are about safety?,3.1 Fire drills; 3.2 急救,operations-manual.docx,3.1 Fire drills;3.2 急救,,
-l05,section_listing,Which sections describe shipping?,2.1 国内发货; 2.2 International shipping,operations-manual.docx,2.1 国内发货;2.2 International shipping,,
-l06,absent_unrelated,Who won the football world cup in 2010?,Not in the documents,,,,
+id,category,question,expected_answer,expected_source_file,expected_section,expected_section_path,expected_page,key_elements,notes
+l01,middle_of_long_doc,Which bay must be used to unload pallets heavier than 850 kg?,Bay 3 with the forklift,operations-manual.docx,1.1 Receiving goods,,,bay 3; forklift,Fact in the middle of the longest section
+l02,middle_of_long_doc,What do clerks record for chilled goods?,The core temperature of one carton per pallet,operations-manual.docx,1.1 Receiving goods,,,core temperature,
+l03,single_fact,国内订单几点前确认可以当天发货？,下午3点前,operations-manual.docx,2.1 国内发货,,,3点,
+l04,section_listing,Which sections are about safety?,3.1 Fire drills; 3.2 急救,operations-manual.docx,3.1 Fire drills;3.2 急救,,,fire drills; 急救,
+l05,section_listing,Which sections describe shipping?,2.1 国内发货; 2.2 International shipping,operations-manual.docx,2.1 国内发货;2.2 International shipping,,,国内发货; international shipping,
+l06,absent_unrelated,Who won the football world cup in 2010?,Not in the documents,,,,,,

@@ -2,7 +2,7 @@
 
 How to turn this repository into AskFiles.app and a DMG on an Apple Silicon Mac, sign it ad-hoc, and copy it to a second Mac. Everything here is LOCAL: cloud sessions stop before step 3.
 
-State of the app at this point (after Session H): the packaged app starts Ollama, the collector and the server from its bundle (src/main/app.ts, docs/process-manager.md), shows a starting page, then the onboarding page on the first launch and the search page afterwards, both from the app bundle (docs/app.md). The upstream interface opens only with ASKFILES_UPSTREAM_UI=1. ASKFILES_PORT, or {"port": N} in the file named by ASKFILES_CONFIG (default ~/Library/Application Support/AskFiles/config.json), still makes the app connect to a server started by hand instead. The CI workflow .github/workflows/mac.yml builds the same DMG and smoke tests it with scripts/smoke-mac.sh.
+State of the app at this point (after Session H): the packaged app starts Ollama, the collector and the server from its bundle (src/main/app.ts, docs/process-manager.md), shows a starting page, then the onboarding page on the first launch and the Ask page afterwards, both from the app bundle (docs/app.md). The upstream interface opens only with ASKFILES_UPSTREAM_UI=1. ASKFILES_PORT, or {"port": N} in the file named by ASKFILES_CONFIG (default ~/Library/Application Support/AskFiles/config.json), still makes the app connect to a server started by hand instead. The CI workflow .github/workflows/mac.yml builds the same DMG and smoke tests it with scripts/smoke-mac.sh.
 
 ## What you need
 
@@ -102,7 +102,7 @@ Not copied: server and collector storage/, hotdir/, .env files, tests, yarn.lock
 open release/AskFiles-0.1.0-arm64.dmg
 ```
 
-Drag AskFiles to Applications, eject the DMG, open AskFiles from Applications. Expected: a starting page, then the onboarding page (first launch) or the search page. To make it connect to a server started by hand on port 3001 (upstream/BARE_METAL.md) instead, run:
+Drag AskFiles to Applications, eject the DMG, open AskFiles from Applications. Expected: a starting page, then the onboarding page (first launch) or the Ask page. To make it connect to a server started by hand on port 3001 (upstream/BARE_METAL.md) instead, run:
 
 ```
 ASKFILES_PORT=3001 /Applications/AskFiles.app/Contents/MacOS/AskFiles

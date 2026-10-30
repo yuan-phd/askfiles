@@ -14,17 +14,17 @@ const complete = {
 };
 
 describe('start page', () => {
-  it('shows onboarding until setup is complete, then the search page', () => {
+  it('shows onboarding until setup is complete, then the Ask page', () => {
     expect(chooseStartPage({}, emptyShellState())).toBe('onboarding');
     expect(chooseStartPage({}, { ...complete, setupCompletedAt: null })).toBe('onboarding');
     expect(chooseStartPage({}, { ...complete, apiKey: null })).toBe('onboarding');
-    expect(chooseStartPage({}, complete)).toBe('search');
+    expect(chooseStartPage({}, complete)).toBe('ask');
   });
 
   it('opens the upstream interface only with ASKFILES_UPSTREAM_UI=1', () => {
     expect(chooseStartPage({ ASKFILES_UPSTREAM_UI: '1' }, complete)).toBe('upstream');
     expect(chooseStartPage({ ASKFILES_UPSTREAM_UI: '1' }, emptyShellState())).toBe('upstream');
-    expect(chooseStartPage({ ASKFILES_UPSTREAM_UI: 'true' }, complete)).toBe('search');
+    expect(chooseStartPage({ ASKFILES_UPSTREAM_UI: 'true' }, complete)).toBe('ask');
   });
 
   it('takes presets file and library folder from the environment for the smoke test', () => {

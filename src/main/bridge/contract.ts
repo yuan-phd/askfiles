@@ -1,3 +1,4 @@
+import type { DeveloperOverrides, EvalCase, ServiceEvent, Trace } from '../answer/index.js';
 import type { BrowseDocument, DocumentRef, DocumentSummary, HeadingGroup, SearchResult } from '../browse/index.js';
 import type { SourceRef } from '../open-original.js';
 import type { ModelEntry } from '../models/index.js';
@@ -30,6 +31,12 @@ export const CHANNELS = {
   browseDocument: 'askfiles:browse:document',
   browseHeadings: 'askfiles:browse:headings',
   browseSearch: 'askfiles:browse:search',
+  answerAsk: 'askfiles:answer:ask',
+  answerCancel: 'askfiles:answer:cancel',
+  answerEvent: 'askfiles:answer:event',
+  answerDeveloper: 'askfiles:answer:developer',
+  answerSetOverrides: 'askfiles:answer:set-overrides',
+  answerSaveCase: 'askfiles:answer:save-case',
   appInfo: 'askfiles:app:info',
   appPageReady: 'askfiles:app:page-ready',
 } as const;
@@ -39,6 +46,7 @@ export const EVENT_CHANNELS: readonly string[] = [
   CHANNELS.setupEvent,
   CHANNELS.modelsProgress,
   CHANNELS.watcherStatusEvent,
+  CHANNELS.answerEvent,
 ];
 
 /** Read once per page load: the search page needs it before its first request. */
@@ -82,6 +90,16 @@ export interface BridgeHandlers {
   browseHeadings(key: string | null): HeadingGroup[];
   /** Keyword search over section text, grouped by document and section. */
   browseSearch(query: string): SearchResult;
+  /**
+   * Starts answering a question (src/main/answer); events for the run follow on answerEvent to
+   * the asking page only, through emit. A new question cancels the one before.
+   */
+  answerAsk(question: string, emit: (e: ServiceEvent) => void): { id: string };
+  answerCancel(id: string): void;
+  /** Developer panel state; enabled only with ASKFILES_DEVELOPER=1. */
+  answerDeveloper(): { enabled: boolean; overrides: DeveloperOverrides; trace: Trace | null };
+  answerSetOverrides(o: DeveloperOverrides): DeveloperOverrides;
+  answerSaveCase(c: EvalCase): { id: string; file: string };
   appInfo(): { name: string; version: string };
   appPageReady(info: PageReadyInfo): void;
 }
@@ -91,6 +109,7 @@ export interface BridgeEvents {
   [CHANNELS.setupEvent]: SetupEvent;
   [CHANNELS.modelsProgress]: PullProgress;
   [CHANNELS.watcherStatusEvent]: WatcherView;
+  [CHANNELS.answerEvent]: ServiceEvent;
 }
 
 /**
@@ -124,6 +143,14 @@ export interface AskfilesBridge {
     document(ref: DocumentRef): Promise<BrowseDocument | null>;
     headings(key?: string | null): Promise<HeadingGroup[]>;
     search(query: string): Promise<SearchResult>;
+  };
+  answer: {
+    ask(question: string): Promise<{ id: string }>;
+    onEvent(callback: (e: ServiceEvent) => void): () => void;
+    cancel(id: string): Promise<void>;
+    developer(): Promise<{ enabled: boolean; overrides: DeveloperOverrides; trace: Trace | null }>;
+    setOverrides(o: DeveloperOverrides): Promise<DeveloperOverrides>;
+    saveCase(c: EvalCase): Promise<{ id: string; file: string }>;
   };
   app: {
     info(): Promise<{ name: string; version: string }>;

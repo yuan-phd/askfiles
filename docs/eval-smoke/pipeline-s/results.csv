@@ -1,0 +1,60 @@
+﻿run_id,corpus,config,pass,id,category,question,expected_answer,expected_source_file,expected_section,expected_section_path,expected_page,key_elements,answer,not_found,skipped_model,cited,considered,unsupported_sentences,target_hit,key_coverage,attribution_ok,first_token_ms,model_ms,total_ms,prompt_tokens,completion_tokens,error,cited_json
+20261030T160644Z-eval-s-smoke,eval-s,count=3 floor=0,1,s01,single_fact,How often must passwords be changed?,Every 90 days,it-handbook.pdf,1 Accounts,,1,90 days,"[1] 1 Accounts  
+Every employee receives one account for email, chat, and the staff portal. Passwords must be changed every 90 days and must have at least 14 characters.  
+
+[1] 1 Accounts  
+Two-factor authentication with the Northwind app is mandatory for all accounts.",no,no,1. it-handbook.pdf | 1 Accounts | 1.000,"2. it-handbook.pdf | 2 Laptops | 0.002
+3. it-handbook.pdf | 2 Laptops > 2.1 Lost devices | 0.000",2,yes,1.00,yes,1063,3443,6178,253,65,,"[{""file"":""it-handbook.pdf"",""path"":[""1 Accounts""],""title"":""1 Accounts"",""pageStart"":1,""pageEnd"":1,""passage"":""Every employee receives one account for email, chat and the staff portal. Passwords must be changed every 90 days and must have at least 14 characters. Two-factor authentication with the Northwind app is mandatory for all accounts.""}]"
+20261030T160644Z-eval-s-smoke,eval-s,count=3 floor=0,1,s02,single_fact,上海的住宿报销上限是多少？,每晚650元,报销制度.docx,2 差旅报销,,,650,"[1] 报销制度 > 2 差旅报销  
+上海的住宿报销上限为650元。[1]",no,no,1. 报销制度.docx | 报销制度 > 2 差旅报销,"2. 报销制度.docx | 报销制度
+3. 报销制度.docx | 报销制度 > 3 提交期限",0,yes,1.00,yes,804,1739,1897,234,30,,"[{""file"":""报销制度.docx"",""path"":[""报销制度"",""2 差旅报销""],""title"":""2 差旅报销"",""pageStart"":null,""pageEnd"":null,""passage"":""出差住宿费用按城市标准报销，超出部分由员工自行承担。\n\n城市 | 每晚住宿上限\n北京 | 600元\n上海 | 650元\n其他城市 | 400元""}]"
+20261030T160644Z-eval-s-smoke,eval-s,count=3 floor=0,1,s03,table_number,What is the total 2026 budget for Engineering?,510000,budget-2026.xlsx,Budget 2026,,1,510,"[1] Budget 2026  
+Department: Engineering; Q1: 120000; Q2: 125000; Q3: 130000; Q4: 135000; Total: 510000",no,no,1. budget-2026.xlsx | Budget 2026,"2. budget-2026.xlsx | Headcount
+3. it-handbook.pdf | 2 Laptops",1,yes,1.00,yes,1500,4034,4155,383,68,,"[{""file"":""budget-2026.xlsx"",""path"":[""Budget 2026""],""title"":""Budget 2026"",""pageStart"":1,""pageEnd"":1,""passage"":""Department | Q1 | Q2 | Q3 | Q4 | Total\nDepartment: Engineering; Q1: 120000; Q2: 125000; Q3: 130000; Q4: 135000; Total: 510000\nDepartment: Marketing; Q1: 40000; Q2: 60000; Q3: 45000; Q4: 55000; Total: 200000\nDepartment: Human resources; Q1: 20000; Q2: 20000; Q3: 22000; Q4: 23000; Total: 85000""}]"
+20261030T160644Z-eval-s-smoke,eval-s,count=3 floor=0,1,s04,cross_document,"How many days do I have to submit an expense claim, and how quickly must a lost laptop be reported?",30 days for expense claims; 24 hours for a lost laptop,报销制度.docx;it-handbook.pdf,3 提交期限;2.1 Lost devices,,2,30; 24 hours,"[1] 24 hours  
+[3] 90 days  
+[2] 4 years or earlier when a repair would cost more than half of a new device.",no,no,"1. it-handbook.pdf | 2 Laptops > 2.1 Lost devices | 0.915
+3. it-handbook.pdf | 1 Accounts | 0.001
+2. it-handbook.pdf | 2 Laptops | 0.001",,1,no,0.50,no,1026,2370,3594,268,38,,"[{""file"":""it-handbook.pdf"",""path"":[""2 Laptops"",""2.1 Lost devices""],""title"":""2.1 Lost devices"",""pageStart"":2,""pageEnd"":2,""passage"":""A lost or stolen laptop must be reported to it-help@northwind.example within 24 hours. The IT team then locks the device remotely and erases it when it next connects.""},{""file"":""it-handbook.pdf"",""path"":[""1 Accounts""],""title"":""1 Accounts"",""pageStart"":1,""pageEnd"":1,""passage"":""Every employee receives one account for email, chat and the staff portal. Passwords must be changed every 90 days and must have at least 14 characters. Two-factor authentication with the Northwind app is mandatory for all accounts.""},{""file"":""it-handbook.pdf"",""path"":[""2 Laptops""],""title"":""2 Laptops"",""pageStart"":1,""pageEnd"":1,""passage"":""Laptops are replaced every 4 years or earlier when a repair would cost more than half of a new device.""}]"
+20261030T160644Z-eval-s-smoke,eval-s,count=3 floor=0,1,s05,middle_of_long_doc,How often are laptops replaced?,Every 4 years,it-handbook.pdf,2 Laptops,,1,4 years,"[1] 2 Laptops  
+Laptops are replaced every 4 years or earlier when a repair would cost more than half of a new device. [1]  
+
+NOT_IN_SOURCES",no,no,1. it-handbook.pdf | 2 Laptops | 1.000,"2. it-handbook.pdf | 2 Laptops > 2.1 Lost devices | 0.029
+3. it-handbook.pdf | 1 Accounts | 0.001",1,yes,1.00,yes,679,2136,3316,252,40,,"[{""file"":""it-handbook.pdf"",""path"":[""2 Laptops""],""title"":""2 Laptops"",""pageStart"":1,""pageEnd"":1,""passage"":""Laptops are replaced every 4 years or earlier when a repair would cost more than half of a new device.""}]"
+20261030T160644Z-eval-s-smoke,eval-s,count=3 floor=0,1,s06,absent_related,How many days of annual leave do contractors get?,Not in the documents,,,,,,"[1] Northwind leave policy > Annual leave  
+Permanent employees receive 27 days of paid annual leave per calendar year.  
+
+[2] Northwind leave policy > Annual leave  
+Permanent employees receive 25 days of paid annual leave per calendar year.",no,no,"1. leave-policy-v2.md | Northwind leave policy > Annual leave | 0.953
+2. leave-policy-v1.md | Northwind leave policy > Annual leave | 0.950",3. leave-policy-v2.md | Northwind leave policy > Parental leave | 0.008,2,,,no,854,2915,4076,237,54,,"[{""file"":""leave-policy-v2.md"",""path"":[""Northwind leave policy"",""Annual leave""],""title"":""Annual leave"",""pageStart"":null,""pageEnd"":null,""passage"":""Permanent employees receive 27 days of paid annual leave per calendar year.\nLeave is requested in the staff portal at least two weeks before the first day off.""},{""file"":""leave-policy-v1.md"",""path"":[""Northwind leave policy"",""Annual leave""],""title"":""Annual leave"",""pageStart"":null,""pageEnd"":null,""passage"":""Permanent employees receive 25 days of paid annual leave per calendar year.\nLeave is requested in the staff portal at least two weeks before the first day off.""}]"
+20261030T160644Z-eval-s-smoke,eval-s,count=3 floor=0,1,s07,absent_unrelated,What is the capital of Australia?,Not in the documents,,,,,,"[1] 报销制度 > 2 差旅报销  
+出差住宿费用按城市标准报销，超出部分由员工自行承担。  
+
+[2] Headcount  
+Department | Employees  
+Department: Engineering; Employees: 42  
+Department: Marketing; Employees: 11  
+Department: Human resources; Employees: 6  
+
+[3] Budget 2026  
+Department | Q1 | Q2 | Q3 | Q4 | Total  
+Department: Engineering; Q1: 120000; Q2: 125000; Q3: 130000; Q4: 135000; Total: 510000  
+Department: Marketing; Q1: 40000; Q2: 60000; Q3: 45000; Q4: 55000; Total: 200000  
+Department: Human resources; Q1: 20000; Q2: 20000; Q3: 22000; Q4: 23000; Total: 85000",no,no,"1. 报销制度.docx | 报销制度 > 2 差旅报销
+2. budget-2026.xlsx | Headcount
+3. budget-2026.xlsx | Budget 2026",,9,,,no,1265,11989,12107,410,263,,"[{""file"":""报销制度.docx"",""path"":[""报销制度"",""2 差旅报销""],""title"":""2 差旅报销"",""pageStart"":null,""pageEnd"":null,""passage"":""出差住宿费用按城市标准报销，超出部分由员工自行承担。\n\n城市 | 每晚住宿上限\n北京 | 600元\n上海 | 650元\n其他城市 | 400元""},{""file"":""budget-2026.xlsx"",""path"":[""Headcount""],""title"":""Headcount"",""pageStart"":2,""pageEnd"":2,""passage"":""Department | Employees\nDepartment: Engineering; Employees: 42\nDepartment: Marketing; Employees: 11\nDepartment: Human resources; Employees: 6""},{""file"":""budget-2026.xlsx"",""path"":[""Budget 2026""],""title"":""Budget 2026"",""pageStart"":1,""pageEnd"":1,""passage"":""Department | Q1 | Q2 | Q3 | Q4 | Total\nDepartment: Engineering; Q1: 120000; Q2: 125000; Q3: 130000; Q4: 135000; Total: 510000\nDepartment: Marketing; Q1: 40000; Q2: 60000; Q3: 45000; Q4: 55000; Total: 200000\nDepartment: Human resources; Q1: 20000; Q2: 20000; Q3: 22000; Q4: 23000; Total: 85000""}]"
+20261030T160644Z-eval-s-smoke,eval-s,count=3 floor=0,1,s08,version,"How many days of annual leave does version 1 of the leave policy give, and how many does version 2 give?",Version 1: 25 days; version 2: 27 days,leave-policy-v1.md;leave-policy-v2.md,Annual leave,,,25; 27,"[1] 27 days of annual leave  
+[2] 25 days of annual leave  
+[3] Version 2.",no,no,"1. leave-policy-v2.md | Northwind leave policy > Annual leave | 0.957
+2. leave-policy-v1.md | Northwind leave policy > Annual leave | 0.949
+3. leave-policy-v2.md | Northwind leave policy | 0.166",,1,yes,1.00,no,324,1230,2379,241,30,,"[{""file"":""leave-policy-v2.md"",""path"":[""Northwind leave policy"",""Annual leave""],""title"":""Annual leave"",""pageStart"":null,""pageEnd"":null,""passage"":""Permanent employees receive 27 days of paid annual leave per calendar year.\nLeave is requested in the staff portal at least two weeks before the first day off.""},{""file"":""leave-policy-v1.md"",""path"":[""Northwind leave policy"",""Annual leave""],""title"":""Annual leave"",""pageStart"":null,""pageEnd"":null,""passage"":""Permanent employees receive 25 days of paid annual leave per calendar year.\nLeave is requested in the staff portal at least two weeks before the first day off.""},{""file"":""leave-policy-v2.md"",""path"":[""Northwind leave policy""],""title"":""Northwind leave policy"",""pageStart"":null,""pageEnd"":null,""passage"":""Version 2. This policy applies to all permanent employees of Northwind.""}]"
+20261030T160644Z-eval-s-smoke,eval-s,count=3 floor=0,1,s09,section_listing,Which sections describe leave?,Annual leave; Sick leave; Parental leave,leave-policy-v1.md;leave-policy-v2.md,Annual leave;Sick leave;Parental leave,,,annual leave; sick leave; parental leave,"[1] Northwind leave policy > Annual leave  
+[2] Northwind leave policy > Annual leave  
+[3] Northwind leave policy > Sick leave",no,no,"1. leave-policy-v2.md | Northwind leave policy > Annual leave | 0.001
+2. leave-policy-v1.md | Northwind leave policy > Annual leave | 0.000
+3. leave-policy-v1.md | Northwind leave policy > Sick leave | 0.000",,1,no,0.67,no,269,1364,2541,244,33,,"[{""file"":""leave-policy-v2.md"",""path"":[""Northwind leave policy"",""Annual leave""],""title"":""Annual leave"",""pageStart"":null,""pageEnd"":null,""passage"":""Permanent employees receive 27 days of paid annual leave per calendar year.\nLeave is requested in the staff portal at least two weeks before the first day off.""},{""file"":""leave-policy-v1.md"",""path"":[""Northwind leave policy"",""Annual leave""],""title"":""Annual leave"",""pageStart"":null,""pageEnd"":null,""passage"":""Permanent employees receive 25 days of paid annual leave per calendar year.\nLeave is requested in the staff portal at least two weeks before the first day off.""},{""file"":""leave-policy-v1.md"",""path"":[""Northwind leave policy"",""Sick leave""],""title"":""Sick leave"",""pageStart"":null,""pageEnd"":null,""passage"":""Employees who are ill notify their manager before 10:00 on the first day of absence.\nA medical certificate is required from day 3 of an absence onwards.""}]"
+20261030T160644Z-eval-s-smoke,eval-s,count=3 floor=0,1,s10,section_listing,哪些章节涉及报销？,2 差旅报销; 3 提交期限,报销制度.docx,2 差旅报销;3 提交期限,,,差旅报销; 提交期限,"[1] 报销制度 > 2 差旅报销  
+[2] 报销制度  
+[3] 报销制度 > 1 适用范围",no,no,"1. 报销制度.docx | 报销制度 > 2 差旅报销
+2. 报销制度.docx | 报销制度
+3. 报销制度.docx | 报销制度 > 1 适用范围",,1,no,0.50,no,541,1691,1788,230,37,,"[{""file"":""报销制度.docx"",""path"":[""报销制度"",""2 差旅报销""],""title"":""2 差旅报销"",""pageStart"":null,""pageEnd"":null,""passage"":""出差住宿费用按城市标准报销，超出部分由员工自行承担。\n\n城市 | 每晚住宿上限\n北京 | 600元\n上海 | 650元\n其他城市 | 400元""},{""file"":""报销制度.docx"",""path"":[""报销制度""],""title"":""报销制度"",""pageStart"":null,""pageEnd"":null,""passage"":""本制度适用于诺斯温德公司全体员工的费用报销。""},{""file"":""报销制度.docx"",""path"":[""报销制度"",""1 适用范围""],""title"":""1 适用范围"",""pageStart"":null,""pageEnd"":null,""passage"":""因公出差、客户招待和培训产生的费用均可按本制度报销。""}]"

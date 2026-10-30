@@ -16,6 +16,7 @@ import {
   type Chunk,
   type ParsedDocument,
 } from '../../src/main/sections/index.js';
+import type { FileRecord } from '../../src/main/watcher/index.js';
 import type { EvalConfig } from './config.js';
 
 /** Folder under STORAGE_DIR/documents for the harness's documents; the app's library uses another. */
@@ -60,6 +61,8 @@ export interface Library {
   files: FileReport[];
   /** Chunk text (pageContent) to its section. */
   chunkIndex: Map<string, ChunkInfo>;
+  /** The files as the folder watcher records them (index.json), for the browse index and the source resolver. */
+  records: FileRecord[];
   stats: {
     files: number;
     skipped: number;
@@ -156,6 +159,7 @@ export async function prepareLibrary(opts: {
   const files: FileReport[] = [];
   const wanted: string[] = [];
   const chunkIndex = new Map<string, ChunkInfo>();
+  const records: FileRecord[] = [];
   for (const rel of listCorpus(corpusDir)) {
     const abs = path.join(corpusDir, rel);
     if (!isSupported(rel)) {
@@ -199,6 +203,25 @@ export async function prepareLibrary(opts: {
     }
     const chunks: Chunk[] = chunkSections(parsed.sections, { maxChars: config.chunkMax });
     const docs = sectionDocuments(chunks, { path: abs, relPath: rel, hash }, { splitKey, published });
+    const stat = fs.statSync(abs);
+    records.push({
+      path: abs,
+      url: docs[0]?.doc.url ?? '',
+      hash,
+      splitKey,
+      size: stat.size,
+      mtimeMs: stat.mtimeMs,
+      indexedAt: new Date().toISOString(),
+      sections: docs.map(({ name, doc }) => ({
+        location: `${DOC_FOLDER}/${name}`,
+        docId: null,
+        sectionTitle: doc.sectionTitle,
+        sectionIndex: doc.sectionIndex,
+        subIndex: doc.subIndex,
+        pageStart: doc.pageStart > 0 ? doc.pageStart : null,
+        pageEnd: doc.pageEnd > 0 ? doc.pageEnd : null,
+      })),
+    });
     for (const { name, doc } of docs) {
       const target = path.join(docDir, name);
       // Same name means same file bytes and split settings, so the content is the same too.
@@ -260,6 +283,7 @@ export async function prepareLibrary(opts: {
     workspaceName,
     files,
     chunkIndex,
+    records,
     stats: {
       files: files.length - skipped,
       skipped,

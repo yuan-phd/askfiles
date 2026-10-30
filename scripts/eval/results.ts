@@ -13,7 +13,9 @@ export const RESULT_COLUMNS = [
   'expected_answer',
   'expected_source_file',
   'expected_section',
+  'expected_section_path',
   'expected_page',
+  'key_elements',
   'notes',
   'answer',
   'refused',
@@ -34,6 +36,61 @@ export const RESULT_COLUMNS = [
   'fallback_json',
   'score',
   'score_note',
+] as const;
+
+const QUESTION_FIELDS = [
+  'id',
+  'category',
+  'question',
+  'expected_answer',
+  'expected_source_file',
+  'expected_section',
+  'expected_section_path',
+  'expected_page',
+  'key_elements',
+] as const;
+
+/** Stage 1 of the pipeline eval: one row per question, no model. */
+export const RETRIEVAL_COLUMNS = [
+  'run_id',
+  'corpus',
+  ...QUESTION_FIELDS,
+  'terms',
+  'bypass',
+  'candidates',
+  'expected_rank',
+  'expected_rerank',
+  'selected',
+  'target_hit',
+  'cached',
+  'vector_ms',
+  'keyword_ms',
+  'rerank_ms',
+] as const;
+
+/** Stage 2 of the pipeline eval: one row per configuration, pass and question. */
+export const ANSWER_COLUMNS = [
+  'run_id',
+  'corpus',
+  'config',
+  'pass',
+  ...QUESTION_FIELDS,
+  'answer',
+  'not_found',
+  'skipped_model',
+  'cited',
+  'considered',
+  'unsupported_sentences',
+  'target_hit',
+  'key_coverage',
+  'attribution_ok',
+  'first_token_ms',
+  'model_ms',
+  'total_ms',
+  'prompt_tokens',
+  'completion_tokens',
+  'error',
+  'cited_json',
 ] as const;
 
 export const SCORES = ['correct', 'partial', 'wrong', 'refused', 'hallucinated'] as const;
