@@ -61,10 +61,32 @@ jobs:
         if: steps.root-modules.outputs.cache-hit != 'true'
         run: npm ci
 
+      # scripts/build.sh skips the frontend build when dist/.askfiles-source-hash matches its sources,
+      # and the server and collector installs when node_modules/.askfiles-build-stamp matches; these
+      # two caches bring both back. The keys only pick a candidate: the stamps decide.
+      - name: Cache the frontend build
+        id: frontend-dist
+        uses: actions/cache@v4
+        with:
+          path: upstream/frontend/dist
+          key: frontend-dist-${{ hashFiles('upstream/frontend/**', 'patches/**') }}
+      - name: Cache the pruned server and collector node_modules
+        id: upstream-modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            upstream/server/node_modules
+            upstream/collector/node_modules
+          key: upstream-modules-macos-arm64-node22-${{ hashFiles('upstream/server/package.json', 'upstream/server/yarn.lock', 'upstream/server/prisma/**', 'upstream/collector/package.json', 'upstream/collector/yarn.lock', 'patches/**', 'scripts/build.sh', 'scripts/prune.mjs', 'scripts/lib/prisma-engines.mjs', 'scripts/lib/load-graph.mjs') }}
+          # An older tree is still a warm start: yarn --check-files only adds what changed or was pruned.
+          restore-keys: upstream-modules-macos-arm64-node22-
+      # The yarn download cache is 2 GB and only needed when a yarn install runs.
       - name: Locate the yarn cache
         id: yarn-cache
+        if: steps.frontend-dist.outputs.cache-hit != 'true' || steps.upstream-modules.outputs.cache-hit != 'true'
         run: echo "dir=$(yarn cache dir)" >> "$GITHUB_OUTPUT"
       - name: Cache yarn downloads for upstream
+        if: steps.frontend-dist.outputs.cache-hit != 'true' || steps.upstream-modules.outputs.cache-hit != 'true'
         uses: actions/cache@v4
         with:
           path: ${{ steps.yarn-cache.outputs.dir }}
@@ -106,6 +128,12 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
       - name: Check the signature
         run: codesign --verify --deep --strict --verbose=2 release/mac-arm64/AskFiles.app
+      # The numbers recorded in docs/bundle-report.md and docs/plan.md come from this step's log.
+      - name: Measure the bundle and the DMG
+        run: |
+          ls -l release/*.dmg
+          du -sk release/mac-arm64/AskFiles.app release/mac-arm64/AskFiles.app/Contents/Resources/*
+          bash scripts/measure-bundle.sh release/mac-arm64/AskFiles.app/Contents/Resources | tee -a "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         with:

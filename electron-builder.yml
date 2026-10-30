@@ -52,9 +52,9 @@ extraResources:
     filter: &node-modules-filter
       - '**/*'
       - '!.install_pkgs.sha256'
-      # onnxruntime-node carries binaries for six platforms; only darwin arm64 is used (about 70 MB saved).
-      - '!onnxruntime-node/bin/napi-v3/{linux,win32}/**'
-      - '!onnxruntime-node/bin/napi-v3/darwin/x64/**'
+      - '!.askfiles-build-stamp'
+      # Binaries for other platforms, dev files and unused packages are already gone: scripts/build.sh
+      # runs scripts/prune.mjs for PACKAGE_TARGET=mac-arm64 (docs/bundle-report.md).
   - from: upstream/collector
     to: collector
     filter:

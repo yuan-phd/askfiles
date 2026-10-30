@@ -19,16 +19,15 @@ fi
 
 # --deep only reaches code in the standard bundle locations (Frameworks, Helpers). Native modules,
 # Prisma engines and the Ollama files sit under Contents/Resources, so sign every Mach-O file there
-# first (inside out, as Apple recommends), then the bundle itself.
-count=0
-while IFS= read -r -d '' f; do
-  case "$(file -b "$f")" in
-    *Mach-O*)
-      codesign --force --sign - "$f"
-      count=$((count + 1))
-      ;;
-  esac
-done < <(find "$APP/Contents/Resources" -type f -print0)
+# first (inside out, as Apple recommends), then the bundle itself. The files are found by their
+# header in one node process and signed 50 per codesign call.
+LIST="$(mktemp)"
+trap 'rm -f "$LIST"' EXIT
+node "$ROOT/scripts/lib/macho-files.mjs" "$APP/Contents/Resources" > "$LIST"
+count=$(tr -cd '\0' < "$LIST" | wc -c | tr -d ' ')
+if [ "$count" -gt 0 ]; then
+  xargs -0 -n 50 codesign --force --sign - < "$LIST"
+fi
 echo "[sign-adhoc] signed $count Mach-O files under Contents/Resources"
 
 echo "[sign-adhoc] signing $APP"
