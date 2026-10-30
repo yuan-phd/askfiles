@@ -1,0 +1,560 @@
+/* AskFiles browse view. Tokens and base rules come from ../search/search.css, so light and dark
+   follow the search page and the visual pass (plan task 4.6) tunes values there and here. */
+
+.browse {
+  max-width: calc(var(--measure) + 16rem + var(--space-7));
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-5) var(--space-7);
+}
+
+.browse h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+button.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+button.link:hover {
+  text-decoration: underline;
+}
+
+.browse-empty {
+  margin: var(--space-4) 0;
+  color: var(--text-muted);
+}
+
+/* Tabs inside the browse view */
+
+.browse-tabs {
+  display: flex;
+  gap: var(--space-5);
+  margin-bottom: var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+
+.browse-tab {
+  padding: var(--space-2) 0;
+  margin-bottom: -1px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-muted);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.browse-tab:hover {
+  color: var(--text);
+}
+
+.browse-tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+/* Library */
+
+.library-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-5);
+  margin-bottom: var(--space-4);
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.library-head p {
+  margin: 0;
+}
+
+.library-count {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.library-state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.library-state[data-state='ready'] .dot {
+  background: var(--ok);
+}
+
+.library-state[data-state='indexing'] .dot {
+  background: var(--busy);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.library-state[data-state='error'] .dot {
+  background: var(--bad);
+}
+
+.library-sort {
+  margin-left: auto;
+}
+
+.library-sort select {
+  margin-left: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.library-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.doc-item {
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.doc-item-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+}
+
+.doc-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-weight: 600;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.doc-link:hover {
+  color: var(--accent);
+}
+
+.doc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.doc-meta span + span::before {
+  content: '\00B7';
+  margin-right: var(--space-3);
+}
+
+.outline-toggle {
+  margin-left: auto;
+}
+
+/* Outline lists, in the library and in the document rail */
+
+.outline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.outline .outline {
+  padding-left: var(--space-4);
+}
+
+.doc-item > .outline {
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+
+.outline-link {
+  display: block;
+  width: 100%;
+  padding: 3px 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: var(--text);
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.outline-link:hover,
+.outline-link.active {
+  color: var(--accent);
+}
+
+.outline-link.active {
+  font-weight: 600;
+}
+
+/* Document page */
+
+.doc-layout {
+  display: grid;
+  grid-template-columns: 16rem minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.doc-rail {
+  position: sticky;
+  top: 64px;
+  max-height: calc(100vh - 80px);
+  overflow: auto;
+  padding-right: var(--space-2);
+}
+
+.rail-empty {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.doc-body {
+  min-width: 0;
+  max-width: var(--measure);
+}
+
+.doc-head {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+  padding-bottom: var(--space-4);
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.doc-path {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.doc-path:empty {
+  display: none;
+}
+
+.doc-section {
+  scroll-margin-top: 64px;
+  padding: var(--space-2) 0 var(--space-3);
+}
+
+.doc-section.target {
+  animation: target 1.6s ease-out;
+}
+
+@keyframes target {
+  from {
+    background: var(--accent-soft);
+  }
+  to {
+    background: transparent;
+  }
+}
+
+.doc-heading {
+  margin: var(--space-4) 0 var(--space-2);
+  line-height: 1.35;
+  color: var(--text);
+  letter-spacing: 0;
+  text-transform: none;
+  overflow-wrap: anywhere;
+}
+
+h2.doc-heading {
+  font-size: 1.3rem;
+}
+
+h3.doc-heading {
+  font-size: 1.12rem;
+}
+
+h4.doc-heading,
+h5.doc-heading,
+h6.doc-heading {
+  font-size: 1rem;
+}
+
+.doc-page {
+  margin: 0 0 var(--space-2);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.doc-para {
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-serif);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+  .doc-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .doc-rail {
+    position: static;
+    max-height: none;
+  }
+}
+
+/* Headings page */
+
+.headings-layout {
+  display: grid;
+  grid-template-columns: 18rem minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.headings-all {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin-bottom: var(--space-3);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.headings-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.heading-item {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.heading-item:hover .heading-label,
+.heading-item.active .heading-label {
+  color: var(--accent);
+}
+
+.heading-item.active .heading-label {
+  font-weight: 600;
+}
+
+.heading-label {
+  overflow-wrap: anywhere;
+}
+
+.heading-count {
+  flex: none;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.headings-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text);
+}
+
+.compare {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.compare-card {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.compare-head {
+  display: grid;
+  gap: 2px;
+  font-size: 0.875rem;
+}
+
+.compare-file {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.compare-section,
+.compare-page {
+  color: var(--text-muted);
+}
+
+.compare-text .doc-para {
+  font-size: 0.95rem;
+}
+
+@media (max-width: 900px) {
+  .headings-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Find page */
+
+.find-form input {
+  flex: 1;
+  min-height: 2.5rem;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 1.0625rem;
+  color: var(--text);
+}
+
+.find-form,
+.find-form + .hint,
+.find-summary,
+.find-results {
+  max-width: var(--measure);
+}
+
+.find-summary {
+  margin: var(--space-5) 0 var(--space-3);
+  color: var(--text-muted);
+}
+
+.find-results,
+.find-hits {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.find-group {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.find-group-head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.find-file {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.find-count {
+  flex: none;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.find-hit {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: var(--space-2) 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.find-hit:hover .find-hit-title {
+  color: var(--accent);
+}
+
+.find-hit-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.find-page {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.find-snippet {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.find-snippet mark {
+  background: var(--accent-soft);
+  color: var(--text);
+  border-radius: 2px;
+}
+
+/* Search and Browse switch in the status bar */
+
+.view-switch {
+  display: inline-flex;
+  flex: none;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface-sunken);
+}
+
+.view-switch button {
+  padding: 2px var(--space-3);
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.view-switch button[aria-pressed='true'] {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+.view-switch + .status-folder {
+  flex: 1;
+}

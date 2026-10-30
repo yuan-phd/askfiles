@@ -1,5 +1,8 @@
 // Search page: one question box, a streamed answer, merged source cards and a section list when
-// nothing answers the question. Talks to the backend only through ../api/client.js.
+// nothing answers the question. Talks to the backend only through ../api/client.js. A switch in
+// the status bar shows the browse view (../browse/view.js) in place of the search, without a
+// reload, so each view keeps its state.
+import { createBrowseView } from '../browse/view.js';
 import {
   createClient,
   generateApiKey,
@@ -40,6 +43,9 @@ const els = {
   recentEmpty: $('recent-empty'),
   cardTemplate: $('card-template'),
   sectionTemplate: $('section-template'),
+  searchView: $('view-search'),
+  browseView: $('view-browse'),
+  viewButtons: [$('view-search-button'), $('view-browse-button')],
 };
 
 /**
@@ -60,7 +66,16 @@ function readConfig() {
 }
 
 const config = readConfig();
-const state = { client: null, slug: null, controller: null, recent: [], documentCount: null, indexing: null };
+const state = {
+  client: null,
+  slug: null,
+  controller: null,
+  recent: [],
+  documentCount: null,
+  indexing: null,
+  view: 'search',
+  browse: null,
+};
 
 function setState(kind, text) {
   els.state.dataset.state = kind;
@@ -223,6 +238,24 @@ async function openSource(group) {
   }
 }
 
+function showView(view) {
+  state.view = view;
+  if (view === 'browse' && !state.browse) state.browse = createBrowseView(els.browseView);
+  els.searchView.hidden = view !== 'search';
+  els.browseView.hidden = view !== 'browse';
+  for (const b of els.viewButtons) b.setAttribute('aria-pressed', String(b.dataset.view === view));
+  if (view === 'search') els.query.focus();
+}
+
+/** Opens the cited section on the browse view's document page. */
+function readSection(group) {
+  showView('browse');
+  state.browse.openDocument(
+    { url: group.url, title: group.title },
+    { sectionIndex: group.sectionIndex, sectionTitle: group.sectionTitle },
+  );
+}
+
 function setOptional(el, text) {
   el.hidden = !text;
   el.textContent = text || '';
@@ -248,6 +281,7 @@ function renderCards(groups) {
         g.passages.length > 1 ? `${g.passages.length} passages from this section` : null,
       );
       node.querySelector('.open').addEventListener('click', () => openSource(g));
+      node.querySelector('.read').addEventListener('click', () => readSection(g));
       return node;
     }),
   );
@@ -270,6 +304,7 @@ function renderFallback(groups) {
       setOptional(node.querySelector('.section-page'), pagesLabel(g.pages));
       node.querySelector('.section-preview').textContent = preview(g.passages[0] || '');
       node.querySelector('.open').addEventListener('click', () => openSource(g));
+      node.querySelector('.read').addEventListener('click', () => readSection(g));
       return node;
     }),
   );
@@ -451,13 +486,15 @@ els.query.addEventListener('keydown', (e) => {
 });
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !e.isComposing) {
+  if (e.key === 'Escape' && !e.isComposing && state.view === 'search') {
     e.preventDefault();
     clearAll();
   }
 });
 
 els.query.addEventListener('input', autoGrow);
+
+for (const b of els.viewButtons) b.addEventListener('click', () => showView(b.dataset.view));
 
 // Folder watcher status from the shell (src/main/preload.ts, window.askfiles.watcher).
 const watcher = window.askfiles?.watcher;

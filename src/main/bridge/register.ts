@@ -19,6 +19,10 @@ const INVOKE: Record<string, keyof BridgeHandlers> = {
   [CHANNELS.watcherStatus]: 'watcherStatus',
   [CHANNELS.libraryResolveSources]: 'libraryResolveSources',
   [CHANNELS.libraryOpenOriginal]: 'libraryOpenOriginal',
+  [CHANNELS.browseDocuments]: 'browseDocuments',
+  [CHANNELS.browseDocument]: 'browseDocument',
+  [CHANNELS.browseHeadings]: 'browseHeadings',
+  [CHANNELS.browseSearch]: 'browseSearch',
   [CHANNELS.appInfo]: 'appInfo',
 };
 
@@ -28,6 +32,11 @@ export const REQUEST_CHANNELS: readonly string[] = [
   CHANNELS.shellConfig,
   CHANNELS.appPageReady,
 ];
+
+/** Longest keyword query and heading key a page may send. */
+const MAX_QUERY = 500;
+
+const str = (v: unknown, max = MAX_QUERY): string | null => (typeof v === 'string' ? v.slice(0, max) : null);
 
 /**
  * Wires the preload's requests to the handlers. Handlers are looked up at call time, so the
@@ -51,6 +60,14 @@ export function registerBridge(ipc: IpcMainLike, h: BridgeHandlers): void {
           return h.libraryResolveSources(Array.isArray(args[0]) ? args[0] : []);
         case 'libraryOpenOriginal':
           return h.libraryOpenOriginal(args[0] && typeof args[0] === 'object' ? args[0] : {});
+        case 'browseDocument': {
+          const ref = (args[0] && typeof args[0] === 'object' ? args[0] : {}) as Record<string, unknown>;
+          return h.browseDocument({ id: str(ref.id), url: str(ref.url, 4096), title: str(ref.title, 1024) });
+        }
+        case 'browseHeadings':
+          return h.browseHeadings(str(args[0]) || null);
+        case 'browseSearch':
+          return h.browseSearch(str(args[0]) ?? '');
         default:
           return (h[name] as () => unknown)();
       }

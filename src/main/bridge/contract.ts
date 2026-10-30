@@ -1,3 +1,4 @@
+import type { BrowseDocument, DocumentRef, DocumentSummary, HeadingGroup, SearchResult } from '../browse/index.js';
 import type { SourceRef } from '../open-original.js';
 import type { ModelEntry } from '../models/index.js';
 import type { PullProgress } from '../ollama/client.js';
@@ -25,6 +26,10 @@ export const CHANNELS = {
   watcherStatusEvent: 'askfiles:watcher:status-event',
   libraryResolveSources: 'askfiles:library:resolve-sources',
   libraryOpenOriginal: 'askfiles:library:open-original',
+  browseDocuments: 'askfiles:browse:documents',
+  browseDocument: 'askfiles:browse:document',
+  browseHeadings: 'askfiles:browse:headings',
+  browseSearch: 'askfiles:browse:search',
   appInfo: 'askfiles:app:info',
   appPageReady: 'askfiles:app:page-ready',
 } as const;
@@ -69,6 +74,14 @@ export interface BridgeHandlers {
   libraryResolveSources(sources: SourceLike[]): SourceLike[];
   /** Reveals the original file in Finder; false when no indexed file matches. */
   libraryOpenOriginal(source: SourceRef): Promise<boolean>;
+  /** Every indexed document with its outline, without section text. */
+  browseDocuments(): DocumentSummary[];
+  /** One document with its sections, by id or by a source's url and file name; null when unknown. */
+  browseDocument(ref: DocumentRef): BrowseDocument | null;
+  /** Headings grouped across documents; with a key, that group only, with the section text. */
+  browseHeadings(key: string | null): HeadingGroup[];
+  /** Keyword search over section text, grouped by document and section. */
+  browseSearch(query: string): SearchResult;
   appInfo(): { name: string; version: string };
   appPageReady(info: PageReadyInfo): void;
 }
@@ -105,6 +118,12 @@ export interface AskfilesBridge {
   library: {
     resolveSources(sources: SourceLike[]): Promise<SourceLike[]>;
     openOriginal(source: SourceRef): Promise<boolean>;
+  };
+  browse: {
+    documents(): Promise<DocumentSummary[]>;
+    document(ref: DocumentRef): Promise<BrowseDocument | null>;
+    headings(key?: string | null): Promise<HeadingGroup[]>;
+    search(query: string): Promise<SearchResult>;
   };
   app: {
     info(): Promise<{ name: string; version: string }>;

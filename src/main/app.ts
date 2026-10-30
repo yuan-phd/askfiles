@@ -5,6 +5,7 @@ import path from 'node:path';
 import { APP_ORIGIN, pageUrl, type PageName } from './app-protocol.js';
 import { chooseStartPage, presetFolder, presetsFilePath, type StartPage } from './app-mode.js';
 import { bundledBackendConfig } from './backend-config.js';
+import { BrowseIndex, chunkReader, followWatcher, type DocumentRef } from './browse/index.js';
 import { CHANNELS, type BridgeHandlers, type WatcherView } from './bridge/contract.js';
 import type { Env, Logger } from './config.js';
 import { FirstRun } from './first-run.js';
@@ -42,6 +43,7 @@ export class AppController implements BridgeHandlers {
   private firstRun: FirstRun | null = null;
   private watcher: FolderWatcher | null = null;
   private watcherError: string | null = null;
+  private browse: BrowseIndex | null = null;
   private page: StartPage | PageName | null = null;
   private stopped = false;
 
@@ -210,6 +212,22 @@ export class AppController implements BridgeHandlers {
     return true;
   }
 
+  browseDocuments() {
+    return this.browse?.listDocuments() ?? [];
+  }
+
+  browseDocument(ref: DocumentRef) {
+    return this.browse?.getDocument(ref) ?? null;
+  }
+
+  browseHeadings(key: string | null) {
+    return this.browse?.headings({ key }) ?? [];
+  }
+
+  browseSearch(query: string) {
+    return this.browse?.search(query) ?? { query, terms: [], total: 0, groups: [], truncated: false };
+  }
+
   appInfo() {
     return { name: 'AskFiles', version: app.getVersion() };
   }
@@ -329,6 +347,20 @@ export class AppController implements BridgeHandlers {
       log: (m) => log(`[watcher] ${m}`),
     });
     watcher.on('status', (s) => this.d.broadcast(CHANNELS.watcherStatusEvent, { ...s, folder }));
+    // Loaded before the watcher starts, so the browse pages list the library during a long reconcile.
+    const browse = new BrowseIndex({
+      dir: path.join(this.dataDir, 'browse'),
+      root: folder,
+      readChunk: chunkReader(this.storageDir),
+      log: (m) => log(`[browse] ${m}`),
+    });
+    try {
+      browse.load();
+    } catch (e) {
+      log(`[browse] not loaded: ${(e as Error).message}`);
+    }
+    this.browse = browse;
+    followWatcher(browse, watcher, (m) => log(`[browse] ${m}`));
     try {
       await watcher.start();
       this.watcher = watcher;
@@ -337,6 +369,13 @@ export class AppController implements BridgeHandlers {
       this.watcherError = `The folder ${folder} cannot be read: ${(e as Error).message}`;
       log(`watcher not started: ${(e as Error).message}`);
       this.d.broadcast(CHANNELS.watcherStatusEvent, this.watcherStatus());
+      return;
+    }
+    try {
+      // Files unchanged since the last run send no event; this catches them and anything stale.
+      browse.sync(watcher.files());
+    } catch (e) {
+      log(`[browse] sync failed: ${(e as Error).message}`);
     }
   }
 

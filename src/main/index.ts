@@ -35,6 +35,10 @@ function externalHandlers(baseUrl: string | null, log: (m: string) => void): Bri
     watcherStatus: () => null,
     libraryResolveSources: (sources) => sources,
     libraryOpenOriginal: async () => false,
+    browseDocuments: () => [],
+    browseDocument: () => null,
+    browseHeadings: () => [],
+    browseSearch: (query) => ({ query, terms: [], total: 0, groups: [], truncated: false }),
     appInfo: () => ({ name: 'AskFiles', version: app.getVersion() }),
     appPageReady: (info) => log(`page ready ${info.page} connected=${info.connected ?? '-'}`),
   };
