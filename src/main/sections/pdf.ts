@@ -1,3 +1,4 @@
+import { isAcceptableHeading } from './headings.js';
 import { docTitleOf, joinWrapped } from './text.js';
 import type { Block, OutlineSource, ParsedDocument, Section } from './types.js';
 
@@ -101,9 +102,10 @@ export function sectionsFromMarks(lines: Line[], marks: Mark[], docTitle: string
 }
 
 /**
- * Headings guessed from font size when there are no bookmarks: a short line set at least 15
- * percent larger than the body size (the size carrying most characters) is a heading; distinct
- * heading sizes, largest first, give levels 1, 2, 3.
+ * Headings guessed from font size when there are no bookmarks: a line set at least 15 percent
+ * larger than the body size (the size carrying most characters) that passes the heading filter
+ * (isAcceptableHeading) is a heading; distinct heading sizes, largest first, give levels 1, 2, 3.
+ * A rejected line stays in the body of the section above it.
  */
 export function marksFromFontSize(lines: Line[]): Mark[] {
   const weight = new Map<number, number>();
@@ -114,7 +116,7 @@ export function marksFromFontSize(lines: Line[]): Mark[] {
   let body = 0;
   let best = -1;
   for (const [s, w] of weight) if (w > best) [body, best] = [s, w];
-  const isHeading = (l: Line) => l.size >= body * 1.15 && l.text.length <= 100 && /\S/.test(l.text);
+  const isHeading = (l: Line) => l.size >= body * 1.15 && isAcceptableHeading(l.text);
   const sizes = [...new Set(lines.filter(isHeading).map((l) => Math.round(l.size * 2) / 2))].sort((a, b) => b - a);
   return lines
     .filter(isHeading)
@@ -141,6 +143,7 @@ interface PdfDoc {
   numPages: number;
   getPage(n: number): Promise<{ getTextContent(): Promise<{ items: unknown[] }> }>;
   getOutline(): Promise<OutlineNode[] | null>;
+  getPageLabels(): Promise<string[] | null>;
   getDestination(name: string): Promise<unknown[] | null>;
   getPageIndex(ref: unknown): Promise<number>;
 }
@@ -164,6 +167,22 @@ async function resolveMarks(doc: PdfDoc, nodes: OutlineNode[], level: number, ou
 }
 
 /**
+ * Printed page labels (iv, 12, A-3) when the PDF defines any that differ from the page numbers;
+ * a document whose labels are just 1, 2, 3 gets none, so nothing shows the same number twice.
+ */
+async function pageLabelsOf(doc: PdfDoc): Promise<{ pageLabels?: string[] }> {
+  let labels: string[] | null = null;
+  try {
+    labels = await doc.getPageLabels();
+  } catch {
+    // A broken page label tree is not worth failing the file over.
+  }
+  if (!labels || labels.length !== doc.numPages) return {};
+  const clean = labels.map((l) => (typeof l === 'string' ? l.trim() : ''));
+  return clean.some((l, i) => l !== '' && l !== String(i + 1)) ? { pageLabels: clean } : {};
+}
+
+/**
  * Sections of a PDF with their pages: from bookmarks when the file has them, else from font size,
  * else one per page. A PDF with no text at all is reported as needsOcr.
  */
@@ -183,7 +202,7 @@ export async function parsePdf(buffer: Buffer, fileName: string): Promise<Parsed
       lines.push(...linesFromItems(content.items as TextItem[], p));
     }
     if (!lines.some((l) => /\S/.test(l.text)))
-      return { sections: [], outline: 'none', pages: doc.numPages, needsOcr: true };
+      return { sections: [], outline: 'none', pages: doc.numPages, needsOcr: true, ...(await pageLabelsOf(doc)) };
     const docTitle = docTitleOf(fileName);
     const marks: Mark[] = [];
     await resolveMarks(doc, (await doc.getOutline()) ?? [], 1, marks);
@@ -198,7 +217,7 @@ export async function parsePdf(buffer: Buffer, fileName: string): Promise<Parsed
       outline = 'pages';
       sections = sectionsByPage(lines);
     }
-    return { sections, outline, pages: doc.numPages, needsOcr: false };
+    return { sections, outline, pages: doc.numPages, needsOcr: false, ...(await pageLabelsOf(doc)) };
   } finally {
     await task.destroy();
   }

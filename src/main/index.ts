@@ -3,7 +3,7 @@ import path from 'node:path';
 import { AppController } from './app.js';
 import { messagePage, STARTING_PAGE } from './message-page.js';
 import { APP_ORIGIN, APP_SCHEME, appProtocolHandler, pageUrl, type PageName } from './app-protocol.js';
-import { upstreamUiEnabled, WINDOW_TITLE } from './app-mode.js';
+import { developerEnabled, upstreamUiEnabled, WINDOW_TITLE } from './app-mode.js';
 import type { BridgeHandlers } from './bridge/contract.js';
 import { registerBridge } from './bridge/register.js';
 import { createLogger, resolveLogDir, resolvePort, PORT_ENV, CONFIG_ENV } from './config.js';
@@ -23,11 +23,10 @@ function externalHandlers(baseUrl: string | null, log: (m: string) => void): Bri
     throw new Error('not available when AskFiles connects to an external server');
   };
   return {
-    shellConfig: () => ({ baseUrl, apiKey: null, workspace: null, folder: null }),
+    shellConfig: () => ({ baseUrl, apiKey: null, workspace: null, folder: null, libraryId: null, libraryName: null }),
     setupReplay: () => [],
     setupStart: unavailable,
     setupRetry: unavailable,
-    setupChooseFolder: unavailable,
     modelsList: unavailable,
     modelsPull: unavailable,
     modelsRemove: unavailable,
@@ -35,6 +34,24 @@ function externalHandlers(baseUrl: string | null, log: (m: string) => void): Bri
     watcherStatus: () => null,
     libraryResolveSources: (sources) => sources,
     libraryOpenOriginal: async () => false,
+    librariesList: () => ({ current: '', libraries: [] }),
+    librariesSelect: unavailable,
+    librariesCreate: unavailable,
+    librariesRename: unavailable,
+    librariesRemove: unavailable,
+    librariesAddFiles: unavailable,
+    librariesAddFolder: unavailable,
+    librariesAddPaths: unavailable,
+    librariesRemoveSource: unavailable,
+    librariesReindex: unavailable,
+    settingsGet: () => {
+      throw new Error('not available when AskFiles connects to an external server');
+    },
+    settingsSet: unavailable,
+    developerInfo: () => {
+      throw new Error('not available when AskFiles connects to an external server');
+    },
+    developerOpenModels: unavailable,
     browseDocuments: () => [],
     browseDocument: () => null,
     browseHeadings: () => [],
@@ -143,7 +160,13 @@ function main(): void {
       log(`opening ${target}`);
       void win.loadURL(target);
     } else if (app.isPackaged) {
-      controller = new AppController({ win, log, env: process.env, broadcast });
+      controller = new AppController({
+        win,
+        log,
+        env: process.env,
+        broadcast,
+        openModelsWindow: () => openPage('models', { width: 900, height: 640 }),
+      });
       handlers = controller;
       void win.loadURL(STARTING_PAGE);
       void controller.run();
@@ -167,12 +190,16 @@ function main(): void {
             { label: 'About AskFiles', click: () => openPage('about', { width: 640, height: 720 }) },
             { type: 'separator' },
             {
-              label: 'Models',
+              label: 'Settings...',
+              accelerator: 'CommandOrControl+,',
               click: () => {
-                // The model page edits the server settings the first run writes; not before it.
-                if (controller?.setUp()) openPage('models', { width: 900, height: 640 });
+                // Settings change what the first run set up; not before it.
+                if (controller?.setUp()) openPage('settings', { width: 720, height: 640 });
               },
             },
+            ...(developerEnabled(process.env)
+              ? [{ label: 'Developer', click: () => openPage('developer', { width: 900, height: 720 }) }]
+              : []),
             { type: 'separator' },
             { role: 'hide', label: 'Hide AskFiles' },
             { role: 'hideOthers' },

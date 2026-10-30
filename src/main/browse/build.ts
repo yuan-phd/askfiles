@@ -50,7 +50,14 @@ export function buildOutline(sections: BrowseSection[]): OutlineEntry[] {
   const root: OutlineEntry[] = [];
   const stack: OutlineEntry[] = [];
   const add = (title: string, level: number, s: BrowseSection) => {
-    const entry: OutlineEntry = { title, level, sectionIndex: s.index, page: s.pageStart, children: [] };
+    const entry: OutlineEntry = {
+      title,
+      level,
+      sectionIndex: s.index,
+      page: s.pageStart,
+      pageLabel: s.pageLabelStart,
+      children: [],
+    };
     while (stack.length && stack[stack.length - 1]!.level >= level) stack.pop();
     (stack.length ? stack[stack.length - 1]!.children : root).push(entry);
     stack.push(entry);
@@ -66,11 +73,12 @@ export function buildOutline(sections: BrowseSection[]): OutlineEntry[] {
 /**
  * The browse entry of one indexed file, from its index.json record and the section documents the
  * watcher wrote. Sub-chunks of a long section are joined again with a paragraph break; a missing
- * section document leaves that part empty rather than failing the whole file.
+ * section document leaves that part empty rather than failing the whole file. root is only for
+ * records written before relPath was recorded.
  */
 export function buildDocument(
   rec: FileRecord,
-  o: { root: string; readChunk: (location: string) => StoredChunk | null },
+  o: { root?: string; readChunk: (location: string) => StoredChunk | null },
 ): BrowseDocument {
   const bySection = new Map<number, FileRecord['sections']>();
   for (const s of rec.sections) bySection.set(s.sectionIndex, [...(bySection.get(s.sectionIndex) ?? []), s]);
@@ -78,36 +86,48 @@ export function buildDocument(
     .sort(([a], [b]) => a - b)
     .map(([index, parts]) => {
       parts.sort((a, b) => a.subIndex - b.subIndex);
-      const title = parts[0]!.sectionTitle;
-      let level = 1;
+      const first = parts[0]!;
+      const title = first.sectionTitle;
+      let level = typeof first.sectionLevel === 'number' ? first.sectionLevel : 1;
       let lead: string[] = [];
       const bodies: string[] = [];
       parts.forEach((p, k) => {
         const chunk = o.readChunk(p.location);
         if (!chunk) return;
-        if (k === 0 && typeof chunk.sectionLevel === 'number') level = chunk.sectionLevel;
+        if (k === 0 && typeof first.sectionLevel !== 'number' && typeof chunk.sectionLevel === 'number') {
+          level = chunk.sectionLevel;
+        }
         const head = splitHead(chunk.pageContent, title);
         if (k === 0) lead = head.lead;
         if (head.body.trim()) bodies.push(head.body.trim());
       });
       const pages = parts.flatMap((p) => [p.pageStart, p.pageEnd]).filter((n): n is number => typeof n === 'number');
+      const pageStart = pages.length ? Math.min(...pages) : null;
+      const pageEnd = pages.length ? Math.max(...pages) : null;
+      // The printed label goes with the page it labels.
+      const labelStart = parts.find((p) => p.pageStart === pageStart)?.pageLabelStart ?? null;
+      const labelEnd = [...parts].reverse().find((p) => p.pageEnd === pageEnd)?.pageLabelEnd ?? null;
       return {
         index,
         title,
         level,
         lead,
         heading: headingKey(title, level),
-        pageStart: pages.length ? Math.min(...pages) : null,
-        pageEnd: pages.length ? Math.max(...pages) : null,
+        // Empty for records written before Session K, so readers fall back to the outline chain.
+        path: Array.isArray(first.sectionPath) ? first.sectionPath : [],
+        pageStart,
+        pageEnd,
+        pageLabelStart: labelStart,
+        pageLabelEnd: labelEnd,
         text: bodies.join('\n\n'),
       };
     });
   return {
-    version: 1,
+    version: 2,
     id: documentId(rec.path),
     path: rec.path,
     url: rec.url,
-    relPath: path.relative(o.root, rec.path) || path.basename(rec.path),
+    relPath: rec.relPath || (o.root ? path.relative(o.root, rec.path) : '') || path.basename(rec.path),
     title: path.basename(rec.path),
     size: rec.size,
     mtimeMs: rec.mtimeMs,

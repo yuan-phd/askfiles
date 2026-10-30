@@ -13,7 +13,7 @@ type ShellConfigValues = import('./bridge/contract.js').ShellConfigValues;
 type IpcRendererEvent = import('electron').IpcRendererEvent;
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { contextBridge, ipcRenderer } = require('electron') as typeof import('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron') as typeof import('electron');
 
 // ipcRenderer.invoke rejects with "Error invoking remote method '<channel>': Error: <message>";
 // the pages show the message to the user, so only the message is kept.
@@ -42,7 +42,6 @@ const askfiles: AskfilesBridge = {
     },
     start: () => invoke('askfiles:setup:start'),
     retry: () => invoke('askfiles:setup:retry'),
-    chooseFolder: () => invoke('askfiles:setup:choose-folder'),
   },
   models: {
     list: () => invoke('askfiles:models:list'),
@@ -58,6 +57,35 @@ const askfiles: AskfilesBridge = {
   library: {
     resolveSources: (sources) => invoke('askfiles:library:resolve-sources', sources),
     openOriginal: (source) => invoke('askfiles:library:open-original', source),
+  },
+  libraries: {
+    list: () => invoke('askfiles:libraries:list'),
+    onChange: (callback) => subscribe('askfiles:libraries:event', callback),
+    select: (id) => invoke('askfiles:libraries:select', String(id)),
+    create: (name) => invoke('askfiles:libraries:create', String(name)),
+    rename: (id, name) => invoke('askfiles:libraries:rename', String(id), String(name)),
+    remove: (id) => invoke('askfiles:libraries:remove', String(id)),
+    addFiles: () => invoke('askfiles:libraries:add-files'),
+    addFolder: () => invoke('askfiles:libraries:add-folder'),
+    addPaths: (paths) => invoke('askfiles:libraries:add-paths', Array.isArray(paths) ? paths.map(String) : []),
+    removeSource: (id) => invoke('askfiles:libraries:remove-source', String(id)),
+    reindex: () => invoke('askfiles:libraries:reindex'),
+    // Since Electron 32 a dropped File has no path property; only the preload can ask for it.
+    pathForFile: (file) => {
+      try {
+        return webUtils.getPathForFile(file);
+      } catch {
+        return '';
+      }
+    },
+  },
+  settings: {
+    get: () => invoke('askfiles:settings:get'),
+    set: (change) => invoke('askfiles:settings:set', change),
+  },
+  developer: {
+    info: () => invoke('askfiles:developer:info'),
+    openModels: () => invoke('askfiles:developer:open-models'),
   },
   browse: {
     documents: () => invoke('askfiles:browse:documents'),
@@ -85,6 +113,8 @@ const shellConfig: ShellConfig = {
   apiKey: values.apiKey ?? null,
   workspace: values.workspace ?? null,
   folder: values.folder ?? null,
+  libraryId: values.libraryId ?? null,
+  libraryName: values.libraryName ?? null,
   resolveSources: askfiles.library.resolveSources,
   openSource: askfiles.library.openOriginal,
 };

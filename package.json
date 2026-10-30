@@ -44,6 +44,7 @@
     "chokidar": "4.0.3",
     "mammoth": "1.13.0",
     "pdfjs-dist": "6.4.299",
-    "read-excel-file": "9.3.13"
+    "read-excel-file": "9.3.13",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   }
 }

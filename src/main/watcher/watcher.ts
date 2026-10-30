@@ -22,13 +22,25 @@ import type {
   WatcherStatus,
 } from './types.js';
 
+/** One folder the watcher reads: a linked folder, or a library's own folder of added files. */
+export interface WatchRoot {
+  /** Stable id; part of every document name, so equal files under two roots never share a name. */
+  id: string;
+  path: string;
+  /** Shown before the path inside the root (the folder's name); empty for the added files. */
+  label: string;
+}
+
 export interface FolderWatcherOptions {
-  /** The one folder the user picked. Watched recursively; never modified. */
-  root: string;
-  /** index.json is written here, for example ~/Library/Application Support/AskFiles. */
+  /** Folders to watch recursively; never modified. Give roots, or root for a single folder. */
+  roots?: WatchRoot[];
+  root?: string;
+  /** index.json is written here: the library's folder under the data directory. */
   dataDir: string;
-  /** STORAGE_DIR of the server; section documents go to <storageDir>/documents/askfiles. */
+  /** STORAGE_DIR of the server; section documents go to <storageDir>/documents/<docsFolder>. */
   storageDir: string;
+  /** Folder under STORAGE_DIR/documents for this library's section documents. Default askfiles. */
+  docsFolder?: string;
   workspaceSlug: string;
   api: LibraryApi;
   splitter: Splitter;
@@ -53,12 +65,16 @@ interface Job {
 type Outcome = { outcome: 'indexed' | 'unchanged' | 'removed'; sections?: number };
 
 export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file: [FileEvent]; watchError: [Error] }> {
-  private readonly o: Required<Omit<FolderWatcherOptions, 'log' | 'now'>> & {
+  private readonly o: Required<Omit<FolderWatcherOptions, 'log' | 'now' | 'root' | 'roots' | 'docsFolder'>> & {
     log: (msg: string) => void;
     now: () => Date;
   };
   private readonly indexFile: string;
-  private root: string;
+  private readonly docsFolder: string;
+  /** The roots as given, and as watched: real paths of those that could be read at start. */
+  private readonly given: WatchRoot[];
+  private roots: WatchRoot[] = [];
+  private unavailable: WatchRoot[] = [];
   private data: IndexData = { version: 1, files: {} };
   private handle: WatchHandle | null = null;
   private state: WatcherStatus['state'] = 'stopped';
@@ -83,7 +99,9 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
       log: options.log ?? ((msg) => console.log(`[watcher] ${msg}`)),
       now: options.now ?? (() => new Date()),
     };
-    this.root = path.resolve(options.root);
+    const roots = options.roots ?? (options.root ? [{ id: '', path: options.root, label: '' }] : []);
+    this.given = roots.map((r) => ({ ...r, path: path.resolve(r.path) }));
+    this.docsFolder = options.docsFolder ?? DOCS_FOLDER;
     this.indexFile = path.join(options.dataDir, 'index.json');
     this.resolveSources = createSourceResolver({
       files: () => Object.values(this.data.files),
@@ -91,25 +109,48 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
     });
   }
 
-  /** Loads index.json, starts watching, then queues the differences between folder and index. */
+  /**
+   * Loads index.json, starts watching, then queues the differences between folders and index. A
+   * folder that cannot be read (an unplugged drive) is listed in status().unavailable and its
+   * files stay in the index until it is back or removed from the library.
+   */
   async start(): Promise<void> {
     if (this.state !== 'stopped') throw new Error(`start() called while ${this.state}`);
     this.state = 'starting';
-    // realpath so the paths the watch reports match the keys in index.json (macOS /var is /private/var).
-    this.root = fs.realpathSync(this.root);
+    this.roots = [];
+    this.unavailable = [];
+    for (const r of this.given) {
+      try {
+        // realpath so the paths the watch reports match the keys in index.json (macOS /var is /private/var).
+        const real = fs.realpathSync(r.path);
+        if (!fs.statSync(real).isDirectory()) throw new Error('not a folder');
+        this.roots.push({ ...r, path: real });
+      } catch (e) {
+        this.unavailable.push(r);
+        this.o.log(`folder not available: ${r.path} (${(e as Error).message})`);
+      }
+    }
     this.data = loadIndex(this.indexFile, this.o.log);
-    this.o.log(`watching ${this.root}, ${Object.keys(this.data.files).length} files in index`);
+    this.o.log(
+      `watching ${this.roots.length} of ${this.given.length} folders, ${Object.keys(this.data.files).length} files in index`,
+    );
     // Watch before walking, so nothing written during the walk is missed. chokidar treats files
     // that appear before it is ready as initial and, with ignoreInitial, never reports them.
-    this.handle = this.o.watch(
-      this.root,
-      (_type, p) => this.onPath(p),
-      (err) => {
-        // Not 'error': an EventEmitter throws on an 'error' event nobody listens to.
-        this.o.log(`watch error: ${err.message}`);
-        this.emit('watchError', err);
-      },
+    const handles = this.roots.map((r) =>
+      this.o.watch(
+        r.path,
+        (_type, p) => this.onPath(p),
+        (err) => {
+          // Not 'error': an EventEmitter throws on an 'error' event nobody listens to.
+          this.o.log(`watch error: ${err.message}`);
+          this.emit('watchError', err);
+        },
+      ),
     );
+    this.handle = {
+      ready: Promise.all(handles.map((h) => h.ready)).then(() => undefined),
+      close: () => Promise.all(handles.map((h) => h.close())).then(() => undefined),
+    };
     await this.handle.ready;
     await this.reconcile();
     this.state = 'idle';
@@ -140,7 +181,40 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
       current: this.current?.path ?? null,
       indexed: Object.keys(this.data.files).length,
       deadLetters: [...this.dead.values()],
+      unavailable: this.unavailable.map((r) => r.path),
     };
+  }
+
+  /**
+   * Forgets every indexed file: unembeds and deletes its section documents and empties index.json,
+   * so the next start indexes everything again (Reindex). Only while stopped.
+   */
+  async clearIndex(): Promise<void> {
+    if (this.state !== 'stopped') throw new Error(`clearIndex() called while ${this.state}`);
+    this.data = loadIndex(this.indexFile, this.o.log);
+    const locations = Object.values(this.data.files).flatMap((f) => f.sections.map((s) => s.location));
+    await this.o.api.removeDocuments(this.o.workspaceSlug, locations);
+    this.data = { version: 1, files: {} };
+    this.dead.clear();
+    this.save();
+    this.o.log(`index cleared, ${locations.length} section documents removed`);
+  }
+
+  /** The watched root that holds p (the deepest one), or null. */
+  private rootOf(p: string): WatchRoot | null {
+    let best: WatchRoot | null = null;
+    for (const r of this.roots) {
+      const rel = path.relative(r.path, p);
+      if (rel && !rel.startsWith('..') && !path.isAbsolute(rel) && (!best || r.path.length > best.path.length))
+        best = r;
+    }
+    return best;
+  }
+
+  /** p under its root, with the root's label in front: what the browse pages show. */
+  private relPathOf(p: string, r: WatchRoot): string {
+    const rel = path.relative(r.path, p);
+    return r.label ? path.join(r.label, rel) : rel;
   }
 
   /** A copy of the index, for the status bar and the browse view. */
@@ -165,7 +239,8 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
   }
 
   private onPath(p: string): void {
-    if (this.state === 'stopped' || !isIndexable(p, this.root, this.o.extensions)) return;
+    const r = this.rootOf(p);
+    if (this.state === 'stopped' || !r || !isIndexable(p, r.path, this.o.extensions)) return;
     this.settle(p);
   }
 
@@ -271,10 +346,13 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
       throw e;
     }
     if (!st.isFile()) return { outcome: 'unchanged' };
+    const root = this.rootOf(p);
+    if (!root) return this.remove(p);
     const hash = await hashFile(p);
     const old = this.data.files[p];
     const { splitKey } = this.o.splitter;
-    if (old && old.hash === hash && old.splitKey === splitKey) {
+    const relPath = this.relPathOf(p, root);
+    if (old && old.hash === hash && old.splitKey === splitKey && old.relPath === relPath) {
       if (old.size !== st.size || old.mtimeMs !== st.mtimeMs) {
         this.data.files[p] = { ...old, size: st.size, mtimeMs: st.mtimeMs };
         this.save();
@@ -285,25 +363,33 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
     const chunks = (await this.o.splitter.split(p)).filter((c) => c.text.trim() !== '');
     // Names depend on path, bytes, split key and chunk position only: a changed file gets all new
     // names and is embedded afresh; an unchanged one keeps them (src/main/sections/documents.ts).
+    const rel = path.relative(root.path, p);
     const docs = sectionDocuments(
       chunks,
-      { path: p, relPath: path.relative(this.root, p), hash },
+      { path: p, relPath: root.id ? `${root.id}/${rel}` : rel, hash },
       { splitKey, published: this.o.now().toLocaleString('en-US') },
     );
     const oldByLocation = new Map((old?.sections ?? []).map((s) => [s.location, s]));
     const records: SectionRecord[] = [];
-    for (const { name, doc } of docs) {
-      const location = `${DOCS_FOLDER}/${name}`;
+    for (const [i, { name, doc }] of docs.entries()) {
+      const location = `${this.docsFolder}/${name}`;
       if (readSectionText(this.o.storageDir, location) === null) writeSectionDocument(this.o.storageDir, location, doc);
+      // Path and labels live only here, not in the document: LanceDB fixes a table's columns from
+      // its first rows, so the document JSON keeps the keys it had (src/main/sections/documents.ts).
+      const c = chunks[i]!;
       records.push({
         location,
         docId: null,
         sectionTitle: doc.sectionTitle,
         sectionIndex: doc.sectionIndex,
+        sectionLevel: c.sectionLevel,
+        sectionPath: c.sectionPath ?? [],
         subIndex: doc.subIndex,
         // 0 is how the documents say no page.
         pageStart: doc.pageStart || null,
         pageEnd: doc.pageEnd || null,
+        pageLabelStart: c.pageLabelStart || null,
+        pageLabelEnd: c.pageLabelEnd || null,
       });
     }
 
@@ -327,6 +413,8 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
     this.data.files[p] = {
       path: p,
       url: pathToFileURL(p).href,
+      relPath,
+      sourceId: root.id,
       hash,
       splitKey,
       size: st.size,
@@ -352,8 +440,14 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
 
   private async reconcile(): Promise<void> {
     const found = new Set<string>();
-    for await (const p of walk(this.root, this.root)) {
-      if (!isIndexable(p, this.root, this.o.extensions)) continue;
+    const walked: string[] = [];
+    for (const r of this.roots) {
+      for await (const p of walk(r.path, r.path)) {
+        if (!isIndexable(p, r.path, this.o.extensions) || this.rootOf(p) !== r) continue;
+        walked.push(p);
+      }
+    }
+    for (const p of walked) {
       found.add(p);
       const rec = this.data.files[p];
       let st: fs.Stats;
@@ -367,13 +461,16 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
       if (changed || rec.splitKey !== this.o.splitter.splitKey) this.settle(p);
     }
     let missing = 0;
+    // Files of a folder that cannot be read now are kept; files of a folder no longer in the
+    // library are not under any root and go.
+    const keep = (p: string) => this.unavailable.some((u) => belongsTo(p, this.data.files[p], u));
     for (const p of Object.keys(this.data.files)) {
-      if (!found.has(p)) {
+      if (!found.has(p) && !keep(p)) {
         this.queue.push({ path: p, kind: 'remove', attempt: 0 });
         missing++;
       }
     }
-    this.o.log(`reconcile: ${found.size} files in folder, ${this.settling.size} to check, ${missing} to remove`);
+    this.o.log(`reconcile: ${found.size} files in folders, ${this.settling.size} to check, ${missing} to remove`);
   }
 
   private save(): void {
@@ -388,6 +485,16 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
     if (!this.isIdle() && this.state !== 'stopped') return;
     for (const w of this.idleWaiters.splice(0)) w();
   }
+}
+
+/**
+ * True when an indexed file came from root r. By source id, since a folder that cannot be read
+ * cannot be resolved to the real path the index keys use; by path for records without one.
+ */
+function belongsTo(p: string, rec: FileRecord | undefined, r: WatchRoot): boolean {
+  if (rec?.sourceId !== undefined) return rec.sourceId === r.id;
+  const rel = path.relative(r.path, p);
+  return !!rel && !rel.startsWith('..') && !path.isAbsolute(rel);
 }
 
 function sizeOf(p: string): number {

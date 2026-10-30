@@ -14,8 +14,14 @@ export const UPSTREAM_UI_ENV = 'ASKFILES_UPSTREAM_UI';
 /** A presets file to use instead of the bundled config/presets.json (smoke test, developers). */
 export const PRESETS_FILE_ENV = 'ASKFILES_PRESETS_FILE';
 
-/** A library folder chosen ahead: the first run uses it instead of asking (smoke test). */
+/**
+ * A folder linked into All files once setup is done, when All files holds no folder yet: the
+ * bridge-free way the smoke test fills the library (there is no folder step any more).
+ */
 export const LIBRARY_FOLDER_ENV = 'ASKFILES_LIBRARY_FOLDER';
+
+/** Shows the Developer page in the menu: raw preset values and the data directory. */
+export const DEVELOPER_ENV = 'ASKFILES_DEVELOPER';
 
 export type StartPage = 'upstream' | 'ask' | 'onboarding';
 
@@ -32,6 +38,10 @@ export function chooseStartPage(env: Env, state: ShellState): StartPage {
 /** config/presets.json ships inside app.asar (electron-builder.yml, files). */
 export function presetsFilePath(env: Env, appPath: string): string {
   return env[PRESETS_FILE_ENV] || path.join(appPath, 'config', 'presets.json');
+}
+
+export function developerEnabled(env: Env): boolean {
+  return env[DEVELOPER_ENV] === '1';
 }
 
 export function presetFolder(env: Env): string | null {

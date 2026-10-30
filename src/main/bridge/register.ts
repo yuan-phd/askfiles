@@ -11,7 +11,6 @@ const INVOKE: Record<string, keyof BridgeHandlers> = {
   [CHANNELS.setupReplay]: 'setupReplay',
   [CHANNELS.setupStart]: 'setupStart',
   [CHANNELS.setupRetry]: 'setupRetry',
-  [CHANNELS.setupChooseFolder]: 'setupChooseFolder',
   [CHANNELS.modelsList]: 'modelsList',
   [CHANNELS.modelsPull]: 'modelsPull',
   [CHANNELS.modelsRemove]: 'modelsRemove',
@@ -19,6 +18,20 @@ const INVOKE: Record<string, keyof BridgeHandlers> = {
   [CHANNELS.watcherStatus]: 'watcherStatus',
   [CHANNELS.libraryResolveSources]: 'libraryResolveSources',
   [CHANNELS.libraryOpenOriginal]: 'libraryOpenOriginal',
+  [CHANNELS.librariesList]: 'librariesList',
+  [CHANNELS.librariesSelect]: 'librariesSelect',
+  [CHANNELS.librariesCreate]: 'librariesCreate',
+  [CHANNELS.librariesRename]: 'librariesRename',
+  [CHANNELS.librariesRemove]: 'librariesRemove',
+  [CHANNELS.librariesAddFiles]: 'librariesAddFiles',
+  [CHANNELS.librariesAddFolder]: 'librariesAddFolder',
+  [CHANNELS.librariesAddPaths]: 'librariesAddPaths',
+  [CHANNELS.librariesRemoveSource]: 'librariesRemoveSource',
+  [CHANNELS.librariesReindex]: 'librariesReindex',
+  [CHANNELS.settingsGet]: 'settingsGet',
+  [CHANNELS.settingsSet]: 'settingsSet',
+  [CHANNELS.developerInfo]: 'developerInfo',
+  [CHANNELS.developerOpenModels]: 'developerOpenModels',
   [CHANNELS.browseDocuments]: 'browseDocuments',
   [CHANNELS.browseDocument]: 'browseDocument',
   [CHANNELS.browseHeadings]: 'browseHeadings',
@@ -42,6 +55,9 @@ export const REQUEST_CHANNELS: readonly string[] = [
 const MAX_QUERY = 500;
 /** Longest question a page may send. */
 const MAX_QUESTION = 4000;
+/** Most paths one drop may add, and the longest path accepted. */
+const MAX_PATHS = 1000;
+const MAX_PATH = 4096;
 
 const str = (v: unknown, max = MAX_QUERY): string | null => (typeof v === 'string' ? v.slice(0, max) : null);
 
@@ -55,6 +71,10 @@ export function registerBridge(ipc: IpcMainLike, h: BridgeHandlers): void {
     const tag = args[0];
     if (typeof tag !== 'string' || tag.trim() === '') throw new Error('a model name is required');
     return tag.trim();
+  };
+  const idArg = (v: unknown): string => {
+    if (typeof v !== 'string' || v === '' || v.length > 200) throw new Error('a library or source id is required');
+    return v;
   };
   for (const [channel, name] of Object.entries(INVOKE)) {
     ipc.handle(channel, async (_event, ...args) => {
@@ -99,6 +119,22 @@ export function registerBridge(ipc: IpcMainLike, h: BridgeHandlers): void {
           const page = typeof c.pageStart === 'number' && c.pageStart > 0 ? c.pageStart : null;
           return h.answerSaveCase({ question, file, path: sectionPath as string[], pageStart: page });
         }
+        case 'librariesSelect':
+        case 'librariesRemove':
+        case 'librariesRemoveSource':
+          return h[name](idArg(args[0]));
+        case 'librariesCreate':
+          return h.librariesCreate(str(args[0], 200) ?? '');
+        case 'librariesRename':
+          return h.librariesRename(idArg(args[0]), str(args[1], 200) ?? '');
+        case 'librariesAddPaths': {
+          const paths = (Array.isArray(args[0]) ? args[0] : [])
+            .filter((p): p is string => typeof p === 'string' && p !== '' && p.length <= MAX_PATH)
+            .slice(0, MAX_PATHS);
+          return h.librariesAddPaths(paths);
+        }
+        case 'settingsSet':
+          return h.settingsSet(args[0] && typeof args[0] === 'object' ? args[0] : {});
         default:
           return (h[name] as () => unknown)();
       }
@@ -109,7 +145,14 @@ export function registerBridge(ipc: IpcMainLike, h: BridgeHandlers): void {
     try {
       event.returnValue = h.shellConfig();
     } catch {
-      event.returnValue = { baseUrl: null, apiKey: null, workspace: null, folder: null };
+      event.returnValue = {
+        baseUrl: null,
+        apiKey: null,
+        workspace: null,
+        folder: null,
+        libraryId: null,
+        libraryName: null,
+      };
     }
   });
   ipc.on(CHANNELS.appPageReady, (_event, info) => {

@@ -182,8 +182,11 @@ describe('BrowseIndex', () => {
     ]);
     expect(leave.entries[0]!.text).toBeUndefined();
     expect(groups[0]!.documents).toBe(3);
-    expect(groups.find((g) => g.key === '年假')!.entries[0]!.title).toBe('第二章 年假');
-    expect(groups.find((g) => g.key === '总则')!.documents).toBe(1);
+    expect(index.headings({ minDocuments: 1 }).find((g) => g.key === '年假')!.entries[0]!.title).toBe('第二章 年假');
+    // The Headings page lists only headings found in two or more documents.
+    expect(groups.find((g) => g.key === '总则')).toBeUndefined();
+    expect(groups.every((g) => g.documents >= 2)).toBe(true);
+    expect(index.headings({ minDocuments: 1 }).find((g) => g.key === '总则')!.documents).toBe(1);
 
     const [one] = index.headings({ key: 'annual leave' });
     expect(one!.entries.map((e) => e.text)).toEqual([

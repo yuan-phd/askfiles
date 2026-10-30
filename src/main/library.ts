@@ -68,13 +68,14 @@ export async function ensureApiKey(
 }
 
 /**
- * Finds the library workspace by name and writes the preset settings into it, or creates it with
- * them. Returns its slug. Writing the settings every time keeps an existing library in step with
- * the preset after an update.
+ * Finds a workspace by name and writes the preset settings into it, or creates it with them.
+ * Returns its slug. Writing the settings every time keeps an existing library in step with the
+ * preset after an update.
  */
-export async function ensureLibrary(
+export async function ensureWorkspace(
   baseUrl: string,
   apiKey: string,
+  name: string,
   settings: Record<string, string | number>,
   fetchImpl: Fetch = fetch,
 ): Promise<string> {
@@ -82,7 +83,7 @@ export async function ensureLibrary(
   const list = await call(fetchImpl, baseUrl, 'GET', '/v1/workspaces', { apiKey });
   if (!list.ok) throw failure('GET', '/v1/workspaces', list);
   const existing = ((list.body as { workspaces?: { name?: string; slug?: string }[] } | null)?.workspaces ?? []).find(
-    (w) => w.name === LIBRARY_NAME,
+    (w) => w.name === name,
   );
   if (existing?.slug) {
     const route = `/v1/workspace/${encodeURIComponent(existing.slug)}/update`;
@@ -92,9 +93,34 @@ export async function ensureLibrary(
   }
   const r = await call(fetchImpl, baseUrl, 'POST', '/v1/workspace/new', {
     apiKey,
-    json: { name: LIBRARY_NAME, ...body },
+    json: { name, ...body },
   });
   const slug = (r.body as { workspace?: { slug?: string } } | null)?.workspace?.slug;
   if (!r.ok || !slug) throw failure('POST', '/v1/workspace/new', r);
   return slug;
+}
+
+/** The default library's workspace (named LIBRARY_NAME, the name Sessions H to J used). */
+export function ensureLibrary(
+  baseUrl: string,
+  apiKey: string,
+  settings: Record<string, string | number>,
+  fetchImpl: Fetch = fetch,
+): Promise<string> {
+  return ensureWorkspace(baseUrl, apiKey, LIBRARY_NAME, settings, fetchImpl);
+}
+
+/** Workspace name of a library other than the default one. */
+export function workspaceNameOf(libraryId: string): string {
+  return `askfiles-${libraryId}`;
+}
+
+/**
+ * DELETE /v1/workspace/{slug}: upstream drops the workspace, its document links and its vectors.
+ * A workspace that is already gone counts as deleted.
+ */
+export async function deleteWorkspace(baseUrl: string, apiKey: string, slug: string, fetchImpl: Fetch = fetch) {
+  const route = `/v1/workspace/${encodeURIComponent(slug)}`;
+  const r = await call(fetchImpl, baseUrl, 'DELETE', route, { apiKey });
+  if (!r.ok && r.status !== 404 && r.status !== 400) throw failure('DELETE', route, r);
 }

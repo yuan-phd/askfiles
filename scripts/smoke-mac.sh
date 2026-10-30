@@ -2,12 +2,13 @@
 # Smoke test of the packaged app on macOS, run by the smoke job in .github/workflows/mac.yml.
 # Launches AskFiles.app on a fresh data directory the way a user's first launch goes: the first
 # run picks the test preset (ASKFILES_PRESETS_FILE), pulls its models into the app's own Ollama,
-# takes the library folder from ASKFILES_LIBRARY_FOLDER instead of the dialog, creates the library
-# and its API key, and indexes a temp folder holding a text PDF and a scanned PDF (OCR). Then it
-# checks that the Ask page reached the library, that the browse index lists both PDFs and that the
-# first run fetched the reranker; the app asks one question through the answer pipeline
-# (ASKFILES_SMOKE_QUESTION) and the script checks the logged answer cites [1]. Then it takes a
-# screenshot and quits.
+# creates the All files library and its API key, and opens the app without asking for a folder.
+# ASKFILES_LIBRARY_FOLDER then links a temp folder holding a text PDF and a two-page scanned PDF
+# into All files (the bridge-free way; a user adds folders with the Add button), which is indexed,
+# the scan OCRed page by page. Then it checks that the Ask page reached the library, that the
+# browse index lists both PDFs and that the first run fetched the reranker; once the library is
+# indexed the app asks one question through the answer pipeline (ASKFILES_SMOKE_QUESTION) and the
+# script checks the logged answer cites [1]. Then it takes a screenshot and quits.
 # Mac only. Usage: scripts/smoke-mac.sh path/to/AskFiles.app path/to/out-dir
 
 set -euo pipefail
@@ -94,29 +95,49 @@ log "Ask page ready: $(new_log | grep '\[main\] page ready ask' | tail -n 1)"
 SERVER_PORT=$(json d.server <"$DATA/ports.json")
 B="http://127.0.0.1:$SERVER_PORT/api"
 KEY=$(json d.apiKey <"$DATA/shell.json")
-SLUG=$(json d.workspaceSlug <"$DATA/shell.json")
-[ -n "$KEY" ] && [ -n "$SLUG" ] || fail "shell.json lacks the API key or the workspace"
+SLUG=$(json 'd.libraries[0].workspaceSlug' <"$DATA/shell.json")
+[ -n "$KEY" ] && [ -n "$SLUG" ] || fail "shell.json lacks the API key or the All files workspace"
+# No folder step: the folder from ASKFILES_LIBRARY_FOLDER is linked into All files after setup.
+linked_folders() { json 'd.libraries[0].folders.map(f=>f.path).join(",")' <"$DATA/shell.json"; }
+t_link=$(date +%s)
+until [ "$(linked_folders)" = "$FOLDER" ]; do
+  [ $(($(date +%s) - t_link)) -lt 30 ] || fail "All files links [$(linked_folders)], expected $FOLDER"
+  sleep 1
+done
 auth=(-H "Authorization: Bearer $KEY")
 ping=$(curl -fsS "$B/ping") || fail "GET /api/ping failed"
 [ "$(echo "$ping" | json d.online)" = "true" ] || fail "/api/ping answered $ping"
 
-ws=$(curl -fsS "$B/v1/workspace/$SLUG" "${auth[@]}") || fail "GET /v1/workspace/$SLUG failed with the stored key"
-docs=$(echo "$ws" | json '(d.workspace[0]||d.workspace).documents.length')
-log "workspace $SLUG holds $docs section document(s)"
-[ "${docs:-0}" -ge 2 ] || fail "expected the sections of both PDFs in the library, got $docs"
-
-index="$DATA/index.json"
-[ -s "$index" ] || fail "no index.json"
+# Indexing runs after setup now; each library keeps its records in <data>/libraries/<id>.
+LIB="$DATA/libraries/all-files"
+index="$LIB/index.json"
+indexed() { [ -s "$index" ] && json "['handbook.pdf','scanned.pdf'].every(f=>(Object.values(d.files).find(r=>r.path.endsWith('/'+f))||{sections:[]}).sections.length>0)" <"$index"; }
+log "waiting up to ${SETUP_TIMEOUT}s for both PDFs to be indexed"
+t_index=$(date +%s)
+until [ "$(indexed)" = "true" ]; do
+  [ $(($(date +%s) - t_index)) -lt "$SETUP_TIMEOUT" ] || fail "both PDFs not indexed after ${SETUP_TIMEOUT}s"
+  running || fail "the app exited while indexing"
+  sleep 2
+done
+log "indexed after $(($(date +%s) - t_index))s"
 for f in handbook.pdf scanned.pdf; do
   n=$(json "(Object.values(d.files).find(r=>r.path.endsWith('/$f'))||{sections:[]}).sections.length" <"$index")
   log "$f: $n section(s) in index.json"
-  [ "${n:-0}" -ge 1 ] || fail "$f was not indexed"
 done
-scanned_page=$(json "Object.values(d.files).find(r=>r.path.endsWith('/scanned.pdf')).sections[0].pageStart" <"$index")
-[ -z "$scanned_page" ] || fail "the OCR text of scanned.pdf should record no page, got $scanned_page"
-# The browse index (src/main/browse): one JSON file per document under the data directory, written
-# in the same watcher event as the index.json record, so allow a few seconds for the last one.
-browse="$DATA/browse"
+# OCR runs page by page, so each page of the scan is a section with its real page number.
+scanned_pages=$(json "Object.values(d.files).find(r=>r.path.endsWith('/scanned.pdf')).sections.map(s=>s.pageStart).join(',')" <"$index")
+[ "$scanned_pages" = "1,2" ] || fail "the OCR sections of scanned.pdf should record pages 1,2, got [$scanned_pages]"
+ocr_line=$(new_log | grep '\[watcher\] OCR: .*pages with text' | tail -n 1 || true)
+log "OCR timing: ${ocr_line:-not logged}"
+
+ws=$(curl -fsS "$B/v1/workspace/$SLUG" "${auth[@]}") || fail "GET /v1/workspace/$SLUG failed with the stored key"
+docs=$(echo "$ws" | json '(d.workspace[0]||d.workspace).documents.length')
+log "workspace $SLUG holds $docs section document(s)"
+[ "${docs:-0}" -ge 3 ] || fail "expected the sections of both PDFs in the library, got $docs"
+
+# The browse index (src/main/browse): one JSON file per document under the library's folder,
+# written in the same watcher event as the index.json record, so allow a few seconds for the last.
+browse="$LIB/browse"
 browse_titles() {
   node -e 'const fs=require("fs"),p=require("path");const d=process.argv[1];let out=[];try{out=fs.readdirSync(d).filter(n=>n.endsWith(".json")).map(n=>JSON.parse(fs.readFileSync(p.join(d,n),"utf8"))).filter(x=>x.sections.length>0).map(x=>x.title)}catch{}process.stdout.write(out.sort().join(","))' "$browse"
 }
@@ -138,7 +159,7 @@ reranker="$DATA/models/reranker/Xenova/ms-marco-MiniLM-L-6-v2"
   fail "the first run did not fetch the reranker into $reranker"
 
 # ASKFILES_SMOKE_QUESTION: the app asked $QUESTION through the answer pipeline once the Ask page was
-# ready and logs one [answer] smoke line with the cited sources and the answer text.
+# ready and the library indexed, and logs one [answer] smoke line with the cited sources and text.
 t3=$(date +%s)
 until new_log | grep -q '\[answer\] smoke'; do
   [ $(($(date +%s) - t3)) -lt 300 ] || fail "no [answer] smoke line within 300s"

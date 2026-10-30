@@ -1,10 +1,12 @@
 // Ask page: one question box, an answer streamed from the shell's answer pipeline
 // (window.askfiles.answer, src/main/answer) with numbered citations, cards for the cited sections,
 // the other selected sections under a collapsed heading, and the nearest sections when nothing
-// answers. The API client (../api/client.js) is kept for the library count only. A switch in the
-// status bar shows the browse view (../browse/view.js) in place of the Ask page, without a reload.
+// answers. The API client (../api/client.js) is kept for the library count only. The top bar
+// (../shared/topbar.js) holds the library, its status and the switch that shows the browse view
+// (../browse/view.js) in place of the Ask page, without a reload.
 import { createBrowseView } from '../browse/view.js';
 import { createClient, generateApiKey } from '../api/client.js';
+import { mountTopBar } from '../shared/topbar.js';
 
 const RECENT_LIMIT = 12;
 const RECENT_KEY = 'askfiles.recentQuestions';
@@ -12,11 +14,6 @@ const PREVIEW_CHARS = 180;
 
 const $ = (id) => document.getElementById(id);
 const els = {
-  folder: $('status-folder'),
-  count: $('status-count'),
-  state: $('status-state'),
-  stateText: $('status-state-text'),
-  failed: $('status-failed'),
   form: $('query-form'),
   query: $('query'),
   submit: $('submit'),
@@ -40,7 +37,6 @@ const els = {
   sectionTemplate: $('section-template'),
   searchView: $('view-search'),
   browseView: $('view-browse'),
-  viewButtons: [$('view-search-button'), $('view-browse-button')],
   dev: $('dev'),
   devControls: $('dev-controls'),
   devCount: $('dev-count'),
@@ -74,7 +70,6 @@ const state = {
   slug: null,
   recent: [],
   documentCount: null,
-  indexing: null,
   view: 'search',
   browse: null,
   // The run being shown: its id once ask() resolved, the events that came before that, its parts.
@@ -84,61 +79,18 @@ const state = {
   expected: null,
 };
 
+const bar = mountTopBar($('top-bar'), {
+  views: { search: els.searchView, browse: els.browseView },
+  onView: (view) => showView(view),
+});
+
 function setState(kind, text) {
-  els.state.dataset.state = kind;
-  els.stateText.textContent = text;
-}
-
-function renderCount() {
-  // The watcher counts files; without it (a plain browser) the workspace counts section documents.
-  const n = state.indexing ? state.indexing.indexed : state.documentCount;
-  if (n === null || n === undefined) return;
-  els.count.textContent = n === 1 ? '1 document indexed' : `${n} documents indexed`;
-}
-
-function renderFailed() {
-  const dead = state.indexing?.deadLetters || [];
-  els.failed.hidden = dead.length === 0;
-  els.failed.textContent = dead.length === 1 ? '1 file could not be read' : `${dead.length} files could not be read`;
-  els.failed.title = dead.map((d) => `${d.path}: ${d.error}`).join('\n');
-}
-
-/**
- * Status from the folder watcher (src/main/watcher, WatcherStatus plus folder and error):
- * state starting | idle | working | stopped, pending, indexed, deadLetters.
- */
-function renderIndexing() {
-  const s = state.indexing;
-  if (s && s.error) {
-    setState('error', 'Folder not available');
-    els.state.title = s.error;
-  } else if (s && (s.state === 'working' || s.state === 'starting')) {
-    const pending = Number(s.pending) || 0;
-    setState('indexing', pending > 0 ? `Indexing, ${pending} left` : 'Indexing');
-  } else {
-    setState('ready', 'Up to date');
-  }
-  renderCount();
-  renderFailed();
-}
-
-function applyIndexStatus(status) {
-  state.indexing = status || null;
-  if (status && status.folder) setFolder(status.folder);
-  if (state.client || status?.error) renderIndexing();
-}
-
-function setFolder(folder) {
-  config.folder = folder;
-  els.folder.textContent = folder || 'No folder chosen';
-  els.folder.title = folder || '';
+  bar.setConnection(kind, text);
 }
 
 async function connect() {
-  setFolder(config.folder);
   if (!config.baseUrl) {
     setState('error', 'Not connected');
-    els.count.textContent = 'No library server';
     return false;
   }
   try {
@@ -147,12 +99,13 @@ async function connect() {
     state.slug = config.workspace || (await state.client.ensureLibrary()).slug;
     const ws = await state.client.getWorkspace(state.slug);
     state.documentCount = ws?.documents?.length ?? 0;
-    renderIndexing();
+    // The watcher counts files; without it (a plain browser) the workspace counts section documents.
+    bar.setFallbackCount(state.documentCount);
+    setState('ready', 'Up to date');
     return true;
   } catch (e) {
     console.error('[ask] connect failed', e);
     setState('error', 'Library not reachable');
-    els.count.textContent = '';
     return false;
   }
 }
@@ -235,10 +188,8 @@ async function openSource(c) {
 function showView(view) {
   state.view = view;
   if (view === 'browse' && !state.browse) state.browse = createBrowseView(els.browseView);
-  els.searchView.hidden = view !== 'search';
-  els.browseView.hidden = view !== 'browse';
-  for (const b of els.viewButtons) b.setAttribute('aria-pressed', String(b.dataset.view === view));
-  if (view === 'search') els.query.focus();
+  bar.setView(view);
+  if (view === 'search' && !bar.isEmpty()) els.query.focus();
 }
 
 /** Opens the cited section on the browse view's document page. */
@@ -624,19 +575,7 @@ document.addEventListener('keydown', (e) => {
 
 els.query.addEventListener('input', autoGrow);
 
-for (const b of els.viewButtons) b.addEventListener('click', () => showView(b.dataset.view));
-
 if (answers) answers.onEvent(handleEvent);
-
-// Folder watcher status from the shell (src/main/preload.ts, window.askfiles.watcher).
-const watcher = window.askfiles?.watcher;
-if (watcher) {
-  watcher.onStatus(applyIndexStatus);
-  watcher
-    .status()
-    .then((s) => s && applyIndexStatus(s))
-    .catch((e) => console.warn('[ask] watcher status failed', e.message));
-}
 
 loadRecent();
 void initDeveloper();

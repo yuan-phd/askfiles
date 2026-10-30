@@ -156,7 +156,9 @@ test.describe('Ask page with the answer pipeline stubbed', () => {
     expect(await page.evaluate(() => window.__answerCalls)).toEqual([]);
 
     await query.press('Enter');
-    await expect(page.getByTestId('answer-text')).toHaveText('Answer to first [1]');
+    // Streamed as "Answer to first [1]", finished as "Answer to first[1] " a few ms later (renderClaims
+    // puts the citation before the sentence's trailing space); either may be on screen when checked.
+    await expect(page.getByTestId('answer-text')).toHaveText(/^Answer to first ?\[1\]\s*$/);
     await expect(page.getByTestId('recent-item').first()).toHaveText('first line\nsecond line');
 
     await page.keyboard.press('Escape');
@@ -164,7 +166,7 @@ test.describe('Ask page with the answer pipeline stubbed', () => {
     await expect(page.getByTestId('answer')).toBeHidden();
 
     await page.getByTestId('recent-item').filter({ hasText: 'notice period' }).click();
-    await expect(page.getByTestId('answer-text')).toHaveText('Answer to notice [1]');
+    await expect(page.getByTestId('answer-text')).toHaveText(/^Answer to notice ?\[1\]\s*$/);
     await expect(query).toHaveValue('What is the notice period?');
   });
 
@@ -183,7 +185,6 @@ test.describe('Ask page with the answer pipeline stubbed', () => {
     await expect(page.getByTestId('status-state')).toHaveText('Indexing, 4 left');
     // Files from the watcher, not the 40 section documents of the workspace.
     await expect(page.getByTestId('status-count')).toHaveText('10 documents indexed');
-    await expect(page.getByTestId('status-folder')).toHaveText('/Users/anna/Documents/HR');
     await expect
       .poll(() => page.evaluate(() => window.__bridgeCalls))
       .toEqual([['pageReady', { page: 'ask', connected: true, documents: 40 }]]);
@@ -236,10 +237,10 @@ test.describe('Ask page with the answer pipeline stubbed', () => {
   test('reads config from window.shellConfig before query parameters', async ({ page }) => {
     await mockLibrary(page, { documents: 1 });
     await page.addInitScript((base) => {
-      window.shellConfig = { baseUrl: base, apiKey: 'test-key', workspace: 'lib', folder: '/Users/shell/Docs' };
+      window.shellConfig = { baseUrl: base, apiKey: 'test-key', workspace: 'lib', libraryName: 'Work' };
     }, 'http://127.0.0.1:1');
-    await page.goto(`${process.env.ASKFILES_PAGE_URL}/ask/index.html?folder=ignored`);
-    await expect(page.getByTestId('status-folder')).toHaveText('/Users/shell/Docs');
+    await page.goto(`${process.env.ASKFILES_PAGE_URL}/ask/index.html?workspace=ignored`);
+    await expect(page.getByTestId('library-name')).toHaveText('Work');
     await expect(page.getByTestId('status-count')).toHaveText('1 document indexed');
   });
 });

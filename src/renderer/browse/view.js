@@ -1,13 +1,24 @@
-// Browse view: read the library without asking anything. Library, document, headings and find
+// Browse view: read the library without asking anything. Library, headings, find and document
 // pages, all drawn from the shell's browse index through window.askfiles.browse; no model and no
 // server call. Mounted by the Ask page next to Ask, and by browse/index.html on its own.
+//
+// A fixed sidebar holds the four entries; only the content area scrolls. Document appears once a
+// document is open, labelled with its file name and with its outline below it. Opening a document
+// (from any page, or Read section on the Ask page) always lands on Document and never changes what
+// Library, Headings or Find show.
 
 const MARKUP = `
-<nav class="browse-tabs" aria-label="Browse">
+<nav class="browse-sidebar" aria-label="Browse" data-testid="browse-sidebar">
   <button type="button" class="browse-tab" data-tab="library" data-testid="browse-tab-library">Library</button>
   <button type="button" class="browse-tab" data-tab="headings" data-testid="browse-tab-headings">Headings</button>
   <button type="button" class="browse-tab" data-tab="find" data-testid="browse-tab-find">Find</button>
+  <div class="sidebar-doc" data-testid="sidebar-doc" hidden>
+    <button type="button" class="browse-tab doc-tab" data-tab="document" data-testid="browse-tab-document"></button>
+    <ol class="outline" data-testid="doc-outline"></ol>
+    <p class="rail-empty" data-testid="doc-outline-empty" hidden>No headings in this document.</p>
+  </div>
 </nav>
+<div class="browse-content" data-testid="browse-content">
 
 <section class="browse-page" data-page="library" data-testid="library" aria-label="Library">
   <div class="library-head">
@@ -25,29 +36,21 @@ const MARKUP = `
 </section>
 
 <section class="browse-page" data-page="document" data-testid="document" aria-label="Document" hidden>
-  <div class="doc-layout">
-    <nav class="doc-rail" aria-label="Outline">
-      <h2>Outline</h2>
-      <ol class="outline" data-testid="doc-outline"></ol>
-      <p class="rail-empty" data-testid="doc-outline-empty" hidden>No headings in this document.</p>
-    </nav>
-    <article class="doc-body">
-      <header class="doc-head">
-        <button type="button" class="link back" data-testid="doc-back">Back</button>
-        <h1 class="doc-title" data-testid="doc-title"></h1>
-        <p class="doc-path" data-testid="doc-path"></p>
-        <button type="button" class="open" data-testid="doc-open">Open original</button>
-      </header>
-      <p class="error" data-testid="doc-error" role="alert" hidden></p>
-      <div class="doc-sections" data-testid="doc-sections"></div>
-    </article>
-  </div>
+  <article class="doc-body">
+    <header class="doc-head">
+      <h1 class="doc-title" data-testid="doc-title"></h1>
+      <p class="doc-path" data-testid="doc-path"></p>
+      <button type="button" class="open" data-testid="doc-open">Open original</button>
+    </header>
+    <p class="error" data-testid="doc-error" role="alert" hidden></p>
+    <div class="doc-sections" data-testid="doc-sections"></div>
+  </article>
 </section>
 
 <section class="browse-page" data-page="headings" data-testid="headings" aria-label="Headings" hidden>
   <div class="headings-layout">
     <div class="headings-index">
-      <label class="headings-all"><input type="checkbox" data-testid="headings-all" /> Include headings found in one document only</label>
+      <p class="hint">Headings found in two or more documents.</p>
       <ul class="headings-list" data-testid="headings-list"></ul>
       <p class="browse-empty" data-testid="headings-empty" hidden></p>
     </div>
@@ -67,6 +70,7 @@ const MARKUP = `
   <p class="find-summary" data-testid="find-summary" hidden></p>
   <ol class="find-results" data-testid="find-results"></ol>
 </section>
+</div>
 `;
 
 const bridge = window.askfiles?.browse;
@@ -86,11 +90,20 @@ function button(className, text, testid) {
   return b;
 }
 
-/** Page or sheet label; spreadsheets carry the sheet number in the page fields. */
-export function placeLabel(start, end, fileName = '') {
+/**
+ * Page or sheet label; spreadsheets carry the sheet number in the page fields. When the PDF
+ * prints its own page labels (iv, A-3) they lead, with the PDF page index after them.
+ */
+export function placeLabel(start, end, fileName = '', labelStart = null, labelEnd = null) {
   if (!start) return '';
-  const unit = /\.xlsx$/i.test(fileName) ? 'Sheet' : 'Page';
-  if (!end || end === start) return `${unit} ${start}`;
+  const unit = /\.(xlsx|xlsm|xls|csv)$/i.test(fileName) ? 'Sheet' : 'Page';
+  const single = !end || end === start;
+  if (labelStart && unit === 'Page') {
+    const printed = single || !labelEnd ? labelStart : `${labelStart} to ${labelEnd}`;
+    const index = single ? `PDF page ${start}` : `PDF pages ${start} to ${end}`;
+    return `${single ? 'Page' : 'Pages'} ${printed} (${index})`;
+  }
+  if (single) return `${unit} ${start}`;
   return `${unit}s ${start} to ${end}`;
 }
 
@@ -152,7 +165,6 @@ export function createBrowseView(root) {
   const tabs = [...root.querySelectorAll('.browse-tab')];
   const state = {
     page: 'library',
-    returnTo: 'library',
     documents: [],
     sort: 'name',
     expanded: new Set(),
@@ -162,18 +174,26 @@ export function createBrowseView(root) {
     loaded: false,
   };
 
+  const content = q('browse-content');
+  /** Scroll position per page, so coming back to a page finds it where it was left. */
+  const scrolls = {};
+
   function showPage(name) {
+    if (state.page !== name) scrolls[state.page] = content.scrollTop;
+    const changed = state.page !== name;
     state.page = name;
     for (const [n, p] of Object.entries(pages)) p.hidden = n !== name;
     for (const t of tabs) {
-      const on = t.dataset.tab === name || (name === 'document' && t.dataset.tab === state.returnTo);
+      const on = t.dataset.tab === name;
       t.classList.toggle('active', on);
       if (on) t.setAttribute('aria-current', 'page');
       else t.removeAttribute('aria-current');
     }
+    if (changed) content.scrollTop = scrolls[name] ?? 0;
   }
 
   function show(tab) {
+    if (tab === 'document' && !state.doc && !state.docRef) return;
     if (tab === 'library' && !state.loaded) void loadLibrary();
     if (tab === 'headings') void loadHeadings();
     showPage(tab);
@@ -210,6 +230,7 @@ export function createBrowseView(root) {
       const li = el('li');
       const b = button('outline-link', e.title, testid);
       b.dataset.section = String(e.sectionIndex);
+      b.dataset.level = String(e.level);
       b.addEventListener('click', () => openDocument({ id: doc.id }, { sectionIndex: e.sectionIndex }));
       li.append(b);
       if (e.children?.length) li.append(outlineList(e.children, doc, testid));
@@ -293,7 +314,16 @@ export function createBrowseView(root) {
     return `h${Math.min(6, Math.max(2, level + 1))}`;
   }
 
+  /** Shows the Document entry in the sidebar, labelled with the file name. */
+  function showDocEntry(title) {
+    q('sidebar-doc').hidden = false;
+    const tab = q('browse-tab-document');
+    tab.textContent = title;
+    tab.title = title;
+  }
+
   function renderDocument(doc) {
+    showDocEntry(doc.title);
     q('doc-title').textContent = doc.title;
     q('doc-path').textContent = doc.relPath !== doc.title ? doc.relPath : '';
     q('doc-error').hidden = true;
@@ -314,7 +344,7 @@ export function createBrowseView(root) {
           h.dataset.testid = 'doc-section-title';
           sec.append(h);
         }
-        const place = placeLabel(s.pageStart, s.pageEnd, doc.title);
+        const place = placeLabel(s.pageStart, s.pageEnd, doc.title, s.pageLabelStart, s.pageLabelEnd);
         if (place) {
           const p = el('p', 'doc-page', place);
           p.dataset.testid = 'doc-section-page';
@@ -333,21 +363,26 @@ export function createBrowseView(root) {
     if (!doc.sections.some((s) => s.index === index) && target?.sectionTitle) {
       index = doc.sections.find((s) => s.title === target.sectionTitle)?.index;
     }
-    for (const b of root.querySelectorAll('.doc-rail .outline-link')) {
+    for (const b of root.querySelectorAll('.sidebar-doc .outline-link')) {
       b.classList.toggle('active', Number(b.dataset.section) === index);
     }
     const sec = root.querySelector(`.doc-section[data-section="${index}"]`);
     for (const s of root.querySelectorAll('.doc-section.target')) s.classList.remove('target');
     if (sec) {
       sec.classList.add('target');
-      sec.scrollIntoView({ block: 'start' });
+      content.scrollTop += sec.getBoundingClientRect().top - content.getBoundingClientRect().top;
     } else {
-      pages.document.scrollIntoView({ block: 'start' });
+      content.scrollTop = 0;
     }
   }
 
   async function openDocument(ref, target = {}) {
-    if (state.page !== 'document') state.returnTo = state.page;
+    state.docRef = ref;
+    showDocEntry(
+      state.doc && (ref.id ? state.doc.id === ref.id : state.doc.url === ref.url)
+        ? state.doc.title
+        : ref.title || 'Document',
+    );
     showPage('document');
     if (!bridge) {
       q('doc-error').textContent = 'Reading documents is available in the AskFiles app.';
@@ -360,6 +395,7 @@ export function createBrowseView(root) {
     } catch (e) {
       console.warn('[browse] document failed', e.message);
     }
+    if (state.docRef !== ref) return;
     if (!doc) {
       state.doc = null;
       q('doc-title').textContent = ref.title || 'Document';
@@ -371,12 +407,13 @@ export function createBrowseView(root) {
       q('doc-error').hidden = false;
       return;
     }
+    const same = state.doc?.id === doc.id && state.doc?.indexedAt === doc.indexedAt;
     state.doc = doc;
-    renderDocument(doc);
+    if (!same) renderDocument(doc);
+    else showDocEntry(doc.title);
     scrollToSection(target);
   }
 
-  q('doc-back').addEventListener('click', () => showPage(state.returnTo));
   q('doc-open').addEventListener('click', async () => {
     if (state.doc && (await openOriginal(state.doc)) === false) {
       q('doc-error').textContent = `${state.doc.title} is no longer in your documents folder.`;
@@ -389,13 +426,11 @@ export function createBrowseView(root) {
   let headingGroups = [];
 
   function renderHeadings() {
-    const all = q('headings-all').checked;
-    const groups = headingGroups.filter((g) => all || g.documents > 1);
+    // The shell lists only headings found in two or more documents; the filter keeps that true here too.
+    const groups = headingGroups.filter((g) => g.documents > 1);
     const empty = q('headings-empty');
     empty.hidden = groups.length > 0;
-    empty.textContent = headingGroups.length
-      ? 'No heading appears in more than one document.'
-      : 'No headings yet. Documents with headings appear here once they are indexed.';
+    empty.textContent = 'No heading appears in more than one document yet.';
     q('headings-list').replaceChildren(
       ...groups.map((g) => {
         const li = el('li');
@@ -451,7 +486,7 @@ export function createBrowseView(root) {
       file.title = e.relPath;
       const as = el('span', 'compare-section', e.title);
       head.append(file, as);
-      const place = placeLabel(e.pageStart, e.pageEnd, e.documentTitle);
+      const place = placeLabel(e.pageStart, e.pageEnd, e.documentTitle, e.pageLabelStart, e.pageLabelEnd);
       if (place) head.append(el('span', 'compare-page', place));
       const body = el('div', 'compare-text');
       body.dataset.testid = 'compare-text';
@@ -467,8 +502,6 @@ export function createBrowseView(root) {
     }
     detail.replaceChildren(title, columns);
   }
-
-  q('headings-all').addEventListener('change', renderHeadings);
 
   // --- find ----------------------------------------------------------------------------------
 
@@ -511,7 +544,7 @@ export function createBrowseView(root) {
           b.dataset.section = String(h.sectionIndex);
           const title = el('span', 'find-hit-title');
           title.append(...highlighted(h.title, h.titleMarks));
-          const place = placeLabel(h.pageStart, h.pageEnd, g.document.title);
+          const place = placeLabel(h.pageStart, h.pageEnd, g.document.title, h.pageLabelStart, h.pageLabelEnd);
           const snippet = el('span', 'find-snippet');
           snippet.dataset.testid = 'find-snippet';
           snippet.append(...highlighted(h.snippet, h.marks));

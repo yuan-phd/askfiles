@@ -3,6 +3,7 @@
 // Ask and Browse switch on the Ask page.
 import { test, expect } from '@playwright/test';
 import { seedBrowse, stubBrowseBridge } from './browse-seed.mjs';
+import { folderSource, library, stubLibraries } from './libraries-stub.mjs';
 import { mockLibrary, pageUrl, watcherStatus, stubAnswer, card, answerRun, partsOf } from './mocks.js';
 
 const DAY = 24 * 3600 * 1000;
@@ -77,7 +78,7 @@ test.describe('browse view', () => {
     expect((await names(page))[0]).toBe('leave-policy-v2.md');
   });
 
-  test('document page renders sections with an outline rail and jumps to a section', async ({ page }) => {
+  test('document page renders sections with its outline in the sidebar and jumps to a section', async ({ page }) => {
     await openBrowse(page);
     await page.getByTestId('library-open').filter({ hasText: 'operations-manual.docx' }).click();
     const doc = page.getByTestId('document');
@@ -93,8 +94,15 @@ test.describe('browse view', () => {
     await expect(receiving.locator('.doc-heading', { hasText: '1.1 Receiving goods' })).toHaveCount(1);
     expect((await receiving.locator('.doc-para').allTextContents()).join('\n').length).toBeGreaterThan(2500);
 
+    // The Document entry appears in the sidebar with the file name, the outline below it.
+    await expect(page.getByTestId('browse-tab-document')).toHaveText('operations-manual.docx');
+    await expect(page.getByTestId('browse-tab-document')).toHaveClass(/active/);
+    await expect(page.getByTestId('browse-tab-library')).not.toHaveClass(/active/);
     const rail = page.getByTestId('doc-outline');
     await expect(rail.getByTestId('doc-outline-entry').first()).toHaveText('Operations manual 运营手册');
+    // Nested by heading level: 1.1 sits under 1 Warehouse, which sits under the title.
+    await expect(rail.locator(':scope > li')).toHaveCount(1);
+    await expect(rail.locator(':scope > li > ol > li')).toHaveCount(3);
     const target = rail.getByTestId('doc-outline-entry').filter({ hasText: '3.2 急救' });
     await target.click();
     await expect(target).toHaveClass(/active/);
@@ -110,8 +118,50 @@ test.describe('browse view', () => {
         { title: 'operations-manual.docx', url: expect.stringMatching(/^file:\/\/.*\/operations-manual\.docx$/) },
       ]);
 
-    await page.getByTestId('doc-back').click();
+    // The sidebar never scrolls away with the document.
+    const sidebar = await page.getByTestId('browse-sidebar').boundingBox();
+    expect(sidebar.y).toBeLessThan(5);
+
+    await page.getByTestId('browse-tab-library').click();
     await expect(page.getByTestId('library')).toBeVisible();
+    await page.getByTestId('browse-tab-document').click();
+    await expect(page.getByTestId('doc-title')).toHaveText('operations-manual.docx');
+  });
+
+  test('opening a document never changes the state of Library, Headings or Find', async ({ page }) => {
+    await openBrowse(page);
+    await page.getByTestId('library-sort').selectOption('date');
+    const pdf = page.getByTestId('library-item').filter({ hasText: 'it-handbook.pdf' });
+    await pdf.getByTestId('library-toggle').click();
+    await expect(page.getByTestId('sidebar-doc')).toBeHidden();
+
+    await page.getByTestId('browse-tab-find').click();
+    await page.getByTestId('find-query').fill('leave');
+    await page.getByTestId('find-query').press('Enter');
+    await page.getByTestId('find-group').first().waitFor();
+    const hits = await page.getByTestId('find-hit').count();
+    await page
+      .getByTestId('find-group')
+      .filter({ hasText: 'leave-policy-v1.md' })
+      .getByTestId('find-hit')
+      .first()
+      .click();
+    await expect(page.getByTestId('document')).toBeVisible();
+    await expect(page.getByTestId('browse-tab-document')).toHaveClass(/active/);
+    // Find is not the active entry while a document shows, and kept its results.
+    await expect(page.getByTestId('browse-tab-find')).not.toHaveClass(/active/);
+    await page.getByTestId('browse-tab-find').click();
+    await expect(page.getByTestId('find-query')).toHaveValue('leave');
+    await expect(page.getByTestId('find-hit')).toHaveCount(hits);
+
+    await page.getByTestId('browse-tab-library').click();
+    await expect(page.getByTestId('library-sort')).toHaveValue('date');
+    await expect(pdf.getByTestId('library-outline')).toBeVisible();
+    await pdf.getByTestId('library-outline-entry').filter({ hasText: '2.1 Lost devices' }).click();
+    await expect(page.getByTestId('browse-tab-document')).toHaveText('it-handbook.pdf');
+    await page.getByTestId('browse-tab-library').click();
+    await expect(page.getByTestId('library-sort')).toHaveValue('date');
+    expect((await names(page))[0]).toBe('leave-policy-v2.md');
   });
 
   test('a PDF section shows its page and an outline entry from the library opens at it', async ({ page }) => {
@@ -129,8 +179,9 @@ test.describe('browse view', () => {
     await openBrowse(page);
     await page.getByTestId('browse-tab-headings').click();
     const items = page.getByTestId('heading-item');
-    // Only headings found in two or more documents by default.
+    // Only headings found in two or more documents, and no switch to show the others.
     await expect(items).toHaveCount(4);
+    await expect(page.getByTestId('headings-all')).toHaveCount(0);
     await expect(items.first()).toContainText('2 documents');
     await expect(items.filter({ hasText: '适用范围' })).toHaveCount(0);
 
@@ -151,13 +202,9 @@ test.describe('browse view', () => {
     await cards.nth(0).getByTestId('compare-read').click();
     await expect(page.getByTestId('doc-title')).toHaveText('leave-policy-v1.md');
     await expect(page.locator('.doc-section[data-section="2"]')).toHaveClass(/target/);
-    await page.getByTestId('doc-back').click();
+    await page.getByTestId('browse-tab-headings').click();
     await expect(page.getByTestId('headings')).toBeVisible();
     await expect(page.getByTestId('compare-card')).toHaveCount(2);
-
-    await page.getByTestId('headings-all').check();
-    await expect(items.filter({ hasText: '适用范围' })).toHaveCount(1);
-    await expect(items.filter({ hasText: '适用范围' })).toContainText('1 document');
   });
 
   test('find groups hits by document and section, Chinese and English', async ({ page }) => {
@@ -192,7 +239,7 @@ test.describe('browse view', () => {
     await v2.getByTestId('find-hit').click();
     await expect(page.getByTestId('doc-title')).toHaveText('leave-policy-v2.md');
     await expect(page.locator('.doc-section[data-section="2"]')).toHaveClass(/target/);
-    await page.getByTestId('doc-back').click();
+    await page.getByTestId('browse-tab-find').click();
     // The find page kept its query and results.
     await expect(page.getByTestId('find-query')).toHaveValue('annual LEAVE');
     await expect(page.getByTestId('find-group')).toHaveCount(2);
@@ -258,11 +305,18 @@ test.describe('search and browse in one window', () => {
     await page.getByTestId('view-search').click();
     await page.getByTestId('source-card').getByTestId('source-read').click();
     await expect(page.getByTestId('browse-view')).toBeVisible();
+    await expect(page.getByTestId('view-browse')).toHaveAttribute('aria-pressed', 'true');
+    // Read section lands on Document, whatever page the browse view was on.
+    await expect(page.getByTestId('browse-tab-document')).toHaveClass(/active/);
+    await expect(page.getByTestId('browse-tab-find')).not.toHaveClass(/active/);
     await expect(page.getByTestId('doc-title')).toHaveText('leave-policy-v2.md');
     const sec = page.locator('.doc-section[data-section="4"]');
     await expect(sec).toHaveClass(/target/);
     await expect(sec).toBeInViewport();
     await expect(sec.getByTestId('doc-section-title')).toHaveText('Parental leave');
+    await page.getByTestId('browse-tab-find').click();
+    await expect(page.getByTestId('find-query')).toHaveValue('medical certificate');
+    await expect(page.getByTestId('find-group')).toHaveCount(2);
     expect(await page.evaluate(() => window.__sameDocument)).toBe(true);
   });
 
@@ -302,6 +356,12 @@ for (const scheme of ['light', 'dark']) {
     await mockLibrary(page, { documents: 6 });
     await stubBrowseBridge(page, seed.index, {
       status: watcherStatus({ indexed: 6, folder: '/Users/anna/Documents/HR' }),
+    });
+    await stubLibraries(page, {
+      libraries: {
+        current: 'all-files',
+        libraries: [library({ indexed: 6, sources: [folderSource('/Users/anna/HR')] })],
+      },
     });
     await page.goto(pageUrl({ folder: '/Users/anna/Documents/HR' }));
     await page.getByTestId('view-browse').click();

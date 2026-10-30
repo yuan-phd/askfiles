@@ -148,8 +148,10 @@ jobs:
       - name: Time the rerankers
         run: node scripts/bench-reranker.mjs "$RUNNER_TEMP/reranker" | tee -a "$GITHUB_STEP_SUMMARY"
 
-      # The notices the DMG ships, for comparing with or replacing the committed Linux-generated file.
-      - uses: actions/upload-artifact@v4
+      # The notices the DMG ships: npm run package:mac regenerates THIRD-PARTY-NOTICES from the pruned
+      # darwin trees, so this artifact is the file to replace the committed Linux-generated copy with.
+      - name: Upload the regenerated THIRD-PARTY-NOTICES
+        uses: actions/upload-artifact@v4
         with:
           name: third-party-notices-mac-${{ github.sha }}
           path: THIRD-PARTY-NOTICES

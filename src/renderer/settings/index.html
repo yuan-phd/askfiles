@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; connect-src 'none'; img-src 'self' data:; style-src 'self'; script-src 'self'"
+    />
+    <title>AskFiles settings</title>
+    <link rel="stylesheet" href="../ask/ask.css" />
+    <link rel="stylesheet" href="../shared/pages.css" />
+    <script type="module" src="./settings.js"></script>
+  </head>
+  <body>
+    <main class="page narrow">
+      <h1>Settings</h1>
+      <div id="message" class="error" role="alert" data-testid="message" hidden></div>
+
+      <fieldset class="setting" data-testid="setting-scope">
+        <legend>Answer scope</legend>
+        <p class="note">How many of your documents an answer may draw on.</p>
+        <div class="choices" role="radiogroup">
+          <label><input type="radio" name="scope" value="strict" data-testid="scope-strict" /> Strict</label>
+          <label><input type="radio" name="scope" value="balanced" data-testid="scope-balanced" /> Balanced</label>
+          <label><input type="radio" name="scope" value="broad" data-testid="scope-broad" /> Broad</label>
+        </div>
+      </fieldset>
+
+      <fieldset class="setting" data-testid="setting-model">
+        <legend>Answer model</legend>
+        <p class="note">Faster answers sooner with a smaller model; Better takes longer and answers more carefully.</p>
+        <div class="choices" role="radiogroup">
+          <label
+            ><input type="radio" name="model" value="faster" data-testid="model-faster" /> Faster
+            <span class="choice-detail" data-testid="model-faster-detail"></span
+          ></label>
+          <label
+            ><input type="radio" name="model" value="better" data-testid="model-better" /> Better
+            <span class="choice-detail" data-testid="model-better-detail"></span
+          ></label>
+        </div>
+      </fieldset>
+
+      <fieldset class="setting" data-testid="setting-context">
+        <legend>Context length</legend>
+        <p class="note">
+          How much text the model reads at once; longer reads more of your documents but is slower and uses more memory.
+        </p>
+        <div class="choices" role="radiogroup" data-testid="context-choices"></div>
+      </fieldset>
+
+      <fieldset class="setting" data-testid="setting-reindex">
+        <legend>Reindex this library</legend>
+        <p class="note">
+          Reads every file of <span data-testid="reindex-library">this library</span> again; use it when results look
+          out of date.
+        </p>
+        <button type="button" class="secondary" data-testid="reindex">Reindex</button>
+      </fieldset>
+
+      <p class="note" data-testid="status" role="status"></p>
+      <div id="progress" class="progress" hidden>
+        <progress id="progress-bar" data-testid="progress-bar" max="100" value="0">0%</progress>
+        <p id="progress-text" class="note" data-testid="progress-text"></p>
+      </div>
+    </main>
+  </body>
+</html>

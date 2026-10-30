@@ -3,22 +3,16 @@
 //
 //   window.askfiles.setup = {
 //     onEvent(callback) -> unsubscribe  // wizard events (state, tier, progress) and first-run
-//                                       // events (setup, indexing); a late subscriber gets a replay
+//                                       // events (setup); a late subscriber gets a replay
 //     start() -> Promise                // starts the first run, or joins the run in progress
 //     retry() -> Promise                // resumes at the step that failed
-//     chooseFolder() -> Promise<{ folder } | null>  // native folder dialog; null when cancelled
 //   }
 //
 // The main process switches the window to the search page when the run is done. Tests put a stub
 // with the same shape on the window before the page loads.
-import { STEPS, indexingText, initialState, progressText, reduce } from './view.js';
+import { STEPS, initialState, progressText, reduce } from './view.js';
 
 const $ = (id) => document.getElementById(id);
-
-function show(id, text) {
-  $(id).hidden = !text;
-  $(id).textContent = text || '';
-}
 
 function render(state) {
   for (const { name } of STEPS) {
@@ -36,18 +30,14 @@ function render(state) {
   }
 
   const p = state.progress;
-  // The download bar belongs to the model steps; it gives way once the folder step starts.
-  const showBar = p !== null && state.steps.pullModels !== 'pending' && state.steps.chooseFolder === 'pending';
+  // The download bar belongs to the model steps; it gives way once the library step starts.
+  const showBar = p !== null && state.steps.pullModels !== 'pending' && state.steps.createLibrary === 'pending';
   $('progress').hidden = !showBar;
   if (showBar) {
     $('progress-bar').value = p.percent;
     $('progress-bar').textContent = `${p.percent}%`;
     $('progress-text').textContent = progressText(p);
   }
-
-  $('folder').hidden = state.phase !== 'folder';
-  show('folder-name', state.folder ? `Your documents folder: ${state.folder}` : '');
-  show('indexing-text', state.steps.indexing !== 'pending' ? indexingText(state.indexing) : '');
 
   $('error').hidden = state.phase !== 'error';
   $('error-text').textContent = state.error || '';
@@ -83,17 +73,6 @@ function main() {
   $('retry').addEventListener('click', () => {
     $('retry').disabled = true;
     bridge.retry();
-  });
-  $('choose-folder').addEventListener('click', async () => {
-    $('choose-folder').disabled = true;
-    show('folder-error', '');
-    try {
-      await bridge.chooseFolder();
-    } catch (e) {
-      show('folder-error', e?.message || String(e));
-    } finally {
-      $('choose-folder').disabled = false;
-    }
   });
   bridge.start();
 }

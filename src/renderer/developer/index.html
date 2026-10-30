@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; connect-src 'none'; img-src 'self' data:; style-src 'self'; script-src 'self'"
+    />
+    <title>AskFiles developer</title>
+    <link rel="stylesheet" href="../ask/ask.css" />
+    <link rel="stylesheet" href="../shared/pages.css" />
+    <script type="module" src="./developer.js"></script>
+  </head>
+  <body>
+    <main class="page">
+      <h1>Developer</h1>
+      <p class="lead">Shown only when AskFiles starts with ASKFILES_DEVELOPER=1.</p>
+      <div id="message" class="error" role="alert" data-testid="message" hidden></div>
+      <h2>Models</h2>
+      <p class="note">The Models page has no menu entry; the Settings page chooses the answer model.</p>
+      <p><button type="button" class="secondary" data-testid="open-models">Open the Models page</button></p>
+      <h2>Data directory</h2>
+      <p><code data-testid="data-dir"></code></p>
+      <h2>Presets file</h2>
+      <p><code data-testid="presets-file"></code></p>
+      <h2>Settings</h2>
+      <pre class="raw" data-testid="settings"></pre>
+      <h2>Preset in use (settings applied)</h2>
+      <pre class="raw" data-testid="effective-preset"></pre>
+      <h2>Preset of this Mac's tier</h2>
+      <pre class="raw" data-testid="machine-preset"></pre>
+    </main>
+  </body>
+</html>

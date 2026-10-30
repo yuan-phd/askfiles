@@ -130,7 +130,7 @@ describe.skipIf(reason !== null)('folder watcher against the real server', () =>
       await watcher.stop();
     }
   }, 300_000);
-  it('OCRs a scanned PDF through the collector with the seeded language data', async () => {
+  it('OCRs a two-page scanned PDF page by page through the collector, with real page numbers', async () => {
     const up = upstream!;
     // Node's fetch ignores the proxy here, so a download from the tesseract CDN would fail and
     // take the collector down (docs/upstream-analysis.md Q14): success means the seed was used.
@@ -150,6 +150,7 @@ describe.skipIf(reason !== null)('folder watcher against the real server', () =>
     fs.copyFileSync(SCANNED, path.join(folder, 'scanned.pdf'));
     const api = createLibraryApi({ baseUrl: up.baseUrl, apiKey });
     const uploads: string[] = [];
+    const images: { name: string; ms: number }[] = [];
     const watcher = new FolderWatcher({
       root: folder,
       dataDir: path.join(tmp, 'shell'),
@@ -162,6 +163,12 @@ describe.skipIf(reason !== null)('folder watcher against the real server', () =>
         ocr: collectorOcr({
           api: {
             uploadForText: (f) => (uploads.push(f), api.uploadForText(f)),
+            uploadImageForText: async (png, name) => {
+              const t = Date.now();
+              const r = await api.uploadImageForText(png, name);
+              images.push({ name, ms: Date.now() - t });
+              return r;
+            },
             purgeDocuments: (l) => api.purgeDocuments(l),
           },
           cacheDir: path.join(tmp, 'shell', 'ocr-cache'),
@@ -177,20 +184,32 @@ describe.skipIf(reason !== null)('folder watcher against the real server', () =>
       await watcher.whenIdle();
       log(`scanned PDF done in ${Date.now() - t0} ms`);
       expect(watcher.status().deadLetters).toEqual([]);
+      // Cost per page with the shipped tesseract data (eng and chi_sim, 4.0.0_best_int).
+      log(`OCR per page: ${images.map((i) => `${i.name} ${i.ms} ms`).join(', ')}`);
       const [rec] = watcher.files();
-      expect(rec!.sections).toHaveLength(1);
-      expect(rec!.sections[0]).toMatchObject({ sectionTitle: 'scanned', pageStart: null, pageEnd: null });
-      const doc = JSON.parse(
-        fs.readFileSync(path.join(up.storageDir, 'documents', rec!.sections[0]!.location), 'utf8'),
-      ) as { pageContent: string; pageStart: number };
-      log(`OCR text: ${JSON.stringify(doc.pageContent)}`);
-      expect(doc.pageStart).toBe(0);
-      expect(doc.pageContent).toMatch(/second class/);
-      expect(doc.pageContent).toMatch(/written approval from a director/);
-      expect(uploads).toHaveLength(1);
-      // The collector copy of the upload is gone again; only the section document is embedded.
-      const embedded = [...(await api.workspaceDocuments(ws.slug)).keys()];
-      expect(embedded).toEqual([rec!.sections[0]!.location]);
+      expect(rec!.sections.map((x) => [x.sectionTitle, x.pageStart, x.pageEnd])).toEqual([
+        ['Page 1', 1, 1],
+        ['Page 2', 2, 2],
+      ]);
+      const docs = rec!.sections.map(
+        (x) =>
+          JSON.parse(fs.readFileSync(path.join(up.storageDir, 'documents', x.location), 'utf8')) as {
+            pageContent: string;
+            pageStart: number;
+          },
+      );
+      log(`OCR text: ${JSON.stringify(docs.map((d) => d.pageContent))}`);
+      expect(docs.map((d) => d.pageStart)).toEqual([1, 2]);
+      expect(docs[0]!.pageContent).toMatch(/second class/);
+      expect(docs[0]!.pageContent).toMatch(/written approval from a director/);
+      expect(docs[1]!.pageContent).toMatch(/Dinner is refunded up to 40 euros/);
+      expect(docs[1]!.pageContent).not.toMatch(/second class/);
+      // Pages are OCRed in parallel, so they finish in either order.
+      expect(images.map((i) => i.name).sort()).toEqual(['scanned-page-1-1.png', 'scanned-page-2-1.png']);
+      expect(uploads).toHaveLength(0);
+      // The collector copies of the uploads are gone again; only the section documents are embedded.
+      const embedded = [...(await api.workspaceDocuments(ws.slug)).keys()].sort();
+      expect(embedded).toEqual(rec!.sections.map((x) => x.location).sort());
     } finally {
       await watcher.stop();
     }
