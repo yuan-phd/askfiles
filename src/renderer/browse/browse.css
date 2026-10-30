@@ -521,7 +521,7 @@ h6.doc-heading {
   overflow-wrap: anywhere;
 }
 
-.find-snippet mark {
+.find-hit mark {
   background: var(--accent-soft);
   color: var(--text);
   border-radius: 2px;

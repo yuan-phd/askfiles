@@ -275,3 +275,38 @@ test.describe('search and browse in one window', () => {
     await expect(page.getByTestId('doc-title')).toHaveText('gone.pdf');
   });
 });
+
+// Page states for the PR in light and dark mode, through the search page as the app shows them:
+//   SCREENSHOT_DIR=docs/screenshots/browse npx playwright test browse -g screenshot
+const shots = process.env.SCREENSHOT_DIR;
+for (const scheme of ['light', 'dark']) {
+  test(`browse screenshot ${scheme}`, async ({ page }) => {
+    test.skip(!shots, 'SCREENSHOT_DIR not set');
+    await page.emulateMedia({ colorScheme: scheme });
+    await mockLibrary(page, { documents: 6 });
+    await stubBrowseBridge(page, seed.index, {
+      status: watcherStatus({ indexed: 6, folder: '/Users/anna/Documents/HR' }),
+    });
+    await page.goto(pageUrl({ folder: '/Users/anna/Documents/HR' }));
+    await page.getByTestId('view-browse').click();
+    const item = page.getByTestId('library-item').filter({ hasText: 'operations-manual.docx' });
+    await item.getByTestId('library-toggle').click();
+    await page.screenshot({ path: `${shots}/library-${scheme}.png`, fullPage: true });
+
+    await item.getByTestId('library-outline-entry').filter({ hasText: '1.2 Storage' }).click();
+    await expect(page.locator('.doc-section.target')).toBeInViewport();
+    await page.waitForTimeout(1700);
+    await page.screenshot({ path: `${shots}/document-${scheme}.png` });
+
+    await page.getByTestId('browse-tab-headings').click();
+    await page.getByTestId('heading-item').filter({ hasText: 'Sick leave' }).click();
+    await page.getByTestId('compare-card').nth(1).waitFor();
+    await page.screenshot({ path: `${shots}/headings-${scheme}.png`, fullPage: true });
+
+    await page.getByTestId('browse-tab-find').click();
+    await page.getByTestId('find-query').fill('leave');
+    await page.getByTestId('find-query').press('Enter');
+    await page.getByTestId('find-group').nth(1).waitFor();
+    await page.screenshot({ path: `${shots}/find-${scheme}.png`, fullPage: true });
+  });
+}
