@@ -18,11 +18,24 @@ export interface CitedRecord {
 export type MetricQuestion = Pick<
   Question,
   'category' | 'expected_source_file' | 'expected_section' | 'expected_section_path' | 'key_elements'
->;
+> &
+  Partial<Pick<Question, 'question'>>;
 
-/** Lower case, NFKC, no whitespace at all: how key elements are looked for. */
+/**
+ * How key elements are looked for: NFKC, lower case, every dash to -, curly quotes straight, a
+ * word broken across a line (con- flicts) joined, the percent sign dropped from the first number
+ * of a range (0%-15% is 0-15%), then no whitespace at all.
+ */
 export function squash(s: string): string {
-  return s.normalize('NFKC').toLowerCase().replace(/\s+/g, '');
+  return s
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[\u2010-\u2015\u2212\uff0d]/g, '-')
+    .replace(/[\u2018\u2019\u201a\u201b\u2032]/g, "'")
+    .replace(/[\u201c\u201d\u201e\u201f\u2033]/g, '"')
+    .replace(/(\p{L})-\s+(\p{L})/gu, '$1$2')
+    .replace(/(\d)\s*%\s*-\s*(\d)/g, '$1-$2')
+    .replace(/\s+/g, '');
 }
 
 const PATH_SPLIT = /\s*>\s*/;
@@ -81,7 +94,9 @@ export function keyCoverage(q: MetricQuestion, answer: string): number | null {
  * found in the answer text; attribution is true when the answer states at least one, every cited
  * section contains at least one of the stated ones, and every stated one is in a cited section. So
  * a citation of a section that holds some other key element, but not the fact the answer gives,
- * fails. A refusal (the not-found marker, with or without the sections it checked) to an absent
+ * fails. Stated elements that the question itself contains (paragraph 5.88 in a question about
+ * paragraph 5.88) are left out of the check: the answer may repeat the question without the
+ * passage repeating it. A refusal (the not-found marker, with or without the sections it checked) to an absent
  * question is true; any other answer to one is false, and so is a refusal to an answerable
  * question or an answer citing nothing. Null when the question lists no key elements and is not
  * absent.
@@ -97,7 +112,8 @@ export function attributionOk(
   if (!elements.length) return null;
   if (!o.cited.length) return false;
   const said = squash(o.answer);
-  const stated = elements.filter((e) => said.includes(e));
+  const asked = squash(q.question ?? '');
+  const stated = elements.filter((e) => said.includes(e) && !(asked && asked.includes(e)));
   if (!stated.length) return false;
   const passages = o.cited.map((c) => squash(c.passage));
   return (
@@ -115,6 +131,12 @@ export interface MetricRow {
   attribution: boolean | null;
   firstTokenMs: number | null;
   totalMs: number | null;
+  /** The answer was the not-found state; null when unknown. */
+  refused?: boolean | null;
+  /** Sentences of the answer with no valid citation (unsupported claims). */
+  unsupported?: number | null;
+  /** Marked [unsupported: ...] in the question notes (a formula the split does not keep): left out of every summary. */
+  excluded?: boolean;
 }
 
 export interface MetricSummary {
@@ -126,6 +148,24 @@ export interface MetricSummary {
   attribution: { hit: number; n: number };
   firstTokenMedianMs: number | null;
   totalMedianMs: number | null;
+  /** Answerable questions returned not-found, over answerable questions. */
+  falseRefusals: { hit: number; n: number };
+  /** Absent questions given an answer, over absent questions. */
+  falseAnswers: { hit: number; n: number };
+  unsupportedMean: number | null;
+  excluded: number;
+}
+
+const isAbsent = (category: string) => (ABSENT as readonly string[]).includes(category);
+
+function share(values: (boolean | null)[]): { hit: number; n: number } {
+  const known = values.filter((v): v is boolean => v !== null);
+  return { hit: known.filter(Boolean).length, n: known.length };
+}
+
+function mean(values: (number | null)[]): number | null {
+  const v = values.filter((x): x is number => x !== null);
+  return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
 }
 
 function median(values: number[]): number | null {
@@ -139,7 +179,8 @@ function median(values: number[]): number | null {
 export function summarizeMetrics(rows: MetricRow[]): MetricSummary[] {
   const out: MetricSummary[] = [];
   for (const config of [...new Set(rows.map((r) => r.config))]) {
-    const rs = rows.filter((r) => r.config === config);
+    const excludedRows = rows.filter((r) => r.config === config && r.excluded);
+    const rs = rows.filter((r) => r.config === config && !r.excluded);
     for (const category of ['all', ...new Set(rs.map((r) => r.category))]) {
       const c = category === 'all' ? rs : rs.filter((r) => r.category === category);
       const bools = (k: 'targetHit' | 'attribution') => {
@@ -156,6 +197,10 @@ export function summarizeMetrics(rows: MetricRow[]): MetricSummary[] {
         attribution: bools('attribution'),
         firstTokenMedianMs: median(c.map((r) => r.firstTokenMs).filter((v): v is number => v !== null)),
         totalMedianMs: median(c.map((r) => r.totalMs).filter((v): v is number => v !== null)),
+        falseRefusals: share(c.filter((r) => !isAbsent(r.category)).map((r) => r.refused ?? null)),
+        falseAnswers: share(c.filter((r) => isAbsent(r.category)).map((r) => (r.refused == null ? null : !r.refused))),
+        unsupportedMean: mean(c.map((r) => r.unsupported ?? null)),
+        excluded: category === 'all' ? excludedRows.length : excludedRows.filter((r) => r.category === category).length,
       });
     }
   }
@@ -166,11 +211,11 @@ const pct = (r: { hit: number; n: number }) => (r.n ? `${Math.round((100 * r.hit
 
 export function metricsTable(summaries: MetricSummary[]): string {
   const head =
-    '| Config | Category | Questions | Target section hit | Key element coverage | Attribution accuracy | First token median | Total median |';
-  const rule = '|---|---|---|---|---|---|---|---|';
+    '| Config | Category | Questions | Target section hit | Key element coverage | Attribution accuracy | False refusals | False answers | Unsupported sentences per answer | First token median | Total median |';
+  const rule = '|---|---|---|---|---|---|---|---|---|---|---|';
   const lines = summaries.map(
     (s) =>
-      `| ${s.config} | ${s.category} | ${s.n} | ${pct(s.targetHit)} | ${s.keyCoverage.mean === null ? '-' : `${Math.round(100 * s.keyCoverage.mean)}% (${s.keyCoverage.n})`} | ${pct(s.attribution)} | ${s.firstTokenMedianMs === null ? '-' : `${Math.round(s.firstTokenMedianMs)} ms`} | ${s.totalMedianMs === null ? '-' : `${Math.round(s.totalMedianMs)} ms`} |`,
+      `| ${s.config} | ${s.category} | ${s.n}${s.excluded ? ` (+${s.excluded} excluded)` : ''} | ${pct(s.targetHit)} | ${s.keyCoverage.mean === null ? '-' : `${Math.round(100 * s.keyCoverage.mean)}% (${s.keyCoverage.n})`} | ${pct(s.attribution)} | ${pct(s.falseRefusals)} | ${pct(s.falseAnswers)} | ${s.unsupportedMean === null ? '-' : s.unsupportedMean.toFixed(2)} | ${s.firstTokenMedianMs === null ? '-' : `${Math.round(s.firstTokenMedianMs)} ms`} | ${s.totalMedianMs === null ? '-' : `${Math.round(s.totalMedianMs)} ms`} |`,
   );
   return [head, rule, ...lines].join('\n');
 }

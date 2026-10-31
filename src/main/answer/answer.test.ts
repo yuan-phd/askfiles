@@ -46,6 +46,10 @@ import {
   NO_RERANKER,
   setFloor,
   assembleSection,
+  isContentsSection,
+  normalizeForMatch,
+  parseExcerpts,
+  verifyExcerpts,
 } from './index.js';
 
 const cleanups: (() => void)[] = [];
@@ -590,6 +594,137 @@ describe('pipeline', () => {
     expect(choose(r, off(0.3)).selected.map((s) => s.section.title)).toEqual(['Annual leave', 'Travel']);
     expect(choose(r, off(0.45)).selected.map((s) => s.section.title)).toEqual(['Travel']);
     expect(choose(r, off(0.6)).selected).toEqual([]);
+  });
+});
+
+describe('quoted mode', () => {
+  it('normalizes whitespace, dashes, quotes, case and broken words for the excerpt check', () => {
+    expect(normalizeForMatch('Natural or man‑made  disaster or con- flicts, “A”')).toBe(
+      normalizeForMatch('natural or man-made disaster or conflicts, "a"'),
+    );
+  });
+
+  it('recognizes a table of contents by its title or by its page-number lines', () => {
+    const sec = (title: string, text: string) => ({ title, path: ['Guide', title], text });
+    expect(isContentsSection(sec('Contents', 'Intro'))).toBe(true);
+    const leaders = [
+      'Overview . . . . . . . 3',
+      'Risk Analysis . . . . . 30',
+      'Tool: Quadrant ........ 32',
+      'Annex A ...... 85',
+    ];
+    expect(isContentsSection(sec('PPSD Sections 11', leaders.join('\n')))).toBe(true);
+    expect(isContentsSection(sec('Annual leave', 'Employees get 27 days of paid annual leave per year.'))).toBe(false);
+  });
+
+  it('keeps only excerpts found in their own section, piece by piece, and counts the rest', () => {
+    const sections = [
+      { text: 'The Standstill Period shall last ten (10) Business Days after such transmission.' },
+      { text: 'Other text about meals and travel.' },
+    ];
+    expect(parseExcerpts('not json', 2)).toEqual([]);
+    const ex = parseExcerpts(
+      JSON.stringify({
+        excerpts: [
+          { source: 1, text: '"The Standstill Period shall last ten (10) Business Days"' },
+          { source: 1, text: 'shall last ten (10) business days ... after such transmission' },
+          { source: 2, text: 'The Standstill Period shall last ten (10) Business Days' },
+          { source: 1, text: 'The period lasts two weeks' },
+          { source: 9, text: 'out of range' },
+        ],
+      }),
+      2,
+    );
+    expect(ex).toHaveLength(4);
+    const v = verifyExcerpts(ex, sections);
+    expect([...v.verified.keys()]).toEqual([1]);
+    expect(v.verified.get(1)).toEqual([
+      'The Standstill Period shall last ten (10) Business Days',
+      'shall last ten (10) business days',
+      'after such transmission',
+    ]);
+    expect(v.dropped).toBe(2);
+  });
+
+  const quoted: RunSettings = {
+    params: { ...DEFAULT_PARAMS, answerMode: 'quoted', extractSections: 6 },
+    scope: 'balanced',
+    chatModel: 'test-model',
+    contextLength: 4096,
+    chunkMaxChars: 1000,
+    temperature: 0.1,
+  };
+
+  function quotedSetup(replies: string[]) {
+    const lib = fixtureLibrary([
+      {
+        name: 'handbook.pdf',
+        sections: [
+          { title: 'Annual leave', parts: ['Employees get 27 days of paid annual leave per year.'], page: 2 },
+          { title: 'Travel', parts: ['Travel is booked through the portal.'], page: 7 },
+        ],
+      },
+    ]);
+    cleanups.push(lib.cleanup);
+    const resolver = createSourceResolver({ files: () => lib.records, readText: (l) => lib.chunkText.get(l) ?? null });
+    const calls: { format: boolean; content: string }[] = [];
+    const chat: ChatFn = async (o, onText) => {
+      calls.push({ format: !!o.format, content: o.messages.map((m) => m.content).join('\n') });
+      onText(replies[calls.length - 1] ?? '');
+      return { promptTokens: 10, completionTokens: 5 };
+    };
+    const deps: PipelineDeps = {
+      vectorSearch: async () => [
+        {
+          id: 'v1',
+          text: lib.chunkText.get('askfiles/handbook.pdf-1-1.json'),
+          metadata: { url: lib.records[0]!.url, title: 'handbook.pdf' },
+          score: 0.8,
+        },
+        {
+          id: 'v2',
+          text: lib.chunkText.get('askfiles/handbook.pdf-2-1.json'),
+          metadata: { url: lib.records[0]!.url, title: 'handbook.pdf' },
+          score: 0.7,
+        },
+      ],
+      resolveSources: (x) => resolver(x),
+      index: lib.index,
+      reranker: null,
+      chat,
+    };
+    return { deps, calls };
+  }
+
+  it('extracts, verifies and composes from the verified excerpts, which the cards show', async () => {
+    const extraction = JSON.stringify({
+      excerpts: [
+        { source: 1, text: 'Employees get 27 days of paid annual leave per year.' },
+        { source: 2, text: 'Travel needs a director approval.' },
+      ],
+    });
+    const { deps, calls } = quotedSetup([extraction, 'Employees get 27 days [1]. Travel is free [2].']);
+    const r = await retrieve('How many days of annual leave?', quoted, deps);
+    const result = await answer('How many days of annual leave?', r, choose(r, quoted), quoted, deps);
+    expect(calls.map((c) => c.format)).toEqual([true, false]);
+    expect(calls[1]!.content).toContain('Employees get 27 days of paid annual leave per year.');
+    expect(calls[1]!.content).not.toContain('Travel');
+    expect(result.quoted).toMatchObject({ excerpts: 2, verified: 1, dropped: 1, supported: 1 });
+    expect(result.cited.map((c) => [c.title, c.passage])).toEqual([
+      ['Annual leave', 'Employees get 27 days of paid annual leave per year.'],
+    ]);
+    // [2] has no verified excerpt: the sentence citing it is unsupported.
+    expect(result.claims.map((c) => c.unsupported)).toEqual([false, true]);
+  });
+
+  it('shows the not-found state without a second call when nothing is verified', async () => {
+    const { deps, calls } = quotedSetup([JSON.stringify({ excerpts: [{ source: 1, text: 'Interns get 10 days.' }] })]);
+    const r = await retrieve('How many days do interns get?', quoted, deps);
+    const result = await answer('How many days do interns get?', r, choose(r, quoted), quoted, deps);
+    expect(calls).toHaveLength(1);
+    expect(result).toMatchObject({ notFound: true, skippedModel: false, cited: [] });
+    expect(result.nearest.length).toBeGreaterThan(0);
+    expect(result.quoted).toMatchObject({ verified: 0, dropped: 1 });
   });
 });
 

@@ -20,7 +20,7 @@ import { applySets, loadConfig, redact, type EvalConfig } from './config.js';
 import { csvHeader, csvLine } from './csv.js';
 import { prepareLibrary, type ChunkInfo, type Library, type LibraryClient } from './library.js';
 import { describeSources, fileHit, pageHit, sectionHit, sectionRecall, type SourceRecord } from './metrics.js';
-import { listOf, loadQuestions, type Question } from './questions.js';
+import { isUnsupported, listOf, loadQuestions, type Question } from './questions.js';
 import {
   answerMetrics,
   answerOnce,
@@ -628,6 +628,9 @@ async function runStages(o: Parameters<typeof runPipeline>[0], deps: PipelineDep
           attribution: m.attribution,
           firstTokenMs: r?.timings.firstTokenMs ?? null,
           totalMs: out.error ? null : out.totalMs,
+          refused: r ? r.notFound : null,
+          unsupported: r ? r.claims.filter((x) => x.unsupported).length : null,
+          excluded: isUnsupported(q),
         });
         const row: Record<string, unknown> = {
           run_id: o.runId,

@@ -42,7 +42,9 @@
           "broad": 0.5
         },
         "contextBudgetTokens": 0,
-        "promptVariant": "default"
+        "promptVariant": "default",
+        "answerMode": "single",
+        "extractSections": 6
       }
     },
     {
@@ -85,7 +87,9 @@
           "broad": 0.5
         },
         "contextBudgetTokens": 0,
-        "promptVariant": "default"
+        "promptVariant": "default",
+        "answerMode": "single",
+        "extractSections": 6
       }
     },
     {
@@ -128,7 +132,9 @@
           "broad": 0.5
         },
         "contextBudgetTokens": 0,
-        "promptVariant": "default"
+        "promptVariant": "default",
+        "answerMode": "single",
+        "extractSections": 6
       }
     }
   ]

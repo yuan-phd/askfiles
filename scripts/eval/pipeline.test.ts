@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { QUESTION_COLUMNS as CASE_COLUMNS, appendEvalCase, type Retrieval } from '../../src/main/answer/index.js';
 import {
   attributionOk,
+  squash,
   expectedSections,
   keyCoverage,
   metricsTable,
@@ -79,6 +80,20 @@ describe('answer metrics', () => {
     expect(attributionOk(absent, { refused: false, answer: 'You get 27 days [1].', cited: [good] })).toBe(false);
   });
 
+  it('normalizes dashes, quotes, broken words and percent ranges, and ignores phrases copied from the question', () => {
+    expect(squash('0%–15% and con- flicts, “quoted”')).toBe(squash('0-15% and conflicts, "quoted"'));
+    const copied = q({ question: 'What does paragraph 5.88 say?', key_elements: 'paragraph 5.88; award the contract' });
+    const passage = { passage: '5.88 The Borrower shall award the contract.' };
+    expect(
+      attributionOk(copied, {
+        refused: false,
+        answer: 'Under paragraph 5.88 they award the contract [1].',
+        cited: [passage],
+      }),
+    ).toBe(true);
+    expect(attributionOk(copied, { refused: false, answer: 'See paragraph 5.88 [1].', cited: [passage] })).toBe(false);
+  });
+
   it('summarizes per configuration and category with medians', () => {
     const rows = [
       {
@@ -90,6 +105,8 @@ describe('answer metrics', () => {
         attribution: true,
         firstTokenMs: 100,
         totalMs: 900,
+        refused: false,
+        unsupported: 0,
       },
       {
         id: 'b',
@@ -100,6 +117,8 @@ describe('answer metrics', () => {
         attribution: false,
         firstTokenMs: 300,
         totalMs: 1100,
+        refused: true,
+        unsupported: 2,
       },
       {
         id: 'c',
@@ -110,6 +129,19 @@ describe('answer metrics', () => {
         attribution: true,
         firstTokenMs: null,
         totalMs: 500,
+        refused: false,
+        unsupported: 1,
+      },
+      {
+        id: 'f',
+        category: 'table_number',
+        config: 'c1',
+        targetHit: false,
+        keyCoverage: 0,
+        attribution: false,
+        firstTokenMs: 100,
+        totalMs: 100,
+        excluded: true,
       },
     ];
     const all = summarizeMetrics(rows).find((s) => s.category === 'all')!;
@@ -120,9 +152,13 @@ describe('answer metrics', () => {
       attribution: { hit: 2, n: 3 },
       firstTokenMedianMs: 200,
       totalMedianMs: 900,
+      falseRefusals: { hit: 1, n: 2 },
+      falseAnswers: { hit: 1, n: 1 },
+      unsupportedMean: 1,
+      excluded: 1,
     });
     expect(metricsTable([all]).split('\n')[2]).toBe(
-      '| c1 | all | 3 | 50% (1/2) | 75% (2) | 67% (2/3) | 200 ms | 900 ms |',
+      '| c1 | all | 3 (+1 excluded) | 50% (1/2) | 75% (2) | 67% (2/3) | 50% (1/2) | 100% (1/1) | 1.00 | 200 ms | 900 ms |',
     );
   });
 });
@@ -365,6 +401,8 @@ describe('score on upstream results', () => {
         attribution: true,
         firstTokenMs: 100,
         totalMs: 800,
+        refused: false,
+        excluded: false,
       },
     ]);
   });

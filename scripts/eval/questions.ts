@@ -54,6 +54,14 @@ export function listOf(cell: string | undefined): string[] {
     .filter(Boolean);
 }
 
+/**
+ * Marked [unsupported: reason] in its notes: run, but left out of every metric (a spreadsheet
+ * formula the split does not keep). docs/plan.md, Acceptance and stopping rules.
+ */
+export function isUnsupported(q: { notes?: string }): boolean {
+  return /\[unsupported:/i.test(q.notes ?? '');
+}
+
 /** Expected pages as numbers; a range such as 4-6 expands to 4, 5, 6. */
 export function pagesOf(cell: string | undefined): number[] {
   const out: number[] = [];

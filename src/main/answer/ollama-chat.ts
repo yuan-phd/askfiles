@@ -12,6 +12,8 @@ export interface ChatOptions {
   temperature: number;
   /** num_ctx; the context length the preset sets for the chat model. */
   contextLength: number;
+  /** Ollama structured output: a JSON schema the reply must follow (the quoted mode's extraction). */
+  format?: object;
   signal?: AbortSignal;
 }
 
@@ -78,6 +80,7 @@ export function ollamaChat(baseUrl: () => string, fetchImpl: FetchLike = globalT
         messages: o.messages,
         stream: true,
         ...(think ? { think: false } : {}),
+        ...(o.format ? { format: o.format } : {}),
         options: { temperature: o.temperature, num_ctx: o.contextLength },
       });
     const url = `${baseUrl().replace(/\/+$/, '')}/api/chat`;

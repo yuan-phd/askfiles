@@ -186,6 +186,38 @@ Stage 2 at 5 sections, vector floor 0.55, two passes; latency is pass 1 (pass 2 
 
 Per question, 2026-10-31 (pass 1; both passes agree): Q01 effective date found (was not found); Q02 cites the Standstill Period (was a Request for Bids section); Q03 right section, attribution fails because the Contents page is cited too; Q04 cites the Policy page and the Directive's page 3, not page 7; Q05 and Q06 correct; Q07 says the formula is not in the sources (true: the split keeps cached values only) without the marker; Q08 not found, the page 7 OCR is poor (SUBJECT read as SETRITN; the scan is about 100 dpi); Q09 SMART and the signing rule right, the Contract Management Plan section was selected but not cited; Q10 states the placeholders correctly in its own words instead of the marker, so the harness scores it false. The firmer wording (start with the marker, never explain in own words, one example) made Q10 correct but refused Q03, Q04 and Q07, whose one missing part (a page number, a formula) is not the whole question.
 
+### Acceptance and stopping rules
+
+Recorded 2026-10-31. They govern every tuning round from round 1 on.
+
+**Two fixed sets.** ~/AskFiles-eval/questions-v2.csv is the tuning set. ~/AskFiles-eval/questions-check.csv is the check set: never used for tuning, run once at the end of every round. Both stay outside the repository and on the owner's corpus.
+
+**Gating thresholds**, on both sets:
+
+| Metric | Threshold |
+| --- | --- |
+| Right section cited | at least 90 percent |
+| Attribution | at least 90 percent |
+| Key element coverage | at least 85 percent |
+| Median total latency | at most 20 s |
+| False refusals: answerable questions returned not-found | at most 5 percent |
+| False answers: absent questions given an answer | at most 10 percent |
+
+cross_document is reported without a threshold. Formula questions (a spreadsheet formula the split does not keep; marked [unsupported: formula] in notes) are marked unsupported and excluded from every metric. The two abstention figures replace the single correct-abstention figure.
+
+**Round rules.** One class of change per round. The results of both sets are appended to the round table below with the round number and the change. Any gating metric falling more than 3 points on either set reverts the whole round. Two consecutive rounds with less than 3 points gain on the tuning set stop the work.
+
+**Stop** when both sets meet every threshold, or after round 4, whichever comes first.
+
+| Round | Change | Set | Right section cited | Attribution | Key element coverage | Median total | False refusals | False answers | Kept |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 0 | Baseline: single mode, Balanced 5 / 0.55, scored with the round 1 harness rules | tuning | 92% (23/25) | 70% (19/27) | 55% | 18.3 s | 4% (1/25) | 50% (1/2) | baseline |
+| 0 | same | check | 80% (8/10) | 71% (10/14) | 33% | 14.6 s | 0% (0/10) | 0% (0/4) | baseline |
+| 1 | Quote-grounded answering (answerMode quoted, extraction N 6; N 8 gave the same quality and 28.1 s on the tuning set) | tuning | 84% (21/25) | 63% (17/27) | 41% | 23.6 s | 12% (3/25) | 50% (1/2) | no: cited -8, attribution -7, coverage -14 points |
+| 1 | same | check | 80% (8/10) | 71% (10/14) | 28% | 19.9 s | 20% (2/10) | 0% (0/4) | no |
+
+Round 1 notes (2026-10-31, same Mac, corpus and models as the retrieval tuning above; one pass per question; run folders ~/AskFiles-eval/runs/r1-*). Gated figures leave out cross_document (tuning set: single 0/2, quoted 1/2 cited) and the formula questions Q07 and Q41. Key element coverage counts the answer key's elements as written; over only the elements found word for word in the expected section it was 81 percent (single) and 68 percent (quoted) on the tuning set. The harness changes of round 1 (normalization of dashes, quotes, broken words and percent ranges; question-copied phrases left out of attribution; false refusals and false answers) apply to every row above. Quoted mode is kept as an option (answerMode, default single) and not used in any preset. Its causes on the tuning set: 8 selection cuts (the extraction returned no verifiable excerpt of the expected section, or not the sentences holding the answer), 7 model errors, 1 retrieval miss, 1 abstention error (Q10). Its table-of-contents filter also flags three table or sheet sections whose lines end in numbers (Initial Technical Score, Final Weighted Technical Score, Foreign Currency Summary page), which took Q40's expected section out of the extraction. The extraction call alone takes 4 to 29 s. The check-set N 8 run followed the N 6 run on the same questions and Ollama reused cached prompt prefixes, so its 9.1 s median is not comparable. Round count: 1 of 4; round 1 gained nothing on the tuning set (first round under 3 points).
+
 **User test**: give the DMG by USB to one or two real target users with a one-page task sheet (install, add a folder, ask five questions). Do not help. Record where they stop and time to first answer. Executor: YOU.
 
 ## Phase 3: own search interface and folder watching

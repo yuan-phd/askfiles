@@ -5,6 +5,7 @@ export * from './ollama-chat.js';
 export * from './params.js';
 export * from './pipeline.js';
 export * from './prompt.js';
+export * from './quoted.js';
 export * from './reranker.js';
 export * from './reranker-models.js';
 export * from './sections.js';

@@ -21,6 +21,7 @@ import {
   type RunSettings,
 } from './params.js';
 import { buildMessages, isNotFound, NOT_FOUND_MARKER } from './prompt.js';
+import { answerQuoted, isContentsSection, type QuotedStats } from './quoted.js';
 import type { Reranker } from './reranker.js';
 import { toAnswerSection, type AnswerSection } from './sections.js';
 import { selectSections, type Ranked, type Selection } from './select.js';
@@ -192,8 +193,11 @@ export interface ChoiceSettings {
 export function choose(r: Retrieval, s: ChoiceSettings): Selection {
   // A per-question bypass (CJK, model files missing) keeps its old meaning: no floor at all.
   const floorOn = rerankerOff(s.params) ? 'vector' : r.bypass ? 'none' : 'rerank';
-  return selectSections(ranked(r), {
-    count: s.params.sectionCount[s.scope],
+  // quoted mode sends extractSections sections to its extraction call, never a table of contents.
+  const quoted = s.params.answerMode === 'quoted';
+  const list = quoted ? ranked(r).filter((x) => !isContentsSection(x.section)) : ranked(r);
+  return selectSections(list, {
+    count: quoted ? s.params.extractSections : s.params.sectionCount[s.scope],
     floor: floorOf(s.params, s.scope),
     budgetTokens: contextBudget(s.params, s.contextLength),
     floorOn,
@@ -256,6 +260,8 @@ export interface AnswerResult {
   skippedModel: boolean;
   timings: { firstTokenMs: number | null; modelMs: number };
   stats: { promptTokens: number | null; completionTokens: number | null };
+  /** quoted mode only: what the extraction call returned and how much of it was verified. */
+  quoted?: QuotedStats;
 }
 
 export type AnswerEvent =
@@ -272,14 +278,16 @@ export async function answer(
   r: Retrieval,
   sel: Selection,
   s: Pick<RunSettings, 'params' | 'chatModel' | 'contextLength' | 'temperature'>,
-  deps: Pick<PipelineDeps, 'chat'>,
+  deps: Pick<PipelineDeps, 'chat' | 'log'>,
   emit: (e: AnswerEvent) => void = () => {},
   signal?: AbortSignal,
 ): Promise<AnswerResult> {
-  const sources = sel.selected.map((x, i) => cardOf(i + 1, x.section, x.rerank, x.trimmed));
   const nearest = ranked(r)
     .slice(0, NEAREST_COUNT)
     .map((x, i) => cardOf(i + 1, x.section, x.rerank));
+  if (s.params.answerMode === 'quoted')
+    return answerQuoted(question, r, sel, s, deps, { cardOf, nearest }, emit, signal);
+  const sources = sel.selected.map((x, i) => cardOf(i + 1, x.section, x.rerank, x.trimmed));
   emit({ type: 'sources', sources });
   const base = {
     claims: [],

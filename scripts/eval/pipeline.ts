@@ -38,7 +38,7 @@ import {
 } from './answer-metrics.js';
 import type { EvalConfig } from './config.js';
 import type { Library } from './library.js';
-import type { Question } from './questions.js';
+import { isUnsupported, type Question } from './questions.js';
 
 /** Context length when the config leaves contextTokens at 0, as the presets set it. */
 export const DEFAULT_CONTEXT = 8192;
@@ -144,6 +144,7 @@ export async function buildPipeline(o: {
     index,
     reranker,
     chat: ollamaChat(() => o.ollamaUrl),
+    log: o.log,
   };
 }
 
@@ -191,6 +192,7 @@ export function sweep(
     for (const floor of floors) {
       const cell: SweepCell = { count, floor, hit: 0, n: 0, emptyAbsent: 0, nAbsent: 0 };
       for (const { q, retrieval } of items) {
+        if (isUnsupported(q)) continue;
         const s = runSettings(config, chunkMaxChars, { count, floor });
         const hit = targetHit(q, stage1Sections(q, retrieval, s));
         if (hit !== null) {

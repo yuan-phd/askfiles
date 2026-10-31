@@ -12,6 +12,14 @@ export const SCOPES = ['strict', 'balanced', 'broad'] as const;
 export type AnswerScope = (typeof SCOPES)[number];
 
 export const PROMPT_VARIANTS = ['default', 'strict'] as const;
+
+/**
+ * single: one model call over the selected sections. quoted: an extraction call returns verbatim
+ * excerpts from the top extractSections sections, code keeps only those found in the section text,
+ * and a composition call answers from the verified excerpts alone (src/main/answer/quoted.ts).
+ */
+export const ANSWER_MODES = ['single', 'quoted'] as const;
+export type AnswerMode = (typeof ANSWER_MODES)[number];
 export type PromptVariant = (typeof PROMPT_VARIANTS)[number];
 
 export type PerScope<T> = Record<AnswerScope, T>;
@@ -49,6 +57,9 @@ export interface AnswerParams {
   /** Tokens for the numbered sources; 0 derives it from the context length. */
   contextBudgetTokens: number;
   promptVariant: PromptVariant;
+  answerMode: AnswerMode;
+  /** quoted mode: sections sent to the extraction call (N), table-of-contents sections left out. */
+  extractSections: number;
 }
 
 export const DEFAULT_PARAMS: AnswerParams = {
@@ -64,6 +75,8 @@ export const DEFAULT_PARAMS: AnswerParams = {
   vectorFloor: { strict: 0, balanced: 0, broad: 0 },
   contextBudgetTokens: 0,
   promptVariant: 'default',
+  answerMode: 'single',
+  extractSections: 6,
 };
 
 /** Tokens kept free for the answer itself and for the instructions and the question. */
@@ -143,6 +156,8 @@ const CHECKS: Record<keyof AnswerParams, (v: unknown) => Problem> = {
   contextBudgetTokens: intAtLeast(0),
   promptVariant: (v) =>
     (PROMPT_VARIANTS as readonly unknown[]).includes(v) ? null : `must be ${PROMPT_VARIANTS.join(' or ')}`,
+  answerMode: (v) => ((ANSWER_MODES as readonly unknown[]).includes(v) ? null : `must be ${ANSWER_MODES.join(' or ')}`),
+  extractSections: intAtLeast(1),
 };
 
 /** Problems with an answer block, each prefixed with at; every key is required. */

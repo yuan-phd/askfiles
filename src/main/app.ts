@@ -488,6 +488,7 @@ export class AppController implements BridgeHandlers {
       resolveSources: (sources) => watcher.resolveSources(sources),
       index: browse,
       reranker: this.currentReranker(),
+      log: this.d.log,
       chat: ollamaChat(() => `http://127.0.0.1:${this.manager?.status().ports?.ollama ?? ollamaPort}`),
     };
   }
