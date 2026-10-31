@@ -249,6 +249,41 @@ Measurements on the round 2' configuration (2026-10-31, repaired sets, Ollama re
 
 qwen3:8b against 14b: half the latency, but two cited sections lost (Q13, Q23), attribution lost on Q13, Q18, Q23, Q25, Q26, Q30 and Q44 (gained on Q04), and both absent_related questions of the tuning set plus Q44 of the check set answered instead of abstaining. qwen3.8:27b (no plain Qwen3 model above 14b is installed; qwen3.6:35b is also present) adds coverage and abstains on Q10 but doubles the median past 20 s and refuses an answerable question on each set. Broad adds 460 prompt tokens per question and 2 s for no gain in cited sections.
 
+Quantization and context matrix (2026-10-31, measurement only, no pipeline or preset change; round 2' configuration: verifyCitations on, Balanced 5 / 0.55, qwen3:14b; Ollama 0.40.11 restarted before every run; run folders ~/AskFiles-eval/runs/x-<quant>-<context>-<set>). Each configuration ran the tuning set (questions-v3.csv), the check set (questions-check-v2.csv) and a new absent set (questions-absent.csv), one pass per question. Models: q4_K_M is the library tag qwen3:14b-q4_K_M (digest bdbd181c33f2, the same as qwen3:14b, 9276198565 bytes); the library has no q4_K_S or q3_K_M tag and the official Qwen GGUF repository has neither, so both come from hf.co/unsloth/Qwen3-14B-GGUF:Q4_K_S (0ead9e0f1a13, 8573478436 bytes) and :Q3_K_M (63e5e1881899, 7321315876 bytes), which carry Unsloth's own chat template, so a difference between the rows is not only the quantization.
+
+The absent set holds 10 questions, Q46 to Q50 absent_related (close to a real section, with the likely false citation in the notes) and Q51 to Q55 absent_unrelated. It is provisional: a full negative search of the 12 original files has not been done. False answers count all 16 absent questions (Q10, Q30, Q42 to Q45 and the 10 new ones). Cited, attribution, coverage and false refusals are tuning and check sets together, without cross_document and the formula questions Q07 and Q41, as in the rows above. Model memory is the size /api/ps reports for the chat model alone (weights plus KV cache, all on the GPU), measured once per configuration after the runs; the footprint is the peak of top's MEM for the Ollama and llama-server processes, sampled every 3 s during the runs, which leaves out the memory-mapped weights. The /api/ps sum the sampler took during the runs also counts the embedding model (about 0.6 GiB), and in the first run it still saw models loaded before the restart, so it is not used.
+
+| Run | Right section cited | Attribution | Key element coverage | False refusals | False answers (16 absent) | Median total, all sets / answerable | Chat model in memory | Peak process footprint |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| q4_K_M, 8192 (baseline) | 91% (32/35) | 83% (34/41) | 68% | 3% (1/35) | 6% (1/16) | 14.9 / 16.6 s | 9.17 GiB | 10.2 GiB |
+| q4_K_M, 4096 | 86% (30/35), -6 | 80% (33/41), -2 | 66%, -2 | 6% (2/35), +3 | 6% (1/16), 0 | 12.3 / 13.1 s, -2.6 | 8.40 GiB, -0.77 | 8.6 GiB |
+| q4_K_S, 8192 | 91% (32/35), 0 | 80% (33/41), -2 | 69%, +1 | 3% (1/35), 0 | 6% (1/16), 0 | 14.5 / 15.1 s, -0.4 | 8.52 GiB, -0.65 | 9.3 GiB |
+| q4_K_S, 4096 | 86% (30/35), -6 | 76% (31/41), -7 | 66%, -2 | 6% (2/35), +3 | 6% (1/16), 0 | 12.2 / 12.6 s, -2.7 | 7.74 GiB, -1.43 | 8.5 GiB |
+| q3_K_M, 8192 | 91% (32/35), 0 | 80% (33/41), -2 | 68%, 0 | 3% (1/35), 0 | 6% (1/16), 0 | 15.9 / 16.7 s, +1.0 | 7.45 GiB, -1.72 | 9.3 GiB |
+| q3_K_M, 4096 | 86% (30/35), -6 | 78% (32/41), -5 | 64%, -4 | 6% (2/35), +3 | 6% (1/16), 0 | 12.6 / 13.3 s, -2.3 | 6.67 GiB, -2.50 | 8.5 GiB |
+
+Questions whose outcome differs from the baseline in any run:
+
+| Question | Category | Change against the baseline |
+| --- | --- | --- |
+| Q04 | cross_document (not gated) | attribution no to yes in all five other runs |
+| Q09 | cross_document (not gated) | q4_K_M 4096: cited no to yes; q4_K_S 8192: cited no to yes, coverage 0.86 to 1.00; q4_K_S 4096: attribution yes to no |
+| Q14 | single_fact | q4_K_S 8192: coverage 0.60 to 0.40 |
+| Q17 | middle_of_long_doc | coverage 0.80 to 0.60 (q4_K_M 4096), to 0.40 (q4_K_S 4096, q3_K_M 4096) |
+| Q18 | middle_of_long_doc | coverage 0.60 to 0.80 in all five; attribution yes to no in q4_K_S 4096 and q3_K_M 8192 |
+| Q25 | table_number | coverage 0.17 to 0.33 in q4_K_S and q3_K_M at both contexts; q3_K_M 4096: attribution yes to no |
+| Q26 | single_fact | q3_K_M 8192: coverage 0.20 to 0.40 |
+| Q29 | single_fact | q4_K_S at both contexts: attribution yes to no |
+| Q31 | single_fact | every 4096 run: cited yes to no |
+| Q32 | single_fact | every 4096 run: refused (NOT_IN_SOURCES), so cited, attribution and coverage 0.75 to 0 |
+| Q36 | middle_of_long_doc | coverage 0.60 to 0.80 (q4_K_S, both contexts), to 0.40 (q3_K_M, both contexts) |
+| Q38 | middle_of_long_doc | coverage 0.67 to 0.50 (q4_K_S 8192, q3_K_M at both contexts) |
+| Q40 | table_number | q3_K_M at both contexts: coverage 0.40 to 0.20 |
+
+Every run answers Q10 (the only false answer) and refuses Q08 (OCR, retrieval rank 8); all 10 new absent questions abstain in all six runs. Context 4096 is the larger effect: the same three questions change in every quantization, and the cause is the section budget, not the model. Q32's Price Adjustment section is sent with 3189 characters at 8192, the 1.0 factor at character 2993; at 4096 it is cut to 1521 characters and the model abstains. 4096 saves 2.3 to 2.7 s median and 0.77 GiB of KV cache and costs 6 points cited and one more false refusal. At 8192 q4_K_S and q3_K_M hold the gated metrics within 2 points of q4_K_M, all from single-question changes (Q18, Q29), and save 0.65 and 1.72 GiB; q3_K_M is 1 s slower. One pass per question, so one question is 3 points on cited and 2 to 3 on attribution, and the per-question changes of the 8192 rows are within the run-to-run variance seen in rounds 3 and 4. Presets unchanged.
+
+Spot-check of answer completeness (owner, open). The coverage metric counts literal key elements, so it cannot tell whether an answer is complete in the user's eyes. ~/AskFiles-eval/spot-check.md holds 10 answerable questions from the baseline run (x-q4km-8192, tuning and check sets), picked with Python random.Random(20261031).sample over the 37 sorted ids that are neither absent nor Q07 or Q41: Q03, Q05, Q08, Q09, Q18, Q22, Q27, Q33, Q36, Q39. For each it shows the question, the answer as the Ask page shows it (sentences after verifyCitations with their [n] markers, unsupported sentences marked, or the not-found state), the source cards cited, the expected file, section and page, and the key elements. To fill it in: read only the answer and its cards, then mark Complete yes when a user would get everything the question asks for with correct citations, no otherwise, and note what is missing or wrong. Compare the share of yes with the run's key element coverage on the same 10 questions; if they disagree by more than one or two questions, coverage is not a usable acceptance metric and the acceptance rules above need revisiting. Executor: owner.
+
 **User test**: give the DMG by USB to one or two real target users with a one-page task sheet (install, add a folder, ask five questions). Do not help. Record where they stop and time to first answer. Executor: YOU.
 
 ## Phase 3: own search interface and folder watching
