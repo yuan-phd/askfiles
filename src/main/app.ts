@@ -36,7 +36,7 @@ import type { Env, Logger } from './config.js';
 import { FirstRun } from './first-run.js';
 import { LibraryManager, libraryDir, moveLegacyLibraryFiles, type AddResult } from './libraries.js';
 import { deleteWorkspace, ensureApiKey, ensureLibrary, ensureWorkspace, workspaceNameOf } from './library.js';
-import { ModelManager } from './models/index.js';
+import { ModelManager, verifyPinnedModel } from './models/index.js';
 import { OllamaClient } from './ollama/index.js';
 import { findOriginal } from './open-original.js';
 import { messagePage } from './message-page.js';
@@ -50,7 +50,15 @@ import {
   type PresetFile,
 } from './presets/index.js';
 import { ProcessManager } from './process-manager/index.js';
-import { checkSettingsChange, effectivePreset, runSettingsFor, settingsEnv, settingsView } from './settings.js';
+import {
+  ASK_OFF_NOTICE,
+  askNoticeFor,
+  checkSettingsChange,
+  effectivePreset,
+  runSettingsFor,
+  settingsEnv,
+  settingsView,
+} from './settings.js';
 import {
   currentLibraryOf,
   DEFAULT_LIBRARY_ID,
@@ -217,6 +225,7 @@ export class AppController implements BridgeHandlers {
       folder: null,
       libraryId: lib.id,
       libraryName: lib.name,
+      askNotice: this.machinePreset ? askNoticeFor(this.machinePreset) : null,
     };
   }
 
@@ -341,11 +350,13 @@ export class AppController implements BridgeHandlers {
     const next: Settings = { ...this.state.settings, ...checkSettingsChange(change, view.models) };
     const before = effectivePreset(presets, machine, this.state.settings);
     const after = effectivePreset(presets, machine, next);
-    if (after.chatModel !== before.chatModel) {
+    if (after.chatModel && after.chatModel !== before.chatModel) {
       if (!(await this.ollamaClient().has(after.chatModel))) {
         this.d.log(`[settings] pulling ${after.chatModel}`);
         await this.modelManager().pull(after.chatModel, (p) => this.d.broadcast(CHANNELS.modelsProgress, p));
       }
+      if (after.chatModelFile)
+        await verifyPinnedModel(this.ollamaClient(), after.chatModel, after.chatModelFile, this.d.log);
     }
     this.saveState({ ...this.state, settings: next });
     if (after.chatModel !== before.chatModel || after.contextLength !== before.contextLength) {
@@ -435,8 +446,12 @@ export class AppController implements BridgeHandlers {
     return this.machinePreset;
   }
 
-  /** The chat model the server .env names (the model page may have switched it), else the preset's. */
-  private chatModel(): string {
+  /**
+   * The chat model the server .env names (the model page may have switched it), else the preset's;
+   * null on a tier with Ask off.
+   */
+  private chatModel(): string | null {
+    if (!this.requireMachinePreset().chatModel) return null;
     try {
       const env = util.parseEnv(fs.readFileSync(this.envFile(), 'utf8')) as Record<string, string>;
       if (env.OLLAMA_MODEL_PREF) return env.OLLAMA_MODEL_PREF;
@@ -450,11 +465,13 @@ export class AppController implements BridgeHandlers {
   private runSettings(): RunSettings {
     const machine = this.machinePreset;
     if (!machine || !this.presets) throw new Error('AskFiles has not loaded its settings yet');
+    const chatModel = this.chatModel();
+    if (!chatModel) throw new Error(ASK_OFF_NOTICE);
     return runSettingsFor({
       presets: this.presets,
       machine,
       settings: this.state.settings,
-      chatModel: this.chatModel(),
+      chatModel,
     });
   }
 

@@ -635,3 +635,8 @@ span.cite {
   align-items: center;
   justify-content: space-between;
 }
+
+.ask-off {
+  margin: 0.75rem 0 0;
+  color: var(--text-muted);
+}

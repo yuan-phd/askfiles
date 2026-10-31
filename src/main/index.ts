@@ -23,7 +23,15 @@ function externalHandlers(baseUrl: string | null, log: (m: string) => void): Bri
     throw new Error('not available when AskFiles connects to an external server');
   };
   return {
-    shellConfig: () => ({ baseUrl, apiKey: null, workspace: null, folder: null, libraryId: null, libraryName: null }),
+    shellConfig: () => ({
+      baseUrl,
+      apiKey: null,
+      workspace: null,
+      folder: null,
+      libraryId: null,
+      libraryName: null,
+      askNotice: null,
+    }),
     setupReplay: () => [],
     setupStart: unavailable,
     setupRetry: unavailable,

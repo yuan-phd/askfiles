@@ -10,6 +10,8 @@ import { Wizard, type WizardDeps, type WizardEvent } from './wizard.js';
 
 const presets = loadPresets(path.resolve(import.meta.dirname, '../../../config/presets.json'));
 const GIB = 1024 ** 3;
+const Q3 = 'hf.co/unsloth/Qwen3-14B-GGUF:Q3_K_M';
+const PIN = presets.tiers.find((t) => t.id === '16gb')!.chatModelFile!;
 
 let fakes: FakeOllama[] = [];
 afterEach(async () => {
@@ -19,7 +21,8 @@ afterEach(async () => {
 
 async function setup(over: Partial<WizardDeps> = {}, fakeOptions: Parameters<typeof startFakeOllama>[0] = {}) {
   // One fake serves both the Ollama routes and the upstream onboarding routes.
-  const fake = await startFakeOllama({ onboarding: true, ...fakeOptions });
+  // A pull of the 16 GB model installs the pinned weights unless a test says otherwise.
+  const fake = await startFakeOllama({ onboarding: true, pullDigests: { [Q3]: PIN.sha256 }, ...fakeOptions });
   fakes.push(fake);
   const envFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'askfiles-wizard-')), 'server', '.env');
   let restarts = 0;
@@ -67,7 +70,7 @@ describe('Wizard', () => {
     const done = t.events.filter((e) => e.type === 'progress' && e.percent === 100);
     expect(done.map((e) => e.type === 'progress' && [e.model, e.index, e.count])).toEqual([
       ['bge-m3:567m', 0, 3],
-      ['qwen3:8b', 1, 3],
+      [Q3, 1, 3],
       ['bge-reranker-v2-m3', 2, 3],
     ]);
   });
@@ -85,7 +88,7 @@ describe('Wizard', () => {
     const done = t.events.filter((e) => e.type === 'progress' && e.percent === 100);
     expect(done.map((e) => e.type === 'progress' && [e.model, e.index, e.count])).toEqual([
       ['bge-m3:567m', 0, 2],
-      ['qwen3:8b', 1, 2],
+      [Q3, 1, 2],
     ]);
   });
 
@@ -102,19 +105,19 @@ describe('Wizard', () => {
       tierId: '16gb',
       label: '16 GB',
       belowMinimum: false,
-      chatModel: 'qwen3:8b',
+      chatModel: Q3,
       embeddingModel: 'bge-m3:567m',
     });
-    expect(t.fake.pulls).toEqual(['bge-m3:567m', 'qwen3:8b']);
+    expect(t.fake.pulls).toEqual(['bge-m3:567m', Q3]);
     const done = t.events.filter((e) => e.type === 'progress' && e.percent === 100);
     expect(done.map((e) => e.type === 'progress' && [e.model, e.index, e.count])).toEqual([
       ['bge-m3:567m', 0, 2],
-      ['qwen3:8b', 1, 2],
+      [Q3, 1, 2],
     ]);
 
     const env = util.parseEnv(fs.readFileSync(t.envFile, 'utf8'));
     expect(env).toMatchObject({
-      OLLAMA_MODEL_PREF: 'qwen3:8b',
+      OLLAMA_MODEL_PREF: Q3,
       OLLAMA_BASE_PATH: t.fake.url,
       DEFAULT_REASONING_EFFORT: 'off',
     });
@@ -125,12 +128,12 @@ describe('Wizard', () => {
   });
 
   it('retries after a failed pull from the pull step, skipping the model already installed', async () => {
-    const failPull = new Set(['qwen3:8b']);
+    const failPull = new Set([Q3]);
     const t = await setup({}, { failPull });
     const failed = await t.wizard.start();
 
     expect(failed).toMatchObject({ state: 'error', failedStep: 'pullModels', attempt: 1 });
-    expect(failed.error).toMatch(/pull qwen3:8b failed: connection reset by peer/);
+    expect(failed.error).toMatch(/failed: connection reset by peer/);
     expect(t.states()).toEqual(['detectRam', 'chooseTier', 'pullModels', 'error']);
     expect(fs.existsSync(t.envFile)).toBe(false);
 
@@ -139,7 +142,7 @@ describe('Wizard', () => {
     const snap = await t.wizard.retry();
     expect(snap).toMatchObject({ state: 'done', attempt: 2, error: null });
     expect(t.states()).toEqual(['retry', 'pullModels', 'writeConfig', 'markOnboarded', 'done']);
-    expect(t.fake.pulls).toEqual(['bge-m3:567m', 'qwen3:8b', 'qwen3:8b']);
+    expect(t.fake.pulls).toEqual(['bge-m3:567m', Q3, Q3]);
     expect(t.events.find((e) => e.type === 'progress' && e.model === 'bge-m3:567m')).toMatchObject({
       status: 'already installed',
       percent: 100,
@@ -157,14 +160,32 @@ describe('Wizard', () => {
     expect(await t.wizard.start()).toMatchObject({ state: 'error', failedStep: 'markOnboarded' });
     fail = false;
     expect(await t.wizard.retry()).toMatchObject({ state: 'done' });
-    expect(t.fake.pulls).toEqual(['bge-m3:567m', 'qwen3:8b']);
+    expect(t.fake.pulls).toEqual(['bge-m3:567m', Q3]);
   });
 
   it('flags a machine below the lowest tier and still gives it that tier', async () => {
     const t = await setup({ totalMemBytes: 7.9 * GIB });
     const snap = await t.wizard.start();
     expect(snap.tier).toMatchObject({ belowMinimum: true, preset: { id: '8gb' } });
-    expect(t.fake.pulls).toEqual(['bge-m3:567m', 'qwen3:4b']);
+    // Ask is off on 8 GB: only the embedder is pulled, and the .env names no chat model.
+    expect(t.fake.pulls).toEqual(['bge-m3:567m']);
+    expect(snap.state).toBe('done');
+    expect(util.parseEnv(fs.readFileSync(t.envFile, 'utf8')).OLLAMA_MODEL_PREF).toBeUndefined();
+  });
+
+  it('refuses a pinned model whose weights are not the measured file, pulled or already installed', async () => {
+    const other = 'f'.repeat(64);
+    const t = await setup({}, { pullDigests: { [Q3]: other } });
+    const snap = await t.wizard.start();
+    expect(snap).toMatchObject({ state: 'error', failedStep: 'pullModels' });
+    expect(snap.error).toContain(
+      `expected Qwen3-14B-Q3_K_M.gguf from unsloth/Qwen3-14B-GGUF at revision ${PIN.revision}`,
+    );
+    expect(snap.error).toContain(`Ollama installed sha256 ${other}`);
+    expect(fs.existsSync(t.envFile)).toBe(false);
+    const ok = await setup({}, { installed: [{ name: Q3, size: 1, digest: PIN.sha256 }] });
+    expect(await ok.wizard.start()).toMatchObject({ state: 'done' });
+    expect(ok.fake.pulls).toEqual(['bge-m3:567m']);
   });
 
   it('rejects retry outside the error state and start outside idle', async () => {

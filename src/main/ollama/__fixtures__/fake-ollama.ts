@@ -4,6 +4,8 @@ export interface FakeModel {
   name: string;
   size: number;
   capabilities?: string[];
+  /** sha256 of the weights, shown in the modelfile's FROM line. */
+  digest?: string;
 }
 
 export interface FakeOllamaOptions {
@@ -12,6 +14,8 @@ export interface FakeOllamaOptions {
   layers?: number[];
   /** Pull of these tags answers with an error line after the first layer. */
   failPull?: Set<string>;
+  /** sha256 of the weights a pull of this tag installs. */
+  pullDigests?: Record<string, string>;
   /** Also serve the two upstream onboarding routes, as if this were the upstream server. */
   onboarding?: boolean;
 }
@@ -77,6 +81,7 @@ export async function startFakeOllama(options: FakeOllamaOptions = {}): Promise<
       state.installed.push({
         name: tag.includes(':') ? tag : `${tag}:latest`,
         size: layers.reduce((a, b) => a + b, 0),
+        digest: options.pullDigests?.[tag],
       });
       res.write(JSON.stringify({ status: 'verifying sha256 digest' }) + '\n');
       res.end(JSON.stringify({ status: 'success' }));
@@ -94,7 +99,10 @@ export async function startFakeOllama(options: FakeOllamaOptions = {}): Promise<
       const tag = String((await readJson(req)).model);
       const m = state.installed.find((x) => x.name === tag);
       if (!m) return send(res, 404, { error: `model '${tag}' not found` });
-      return send(res, 200, { capabilities: m.capabilities ?? ['completion'] });
+      return send(res, 200, {
+        capabilities: m.capabilities ?? ['completion'],
+        modelfile: `# Modelfile\nFROM /models/blobs/sha256-${m.digest ?? '0'.repeat(64)}\nTEMPLATE x\n`,
+      });
     }
     if (options.onboarding && route === 'POST /api/onboarding') {
       onboarded = true;

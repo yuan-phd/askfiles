@@ -88,6 +88,8 @@ The run folder holds results.csv (stage 1 rows, or stage 2 rows with retrieval.c
 
 The answer block of a config file holds the same keys, with the same names, as the answer block of each tier in config/presets.json; a value found here is copied into the preset unchanged. A config may list only the keys it changes. Defaults below are those of src/main/answer/params.ts; the presets set some per tier.
 
+The v1 presets (docs/plan.md, v1 result) turn on verifyCitations, enumerateWhenAsked and dropUnsupportedHedges. paragraphSelection, verdictLine, documentAffinity, enumerateFollowUp, noSummarizing, decomposeQuestions, answerMode quoted and promptVariant strict or complete are unused options: kept in the code for later measurements, off on every tier.
+
 | Parameter | Default | Effect |
 | --- | --- | --- |
 | rerankerModel | Xenova/ms-marco-MiniLM-L-6-v2 | Cross-encoder: Xenova/ms-marco-MiniLM-L-6-v2 (English, 23 MB), Xenova/bge-reranker-base (Chinese and English, 296 MB), onnx-community/bge-reranker-v2-m3-ONNX (multilingual, 588 MB), or none: no cross-encoder, sections in fused order, vectorFloor instead of rerankFloor. none is the value of every preset and of default.json for now, because onnxruntime-node crashed (EXC_BREAKPOINT) on the owner's Mac when a bge reranker loaded (2026-10-30) |

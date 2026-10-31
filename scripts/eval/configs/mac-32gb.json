@@ -1,7 +1,7 @@
 {
   "$comment": "The 32 GB tier of config/presets.json on the owner's Mac: qwen3:14b, bge-m3, reranker off (rerankerModel none: fused order with a vector floor) until onnxruntime-node stops crashing there, and the Mac's own Ollama on 11434 instead of a second one. Same answer block as the preset; tune with --set and copy the result into config/presets.json.",
   "label": "mac-32gb",
-  "chatModel": "qwen3:14b",
+  "chatModel": "qwen3:14b-q4_K_M",
   "embeddingModel": "bge-m3:567m",
   "ollamaPort": 11434,
   "similarityThreshold": "medium",
@@ -39,6 +39,10 @@
       "broad": 0.5
     },
     "contextBudgetTokens": 0,
-    "promptVariant": "default"
-  }
+    "promptVariant": "default",
+    "verifyCitations": true,
+    "enumerateWhenAsked": true,
+    "dropUnsupportedHedges": true
+  },
+  "contextTokens": 8192
 }

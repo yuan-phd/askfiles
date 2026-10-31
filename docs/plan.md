@@ -355,6 +355,40 @@ documentAffinity as built in round 7, plus 6 sections (AFFINITY_MULTI_SECTIONS) 
 
 **User test**: give the DMG by USB to one or two real target users with a one-page task sheet (install, add a folder, ask five questions). Do not help. Record where they stop and time to first answer. Executor: YOU.
 
+
+### v1 result
+
+Phase 2 closed on 2026-11-01 (owner decision). The kept configuration is config/presets.json:
+
+| Tier | Ask | Chat model | Source |
+| --- | --- | --- | --- |
+| 32 GB and above | on | qwen3:14b-q4_K_M | Ollama library (digest bdbd181c33f2, the same weights as qwen3:14b) |
+| 16 GB | on | hf.co/unsloth/Qwen3-14B-GGUF:Q3_K_M | Pinned: repository unsloth/Qwen3-14B-GGUF, revision a04a82c4739b3ef5fa6da7d10261db2c67dd1985, file Qwen3-14B-Q3_K_M.gguf, sha256 9694f1db203d5a18bea6f19a36be01b2d2c79bf9b7f8df553a4cc5cff870b47e, 7321313664 bytes. Ollama cannot pull a revision, so the app checks the pulled weights against the sha256 and refuses any other file (docs/presets.md) |
+| 8 GB | off | none | The Ask page shows one line (Ask needs a Mac with 16 GB of memory or more; on this Mac use Browse and Find to read your documents.); Browse and Find are unchanged; only the embedder is pulled |
+
+Every tier: embedder bge-m3:567m, context 8192 tokens, chunk maximum 2000 characters, no reranker (fused order with a vector floor), sections and floor per scope strict 3 / 0.6, Balanced 5 / 0.55 (the default), broad 6 / 0.5, temperature 0.1, thinking off, answerMode single, promptVariant default. Answer switches on: verifyCitations (round 2), enumerateWhenAsked (round 8a), dropUnsupportedHedges (after round 9). Unused options, built and measured but off on every tier: paragraphSelection, verdictLine, documentAffinity (with its 6 sections for questions naming several files), enumerateFollowUp, noSummarizing, decomposeQuestions, answerMode quoted, promptVariant strict and complete.
+
+Metrics of the kept configuration on the 32 GB tier: round 8a (qwen3:14b-q4_K_M, context 8192, Balanced, one pass per question, Ollama restarted before every run; run folders ~/AskFiles-eval/runs/r8a-*). dropUnsupportedHedges came later and only deletes unsupported hedge sentences; applied to the recorded round 8a answers it deletes four (Q03, Q18 and the formula questions Q07, Q41) and changes no metric (Q03 coverage stays 1.00, Q18 0.60). Gated figures leave out cross_document and Q07 and Q41; the variance band is under Acceptance and stopping rules.
+
+| Set | Right section cited | Attribution | Key element coverage | Median total | False refusals | False answers |
+| --- | --- | --- | --- | --- | --- | --- |
+| tuning (questions-v3.csv) | 92% (23/25) | 89% (24/27) | 74% | 18.4 s | 4% (1/25) | 0% (0/2) |
+| check (questions-check-v2.csv) | 90% (9/10) | 79% (11/14) | 53% | 13.9 s | 0% (0/10) | 0% (0/4) |
+| absent (questions-absent.csv, provisional) | - | - | - | 12.5 s | - | 0% (0/10) |
+
+Attribution as measured: 24 of 27 answers on the tuning set and 11 of 14 on the check set have the right attribution (the expected section cited, or a correct refusal), so about 1 in 9 tuning answers and 1 in 5 check answers cite a section other than the expected one or miss it. The failures are Q03 (cites the Contents page as well), Q08 (OCR, retrieval miss) and Q27 on the tuning set, and Q33 (retrieval miss, fused rank 13), Q39 and Q40 (table arithmetic) on the check set.
+
+The 16 GB model was measured in the quantization and context matrix (above) with the round 2' configuration, before enumerateWhenAsked and the hedge filter: tuning and check sets together 91% (32/35) cited, 80% (33/41) attribution, 68% coverage, 3% false refusals, 6% (1/16) false answers, median 15.9 s, 7.45 GiB for the chat model in memory against 9.17 GiB for q4_K_M. It ran on the 64 GB Mac; it has not run on a 16 GB Mac.
+
+Completeness, graded by the owner from ~/AskFiles-eval/grading-all.md (round 8a answers as shown, the full expected section text and the key elements, formula questions left out): 28 of 35 complete. By category: single document and long document 24 of 26, tables 3 of 5, cross document 0 of 2. As reported, the three categories add up to 27 of 33; the sheet holds 37 entries (21 single_fact, 9 middle_of_long_doc, 5 table_number, 2 cross_document), so two graded entries and one complete answer are outside the split.
+
+Known limits of v1:
+
+- Table reading: answers misread or miscompute table cells (Q25, Q39, Q40; 3 of 5 table questions complete).
+- Cross-document questions: an answer that needs a section from each of two files usually finds one and says the other does not cover it (Q04, Q09; 0 of 2 complete). documentAffinity fixed Q04 but lost Q09 and Q34 and answered the absent Q30, so it is off.
+- OCR quality: scanned pages give poor text for retrieval and for the answer (Q08 not retrieved; Q34 cites its page but gets the agent name partly unsupported).
+- Spreadsheet formulas: the split does not keep a workbook's formulas (see Acceptance and stopping rules), so a question about a formula cannot be answered from the indexed text (Q07, Q41, marked unsupported and outside every metric).
+
 ## Phase 3: own search interface and folder watching
 
 Outcome: the window loads our page instead of the upstream frontend. The user sees one folder, one search box, an answer, and the source passages. AnythingLLM runs headless behind the API.

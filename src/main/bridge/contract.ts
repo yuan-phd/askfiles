@@ -80,6 +80,8 @@ export interface ShellConfigValues {
   folder: string | null;
   libraryId: string | null;
   libraryName: string | null;
+  /** The Ask page's one-line notice on a tier with Ask off (src/main/settings.ts); null elsewhere. */
+  askNotice: string | null;
 }
 
 /** Watcher status of the current library as the top bar shows it; error when it cannot be read. */

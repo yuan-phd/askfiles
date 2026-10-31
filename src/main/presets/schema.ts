@@ -6,9 +6,16 @@ export interface Preset {
   label: string;
   /** Lowest total RAM, in GiB, that gets this tier. */
   minRamGb: number;
-  /** Marks the values as starting values until phase 2 measures them. */
+  /** Where the values come from: the phase 2 measurements (docs/plan.md, v1 result). */
   comment: string;
-  chatModel: string;
+  /** Null turns Ask off on this tier: no chat model is pulled, Browse and Find stay. */
+  chatModel: string | null;
+  /**
+   * A chat model pulled from Hugging Face, pinned: Ollama pulls hf.co/<repository>:<quant> and
+   * cannot pick a revision, so the pulled weights must have this sha256 (the file's at revision)
+   * or the model is refused (src/main/models/pinned.ts).
+   */
+  chatModelFile?: ChatModelFile;
   embeddingModel: string;
   /** OLLAMA_MODEL_TOKEN_LIMIT, sent to Ollama as num_ctx on every chat call. */
   contextLength: number;
@@ -25,6 +32,15 @@ export interface Preset {
   answer: AnswerParams;
 }
 
+export interface ChatModelFile {
+  repository: string;
+  /** The commit the file was measured at. */
+  revision: string;
+  file: string;
+  sha256: string;
+  sizeBytes: number;
+}
+
 export interface PresetFile {
   version: 1;
   comment: string;
@@ -38,8 +54,9 @@ export class PresetError extends Error {
   }
 }
 
-// Ollama model names: optional namespace, name, optional tag.
+// Ollama model names: optional namespace, name, optional tag; or hf.co/<user>/<repository>:<quant>.
 const MODEL_TAG = /^[a-z0-9][a-z0-9._-]*(\/[a-z0-9][a-z0-9._-]*)?(:[A-Za-z0-9][A-Za-z0-9._-]*)?$/;
+const HF_TAG = /^hf\.co\/([A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*)(:[A-Za-z0-9][A-Za-z0-9._-]*)?$/;
 const OCR_LANGS = /^[a-z_]+(,[a-z_]+)*$/;
 // dumpENV cuts a value at the first of these (upstream/server/utils/helpers/updateENV.js, sanitizeValue),
 // and a quote or newline would also break our own KEY="value" lines.
@@ -55,7 +72,10 @@ const str: Check = (v) => (typeof v === 'string' && v.trim() !== '' ? null : 'mu
 const envStr: Check = (v) =>
   str(v) ?? (UNSAFE_ENV_VALUE.test(v as string) ? 'must not contain quotes, #, \\ or control characters' : null);
 const tag: Check = (v) =>
-  envStr(v) ?? (MODEL_TAG.test(v as string) ? null : 'must be an Ollama model tag such as qwen3:8b');
+  envStr(v) ??
+  (MODEL_TAG.test(v as string) || HF_TAG.test(v as string)
+    ? null
+    : 'must be an Ollama model tag such as qwen3:8b or hf.co/<user>/<repository>:<quant>');
 const int =
   (min: number, max: number): Check =>
   (v) =>
@@ -73,12 +93,27 @@ const oneOf =
   (v) =>
     values.includes(v as string) ? null : `must be ${values.map((x) => JSON.stringify(x)).join(' or ')}`;
 
-const PRESET_FIELDS: Record<keyof Preset, Check> = {
+const fileProblems = (v: unknown, chatModel: unknown): string | null => {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return 'must be an object';
+  const f = v as Record<string, unknown>;
+  for (const k of ['repository', 'revision', 'file']) if (str(f[k])) return `.${k} must be a non-empty string`;
+  if (typeof f.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(f.sha256)) return '.sha256 must be 64 hex digits';
+  if (!Number.isInteger(f.sizeBytes) || (f.sizeBytes as number) <= 0) return '.sizeBytes must be a positive integer';
+  const extra = Object.keys(f).filter((k) => !['repository', 'revision', 'file', 'sha256', 'sizeBytes'].includes(k));
+  if (extra.length) return `.${extra[0]} is not a known field`;
+  const m = typeof chatModel === 'string' ? HF_TAG.exec(chatModel) : null;
+  if (!m || m[1] !== f.repository) return 'needs chatModel hf.co/<its repository>:<quant>';
+  return null;
+};
+
+type RequiredField = Exclude<keyof Preset, 'chatModelFile'>;
+
+const PRESET_FIELDS: Record<RequiredField, Check> = {
   id: (v) => str(v) ?? (/^[a-z0-9-]+$/.test(v as string) ? null : 'must use a-z, 0-9 and -'),
   label: str,
   minRamGb: num(0, 4096),
-  comment: (v) => str(v) ?? (/starting value/i.test(v as string) ? null : 'must say these are starting values'),
-  chatModel: tag,
+  comment: str,
+  chatModel: (v) => (v === null ? null : tag(v)),
   embeddingModel: tag,
   contextLength: int(2048, 131072),
   chunkMaxChars: int(200, MAX_CHUNK_CHARS),
@@ -121,7 +156,11 @@ export function validatePresets(data: unknown): PresetFile {
       if (problem) problems.push(`${at}.${key} ${problem}`);
     }
     for (const key of Object.keys(tier)) {
-      if (!(key in PRESET_FIELDS)) problems.push(`${at}.${key} is not a known field`);
+      if (!(key in PRESET_FIELDS) && key !== 'chatModelFile') problems.push(`${at}.${key} is not a known field`);
+    }
+    if ('chatModelFile' in tier) {
+      const p = fileProblems(tier.chatModelFile, tier.chatModel);
+      if (p) problems.push(`${at}.chatModelFile${p.startsWith('.') ? '' : ' '}${p}`);
     }
     if ('answer' in tier) problems.push(...answerParamProblems(tier.answer, `${at}.answer`));
     if (typeof tier.id === 'string') {

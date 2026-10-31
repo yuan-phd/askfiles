@@ -95,6 +95,16 @@ export class OllamaClient {
     return data.capabilities ?? [];
   }
 
+  /**
+   * sha256 of the model's weights: POST /api/show, from the FROM line of its modelfile, which
+   * names the weights blob (FROM /.../blobs/sha256-<hex>). Null when the line has none.
+   */
+  async weightsDigest(tag: string): Promise<string | null> {
+    const data = (await (await this.call('POST', '/api/show', { model: tag })).json()) as { modelfile?: string };
+    const from = (data.modelfile ?? '').split('\n').find((l) => /^FROM\s/i.test(l)) ?? '';
+    return /sha256[-:]([0-9a-f]{64})/.exec(from)?.[1] ?? null;
+  }
+
   /** DELETE /api/delete */
   async remove(tag: string): Promise<void> {
     await this.call('DELETE', '/api/delete', { model: tag });

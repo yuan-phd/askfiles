@@ -115,6 +115,7 @@ const shellConfig: ShellConfig = {
   folder: values.folder ?? null,
   libraryId: values.libraryId ?? null,
   libraryName: values.libraryName ?? null,
+  askNotice: values.askNotice ?? null,
   resolveSources: askfiles.library.resolveSources,
   openSource: askfiles.library.openOriginal,
 };
