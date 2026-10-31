@@ -238,6 +238,15 @@ cross_document is reported without a threshold. Formula questions (a spreadsheet
 | 8c | 8a plus the follow-up check (enumerateFollowUp: a stated count with fewer items enumerated makes one more call for the missing ones) | tuning | 92% (23/25) | 89% (24/27) | 73% | 18.3 s | 4% (1/25) | 0% (0/2) | no: no gain; fired once and added nothing usable |
 | 8c | same | check | 90% (9/10) | 79% (11/14) | 53% | 14.4 s | 0% (0/10) | 0% (0/4) | no |
 | 8c | same | absent | - | - | - | 12.5 s | - | 0% (0/10) | no |
+| 9a | No summarizing (noSummarizing: one rule on every question in place of the enumerateWhenAsked set rule: do not summarize, merge or group; state each listed item separately with its citation; give every member of a set), on 8a | tuning | 88% (22/25) | 78% (21/27) | 78% | 18.4 s | 4% (1/25) | 50% (1/2) | no: coverage +4, but attribution -11, cited -4 and false answers +50 (Q10 answered again) |
+| 9a | same | check | 90% (9/10) | 71% (10/14) | 51% | 13.6 s | 0% (0/10) | 0% (0/4) | no: attribution -8, coverage -2 |
+| 9a | same | absent | - | - | - | 11.2 s | - | 0% (0/10) | no |
+| 9b | Question decomposition (decomposeQuestions: split only on explicit structure, the whole pipeline per part, answers merged under lead-ins), on 9a | tuning | 92% (23/25) | 74% (20/27) | 78% | 19.9 s | 4% (1/25) | 50% (1/2) | no: split questions 59 to 58 percent coverage against 9a, attribution -4 more |
+| 9b | same | check | 90% (9/10) | 71% (10/14) | 51% | 16.4 s | 0% (0/10) | 0% (0/4) | no: split questions unchanged against 9a |
+| 9b | same | absent | - | - | - | 11.3 s | - | 0% (0/10) | no: no absent question splits |
+| 9b' | decomposeQuestions on 8a, without 9a (run because 9a was reverted, so 9b alone could not be adopted) | tuning | 96% (24/25) | 85% (23/27) | 75% | 19.6 s | 4% (1/25) | 0% (0/2) | no: split questions 55 percent coverage as in 8a, attribution -4 (Q25) |
+| 9b' | same | check | 90% (9/10) | 71% (10/14) | 55% | 16.6 s | 0% (0/10) | 0% (0/4) | no: split questions 70 to 76 percent coverage, but attribution -8 (Q38) |
+| 9b' | same | absent | - | - | - | 12.5 s | - | 0% (0/10) | no |
 
 Round 1 notes (2026-10-31, same Mac, corpus and models as the retrieval tuning above; one pass per question; run folders ~/AskFiles-eval/runs/r1-*). Gated figures leave out cross_document (tuning set: single 0/2, quoted 1/2 cited) and the formula questions Q07 and Q41. Key element coverage counts the answer key's elements as written; over only the elements found word for word in the expected section it was 81 percent (single) and 68 percent (quoted) on the tuning set. The harness changes of round 1 (normalization of dashes, quotes, broken words and percent ranges; question-copied phrases left out of attribution; false refusals and false answers) apply to every row above. Quoted mode is kept as an option (answerMode, default single) and not used in any preset. Its causes on the tuning set: 8 selection cuts (the extraction returned no verifiable excerpt of the expected section, or not the sentences holding the answer), 7 model errors, 1 retrieval miss, 1 abstention error (Q10). Its table-of-contents filter also flags three table or sheet sections whose lines end in numbers (Initial Technical Score, Final Weighted Technical Score, Foreign Currency Summary page), which took Q40's expected section out of the extraction. The extraction call alone takes 4 to 29 s. The check-set N 8 run followed the N 6 run on the same questions and Ollama reused cached prompt prefixes, so its 9.1 s median is not comparable. Round count: 1 of 4; round 1 gained nothing on the tuning set (first round under 3 points).
 
@@ -318,6 +327,25 @@ Cause tables (r6-1 as the baseline, then the kept round 8a; causes as in rounds 
 | 8a | check | 1 (Q33) | 0 | 9 | 0 | 4 |
 
 Almost every model error is a coverage miss (the answer paraphrases or leaves out a literal key element); the gated attribution failures left after 8a are Q03 (cites the Contents page too), Q08 (OCR, retrieval miss) and Q27 in the tuning set, Q33 (retrieval miss), Q39 and Q40 (table arithmetic) in the check set.
+
+Round 9 (2026-10-31, approved by the owner as two changes measured in sequence on the kept configuration, round 2' plus enumerateWhenAsked; same model, settings, sets and procedure as rounds 6 to 8; run folders ~/AskFiles-eval/runs/r9a-*, r9b-*, r9b0-*). Judge: keep 9a if coverage rises and no gating metric drops more than 3 points; keep 9b if coverage rises further on the split questions and nothing drops.
+
+Round 9a detail. Coverage rose on Q18, Q25, Q26 and Q28 (tuning), but the rule to state every listed item made the model add items from neighbouring sections it was given: Q26 adds a third circumstance from Formula Redesign, Q38 adds the formula, indices and base date from the Procurement Regulations' Price Adjustments, so their attribution fails; Q14 cites the neighbouring Debriefing section for the same sentence; and Q10 lists the template's placeholder fields as the items instead of replying NOT_IN_SOURCES, which undoes the round 8a gain. Not kept: noSummarizing off.
+
+Round 9b detail. The splitter (src/main/answer/decompose.ts) splits 13 of the 55 questions: Q04 by its Compare A and B set (2 parts), Q06, Q08, Q09 (3 parts, the former and the latter resolved to the two guidances named before the asks), Q15, Q21, Q25 (3 parts), Q26, Q27 in the tuning set and Q31, Q32, Q36, Q38 in the check set; none of the absent set. It leaves whole every question whose later ask points back with a pronoun (Q02, Q13, Q17, Q20, Q35, Q37, Q39 and others), whose asks have no lead-in (Q11, Q18, Q30, Q52) or that has two question sentences (Q41). Lead-ins repeat the question's words, so coverage was also measured with them removed: identical on every split question. On 9a, the split questions' coverage moved 59 to 58 percent on the tuning set and stayed at 66 percent on the check set; Q04 fell from 0.50 to 0.25 because each document's part answers only for its own document. Since 9a was reverted, decomposition was also run on 8a (9b'): coverage on the split questions 55 percent as in 8a on the tuning set (Q25 0.17 to 0.50, Q26 0.20 to 0.40, Q04 0.50 to 0.25, Q15 1.0 to 0.75) and 70 to 76 percent on the check set (Q36 0.6 to 0.8), but each part retrieves its own sections and cites extra ones: Q25's second part cites a second section and Q38's first part cites the Procurement Regulations, so attribution fell on both sets. Latency on split questions: mean total 15.7 to 28.6 s on the tuning set and 19.0 to 27.8 s on the check set (8a to 9b'), one full pipeline per part; the longest is Q06 at 41.1 s. Not kept: decomposeQuestions off. Round count: 9a and 9b reverted, presets unchanged from round 8a.
+
+Cause tables, round 9 (as above):
+
+| Run | Set | Retrieval miss | Selection cut | Model error | Abstention error | No failure |
+| --- | --- | --- | --- | --- | --- | --- |
+| 9a | tuning | 2 (Q04, Q08) | 0 | 15 | 1 (Q10) | 11 |
+| 9a | check | 1 (Q33) | 0 | 9 | 0 | 4 |
+| 9b | tuning | 2 (Q04, Q08) | 0 | 15 | 1 (Q10) | 11 |
+| 9b | check | 1 (Q33) | 0 | 9 | 0 | 4 |
+| 9b' | tuning | 2 (Q04, Q08) | 0 | 18 | 0 | 9 |
+| 9b' | check | 1 (Q33) | 0 | 9 | 0 | 4 |
+
+Neither change moves the cause mix: the model errors are coverage misses, and the extra items both changes bring in come with citations to sections the answer key does not expect. The external grading sheet ~/AskFiles-eval/spot-check-grading.md (the same 10 questions as spot-check.md, seed 20261031) carries the round 8a answers as shown, the full expected section text and the key elements, for a grader independent of the literal coverage count.
 
 **User test**: give the DMG by USB to one or two real target users with a one-page task sheet (install, add a folder, ask five questions). Do not help. Record where they stop and time to first answer. Executor: YOU.
 

@@ -50,7 +50,9 @@
         "verdictLine": false,
         "documentAffinity": false,
         "enumerateWhenAsked": true,
-        "enumerateFollowUp": false
+        "enumerateFollowUp": false,
+        "noSummarizing": false,
+        "decomposeQuestions": false
       }
     },
     {
@@ -101,7 +103,9 @@
         "verdictLine": false,
         "documentAffinity": false,
         "enumerateWhenAsked": true,
-        "enumerateFollowUp": false
+        "enumerateFollowUp": false,
+        "noSummarizing": false,
+        "decomposeQuestions": false
       }
     },
     {
@@ -152,7 +156,9 @@
         "verdictLine": false,
         "documentAffinity": false,
         "enumerateWhenAsked": true,
-        "enumerateFollowUp": false
+        "enumerateFollowUp": false,
+        "noSummarizing": false,
+        "decomposeQuestions": false
       }
     }
   ]

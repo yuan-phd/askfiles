@@ -86,6 +86,16 @@ export interface AnswerParams {
    * one follow-up call with the same sources asks for the missing ones.
    */
   enumerateFollowUp: boolean;
+  /**
+   * One rule on every question in place of the enumerateWhenAsked set rule: do not summarize,
+   * merge or group, state each listed item separately with its citation (docs/plan.md round 9).
+   */
+  noSummarizing: boolean;
+  /**
+   * Split a question on its explicit structure only (asks joined by and, as well as or a comma
+   * list, or Compare A and B), answer each part with the full pipeline, merge (decompose.ts).
+   */
+  decomposeQuestions: boolean;
 }
 
 export const DEFAULT_PARAMS: AnswerParams = {
@@ -109,6 +119,8 @@ export const DEFAULT_PARAMS: AnswerParams = {
   documentAffinity: false,
   enumerateWhenAsked: false,
   enumerateFollowUp: false,
+  noSummarizing: false,
+  decomposeQuestions: false,
 };
 
 /** Tokens kept free for the answer itself and for the instructions and the question. */
@@ -198,6 +210,8 @@ const CHECKS: Record<keyof AnswerParams, (v: unknown) => Problem> = {
   documentAffinity: bool,
   enumerateWhenAsked: bool,
   enumerateFollowUp: bool,
+  noSummarizing: bool,
+  decomposeQuestions: bool,
 };
 
 /** Problems with an answer block, each prefixed with at; every key is required. */

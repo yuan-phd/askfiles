@@ -5,7 +5,7 @@
  * file and document type too, because questions that name a file were answered from a same-titled
  * section of another (docs/plan.md round 7); the answer still may not write them.
  */
-import { ENUMERATE_RULE } from './enumerate.js';
+import { ENUMERATE_RULE, NO_SUMMARIZING_RULE } from './enumerate.js';
 import type { PromptVariant } from './params.js';
 
 /** The whole reply when the sources do not answer the question. */
@@ -45,13 +45,16 @@ const COMPLETE_RULES = [
   "Use the sources' own terms, names and numbers; do not paraphrase them.",
 ];
 
-export function systemPrompt(variant: PromptVariant, o: { verdictLine?: boolean; enumerate?: boolean } = {}): string {
+export function systemPrompt(
+  variant: PromptVariant,
+  o: { verdictLine?: boolean; enumerate?: boolean; noSummarizing?: boolean } = {},
+): string {
   // The verdict rules take the place of the two not-found marker rules.
   const base = o.verdictLine ? [...RULES.slice(0, 3), ...VERDICT_RULES, ...RULES.slice(5)] : RULES;
   const extra = [
     ...(variant === 'strict' ? STRICT_RULES : variant === 'complete' ? COMPLETE_RULES : []),
-    // enumerateWhenAsked, set questions only (enumerate.ts isSetQuestion).
-    ...(o.enumerate ? [ENUMERATE_RULE] : []),
+    // noSummarizing takes the place of the enumerateWhenAsked rule, which set questions only got.
+    ...(o.noSummarizing ? [NO_SUMMARIZING_RULE] : o.enumerate ? [ENUMERATE_RULE] : []),
   ];
   const rules = [...base.slice(0, 3), ...extra, ...base.slice(3)];
   return rules.join('\n');
@@ -121,7 +124,7 @@ export function buildMessages(
   question: string,
   sources: PromptSource[],
   variant: PromptVariant,
-  o: { verdictLine?: boolean; fileHeaders?: boolean; enumerate?: boolean } = {},
+  o: { verdictLine?: boolean; fileHeaders?: boolean; enumerate?: boolean; noSummarizing?: boolean } = {},
 ): ChatMessage[] {
   return [
     { role: 'system', content: systemPrompt(variant, o) },

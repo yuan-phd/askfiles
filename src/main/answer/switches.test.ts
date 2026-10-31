@@ -444,3 +444,15 @@ function depsOf(lib: ReturnType<typeof fixtureLibrary>, reply: string[]): Pipeli
     chat,
   };
 }
+
+describe('noSummarizing', () => {
+  it('puts one rule on every question in place of the set rule', async () => {
+    const { systemPrompt } = await import('./prompt.js');
+    const { ENUMERATE_RULE, NO_SUMMARIZING_RULE } = await import('./enumerate.js');
+    const on = systemPrompt('default', { enumerate: true, noSummarizing: true });
+    expect(on).toContain(NO_SUMMARIZING_RULE);
+    expect(on).not.toContain(ENUMERATE_RULE);
+    expect(systemPrompt('default', { noSummarizing: true })).toContain(NO_SUMMARIZING_RULE);
+    expect(systemPrompt('default', { enumerate: true })).toContain(ENUMERATE_RULE);
+  });
+});

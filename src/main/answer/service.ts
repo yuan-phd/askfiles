@@ -3,8 +3,18 @@
  * run id, cancels a run when a new question comes, keeps the last trace for the developer panel.
  */
 import { randomUUID } from 'node:crypto';
+import { answerSplit, describeSplit, splitQuestion } from './decompose.js';
 import { appendEvalCase, type EvalCase } from './eval-case.js';
-import { answer, choose, retrieve, type AnswerEvent, type AnswerResult, type PipelineDeps } from './pipeline.js';
+import {
+  answer,
+  choose,
+  retrieve,
+  type AnswerEvent,
+  type AnswerResult,
+  type PipelineDeps,
+  type Retrieval,
+} from './pipeline.js';
+import type { Selection } from './select.js';
 import { floorOf, setFloor, type RunSettings } from './params.js';
 import { buildTrace, type Trace } from './trace.js';
 
@@ -120,16 +130,30 @@ export class AnswerService {
       if (!deps) throw new Error('The library is not ready yet. Try again in a moment.');
       const s = this.effectiveSettings();
       send({ type: 'stage', stage: 'retrieving' });
-      const r = await retrieve(question, s, deps, signal);
-      const sel = choose(r, s);
-      const trace = buildTrace(r, sel, {
-        scope: s.scope,
-        floor: floorOf(s.params, s.scope),
-        count: s.params.sectionCount[s.scope],
-      });
-      this.lastTrace = trace;
-      if (this.d.developer) send({ type: 'trace', trace });
-      const result = await answer(question, r, sel, s, deps, send, signal);
+      // The trace and the log line describe the first part of a split question.
+      let first: { r: Retrieval; sel: Selection; trace: Trace } | null = null;
+      const one = async (q: string, emit: (e: AnswerEvent) => void) => {
+        const r = await retrieve(q, s, deps, signal);
+        const sel = choose(r, s);
+        if (!first) {
+          const trace = buildTrace(r, sel, {
+            scope: s.scope,
+            floor: floorOf(s.params, s.scope),
+            count: s.params.sectionCount[s.scope],
+          });
+          first = { r, sel, trace };
+          this.lastTrace = trace;
+          if (this.d.developer) send({ type: 'trace', trace });
+        }
+        return answer(q, r, sel, s, deps, emit, signal);
+      };
+      const split = s.params.decomposeQuestions ? splitQuestion(question) : null;
+      if (split) this.d.log(`[answer] decompose: ${describeSplit(split)}`);
+      const result = split
+        ? await answerSplit(split, (part, emit) => one(part.text, emit), send)
+        : await one(question, send);
+      if (split) send({ type: 'done', result });
+      const { r, sel, trace } = first!;
       trace.timings.firstTokenMs = result.timings.firstTokenMs;
       trace.timings.modelMs = result.timings.modelMs;
       this.d.log(

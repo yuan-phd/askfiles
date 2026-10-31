@@ -7,7 +7,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   answer,
+  answerSplit,
   choose,
+  describeSplit,
+  splitQuestion,
   rerankerProcess,
   ensureReranker,
   ollamaChat,
@@ -295,8 +298,27 @@ export async function answerOnce(
   retrieval: Retrieval,
   s: RunSettings,
   deps: PipelineDeps,
+  cacheDir?: string,
 ): Promise<AnswerRow> {
   const t0 = performance.now();
+  const split = s.params.decomposeQuestions ? splitQuestion(q.question) : null;
+  if (split) {
+    // Each part retrieves on its own question, from the cache like the whole questions.
+    deps.log?.(`[answer] decompose ${q.id}: ${describeSplit(split)}`);
+    let retrievalMs = 0;
+    try {
+      const result = await answerSplit(split, async (part, emit) => {
+        const r = cacheDir
+          ? (await cachedRetrieve(part.text, s, deps, cacheDir)).retrieval
+          : await retrieve(part.text, s, deps);
+        retrievalMs += r.timings.vectorMs + r.timings.keywordMs + r.timings.rerankMs;
+        return answer(part.text, r, choose(r, s), s, deps, emit);
+      });
+      return { result, error: '', totalMs: Math.round(retrievalMs + (performance.now() - t0)) };
+    } catch (e) {
+      return { result: null, error: (e as Error).message, totalMs: Math.round(performance.now() - t0) };
+    }
+  }
   try {
     const result = await answer(q.question, retrieval, choose(retrieval, s), s, deps);
     const t = retrieval.timings;

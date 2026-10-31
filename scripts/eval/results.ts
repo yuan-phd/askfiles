@@ -93,6 +93,8 @@ export const ANSWER_COLUMNS = [
   'verification',
   'affinity',
   'follow_up',
+  'split',
+  'shown',
   'cited_json',
   'considered_json',
 ] as const;

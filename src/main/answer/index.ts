@@ -1,4 +1,5 @@
 export * from './citations.js';
+export * from './decompose.js';
 export * from './eval-case.js';
 export * from './enumerate.js';
 export * from './fusion.js';

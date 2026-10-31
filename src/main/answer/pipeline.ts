@@ -312,6 +312,8 @@ export interface AnswerResult {
   verification?: VerifyStats;
   /** enumerateFollowUp: the question's count, the items the first reply gave, and the follow-up call. */
   followUp?: { wanted: number; given: number; ms: number; added: boolean };
+  /** decomposeQuestions: how the question was split, each part's question, outcome and time. */
+  split?: { how: 'asks' | 'set'; parts: string[]; notFound: boolean[]; ms: number[] };
 }
 
 export type AnswerEvent =
@@ -418,6 +420,7 @@ export async function answer(
     verdictLine,
     fileHeaders: affinity,
     enumerate,
+    noSummarizing: s.params.noSummarizing,
   });
   const t0 = performance.now();
   let firstTokenMs: number | null = null;

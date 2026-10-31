@@ -50,7 +50,9 @@
         "verdictLine": false,
         "documentAffinity": false,
         "enumerateWhenAsked": false,
-        "enumerateFollowUp": false
+        "enumerateFollowUp": false,
+        "noSummarizing": false,
+        "decomposeQuestions": false
       }
     }
   ]

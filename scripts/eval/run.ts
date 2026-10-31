@@ -631,7 +631,7 @@ async function runStages(o: Parameters<typeof runPipeline>[0], deps: PipelineDep
     const s = runSettings(config, config.chunkMax, c);
     for (let pass = 1; pass <= config.passes; pass++) {
       for (const [i, { q, retrieval }] of items.entries()) {
-        const out = await answerOnce(q, retrieval, s, deps);
+        const out = await answerOnce(q, retrieval, s, deps, cacheDir);
         const m = answerMetrics(q, out, literal.get(q.id)?.literal);
         const r = out.result;
         if (out.error) errors++;
@@ -676,6 +676,30 @@ async function runStages(o: Parameters<typeof runPipeline>[0], deps: PipelineDep
           follow_up: r?.followUp
             ? `${r.followUp.given} of ${r.followUp.wanted} items, ${r.followUp.added ? 'added' : 'nothing added'}, ${r.followUp.ms} ms`
             : '',
+          split: r?.split
+            ? `${r.split.how}, ${r.split.parts.length} parts, ${r.split.ms.join(' + ')} ms${
+                r.split.notFound.some(Boolean)
+                  ? `, not found: ${r.split.notFound
+                      .map((x, k) => (x ? k + 1 : 0))
+                      .filter(Boolean)
+                      .join(', ')}`
+                  : ''
+              }`
+            : '',
+          // The answer as the Ask page renders it: each claim, its [n], a muted mark when unsupported.
+          shown:
+            r && !r.notFound
+              ? r.claims
+                  .map(
+                    (x) =>
+                      x.text.replace(/\s+$/, '') +
+                      x.citations.map((n) => `[${n}]`).join('') +
+                      (x.unsupported ? ' (no source supports this sentence)' : '') +
+                      (/\s+$/.exec(x.text)?.[0] ?? ' '),
+                  )
+                  .join('')
+                  .trim()
+              : '',
           cited_json: r?.cited.length ? JSON.stringify(r.cited.map(cardRecord)) : '',
           considered_json: r?.considered.length ? JSON.stringify(r.considered.map(cardRecord)) : '',
         };

@@ -60,6 +60,13 @@ export function enumeratedItems(answer: string, citedSentences: number): number 
 export const ENUMERATE_RULE =
   'The question asks for a set of items: first count the items in the cited sources that answer the question, then give every one of them, each with its citation; do not summarize them into fewer items.';
 
+/**
+ * noSummarizing: the rule for every question. Round 8a's causes were omissions in answers that
+ * grouped several listed items under one sentence (docs/plan.md round 9).
+ */
+export const NO_SUMMARIZING_RULE =
+  'Do not summarize, merge or group what the sources say; when the sources list several items, state each item separately as the source states it, with its citation; when the question asks for a set, give every member.';
+
 export function followUpMessage(wanted: number, given: number): string {
   return `The question asks for ${wanted} items and your answer gives ${given}. From the same numbered sources, give only the missing items, each in its own sentence with its citation [n]. Do not repeat the items already given and add nothing the sources do not state. If the sources hold no more items, reply with nothing.`;
 }
