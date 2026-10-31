@@ -52,7 +52,8 @@
         "enumerateWhenAsked": false,
         "enumerateFollowUp": false,
         "noSummarizing": false,
-        "decomposeQuestions": false
+        "decomposeQuestions": false,
+        "dropUnsupportedHedges": false
       }
     }
   ]

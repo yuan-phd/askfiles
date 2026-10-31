@@ -6,6 +6,7 @@ import { buildIdentities, mentionedDocuments } from '../browse/identifiers.js';
 import { createSourceResolver } from '../watcher/index.js';
 import { fixtureLibrary } from './__fixtures__/library.js';
 import {
+  AFFINITY_MULTI_SECTIONS,
   answer,
   boostDocuments,
   choose,
@@ -15,6 +16,8 @@ import {
   statedCount,
   claimsOf,
   contentTokens,
+  dropHedges,
+  isHedge,
   DEFAULT_PARAMS,
   NO_RERANKER,
   overlap,
@@ -454,5 +457,70 @@ describe('noSummarizing', () => {
     expect(on).not.toContain(ENUMERATE_RULE);
     expect(systemPrompt('default', { noSummarizing: true })).toContain(NO_SUMMARIZING_RULE);
     expect(systemPrompt('default', { enumerate: true })).toContain(ENUMERATE_RULE);
+  });
+});
+
+describe('dropUnsupportedHedges', () => {
+  const c = (text: string, citations: number[], unsupported = !citations.length) => ({ text, citations, unsupported });
+
+  it('drops unsupported hedges only when a supported sentence stays', () => {
+    const claims = [
+      c('Leave is 27 days. ', [1]),
+      c('The carry-over rule is not specified in the sources. ', []),
+      c('Ask your manager. ', []),
+      c('Sick leave is not stated separately. ', [2]),
+    ];
+    const d = dropHedges(claims);
+    expect(d.dropped).toEqual(['The carry-over rule is not specified in the sources.']);
+    expect(d.claims.map((x) => x.text.trim())).toEqual([
+      'Leave is 27 days.',
+      'Ask your manager.',
+      'Sick leave is not stated separately.',
+    ]);
+    // Nothing supported: the answer would lose all it has, so nothing goes.
+    expect(dropHedges([c('No information is provided. ', [])]).dropped).toEqual([]);
+    expect(isHedge('The page number does not specify it.')).toBe(true);
+    expect(isHedge('文件未说明页码。')).toBe(true);
+    expect(isHedge('The Borrower specifies the date.')).toBe(false);
+  });
+
+  it('in the pipeline deletes the hedge after verification, logs it and returns the kept text', async () => {
+    const lib = fixtureLibrary([
+      { name: 'Leave_Policy.pdf', sections: [{ title: 'Annual leave', parts: ['Employees get 27 days of leave.'] }] },
+    ]);
+    cleanups.push(lib.cleanup);
+    const deps = depsOf(lib, [
+      'Employees get 27 days of leave [1]. The carry-over rule is not specified in the sources.',
+    ]);
+    const logs: string[] = [];
+    deps.log = (m) => logs.push(m);
+    const s = settingsWith({ verifyCitations: true, dropUnsupportedHedges: true });
+    const r = await retrieve('How many days of annual leave?', s, deps);
+    const result = await answer('q', r, choose(r, s), s, deps);
+    expect(result.claims.map((x) => x.text.trim())).toEqual(['Employees get 27 days of leave .']);
+    expect(result.text).toBe('Employees get 27 days of leave .[1]');
+    expect(result.hedgesDropped).toEqual(['The carry-over rule is not specified in the sources.']);
+    expect(logs).toContain('[answer] hedge dropped: The carry-over rule is not specified in the sources.');
+  });
+});
+
+describe('documentAffinity with two or more files named', () => {
+  it('selects AFFINITY_MULTI_SECTIONS sections instead of the scope count', async () => {
+    // The test vector search maps every chunk to the first file, so it holds enough sections.
+    const sections = (w: string, n: number) =>
+      Array.from({ length: n }, (_, i) => ({ title: `Leave ${w} ${i}`, parts: [`Annual leave rule ${w} ${i}.`] }));
+    const lib = fixtureLibrary([
+      { name: 'Leave_Policy.pdf', sections: sections('p', 8) },
+      { name: 'Travel_Guidance.pdf', sections: sections('g', 2) },
+    ]);
+    cleanups.push(lib.cleanup);
+    const deps = depsOf(lib, ['x']);
+    const q = 'What do the Policy and the Guidance say about annual leave?';
+    const on = settingsWith({ documentAffinity: true });
+    const r = await retrieve(q, on, deps);
+    expect(r.affinity?.files).toHaveLength(2);
+    expect(choose(r, on).selected).toHaveLength(AFFINITY_MULTI_SECTIONS);
+    const off = settingsWith({});
+    expect(choose(await retrieve(q, off, deps), off).selected).toHaveLength(off.params.sectionCount.balanced);
   });
 });

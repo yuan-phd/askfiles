@@ -95,6 +95,7 @@ export const ANSWER_COLUMNS = [
   'follow_up',
   'split',
   'shown',
+  'hedges_dropped',
   'cited_json',
   'considered_json',
 ] as const;

@@ -21,6 +21,7 @@ import {
   type AnswerScope,
   type RunSettings,
 } from './params.js';
+import { claimsText, dropHedges } from './hedges.js';
 import { enumeratedItems, followUpMessage, isSetQuestion, statedCount } from './enumerate.js';
 import {
   buildMessages,
@@ -236,14 +237,21 @@ export interface ChoiceSettings {
   contextLength: number;
 }
 
+/**
+ * Sections selected for a question that names two or more files (documentAffinity): a cross-file
+ * question needs a section of each, and the Balanced count of 5 left one file out (Q04, Q09).
+ */
+export const AFFINITY_MULTI_SECTIONS = 6;
+
 export function choose(r: Retrieval, s: ChoiceSettings): Selection {
   // A per-question bypass (CJK, model files missing) keeps its old meaning: no floor at all.
   const floorOn = rerankerOff(s.params) ? 'vector' : r.bypass ? 'none' : 'rerank';
   // quoted mode sends extractSections sections to its extraction call, never a table of contents.
   const quoted = s.params.answerMode === 'quoted';
   const list = quoted ? ranked(r).filter((x) => !isContentsSection(x.section)) : ranked(r);
+  const multi = s.params.documentAffinity && (r.affinity?.documentIds.length ?? 0) >= 2;
   return selectSections(list, {
-    count: quoted ? s.params.extractSections : s.params.sectionCount[s.scope],
+    count: quoted ? s.params.extractSections : multi ? AFFINITY_MULTI_SECTIONS : s.params.sectionCount[s.scope],
     floor: floorOf(s.params, s.scope),
     budgetTokens: contextBudget(s.params, s.contextLength),
     floorOn,
@@ -314,6 +322,8 @@ export interface AnswerResult {
   followUp?: { wanted: number; given: number; ms: number; added: boolean };
   /** decomposeQuestions: how the question was split, each part's question, outcome and time. */
   split?: { how: 'asks' | 'set'; parts: string[]; notFound: boolean[]; ms: number[] };
+  /** dropUnsupportedHedges: the sentences deleted. */
+  hedgesDropped?: string[];
 }
 
 export type AnswerEvent =
@@ -519,6 +529,13 @@ export async function answer(
       `[answer] verify: ${v.stats.sentences} sentences, ${v.stats.reattributed} re-attributed, ${v.stats.attributed} attributed, ${v.stats.unsupported} unsupported`,
     );
   }
+  let hedgesDropped: string[] = [];
+  if (s.params.dropUnsupportedHedges && verification) {
+    const d = dropHedges(claims);
+    claims = d.claims;
+    hedgesDropped = d.dropped;
+    for (const h of hedgesDropped) deps.log?.(`[answer] hedge dropped: ${h}`);
+  }
   const order = verification
     ? citationOrder(
         claims.flatMap((c) => c.citations.map((n): Part => ({ type: 'cite', n }))),
@@ -526,7 +543,8 @@ export async function answer(
       )
     : citationOrder(parts, sources.length);
   const result: AnswerResult = {
-    text: verdict === 'not_found' ? text.trim() : answerText.trim(),
+    // With hedges dropped the text is the kept sentences, so it says what the user sees.
+    text: verdict === 'not_found' ? text.trim() : hedgesDropped.length ? claimsText(claims) : answerText.trim(),
     notFound,
     claims,
     cited: order.map((n) => sources[n - 1]!),
@@ -541,6 +559,7 @@ export async function answer(
     stats,
     ...(verification ? { verification } : {}),
     ...(followUp ? { followUp } : {}),
+    ...(hedgesDropped.length ? { hedgesDropped } : {}),
   };
   emit({ type: 'done', result });
   return result;

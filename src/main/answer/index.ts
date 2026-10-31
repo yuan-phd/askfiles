@@ -3,6 +3,7 @@ export * from './decompose.js';
 export * from './eval-case.js';
 export * from './enumerate.js';
 export * from './fusion.js';
+export * from './hedges.js';
 export * from './ollama-chat.js';
 export * from './paragraphs.js';
 export * from './params.js';

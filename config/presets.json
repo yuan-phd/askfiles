@@ -52,7 +52,8 @@
         "enumerateWhenAsked": true,
         "enumerateFollowUp": false,
         "noSummarizing": false,
-        "decomposeQuestions": false
+        "decomposeQuestions": false,
+        "dropUnsupportedHedges": true
       }
     },
     {
@@ -105,7 +106,8 @@
         "enumerateWhenAsked": true,
         "enumerateFollowUp": false,
         "noSummarizing": false,
-        "decomposeQuestions": false
+        "decomposeQuestions": false,
+        "dropUnsupportedHedges": true
       }
     },
     {
@@ -158,7 +160,8 @@
         "enumerateWhenAsked": true,
         "enumerateFollowUp": false,
         "noSummarizing": false,
-        "decomposeQuestions": false
+        "decomposeQuestions": false,
+        "dropUnsupportedHedges": true
       }
     }
   ]

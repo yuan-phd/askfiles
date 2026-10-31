@@ -76,7 +76,8 @@ export interface AnswerParams {
   /**
    * A question that names a file (its name, title or a type word only it has) raises the fused
    * score of that file's sections; when it names exactly one, citations may move only to its
-   * sections. Sources in the prompt then carry file name and type (docs/plan.md round 7).
+   * sections; when it names two or more, AFFINITY_MULTI_SECTIONS sections are selected instead of
+   * the scope's count. Sources in the prompt then carry file name and type (docs/plan.md round 7).
    */
   documentAffinity: boolean;
   /** A question asking for a set (three factors, list the steps) is told to give every item (round 8). */
@@ -96,6 +97,11 @@ export interface AnswerParams {
    * list, or Compare A and B), answer each part with the full pipeline, merge (decompose.ts).
    */
   decomposeQuestions: boolean;
+  /**
+   * After verifyCitations: delete an unsupported sentence that only says information is missing
+   * (not specified, not stated) when the answer has a supported sentence (hedges.ts).
+   */
+  dropUnsupportedHedges: boolean;
 }
 
 export const DEFAULT_PARAMS: AnswerParams = {
@@ -121,6 +127,7 @@ export const DEFAULT_PARAMS: AnswerParams = {
   enumerateFollowUp: false,
   noSummarizing: false,
   decomposeQuestions: false,
+  dropUnsupportedHedges: false,
 };
 
 /** Tokens kept free for the answer itself and for the instructions and the question. */
@@ -212,6 +219,7 @@ const CHECKS: Record<keyof AnswerParams, (v: unknown) => Problem> = {
   enumerateFollowUp: bool,
   noSummarizing: bool,
   decomposeQuestions: bool,
+  dropUnsupportedHedges: bool,
 };
 
 /** Problems with an answer block, each prefixed with at; every key is required. */

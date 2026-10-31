@@ -700,6 +700,7 @@ async function runStages(o: Parameters<typeof runPipeline>[0], deps: PipelineDep
                   .join('')
                   .trim()
               : '',
+          hedges_dropped: r?.hedgesDropped?.join(' | ') ?? '',
           cited_json: r?.cited.length ? JSON.stringify(r.cited.map(cardRecord)) : '',
           considered_json: r?.considered.length ? JSON.stringify(r.considered.map(cardRecord)) : '',
         };
