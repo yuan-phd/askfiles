@@ -90,7 +90,15 @@ export function claimsOf(parts: Part[], max: number): Claim[] {
     if (cur.text.trim() || cur.citations.length) claims.push(cur);
     cur = { text: '', citations: [], unsupported: false };
   };
+  // Streamed parts cut text anywhere, also between a full stop and its space: join them first.
+  const merged: Part[] = [];
   for (const p of parts) {
+    const last = merged[merged.length - 1];
+    if (p.type === 'text' && last?.type === 'text')
+      merged[merged.length - 1] = { type: 'text', text: last.text + p.text };
+    else merged.push(p);
+  }
+  for (const p of merged) {
     if (p.type === 'cite') {
       if (p.n < 1 || p.n > max) continue;
       // After a closed sentence with only whitespace since, the citation is that sentence's.

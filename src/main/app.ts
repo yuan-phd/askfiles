@@ -8,6 +8,8 @@ import {
   ensureReranker,
   NO_RERANKER,
   ollamaChat,
+  ollamaEmbed,
+  ParagraphStore,
   rerankerProcess,
   rerankerReady,
   upstreamVectorSearch,
@@ -32,7 +34,7 @@ import { BrowseIndex, chunkReader, followWatcher, type DocumentRef } from './bro
 import { CHANNELS, type BridgeHandlers, type DeveloperInfo, type WatcherView } from './bridge/contract.js';
 import type { Env, Logger } from './config.js';
 import { FirstRun } from './first-run.js';
-import { LibraryManager, moveLegacyLibraryFiles, type AddResult } from './libraries.js';
+import { LibraryManager, libraryDir, moveLegacyLibraryFiles, type AddResult } from './libraries.js';
 import { deleteWorkspace, ensureApiKey, ensureLibrary, ensureWorkspace, workspaceNameOf } from './library.js';
 import { ModelManager } from './models/index.js';
 import { OllamaClient } from './ollama/index.js';
@@ -99,6 +101,7 @@ export class AppController implements BridgeHandlers {
   private stopped = false;
   private readonly rerankerDir = path.join(this.dataDir, 'models', 'reranker');
   private reranker: { repo: string; instance: Reranker & { stop(): void } } | null = null;
+  private paragraphs: { key: string; store: ParagraphStore } | null = null;
   private readonly answers: AnswerService;
   private readonly resourcesPath: string;
 
@@ -490,7 +493,41 @@ export class AppController implements BridgeHandlers {
       reranker: this.currentReranker(),
       log: this.d.log,
       chat: ollamaChat(() => `http://127.0.0.1:${this.manager?.status().ports?.ollama ?? ollamaPort}`),
+      paragraphs: this.paragraphStore(browse),
     };
+  }
+
+  /**
+   * With paragraphSelection on: the current library's paragraph store, brought up to date in the
+   * background on every question, so a changed file gets its paragraphs soon after it is indexed;
+   * until then its long sections are sent as before.
+   */
+  private paragraphStore(browse: BrowseIndex): ParagraphStore | null {
+    const preset = this.machinePreset;
+    if (!preset?.answer.paragraphSelection) return null;
+    const lib = currentLibraryOf(this.state);
+    const key = `${lib.id}|${preset.embeddingModel}|${preset.chunkMaxChars}`;
+    if (this.paragraphs?.key !== key) {
+      const port = () => this.manager?.status().ports?.ollama;
+      this.paragraphs = {
+        key,
+        store: new ParagraphStore({
+          dir: path.join(libraryDir(this.dataDir, lib.id), 'paragraphs'),
+          model: preset.embeddingModel,
+          minSectionChars: 2 * preset.chunkMaxChars,
+          embed: ollamaEmbed(() => `http://127.0.0.1:${port()}`, preset.embeddingModel),
+          log: this.d.log,
+        }),
+      };
+    }
+    const store = this.paragraphs.store;
+    void store.refresh(() =>
+      browse
+        .listDocuments()
+        .map((d) => browse.getDocument({ id: d.id }))
+        .filter((d): d is NonNullable<typeof d> => d !== null),
+    );
+    return store;
   }
 
   /**

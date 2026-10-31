@@ -20,12 +20,14 @@ import {
   type AnswerScope,
   type RunSettings,
 } from './params.js';
-import { buildMessages, isNotFound, NOT_FOUND_MARKER } from './prompt.js';
+import { buildMessages, isNotFound, NOT_FOUND_MARKER, readVerdict, type Verdict } from './prompt.js';
+import { withParagraphs, type ParagraphSource } from './paragraphs.js';
 import { answerQuoted, isContentsSection, type QuotedStats } from './quoted.js';
 import type { Reranker } from './reranker.js';
 import { toAnswerSection, type AnswerSection } from './sections.js';
 import { selectSections, type Ranked, type Selection } from './select.js';
 import { extractTerms, isMainlyCjk, type Term } from './terms.js';
+import { verifyClaims, type VerifyStats } from './verify.js';
 
 /** A vector-search result as the upstream route returns it. */
 export interface RawVectorHit {
@@ -62,6 +64,8 @@ export interface PipelineDeps {
   reranker: Reranker | null;
   chat: ChatFn;
   log?: (msg: string) => void;
+  /** Paragraph embeddings of long sections, for paragraphSelection; absent until built. */
+  paragraphs?: ParagraphSource | null;
 }
 
 /** Upstream prepends a metadata block to some chunk texts (src/renderer/api/client.js parseHeader). */
@@ -262,6 +266,8 @@ export interface AnswerResult {
   stats: { promptTokens: number | null; completionTokens: number | null };
   /** quoted mode only: what the extraction call returned and how much of it was verified. */
   quoted?: QuotedStats;
+  /** verifyCitations only: sentences checked, moved and left unsupported. */
+  verification?: VerifyStats;
 }
 
 export type AnswerEvent =
@@ -273,12 +279,48 @@ export type AnswerEvent =
 /** Sections shown under nothing found. */
 export const NEAREST_COUNT = 8;
 
+export type AnswerDeps = Pick<PipelineDeps, 'chat' | 'log'> & Partial<Pick<PipelineDeps, 'index' | 'paragraphs'>>;
+
+/**
+ * The section texts the model reads: as selected, or with paragraphSelection the long ones cut
+ * to their paragraphs closest to the question. Falls back to the selected text when the
+ * paragraphs are not built yet or the embedding call fails.
+ */
+async function sendTexts(
+  question: string,
+  r: Retrieval,
+  sel: Selection,
+  s: Pick<RunSettings, 'params' | 'chunkMaxChars'>,
+  deps: AnswerDeps,
+  signal?: AbortSignal,
+): Promise<AnswerSection[]> {
+  const sections = sel.selected.map((x) => x.section);
+  if (!s.params.paragraphSelection || !deps.paragraphs || !deps.index || !s.chunkMaxChars) return sections;
+  const index = deps.index;
+  try {
+    const out = await withParagraphs(question, sections, {
+      source: deps.paragraphs,
+      document: (id) => index.getDocument({ id }),
+      terms: r.terms.map((t) => t.text),
+      minSectionChars: 2 * s.chunkMaxChars,
+      cap: sectionCap(s.params, s.chunkMaxChars),
+      signal,
+    });
+    deps.log?.(`[answer] paragraphs: ${out.replaced} of ${sections.length} sections cut to paragraphs`);
+    return out.sections;
+  } catch (e) {
+    deps.log?.(`[answer] paragraphs skipped: ${(e as Error).message}`);
+    return sections;
+  }
+}
+
 export async function answer(
   question: string,
   r: Retrieval,
   sel: Selection,
-  s: Pick<RunSettings, 'params' | 'chatModel' | 'contextLength' | 'temperature'>,
-  deps: Pick<PipelineDeps, 'chat' | 'log'>,
+  s: Pick<RunSettings, 'params' | 'chatModel' | 'contextLength' | 'temperature'> &
+    Partial<Pick<RunSettings, 'chunkMaxChars'>>,
+  deps: AnswerDeps,
   emit: (e: AnswerEvent) => void = () => {},
   signal?: AbortSignal,
 ): Promise<AnswerResult> {
@@ -287,7 +329,15 @@ export async function answer(
     .map((x, i) => cardOf(i + 1, x.section, x.rerank));
   if (s.params.answerMode === 'quoted')
     return answerQuoted(question, r, sel, s, deps, { cardOf, nearest }, emit, signal);
-  const sources = sel.selected.map((x, i) => cardOf(i + 1, x.section, x.rerank, x.trimmed));
+  const sections = await sendTexts(
+    question,
+    r,
+    sel,
+    { params: s.params, chunkMaxChars: s.chunkMaxChars ?? 0 },
+    deps,
+    signal,
+  );
+  const sources = sel.selected.map((x, i) => cardOf(i + 1, sections[i]!, x.rerank, x.trimmed));
   emit({ type: 'sources', sources });
   const base = {
     claims: [],
@@ -309,11 +359,13 @@ export async function answer(
     return result;
   }
   emit({ type: 'stage', stage: 'answering' });
+  const verdictLine = s.params.verdictLine;
   const t0 = performance.now();
   let firstTokenMs: number | null = null;
   let text = '';
-  // Nothing is shown while the reply may still turn out to be the not-found marker.
+  // Nothing is shown while the reply may still turn out to be the not-found marker or verdict.
   let decided = false;
+  let verdict: Verdict | null = null;
   const stream = new CitationStream();
   const all: Part[] = [];
   const push = (chunk: string) => {
@@ -324,11 +376,7 @@ export async function answer(
   const stats = await deps.chat(
     {
       model: s.chatModel,
-      messages: buildMessages(
-        question,
-        sel.selected.map((x) => x.section),
-        s.params.promptVariant,
-      ),
+      messages: buildMessages(question, sections, s.params.promptVariant, { verdictLine }),
       temperature: s.temperature,
       contextLength: s.contextLength,
       signal,
@@ -336,7 +384,22 @@ export async function answer(
     (piece) => {
       if (firstTokenMs === null) firstTokenMs = Math.round(performance.now() - t0);
       text += piece;
-      if (decided) return push(piece);
+      if (decided) {
+        if (verdict !== 'not_found') push(piece);
+        return;
+      }
+      if (verdictLine) {
+        const v = readVerdict(text);
+        if (!v.complete) return;
+        verdict = v.verdict;
+        // Without a verdict line the reply goes on through the marker check below.
+        if (verdict === 'not_found') return void (decided = true);
+        if (verdict === 'found') {
+          decided = true;
+          if (v.rest) push(v.rest);
+          return;
+        }
+      }
       const t = text.trimStart();
       if (NOT_FOUND_MARKER.startsWith(t) || t.startsWith(NOT_FOUND_MARKER)) return;
       decided = true;
@@ -344,26 +407,50 @@ export async function answer(
     },
   );
   const modelMs = Math.round(performance.now() - t0);
-  const notFound = isNotFound(text);
+  if (verdictLine && !decided) verdict = readVerdict(text + '\n').verdict;
+  const answerText = verdict === null ? text : readVerdict(text).rest;
+  const notFound = verdict === 'not_found' || (verdict === null && isNotFound(text));
   if (!notFound) {
-    if (!decided) push(text);
+    if (!decided) push(answerText);
     const rest = stream.end();
     all.push(...rest);
     if (rest.length) emit({ type: 'delta', parts: rest });
   }
   const parts = notFound ? [] : all;
-  const order = citationOrder(parts, sources.length);
+  let claims = notFound ? [] : claimsOf(parts, sources.length);
+  let verification: VerifyStats | undefined;
+  if (s.params.verifyCitations && claims.length) {
+    const v = verifyClaims(
+      claims,
+      sources.map((c) => c.passage),
+    );
+    claims = v.claims;
+    verification = v.stats;
+    deps.log?.(
+      `[answer] verify: ${v.stats.sentences} sentences, ${v.stats.reattributed} re-attributed, ${v.stats.attributed} attributed, ${v.stats.unsupported} unsupported`,
+    );
+  }
+  const order = verification
+    ? citationOrder(
+        claims.flatMap((c) => c.citations.map((n): Part => ({ type: 'cite', n }))),
+        sources.length,
+      )
+    : citationOrder(parts, sources.length);
   const result: AnswerResult = {
-    text: text.trim(),
+    text: verdict === 'not_found' ? text.trim() : answerText.trim(),
     notFound,
-    claims: notFound ? [] : claimsOf(parts, sources.length),
+    claims,
     cited: order.map((n) => sources[n - 1]!),
     considered: sources.filter((c) => !order.includes(c.n)),
     nearest,
-    checked: notFound ? citationOrder(parseCitations(text), sources.length).map((n) => sources[n - 1]!) : [],
+    checked:
+      notFound && verdict === null
+        ? citationOrder(parseCitations(text), sources.length).map((n) => sources[n - 1]!)
+        : [],
     skippedModel: false,
     timings: { firstTokenMs, modelMs },
     stats,
+    ...(verification ? { verification } : {}),
   };
   emit({ type: 'done', result });
   return result;

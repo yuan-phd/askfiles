@@ -11,6 +11,8 @@ import {
   rerankerProcess,
   ensureReranker,
   ollamaChat,
+  ollamaEmbed,
+  ParagraphStore,
   NEAREST_COUNT,
   ranked,
   rerankerOff,
@@ -26,12 +28,14 @@ import {
   type SourceCard,
 } from '../../src/main/answer/index.js';
 import { BrowseIndex, chunkReader } from '../../src/main/browse/index.js';
+import { sectionPath } from '../../src/main/answer/sections.js';
 import { createSourceResolver } from '../../src/main/watcher/index.js';
 import { readSectionText } from '../../src/main/watcher/section-docs.js';
 import {
   attributionOk,
   expectedSections,
   keyCoverage,
+  literalElements,
   sectionMatches,
   targetHit,
   type CitedRecord,
@@ -138,6 +142,24 @@ export async function buildPipeline(o: {
       log: o.log,
     });
   }
+  let paragraphs: ParagraphStore | null = null;
+  if (o.config.answer.paragraphSelection) {
+    // Index time for the eval: every long section embedded before the first question.
+    paragraphs = new ParagraphStore({
+      dir: path.join(o.workDir, 'paragraphs'),
+      model: o.config.embeddingModel,
+      minSectionChars: 2 * o.config.chunkMax,
+      embed: ollamaEmbed(() => o.ollamaUrl, o.config.embeddingModel),
+      log: o.log,
+    });
+    const t0 = performance.now();
+    let n = 0;
+    for (const d of index.listDocuments()) {
+      const doc = index.getDocument({ id: d.id });
+      if (doc) n += await paragraphs.ensure(doc);
+    }
+    o.log(`[paragraphs] ${n} paragraphs embedded in ${Math.round(performance.now() - t0)} ms`);
+  }
   return {
     vectorSearch: upstreamVectorSearch({ baseUrl: () => o.baseUrl, apiKey: o.apiKey, slug: o.library.slug }),
     resolveSources: (s) => resolver(s),
@@ -145,6 +167,7 @@ export async function buildPipeline(o: {
     reranker,
     chat: ollamaChat(() => o.ollamaUrl),
     log: o.log,
+    paragraphs,
   };
 }
 
@@ -281,12 +304,37 @@ export async function answerOnce(
   }
 }
 
+/** The full text of the sections a question expects, from the browse index; empty when none is found. */
+export function expectedText(q: Question, index: Pick<BrowseIndex, 'listDocuments' | 'getDocument'>): string {
+  const want = expectedSections(q);
+  if (!want.length) return '';
+  const out: string[] = [];
+  for (const d of index.listDocuments()) {
+    const doc = index.getDocument({ id: d.id });
+    if (!doc) continue;
+    for (const s of doc.sections) {
+      const rec = { file: doc.title, path: sectionPath(doc, s), title: s.title };
+      if (want.some((w) => sectionMatches(w, rec))) out.push(s.text);
+    }
+  }
+  return out.join('\n\n');
+}
+
+/** Per question, the key elements coverage counts: those found word for word in the expected sections. */
+export function literalElementsOf(
+  questions: Question[],
+  index: Pick<BrowseIndex, 'listDocuments' | 'getDocument'>,
+): Map<string, { literal: string[]; missing: string[] }> {
+  return new Map(questions.map((q) => [q.id, literalElements(q, expectedText(q, index))]));
+}
+
 /**
- * The three metrics of one answer. A section_listing question answered with the no-answer state
- * is measured on the listed sections: target hit when they include the expected ones, coverage
- * of the key elements in their paths, attribution correct when the target is listed.
+ * The three metrics of one answer, coverage over literal when given (literalElementsOf). A
+ * section_listing question answered with the no-answer state is measured on the listed sections:
+ * target hit when they include the expected ones, coverage of the key elements in their paths,
+ * attribution correct when the target is listed.
  */
-export function answerMetrics(q: Question, row: AnswerRow) {
+export function answerMetrics(q: Question, row: AnswerRow, literal?: string[]) {
   const r = row.result;
   if (!r) return { targetHit: null, keyCoverage: null, attribution: null };
   if (q.category === 'section_listing' && r.notFound) {
@@ -301,7 +349,7 @@ export function answerMetrics(q: Question, row: AnswerRow) {
   const cited = r.cited.map(cardRecord);
   return {
     targetHit: targetHit(q, cited),
-    keyCoverage: r.notFound ? (keyCoverage(q, '') === null ? null : 0) : keyCoverage(q, r.text),
+    keyCoverage: r.notFound ? (keyCoverage(q, '', literal) === null ? null : 0) : keyCoverage(q, r.text, literal),
     attribution: attributionOk(q, { refused: r.notFound, answer: r.text, cited }),
   };
 }

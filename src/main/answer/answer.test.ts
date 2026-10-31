@@ -369,6 +369,19 @@ describe('prompt', () => {
   });
 });
 
+describe('claims of a streamed answer', () => {
+  it('splits sentences also when the stream cuts between a full stop and its space', () => {
+    const text = 'Leave is 27 days [1]. The carry-over is not stated in the sources.';
+    const stream = new CitationStream();
+    const parts = (text.match(/.{1,3}/g) ?? []).flatMap((piece) => stream.push(piece));
+    parts.push(...stream.end());
+    expect(claimsOf(parts, 2).map((c) => [c.citations, c.unsupported])).toEqual([
+      [[1], false],
+      [[], true],
+    ]);
+  });
+});
+
 describe('citations', () => {
   it('parses single, list, range and full-width citations', () => {
     expect(citationNumbers('1, 2')).toEqual([1, 2]);
@@ -604,7 +617,7 @@ describe('quoted mode', () => {
     );
   });
 
-  it('recognizes a table of contents by its title or by its page-number lines', () => {
+  it('recognizes a table of contents by its title or its dot leaders, never by numbers alone', () => {
     const sec = (title: string, text: string) => ({ title, path: ['Guide', title], text });
     expect(isContentsSection(sec('Contents', 'Intro'))).toBe(true);
     const leaders = [
@@ -615,6 +628,8 @@ describe('quoted mode', () => {
     ];
     expect(isContentsSection(sec('PPSD Sections 11', leaders.join('\n')))).toBe(true);
     expect(isContentsSection(sec('Annual leave', 'Employees get 27 days of paid annual leave per year.'))).toBe(false);
+    const scores = ['Bidder A 72', 'Bidder B 65', 'Bidder C 80', 'Bidder D 58'];
+    expect(isContentsSection(sec('Final Weighted Technical Score', scores.join('\n')))).toBe(false);
   });
 
   it('keeps only excerpts found in their own section, piece by piece, and counts the rest', () => {

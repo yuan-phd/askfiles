@@ -34,6 +34,7 @@ import {
   describeCards,
   expectedRank,
   indexHash,
+  literalElementsOf,
   runSettings,
   stage1Sections,
   sweep,
@@ -41,6 +42,7 @@ import {
 } from './pipeline.js';
 import { ANSWER_COLUMNS, RESULT_COLUMNS, RETRIEVAL_COLUMNS } from './results.js';
 import { choose, floorOf, rerankerOff, type PipelineDeps, type Retrieval } from '../../src/main/answer/index.js';
+import type { BrowseIndex } from '../../src/main/browse/index.js';
 import { collectorOcr, createLibraryApi } from '../../src/main/watcher/index.js';
 import { targetHit } from './answer-metrics.js';
 import { startManaged, type Stack } from './stack.js';
@@ -586,6 +588,20 @@ async function runStages(o: Parameters<typeof runPipeline>[0], deps: PipelineDep
   console.log(sweepTable(cells, mark));
   if (!o.answerStage) return 0;
 
+  // Coverage counts only the key elements found word for word in the expected sections.
+  const literal = literalElementsOf(
+    questions,
+    deps.index as unknown as Pick<BrowseIndex, 'listDocuments' | 'getDocument'>,
+  );
+  const unmatched = questions
+    .map((q) => ({ id: q.id, missing: literal.get(q.id)?.missing ?? [] }))
+    .filter((x) => x.missing.length && !isUnsupported(questions.find((q) => q.id === x.id)!));
+  run.keyElementsWithoutLiteralMatch = Object.fromEntries(unmatched.map((x) => [x.id, x.missing]));
+  console.log(
+    `\nKey elements without a literal match in the expected section, left out of coverage: ${unmatched.length ? '' : 'none'}`,
+  );
+  for (const x of unmatched) console.log(`- ${x.id}: ${x.missing.join('; ')}`);
+
   // Stage 2: the model, per named configuration.
   const configs = (o.tries.length ? o.tries : [{}]).map((t) => ({
     count: t.count ?? mark.count,
@@ -616,7 +632,7 @@ async function runStages(o: Parameters<typeof runPipeline>[0], deps: PipelineDep
     for (let pass = 1; pass <= config.passes; pass++) {
       for (const [i, { q, retrieval }] of items.entries()) {
         const out = await answerOnce(q, retrieval, s, deps);
-        const m = answerMetrics(q, out);
+        const m = answerMetrics(q, out, literal.get(q.id)?.literal);
         const r = out.result;
         if (out.error) errors++;
         metricRows.push({
@@ -653,7 +669,11 @@ async function runStages(o: Parameters<typeof runPipeline>[0], deps: PipelineDep
           prompt_tokens: r?.stats.promptTokens ?? '',
           completion_tokens: r?.stats.completionTokens ?? '',
           error: out.error,
+          verification: r?.verification
+            ? `${r.verification.sentences} sentences, ${r.verification.reattributed} re-attributed, ${r.verification.attributed} attributed, ${r.verification.unsupported} unsupported`
+            : '',
           cited_json: r?.cited.length ? JSON.stringify(r.cited.map(cardRecord)) : '',
+          considered_json: r?.considered.length ? JSON.stringify(r.considered.map(cardRecord)) : '',
         };
         fs.appendFileSync(resultsFile, csvLine(ANSWER_COLUMNS.map((k) => row[k])));
         log(

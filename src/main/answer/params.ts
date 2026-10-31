@@ -60,6 +60,18 @@ export interface AnswerParams {
   answerMode: AnswerMode;
   /** quoted mode: sections sent to the extraction call (N), table-of-contents sections left out. */
   extractSections: number;
+  /**
+   * single mode: check each sentence against the source it cites by content-word overlap, move it
+   * to a better source or mark it unsupported; cards show only what stays cited (verify.ts).
+   */
+  verifyCitations: boolean;
+  /**
+   * A selected section longer than twice the chunk maximum is sent as its paragraphs closest to
+   * the question by embedding similarity plus keyword hits, with one neighbour each (paragraphs.ts).
+   */
+  paragraphSelection: boolean;
+  /** The answer starts with a line FOUND or NOT_FOUND, which code reads to decide the not-found state. */
+  verdictLine: boolean;
 }
 
 export const DEFAULT_PARAMS: AnswerParams = {
@@ -77,6 +89,9 @@ export const DEFAULT_PARAMS: AnswerParams = {
   promptVariant: 'default',
   answerMode: 'single',
   extractSections: 6,
+  verifyCitations: false,
+  paragraphSelection: false,
+  verdictLine: false,
 };
 
 /** Tokens kept free for the answer itself and for the instructions and the question. */
@@ -139,12 +154,14 @@ const perScope =
     return null;
   };
 
+const bool = (v: unknown): Problem => (typeof v === 'boolean' ? null : 'must be true or false');
+
 const CHECKS: Record<keyof AnswerParams, (v: unknown) => Problem> = {
   rerankerModel: (v) =>
     typeof v === 'string' && (v === NO_RERANKER || v in RERANKER_MODELS)
       ? null
       : `must be one of ${[NO_RERANKER, ...Object.keys(RERANKER_MODELS)].join(', ')}`,
-  rerankerBypassCjk: (v) => (typeof v === 'boolean' ? null : 'must be true or false'),
+  rerankerBypassCjk: bool,
   vectorTopK: intAtLeast(1),
   keywordTopK: intAtLeast(0),
   rrfK: intAtLeast(1),
@@ -158,6 +175,9 @@ const CHECKS: Record<keyof AnswerParams, (v: unknown) => Problem> = {
     (PROMPT_VARIANTS as readonly unknown[]).includes(v) ? null : `must be ${PROMPT_VARIANTS.join(' or ')}`,
   answerMode: (v) => ((ANSWER_MODES as readonly unknown[]).includes(v) ? null : `must be ${ANSWER_MODES.join(' or ')}`),
   extractSections: intAtLeast(1),
+  verifyCitations: bool,
+  paragraphSelection: bool,
+  verdictLine: bool,
 };
 
 /** Problems with an answer block, each prefixed with at; every key is required. */

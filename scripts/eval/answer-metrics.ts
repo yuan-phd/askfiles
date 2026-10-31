@@ -81,9 +81,23 @@ export function targetHit(q: MetricQuestion, sections: Pick<CitedRecord, 'file' 
   return want.every((w) => sections.some((c) => sectionMatches(w, c)));
 }
 
-/** Share of key elements present in the answer; null when the question lists none. */
-export function keyCoverage(q: MetricQuestion, answer: string): number | null {
-  const elements = listOf(q.key_elements);
+/**
+ * The key elements that appear word for word (after squash) in the expected sections' text, and
+ * the rest. Coverage counts only the first: an element the owner wrote as a paraphrase cannot be
+ * found in any answer that quotes the document (docs/plan.md, Acceptance and stopping rules).
+ */
+export function literalElements(q: MetricQuestion, expectedText: string): { literal: string[]; missing: string[] } {
+  const hay = squash(expectedText);
+  const all = listOf(q.key_elements);
+  return { literal: all.filter((e) => hay.includes(squash(e))), missing: all.filter((e) => !hay.includes(squash(e))) };
+}
+
+/**
+ * Share of key elements present in the answer; null when the question lists none. With only, the
+ * share of those (the literal elements); null when that list is empty.
+ */
+export function keyCoverage(q: MetricQuestion, answer: string, only?: string[]): number | null {
+  const elements = only ?? listOf(q.key_elements);
   if (!elements.length) return null;
   const hay = squash(answer);
   return elements.filter((e) => hay.includes(squash(e))).length / elements.length;

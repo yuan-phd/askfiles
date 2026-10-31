@@ -39,15 +39,19 @@ export function normalizeForMatch(t: string): string {
 }
 
 const CONTENTS_TITLE = /^(table of )?contents\b|^目录|^目錄/i;
-// A contents line: text, a dot leader or a gap, then a page number.
-const CONTENTS_LINE = /(?:\.\s*){3,}\s*[\divxlc]+\s*$|\s\d{1,3}\s*$/i;
+// A contents line: text, a dot leader, then a page number.
+const LEADER_LINE = /(?:\.\s*){3,}\s*[\divxlc]+\s*$/i;
 
-/** A table of contents: titled so somewhere on its path, or mostly lines that end in a page number. */
+/**
+ * A table of contents: titled so somewhere on its path, or with dot leaders before page numbers.
+ * Lines merely ending in a number are not enough: score sheets and currency tables end that way
+ * too, and round 1 dropped three such sections that held the answer (docs/plan.md).
+ */
 export function isContentsSection(s: Pick<AnswerSection, 'path' | 'title' | 'text'>): boolean {
   if ([...s.path, s.title].some((t) => CONTENTS_TITLE.test(t.trim()))) return true;
-  const lines = s.text.split(/\n|(?<=\d)\s{2,}/).filter((l) => l.trim().length > 3);
+  const lines = s.text.split('\n').filter((l) => l.trim().length > 3);
   const leaders = (s.text.match(/(?:\.\s*){5,}/g) ?? []).length;
-  return lines.length >= 4 && (lines.filter((l) => CONTENTS_LINE.test(l)).length / lines.length >= 0.5 || leaders >= 5);
+  return lines.length >= 4 && (lines.filter((l) => LEADER_LINE.test(l)).length / lines.length >= 0.5 || leaders >= 5);
 }
 
 export interface Excerpt {

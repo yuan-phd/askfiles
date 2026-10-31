@@ -90,7 +90,9 @@ export const ANSWER_COLUMNS = [
   'prompt_tokens',
   'completion_tokens',
   'error',
+  'verification',
   'cited_json',
+  'considered_json',
 ] as const;
 
 export const SCORES = ['correct', 'partial', 'wrong', 'refused', 'hallucinated'] as const;

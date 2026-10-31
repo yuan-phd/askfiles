@@ -44,7 +44,10 @@
         "contextBudgetTokens": 0,
         "promptVariant": "default",
         "answerMode": "single",
-        "extractSections": 6
+        "extractSections": 6,
+        "verifyCitations": false,
+        "paragraphSelection": false,
+        "verdictLine": false
       }
     }
   ]

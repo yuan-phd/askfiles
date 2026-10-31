@@ -8,6 +8,7 @@ import {
   squash,
   expectedSections,
   keyCoverage,
+  literalElements,
   metricsTable,
   summarizeMetrics,
   targetHit,
@@ -58,6 +59,16 @@ describe('answer metrics', () => {
     expect(keyCoverage(q(), 'You get 27 days.')).toBe(0.5);
     expect(keyCoverage(q({ key_elements: '每晚650元' }), '上限是每晚 650 元。')).toBe(1);
     expect(keyCoverage(q({ key_elements: '' }), 'x')).toBeNull();
+  });
+
+  it('counts coverage only over the key elements found word for word in the expected section', () => {
+    const split = literalElements(
+      q({ key_elements: '27 days; paid; generous' }),
+      'Employees get 27  Days of paid leave.',
+    );
+    expect(split).toEqual({ literal: ['27 days', 'paid'], missing: ['generous'] });
+    expect(keyCoverage(q(), 'You get 27 days.', split.literal)).toBe(0.5);
+    expect(keyCoverage(q(), 'x', [])).toBeNull();
   });
 
   it('accepts attribution only when the cited sections hold the key elements the answer states', () => {
