@@ -36,10 +36,17 @@ const VERDICT_RULES = [
   `Write ${VERDICT_FOUND} when they do, then the answer from the next line on.`,
 ];
 
+// Answers paraphrased the sources and left out conditions and figures (round 2' causes, docs/plan.md).
+const COMPLETE_RULES = [
+  'Name every condition, exception, step and figure in the cited sources that bears on the question.',
+  "Use the sources' own terms, names and numbers; do not paraphrase them.",
+];
+
 export function systemPrompt(variant: PromptVariant, o: { verdictLine?: boolean } = {}): string {
   // The verdict rules take the place of the two not-found marker rules.
   const base = o.verdictLine ? [...RULES.slice(0, 3), ...VERDICT_RULES, ...RULES.slice(5)] : RULES;
-  const rules = variant === 'strict' ? [...base.slice(0, 3), ...STRICT_RULES, ...base.slice(3)] : base;
+  const extra = variant === 'strict' ? STRICT_RULES : variant === 'complete' ? COMPLETE_RULES : [];
+  const rules = [...base.slice(0, 3), ...extra, ...base.slice(3)];
   return rules.join('\n');
 }
 

@@ -11,7 +11,8 @@ export const NO_RERANKER = 'none';
 export const SCOPES = ['strict', 'balanced', 'broad'] as const;
 export type AnswerScope = (typeof SCOPES)[number];
 
-export const PROMPT_VARIANTS = ['default', 'strict'] as const;
+/** complete: name every condition, exception, step and figure, in the sources' own words (round 5). */
+export const PROMPT_VARIANTS = ['default', 'strict', 'complete'] as const;
 
 /**
  * single: one model call over the selected sections. quoted: an extraction call returns verbatim
@@ -172,7 +173,7 @@ const CHECKS: Record<keyof AnswerParams, (v: unknown) => Problem> = {
   vectorFloor: perScope(numIn(0, 1)),
   contextBudgetTokens: intAtLeast(0),
   promptVariant: (v) =>
-    (PROMPT_VARIANTS as readonly unknown[]).includes(v) ? null : `must be ${PROMPT_VARIANTS.join(' or ')}`,
+    (PROMPT_VARIANTS as readonly unknown[]).includes(v) ? null : `must be one of ${PROMPT_VARIANTS.join(', ')}`,
   answerMode: (v) => ((ANSWER_MODES as readonly unknown[]).includes(v) ? null : `must be ${ANSWER_MODES.join(' or ')}`),
   extractSections: intAtLeast(1),
   verifyCitations: bool,

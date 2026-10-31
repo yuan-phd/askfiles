@@ -117,6 +117,8 @@ describe('verdictLine', () => {
     expect(readVerdict('Leave is 27 days [1].')).toMatchObject({ complete: true, verdict: null });
     expect(systemPrompt('default', { verdictLine: true })).toContain('only FOUND or NOT_FOUND');
     expect(systemPrompt('default', { verdictLine: true })).not.toContain('NOT_IN_SOURCES');
+    expect(systemPrompt('complete')).toContain("sources' own terms, names and numbers");
+    expect(systemPrompt('default')).not.toContain('own terms');
   });
 
   function setup(reply: string[]) {
