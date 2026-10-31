@@ -47,7 +47,10 @@
         "extractSections": 6,
         "verifyCitations": false,
         "paragraphSelection": false,
-        "verdictLine": false
+        "verdictLine": false,
+        "documentAffinity": false,
+        "enumerateWhenAsked": false,
+        "enumerateFollowUp": false
       }
     }
   ]

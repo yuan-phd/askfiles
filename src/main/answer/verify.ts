@@ -5,6 +5,11 @@
  * the selected source with the highest share when that one passes, else it is marked unsupported
  * and loses its citations; a sentence without a citation gets the same treatment. Source cards
  * then show only the sources still cited. No model call is involved.
+ *
+ * With documentAffinity (docs/plan.md round 7) two rules are added. A question naming exactly one
+ * file lets a sentence be attributed only to that file's sources. Among sources with the same
+ * section title from different files (Defined Terms, Price Adjustment) the higher overlap wins,
+ * also over the source the model cited, and an exact tie cites all of them: never source order.
  */
 import type { Claim } from './citations.js';
 
@@ -78,18 +83,39 @@ export interface VerifyStats {
   unsupported: number;
 }
 
+export interface VerifyOptions {
+  minOverlap?: number;
+  minTokens?: number;
+  /** Source numbers a sentence may be attributed to; all when absent. */
+  allowed?: Set<number>;
+  /** File and section title per source (meta[n - 1]), for the same-title rule; off when absent. */
+  meta?: { file: string; title: string }[];
+}
+
 /**
  * Checks each claim against the passages (passages[n - 1] is source n). Returns new claims and
- * the counts; a cited sentence that passes keeps its citations unchanged.
+ * the counts; a cited sentence that passes keeps its citations unchanged, unless a same-title
+ * source of another file overlaps it more (meta).
  */
 export function verifyClaims(
   claims: Claim[],
   passages: string[],
-  o: { minOverlap?: number; minTokens?: number } = {},
+  o: VerifyOptions = {},
 ): { claims: Claim[]; stats: VerifyStats } {
   const min = o.minOverlap ?? VERIFY_MIN_OVERLAP;
   const minTokens = o.minTokens ?? VERIFY_MIN_TOKENS;
   const sources = passages.map((p) => new Set(contentTokens(p)));
+  const eligible = (n: number) => !o.allowed || o.allowed.has(n);
+  const titleOf = (n: number) => o.meta?.[n - 1]?.title.trim().toLowerCase() ?? '';
+  // Same-title sources of other files, per source.
+  const twins = (n: number): number[] => {
+    if (!o.meta || !titleOf(n)) return [];
+    const out: number[] = [];
+    for (let m = 1; m <= sources.length; m++)
+      if (m !== n && eligible(m) && titleOf(m) === titleOf(n) && o.meta[m - 1]?.file !== o.meta[n - 1]?.file)
+        out.push(m);
+    return out;
+  };
   const stats: VerifyStats = { sentences: 0, reattributed: 0, attributed: 0, unsupported: 0 };
   const out = claims.map((c): Claim => {
     if (!/[\p{L}\p{N}]{2}/u.test(c.text)) return c;
@@ -100,23 +126,38 @@ export function verifyClaims(
       return c;
     }
     const share = (n: number) => overlap(tokens, sources[n - 1] ?? new Set());
-    const kept = c.citations.filter((n) => share(n) >= min);
-    if (kept.length) return { ...c, citations: kept, unsupported: false };
+    const cited = c.citations.filter(eligible);
+    const kept = cited.filter((n) => share(n) >= min);
+    if (kept.length) {
+      // A same-title source of another file that overlaps more takes the citation's place.
+      let moved = false;
+      const chosen = kept.map((n) => {
+        const better = twins(n).filter((m) => share(m) > share(n));
+        if (!better.length) return n;
+        moved = true;
+        return better.reduce((a, b) => (share(b) > share(a) ? b : a));
+      });
+      if (moved) stats.reattributed++;
+      return { ...c, citations: [...new Set(chosen)], unsupported: false };
+    }
     // A sentence that joins facts from the sources it cites passes on their union.
-    if (c.citations.length > 1) {
-      const union = new Set(c.citations.flatMap((n) => [...(sources[n - 1] ?? [])]));
-      if (overlap(tokens, union) >= min) return c;
+    if (cited.length > 1) {
+      const union = new Set(cited.flatMap((n) => [...(sources[n - 1] ?? [])]));
+      if (overlap(tokens, union) >= min) return cited.length < c.citations.length ? { ...c, citations: cited } : c;
     }
     let best = 0;
     let bestShare = -1;
     for (let n = 1; n <= sources.length; n++) {
+      if (!eligible(n)) continue;
       const v = share(n);
       if (v > bestShare) [best, bestShare] = [n, v];
     }
     if (best && bestShare >= min) {
       if (c.citations.length) stats.reattributed++;
       else stats.attributed++;
-      return { ...c, citations: [best], unsupported: false };
+      // An exact tie between same-title sections of different files is not broken by order.
+      const tied = twins(best).filter((m) => share(m) === bestShare);
+      return { ...c, citations: [best, ...tied].sort((a, b) => a - b), unsupported: false };
     }
     stats.unsupported++;
     return { ...c, citations: [], unsupported: true };

@@ -91,6 +91,8 @@ export const ANSWER_COLUMNS = [
   'completion_tokens',
   'error',
   'verification',
+  'affinity',
+  'follow_up',
   'cited_json',
   'considered_json',
 ] as const;

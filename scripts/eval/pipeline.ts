@@ -88,6 +88,8 @@ export function indexHash(config: EvalConfig, library: Pick<Library, 'records'>)
       p.rrfK,
       p.candidateSections,
       p.sectionCapChars,
+      // Only when on, so the hash of runs without it stays the same.
+      ...(p.documentAffinity ? ['documentAffinity'] : []),
     ],
   };
   return createHash('sha256').update(JSON.stringify(key)).digest('hex').slice(0, 16);

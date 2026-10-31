@@ -1,5 +1,6 @@
 export * from './citations.js';
 export * from './eval-case.js';
+export * from './enumerate.js';
 export * from './fusion.js';
 export * from './ollama-chat.js';
 export * from './paragraphs.js';

@@ -8,6 +8,7 @@
  * retrieve (candidates, fusion, sections, rerank), choose (floor, count, budget), answer.
  */
 import type { BrowseDocument, BrowseSection, DocumentRef, RankedSection } from '../browse/index.js';
+import { mentionedDocuments, type FileIdentity } from '../browse/identifiers.js';
 import { citationOrder, claimsOf, CitationStream, parseCitations, type Claim, type Part } from './citations.js';
 import { fuse, sectionKey, type FusedSection, type KeywordCandidate, type VectorCandidate } from './fusion.js';
 import type { ChatFn } from './ollama-chat.js';
@@ -20,7 +21,16 @@ import {
   type AnswerScope,
   type RunSettings,
 } from './params.js';
-import { buildMessages, isNotFound, NOT_FOUND_MARKER, readVerdict, type Verdict } from './prompt.js';
+import { enumeratedItems, followUpMessage, isSetQuestion, statedCount } from './enumerate.js';
+import {
+  buildMessages,
+  isNotFound,
+  NOT_FOUND_MARKER,
+  readVerdict,
+  type ChatMessage,
+  type PromptSource,
+  type Verdict,
+} from './prompt.js';
 import { withParagraphs, type ParagraphSource } from './paragraphs.js';
 import { answerQuoted, isContentsSection, type QuotedStats } from './quoted.js';
 import type { Reranker } from './reranker.js';
@@ -44,6 +54,8 @@ export interface SectionIndex {
   rankSections(terms: string[], limit: number): RankedSection[];
   section(documentId: string, sectionIndex: number): { document: BrowseDocument; section: BrowseSection } | null;
   getDocument(ref: DocumentRef): BrowseDocument | null;
+  /** Names of each file for documentAffinity; absent in indexes built without them. */
+  identities?(): FileIdentity[];
 }
 
 /** A source with its section filled in, as the watcher's resolveSources returns it. */
@@ -86,6 +98,28 @@ export interface Retrieval {
   bypass: boolean;
   bypassReason: string | null;
   timings: { vectorMs: number; keywordMs: number; rerankMs: number };
+  /** documentAffinity: the documents the question names; absent when the switch is off. */
+  affinity?: { documentIds: string[]; files: string[] };
+}
+
+/**
+ * Factor on the fused score of a named file's sections. Fused scores are reciprocal ranks with
+ * k 60: a section both lists put first scores 2/61, one found by a single list at rank r 1/(60+r).
+ * 1.5 lifts a named file's section found by one list at rank 1 (1.5/61) above every other file's
+ * single-list section and above one both lists rank about 22 or lower, but not above one both
+ * lists rank in their top 10 (2/70): a name in the question favours its file without overruling
+ * strong evidence for another.
+ */
+export const AFFINITY_BOOST = 1.5;
+
+/** Re-sorts the fused sections with the named documents' sections raised by AFFINITY_BOOST. */
+export function boostDocuments(fused: FusedSection[], documentIds: Set<string>): FusedSection[] {
+  if (!documentIds.size) return fused;
+  const docOf = (k: string) => k.slice(0, k.lastIndexOf('#'));
+  return fused
+    .map((f, i) => ({ f: documentIds.has(docOf(f.key)) ? { ...f, score: f.score * AFFINITY_BOOST } : f, i }))
+    .sort((a, b) => b.f.score - a.f.score || a.i - b.i)
+    .map((x) => x.f);
 }
 
 export async function retrieve(
@@ -130,7 +164,14 @@ export async function retrieve(
     : [];
   const t2 = performance.now();
 
-  const fused = fuse(vector, keyword, p.rrfK);
+  let fused = fuse(vector, keyword, p.rrfK);
+  let affinity: Retrieval['affinity'];
+  if (p.documentAffinity) {
+    const named = mentionedDocuments(question, deps.index.identities?.() ?? []);
+    affinity = { documentIds: named.map((f) => f.documentId), files: named.map((f) => f.file) };
+    fused = boostDocuments(fused, new Set(affinity.documentIds));
+    if (named.length) deps.log?.(`[answer] affinity: ${affinity.files.join(', ')}`);
+  }
   const cap = sectionCap(p, s.chunkMaxChars);
   const candidates: AnswerSection[] = [];
   for (const f of fused) {
@@ -171,6 +212,7 @@ export async function retrieve(
     bypass: bypassReason !== null,
     bypassReason,
     timings: { vectorMs: Math.round(t1 - t0), keywordMs: Math.round(t2 - t1), rerankMs: Math.round(t3 - t2) },
+    ...(affinity ? { affinity } : {}),
   };
 }
 
@@ -268,6 +310,8 @@ export interface AnswerResult {
   quoted?: QuotedStats;
   /** verifyCitations only: sentences checked, moved and left unsupported. */
   verification?: VerifyStats;
+  /** enumerateFollowUp: the question's count, the items the first reply gave, and the follow-up call. */
+  followUp?: { wanted: number; given: number; ms: number; added: boolean };
 }
 
 export type AnswerEvent =
@@ -360,6 +404,21 @@ export async function answer(
   }
   emit({ type: 'stage', stage: 'answering' });
   const verdictLine = s.params.verdictLine;
+  const affinity = s.params.documentAffinity;
+  const typeOf = new Map((affinity ? (deps.index?.identities?.() ?? []) : []).map((f) => [f.documentId, f.type]));
+  const promptSources: PromptSource[] = sections.map((x) => ({
+    path: x.path,
+    text: x.text,
+    file: x.file,
+    title: x.title,
+    type: typeOf.get(x.documentId) ?? '',
+  }));
+  const enumerate = s.params.enumerateWhenAsked && isSetQuestion(question);
+  const messages = buildMessages(question, promptSources, s.params.promptVariant, {
+    verdictLine,
+    fileHeaders: affinity,
+    enumerate,
+  });
   const t0 = performance.now();
   let firstTokenMs: number | null = null;
   let text = '';
@@ -376,7 +435,7 @@ export async function answer(
   const stats = await deps.chat(
     {
       model: s.chatModel,
-      messages: buildMessages(question, sections, s.params.promptVariant, { verdictLine }),
+      messages,
       temperature: s.temperature,
       contextLength: s.contextLength,
       signal,
@@ -408,10 +467,28 @@ export async function answer(
   );
   const modelMs = Math.round(performance.now() - t0);
   if (verdictLine && !decided) verdict = readVerdict(text + '\n').verdict;
-  const answerText = verdict === null ? text : readVerdict(text).rest;
+  let answerText = verdict === null ? text : readVerdict(text).rest;
   const notFound = verdict === 'not_found' || (verdict === null && isNotFound(text));
+  let followUp: AnswerResult['followUp'];
   if (!notFound) {
     if (!decided) push(answerText);
+    const wanted = enumerate && s.params.enumerateFollowUp ? statedCount(question) : null;
+    if (wanted !== null) {
+      const sentences = claimsOf(parseCitations(answerText), sources.length).filter((c) => c.citations.length).length;
+      const given = enumeratedItems(answerText, sentences);
+      if (given < wanted) {
+        const t1 = performance.now();
+        const more = await followUpCall(messages, answerText, wanted, given, s, deps, signal);
+        if (more) {
+          push(`\n\n${more}`);
+          answerText = `${answerText.trimEnd()}\n\n${more}`;
+        }
+        followUp = { wanted, given, ms: Math.round(performance.now() - t1), added: Boolean(more) };
+        deps.log?.(
+          `[answer] enumerate: ${given} of ${wanted} items, ${more ? 'completed by a follow-up' : 'follow-up added nothing'} in ${followUp.ms} ms`,
+        );
+      }
+    }
     const rest = stream.end();
     all.push(...rest);
     if (rest.length) emit({ type: 'delta', parts: rest });
@@ -420,9 +497,18 @@ export async function answer(
   let claims = notFound ? [] : claimsOf(parts, sources.length);
   let verification: VerifyStats | undefined;
   if (s.params.verifyCitations && claims.length) {
+    // A question naming exactly one file may be attributed only to its sources, when any is selected.
+    const named = affinity && r.affinity?.documentIds.length === 1 ? r.affinity.documentIds[0] : null;
+    const own = named ? sources.filter((c) => c.documentId === named).map((c) => c.n) : [];
     const v = verifyClaims(
       claims,
       sources.map((c) => c.passage),
+      affinity
+        ? {
+            meta: sources.map((c) => ({ file: c.file, title: c.title })),
+            ...(own.length ? { allowed: new Set(own) } : {}),
+          }
+        : {},
     );
     claims = v.claims;
     verification = v.stats;
@@ -451,7 +537,37 @@ export async function answer(
     timings: { firstTokenMs, modelMs },
     stats,
     ...(verification ? { verification } : {}),
+    ...(followUp ? { followUp } : {}),
   };
   emit({ type: 'done', result });
   return result;
+}
+
+/** One more call over the same sources for the items the first reply left out; '' when none. */
+async function followUpCall(
+  messages: ChatMessage[],
+  reply: string,
+  wanted: number,
+  given: number,
+  s: Pick<RunSettings, 'chatModel' | 'contextLength' | 'temperature'>,
+  deps: AnswerDeps,
+  signal?: AbortSignal,
+): Promise<string> {
+  let more = '';
+  await deps.chat(
+    {
+      model: s.chatModel,
+      messages: [
+        ...messages,
+        { role: 'assistant', content: reply },
+        { role: 'user', content: followUpMessage(wanted, given) },
+      ],
+      temperature: s.temperature,
+      contextLength: s.contextLength,
+      signal,
+    },
+    (piece) => (more += piece),
+  );
+  more = more.trim();
+  return !more || isNotFound(more) ? '' : more;
 }

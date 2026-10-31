@@ -47,7 +47,10 @@
         "extractSections": 6,
         "verifyCitations": true,
         "paragraphSelection": false,
-        "verdictLine": false
+        "verdictLine": false,
+        "documentAffinity": false,
+        "enumerateWhenAsked": true,
+        "enumerateFollowUp": false
       }
     },
     {
@@ -95,7 +98,10 @@
         "extractSections": 6,
         "verifyCitations": true,
         "paragraphSelection": false,
-        "verdictLine": false
+        "verdictLine": false,
+        "documentAffinity": false,
+        "enumerateWhenAsked": true,
+        "enumerateFollowUp": false
       }
     },
     {
@@ -143,7 +149,10 @@
         "extractSections": 6,
         "verifyCitations": true,
         "paragraphSelection": false,
-        "verdictLine": false
+        "verdictLine": false,
+        "documentAffinity": false,
+        "enumerateWhenAsked": true,
+        "enumerateFollowUp": false
       }
     }
   ]

@@ -1,8 +1,11 @@
 /**
  * The model call's messages. The sources carry a number, the section path and the text, never a
  * file name or a page: the source cards add those from the section records, so the model has no
- * way to attribute one file's text to another.
+ * way to attribute one file's text to another. With documentAffinity each source header names its
+ * file and document type too, because questions that name a file were answered from a same-titled
+ * section of another (docs/plan.md round 7); the answer still may not write them.
  */
+import { ENUMERATE_RULE } from './enumerate.js';
 import type { PromptVariant } from './params.js';
 
 /** The whole reply when the sources do not answer the question. */
@@ -42,10 +45,14 @@ const COMPLETE_RULES = [
   "Use the sources' own terms, names and numbers; do not paraphrase them.",
 ];
 
-export function systemPrompt(variant: PromptVariant, o: { verdictLine?: boolean } = {}): string {
+export function systemPrompt(variant: PromptVariant, o: { verdictLine?: boolean; enumerate?: boolean } = {}): string {
   // The verdict rules take the place of the two not-found marker rules.
   const base = o.verdictLine ? [...RULES.slice(0, 3), ...VERDICT_RULES, ...RULES.slice(5)] : RULES;
-  const extra = variant === 'strict' ? STRICT_RULES : variant === 'complete' ? COMPLETE_RULES : [];
+  const extra = [
+    ...(variant === 'strict' ? STRICT_RULES : variant === 'complete' ? COMPLETE_RULES : []),
+    // enumerateWhenAsked, set questions only (enumerate.ts isSetQuestion).
+    ...(o.enumerate ? [ENUMERATE_RULE] : []),
+  ];
   const rules = [...base.slice(0, 3), ...extra, ...base.slice(3)];
   return rules.join('\n');
 }
@@ -72,10 +79,36 @@ export function readVerdict(text: string): { complete: boolean; verdict: Verdict
 export interface PromptSource {
   path: string[];
   text: string;
+  /** File name; shown only with fileHeaders. */
+  file?: string;
+  /** Document type of the file (Policy, Guidance); '' when it has none. */
+  type?: string;
+  title?: string;
 }
 
-export function userMessage(question: string, sources: PromptSource[]): string {
-  const blocks = sources.map((s, i) => `[${i + 1}] ${s.path.join(' > ')}\n${s.text.trim()}`);
+/** [n] file | type | full path, and a note when another source has the same section title. */
+export function sourceHeader(sources: PromptSource[], i: number): string {
+  const s = sources[i]!;
+  const title = (s.title ?? s.path[s.path.length - 1] ?? '').trim().toLowerCase();
+  const twins = sources
+    .map((o, j) => ({ o, j }))
+    .filter(
+      ({ o, j }) =>
+        j !== i &&
+        title &&
+        o.file !== s.file &&
+        (o.title ?? o.path[o.path.length - 1] ?? '').trim().toLowerCase() === title,
+    )
+    .map(({ j }) => `[${j + 1}]`);
+  const fields = [s.file ?? '', s.type ?? '', s.path.join(' > ')].filter(Boolean).join(' | ');
+  const note = twins.length ? ` (same section title as ${twins.join('')}, but from a different file)` : '';
+  return `[${i + 1}] ${fields}${note}`;
+}
+
+export function userMessage(question: string, sources: PromptSource[], o: { fileHeaders?: boolean } = {}): string {
+  const blocks = sources.map(
+    (s, i) => `${o.fileHeaders ? sourceHeader(sources, i) : `[${i + 1}] ${s.path.join(' > ')}`}\n${s.text.trim()}`,
+  );
   return `Sources:\n\n${blocks.join('\n\n')}\n\nQuestion: ${question.trim()}`;
 }
 
@@ -88,11 +121,11 @@ export function buildMessages(
   question: string,
   sources: PromptSource[],
   variant: PromptVariant,
-  o: { verdictLine?: boolean } = {},
+  o: { verdictLine?: boolean; fileHeaders?: boolean; enumerate?: boolean } = {},
 ): ChatMessage[] {
   return [
     { role: 'system', content: systemPrompt(variant, o) },
-    { role: 'user', content: userMessage(question, sources) },
+    { role: 'user', content: userMessage(question, sources, o) },
   ];
 }
 

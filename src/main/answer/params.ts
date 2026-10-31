@@ -73,6 +73,19 @@ export interface AnswerParams {
   paragraphSelection: boolean;
   /** The answer starts with a line FOUND or NOT_FOUND, which code reads to decide the not-found state. */
   verdictLine: boolean;
+  /**
+   * A question that names a file (its name, title or a type word only it has) raises the fused
+   * score of that file's sections; when it names exactly one, citations may move only to its
+   * sections. Sources in the prompt then carry file name and type (docs/plan.md round 7).
+   */
+  documentAffinity: boolean;
+  /** A question asking for a set (three factors, list the steps) is told to give every item (round 8). */
+  enumerateWhenAsked: boolean;
+  /**
+   * With enumerateWhenAsked: when the question states a count and the answer lists fewer items,
+   * one follow-up call with the same sources asks for the missing ones.
+   */
+  enumerateFollowUp: boolean;
 }
 
 export const DEFAULT_PARAMS: AnswerParams = {
@@ -93,6 +106,9 @@ export const DEFAULT_PARAMS: AnswerParams = {
   verifyCitations: false,
   paragraphSelection: false,
   verdictLine: false,
+  documentAffinity: false,
+  enumerateWhenAsked: false,
+  enumerateFollowUp: false,
 };
 
 /** Tokens kept free for the answer itself and for the instructions and the question. */
@@ -179,6 +195,9 @@ const CHECKS: Record<keyof AnswerParams, (v: unknown) => Problem> = {
   verifyCitations: bool,
   paragraphSelection: bool,
   verdictLine: bool,
+  documentAffinity: bool,
+  enumerateWhenAsked: bool,
+  enumerateFollowUp: bool,
 };
 
 /** Problems with an answer block, each prefixed with at; every key is required. */

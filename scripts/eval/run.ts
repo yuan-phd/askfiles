@@ -672,6 +672,10 @@ async function runStages(o: Parameters<typeof runPipeline>[0], deps: PipelineDep
           verification: r?.verification
             ? `${r.verification.sentences} sentences, ${r.verification.reattributed} re-attributed, ${r.verification.attributed} attributed, ${r.verification.unsupported} unsupported`
             : '',
+          affinity: retrieval.affinity?.files.join('; ') ?? '',
+          follow_up: r?.followUp
+            ? `${r.followUp.given} of ${r.followUp.wanted} items, ${r.followUp.added ? 'added' : 'nothing added'}, ${r.followUp.ms} ms`
+            : '',
           cited_json: r?.cited.length ? JSON.stringify(r.cited.map(cardRecord)) : '',
           considered_json: r?.considered.length ? JSON.stringify(r.considered.map(cardRecord)) : '',
         };
