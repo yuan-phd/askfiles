@@ -380,7 +380,7 @@ Attribution as measured: 24 of 27 answers on the tuning set and 11 of 14 on the 
 
 The 16 GB model was measured in the quantization and context matrix (above) with the round 2' configuration, before enumerateWhenAsked and the hedge filter: tuning and check sets together 91% (32/35) cited, 80% (33/41) attribution, 68% coverage, 3% false refusals, 6% (1/16) false answers, median 15.9 s, 7.45 GiB for the chat model in memory against 9.17 GiB for q4_K_M. It ran on the 64 GB Mac; it has not run on a 16 GB Mac.
 
-Completeness, graded by the owner from ~/AskFiles-eval/grading-all.md (round 8a answers as shown, the full expected section text and the key elements, formula questions left out): 28 of 35 complete. By category: single document and long document 24 of 26, tables 3 of 5, cross document 0 of 2. As reported, the three categories add up to 27 of 33; the sheet holds 37 entries (21 single_fact, 9 middle_of_long_doc, 5 table_number, 2 cross_document), so two graded entries and one complete answer are outside the split.
+Completeness, graded by the owner from ~/AskFiles-eval/grading-all.md (round 8a answers as shown, the full expected section text and the key elements, formula questions left out): 28 of 35 complete: the sheet holds 37 entries (21 single_fact, 9 middle_of_long_doc, 5 table_number, 2 cross_document), and Q08 (OCR) and Q33 (retrieval miss) were left out of the grading. By category: single document and long document 25 of 28, tables 3 of 5, cross document 0 of 2.
 
 Known limits of v1:
 
