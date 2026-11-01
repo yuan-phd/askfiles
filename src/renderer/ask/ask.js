@@ -60,6 +60,7 @@ function readConfig() {
     apiKey: pick('apiKey'),
     workspace: pick('workspace'),
     folder: pick('folder'),
+    askNotice: shell.askNotice ?? null,
   };
 }
 
@@ -384,7 +385,7 @@ function finish(result) {
 
 async function ask(question) {
   question = question.trim();
-  if (!question) return;
+  if (!question || config.askNotice) return;
   els.result.hidden = false;
   resetResult();
   if (!answers) {
@@ -576,6 +577,16 @@ document.addEventListener('keydown', (e) => {
 els.query.addEventListener('input', autoGrow);
 
 if (answers) answers.onEvent(handleEvent);
+
+// A tier with Ask off (8 GB): one line instead of the question box; Browse and Find stay.
+if (config.askNotice) {
+  const off = $('ask-off');
+  off.textContent = config.askNotice;
+  off.hidden = false;
+  els.query.disabled = true;
+  els.submit.disabled = true;
+  document.querySelector('.hint').hidden = true;
+}
 
 loadRecent();
 void initDeveloper();

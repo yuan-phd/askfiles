@@ -4,14 +4,18 @@ Session E, plan tasks 1.4, 1.5 and 1.6. Code in src/main/presets, src/main/wizar
 
 ## config/presets.json
 
-One entry per RAM tier. Every value is a starting value; phase 2 (task 2.6) replaces them with measured ones. The validator (src/main/presets/schema.ts) rejects a tier whose comment does not say so.
+One entry per RAM tier. The values are the v1 result of phase 2 (docs/plan.md, v1 result), measured on the owner's Mac or fixed by the plan; each tier's comment says where its values come from. The validator (src/main/presets/schema.ts) checks every field.
+
+chatModel is null on a tier with Ask off (8 GB, owner decision 2026-11-01): the wizard pulls only the embedder, the server .env names no OLLAMA_MODEL_PREF, the Ask page shows one line (Ask needs a Mac with 16 GB of memory or more; on this Mac use Browse and Find to read your documents.) with the question box disabled, the answer pipeline refuses, and Settings offers no Faster model on the tier above. Browse and Find are unchanged.
+
+chatModelFile pins a chat model pulled from Hugging Face: repository, revision, file, sha256 and sizeBytes of the GGUF file measured in phase 2, with chatModel hf.co/<repository>:<quant>. Ollama pulls the repository's current file and cannot ask for a revision, so the pin is a check: after the pull, and also when the model was installed before, the wizard reads the weights blob from POST /api/show (the modelfile's FROM line names blobs/sha256-<hex>) and refuses the model unless its sha256 is the pinned one (src/main/models/pinned.ts, PinnedModelError). Settings does the same when Faster switches a 32 GB Mac to the 16 GB model. A repository that replaces the file therefore stops setup with a message naming the expected file instead of installing a different model.
 
 | Field | 8 GB | 16 GB | 32 GB and above | Source |
 | --- | --- | --- | --- | --- |
 | minRamGb | 8 | 16 | 32 | Plan tiers |
-| chatModel | qwen3:4b | qwen3:8b | qwen3:14b | Plan phase 2: 4B, 8B, 14B class Q4, Qwen family. Owner choice 2026-10-29 among the tags listed below |
+| chatModel | null (Ask off) | hf.co/unsloth/Qwen3-14B-GGUF:Q3_K_M, chatModelFile Qwen3-14B-Q3_K_M.gguf at revision a04a82c4739b3ef5fa6da7d10261db2c67dd1985, sha256 9694f1db203d5a18bea6f19a36be01b2d2c79bf9b7f8df553a4cc5cff870b47e, 7321313664 bytes | qwen3:14b-q4_K_M (Ollama library) | Owner decision 2026-11-01 from the quantization and context matrix and the tuning rounds (docs/plan.md, v1 result); was 4B, 8B, 14B class Q4 (owner choice 2026-10-29) |
 | embeddingModel | bge-m3:567m | same | same | Q10 |
-| contextLength (OLLAMA_MODEL_TOKEN_LIMIT) | 8192 | 8192 | 8192 | Not in the plan; see Open choices |
+| contextLength (OLLAMA_MODEL_TOKEN_LIMIT) | 8192 | 8192 | 8192 | Quantization and context matrix (docs/plan.md): 4096 cuts the section budget and cost 6 points of right section cited |
 | chunkMaxChars (EMBEDDING_MODEL_MAX_CHUNK_LENGTH) | 2000 | 2000 | 2000 | Plan phase 2 chunk maximum |
 | maxSnippets (topN) | 4 | 4 | 4 | Plan phase 2 |
 | similarityThreshold | 0.5 | 0.5 | 0.5 | Plan phase 2 Medium; upstream's Medium option is 0.5 (upstream/frontend/src/pages/WorkspaceSettings/VectorDatabase/DocumentSimilarityThreshold/index.jsx:25) |

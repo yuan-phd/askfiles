@@ -32,12 +32,17 @@ export interface BrowseSection {
   pageLabelStart: string | null;
   pageLabelEnd: string | null;
   text: string;
+  /**
+   * The sub-chunk bodies in order, heading lines taken off; text is them joined with a blank line.
+   * The answer pipeline assembles a long section's passage from them (src/main/answer/sections.ts).
+   */
+  parts: string[];
 }
 
 /** One file of <libraryDir>/browse, also what the document page receives. */
 export interface BrowseDocument {
-  /** 2 since Session K added paths and page labels; other versions are rebuilt. */
-  version: 2;
+  /** 3 since sections carry their sub-chunks (parts); other versions are rebuilt. */
+  version: 3;
   /** First 16 hex digits of sha256 of the path; stable while the file keeps its path. */
   id: string;
   path: string;

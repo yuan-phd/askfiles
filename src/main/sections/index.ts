@@ -9,7 +9,8 @@ import type { Chunk, ParsedDocument } from './types.js';
 import { parseCsv, parseXls, parseXlsx } from './xlsx.js';
 
 export * from './types.js';
-export { chunkSections, foldEmptySections, splitToFit, withPaths } from './chunk.js';
+export { chunkSections, foldEmptySections, pageTitle, splitLongByPage, splitToFit, withPaths } from './chunk.js';
+export { isGarbled, pageQuality, GARBLED_CHAR_SHARE, GARBLED_WORD_SHARE, SPARSE_CHARS } from './pdf.js';
 export { isAcceptableHeading, stripNumbering, MAX_HEADING_CHARS } from './headings.js';
 export { docTitleOf, paragraphs, parsePlainText } from './text.js';
 
@@ -18,8 +19,9 @@ export { docTitleOf, paragraphs, parsePlainText } from './text.js';
  * 2 (Session K): heading filter, heading paths and page labels in the section records, Word
  * headings from styles and outline levels, OCR page by page. The bump makes every library
  * reindex once on the first launch after the update.
+ * 3: long sections without sub-headings split by page (splitLongByPage); garbled PDF pages OCRed.
  */
-export const SPLITTER_VERSION = 2;
+export const SPLITTER_VERSION = 3;
 
 export const SUPPORTED_EXTENSIONS = [
   '.pdf',
@@ -38,13 +40,13 @@ export function isSupported(file: string): boolean {
 }
 
 /** Reads and parses one file into sections by its extension. */
-export async function parseFile(file: string): Promise<ParsedDocument> {
+export async function parseFile(file: string, o: { pageText?: Map<number, string> } = {}): Promise<ParsedDocument> {
   const name = path.basename(file);
   const ext = path.extname(file).toLowerCase();
   const buffer = await fs.readFile(file);
   switch (ext) {
     case '.pdf':
-      return parsePdf(buffer, name);
+      return parsePdf(buffer, name, o);
     case '.docx':
       return parseDocx(buffer, name);
     case '.xlsx':

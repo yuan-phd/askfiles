@@ -8,7 +8,7 @@ Scripts are in scripts/eval: run.ts (one run), score.ts (report for one or more 
 
 Each loop is: set parameters, run, read the table, change parameters. A loop never needs a file edit: every value can be overridden with --set.
 
-1. Stage 1, retrieval only (the default). For every question the harness runs candidates, fusion and reranking once and caches the result on disk under .eval-data/retrieval-cache/<index hash>/, keyed by the question text. The index hash covers the indexed chunks (file bytes, split settings, embedder) and the retrieval parameters (rerankerModel, rerankerBypassCjk, vectorTopK, keywordTopK, rrfK, candidateSections, sectionCapChars), so a second run with the same corpus and those values takes seconds. It then sweeps section count and rerank floor over a grid and prints the target-section hit rate for every pair, with the config's own pair in bold. No model is called.
+1. Stage 1, retrieval only (the default). For every question the harness runs candidates, fusion and reranking once and caches the result on disk under .eval-data/retrieval-cache/<index hash>/, keyed by the question text. The index hash covers the indexed chunks (file bytes, split settings, embedder) and the retrieval parameters (rerankerModel, rerankerBypassCjk, vectorTopK, keywordTopK, rrfK, candidateSections, sectionCapChars, and documentAffinity when on), so a second run with the same corpus and those values takes seconds. It then sweeps section count and rerank floor over a grid and prints the target-section hit rate for every pair, with the config's own pair in bold. No model is called.
 2. Stage 2, answers (--answer). The model runs only for the configurations you name with --try (default: the config's scope values), on the cached retrievals, and the harness computes key element coverage and attribution accuracy next to target section hit and latency.
 
 ```bash
@@ -29,7 +29,7 @@ Changing section count or rerank floor needs no new retrieval; changing a retrie
 
 1. Starts its own Ollama, collector and server from upstream/ with the patches applied (reverted at the end), or connects to a running server when the config has a baseUrl.
 2. Checks that Ollama has the embedding model (and the chat model for stage 2 and --upstream) and records their tags, digests and quantization.
-3. Splits every file in the corpus by section (PDF bookmarks or font size, Word headings, Markdown headings, one section per spreadsheet sheet), cuts sections longer than chunkMax into sub-chunks that each start with the section title, and writes one document JSON per chunk into STORAGE_DIR/documents/askfiles-eval. A PDF without a text layer goes through the collector once for OCR; its text is cached by file hash and its sections have no page numbers.
+3. Splits every file in the corpus by section (PDF bookmarks or font size, Word headings, Markdown headings, one section per spreadsheet sheet), cuts sections longer than chunkMax into sub-chunks that each start with the section title, and writes one document JSON per chunk into STORAGE_DIR/documents/askfiles-eval. The split is the watcher's own (splitWithOcr, docs/app.md, OCR in the watcher): a PDF without a text layer, and the garbled pages of one with a text layer, go through the collector page by page, cached by file hash under STORAGE_DIR/askfiles-eval-cache/ocr-pages, and run.json lists the replaced pages per file (library.files[].ocrPages). Long sections without sub-headings are split by page.
 4. Creates or reuses the workspace for the embedding model, applies the settings from the config, and embeds only the documents it does not hold yet. Document names come from the file's path and bytes, the chunk maximum, the splitter version and the embedding model, so an unchanged corpus is not embedded twice and a new chunk maximum embeds again.
 5. Answer pipeline (default): builds the browse index and the watcher's file records from the split, so keyword search and section records are the app's own; fetches the config's reranker into rerankerDir when it is missing (pinned revision, sha256 checked); then runs stage 1 and, with --answer, stage 2.
 6. Upstream route (--upstream): sends one warm-up question so model loading does not count toward the first answer, then asks every question once per pass with a fresh session, streaming, and records the answer, the sources, first token and total time and token counts. When the answer is the refusal it also lists the nearest sections (vector-search, 8 results, any score).
@@ -60,6 +60,12 @@ ollama pull bge-m3
 
 The upstream frontend is not needed. Pull every chat model you want to test (for example qwen3:4b and qwen3:14b for the other tiers).
 
+scripts/eval/configs/mac-32gb.json is the 32 GB tier of the presets (qwen3:14b, bge-m3:567m, reranker off) with ollamaPort 11434, so the harness uses the Ollama app instead of starting a second Ollama:
+
+```bash
+npm run eval -- <corpus folder> ~/AskFiles-eval/questions.csv --config scripts/eval/configs/mac-32gb.json
+```
+
 ## Running
 
 Options:
@@ -71,7 +77,7 @@ Options:
 | --answer | off | Stage 2: run the model too |
 | --try count=N,floor=X | the config's scope values | Stage 2 configuration, repeatable |
 | --counts | 1,2,3,4,5,6 | Section counts of the stage 1 sweep |
-| --floors | 0,0.01,0.05,0.1,0.2,0.3,0.5,0.7 | Rerank floors of the stage 1 sweep |
+| --floors | 0,0.01,0.05,0.1,0.2,0.3,0.5,0.7; with rerankerModel none 0,0.3,0.4,0.45,0.5,0.55,0.6,0.65 | Floors of the stage 1 sweep: rerank floors, or vector floors without a reranker |
 | --upstream | off | Ask through the upstream chat route instead (owner scoring, as before Session L) |
 | --corpus-label | the corpus folder name (its parent's name when the folder is called corpus) | Name recorded in run.json and used to group reports; use S and L |
 | --out | eval-runs/<UTC time>-<corpus>-<config label> | Run folder |
@@ -82,19 +88,33 @@ The run folder holds results.csv (stage 1 rows, or stage 2 rows with retrieval.c
 
 The answer block of a config file holds the same keys, with the same names, as the answer block of each tier in config/presets.json; a value found here is copied into the preset unchanged. A config may list only the keys it changes. Defaults below are those of src/main/answer/params.ts; the presets set some per tier.
 
+The v1 presets (docs/plan.md, v1 result) turn on verifyCitations, enumerateWhenAsked and dropUnsupportedHedges. paragraphSelection, verdictLine, documentAffinity, enumerateFollowUp, noSummarizing, decomposeQuestions, answerMode quoted and promptVariant strict or complete are unused options: kept in the code for later measurements, off on every tier.
+
 | Parameter | Default | Effect |
 | --- | --- | --- |
-| rerankerModel | Xenova/ms-marco-MiniLM-L-6-v2 | Cross-encoder: Xenova/ms-marco-MiniLM-L-6-v2 (English, 23 MB), Xenova/bge-reranker-base (Chinese and English, 296 MB), onnx-community/bge-reranker-v2-m3-ONNX (multilingual, 588 MB) |
+| rerankerModel | Xenova/ms-marco-MiniLM-L-6-v2 | Cross-encoder: Xenova/ms-marco-MiniLM-L-6-v2 (English, 23 MB), Xenova/bge-reranker-base (Chinese and English, 296 MB), onnx-community/bge-reranker-v2-m3-ONNX (multilingual, 588 MB), or none: no cross-encoder, sections in fused order, vectorFloor instead of rerankFloor. none is the value of every preset and of default.json for now, because onnxruntime-node crashed (EXC_BREAKPOINT) on the owner's Mac when a bge reranker loaded (2026-10-30) |
 | rerankerBypassCjk | true | Skip reranking when the question or a candidate section is mainly Chinese, Japanese or Korean, and select by fusion score with no floor; for the English-only reranker |
 | vectorTopK | 30 | Sub-chunks from vector search, no score floor. Rarely worth changing |
 | keywordTopK | 30 | Sections from the keyword index (BM25 over section text). Rarely worth changing |
 | rrfK | 60 | k of reciprocal rank fusion; lower favours the top of each list. Rarely worth changing |
 | candidateSections | 12 (8 in the bge tiers) | Sections passed to the reranker; bounds rerank time. Rarely worth changing |
 | sectionCapChars | 0 (twice chunkMax) | Longest section text given to the reranker and the model. Rarely worth changing |
-| sectionCount | strict 2, balanced 3, broad 5 | Most sections the model reads, per answer scope. Tuned in phase 2 |
+| sectionCount | strict 2, balanced 3, broad 5 (presets since 2026-10-31: 3, 5, 6) | Most sections the model reads, per answer scope. Tuned in phase 2 |
 | rerankFloor | strict 0.5, balanced 0.1, broad 0.01 | Lowest rerank score a section needs, per scope; with no section above it the model is not asked and the page shows the nearest sections. Tuned in phase 2 |
+| vectorFloor | strict 0, balanced 0, broad 0 (presets since 2026-10-31: 0.6, 0.55, 0.5) | With rerankerModel none: lowest vector similarity a section's best sub-chunk needs, per scope. A section found by the keyword index alone has no similarity and passes only 0. bge-m3 scores through upstream sit between about 0.3 and 0.8; an unrelated question tops out near 0.39 on the owner's first corpus. The stage 1 sweep and --try floor= set this floor when the reranker is off |
 | contextBudgetTokens | 0 (context length minus 1536) | Tokens for the numbered sources; whole sections are kept, the longest is trimmed when they do not fit |
-| promptVariant | default | default, or strict (every sentence must cite, no background knowledge, shortest answer) |
+| promptVariant | default | default; strict (every sentence must cite, no background knowledge, shortest answer); or complete (name every condition, exception, step and figure, in the sources' own terms, names and numbers; round 5, not kept) |
+| answerMode | single | single: one model call over the selected sections. quoted: an extraction call over the top extractSections sections (table-of-contents sections left out) returns verbatim excerpts, code keeps those found in the section text, and a composition call answers from them only (docs/app.md, Answer pipeline) |
+| extractSections | 6 | quoted mode: sections sent to the extraction call (N); bounded by candidateSections |
+| verifyCitations | false | single mode: check every sentence against the source it cites by content-token overlap (0.5), move it to a better source or mark it unsupported; the cards show what stays cited (docs/app.md, Answer pipeline) |
+| paragraphSelection | false | send a selected section longer than twice chunkMax as its 3 paragraphs closest to the question (embedding cosine plus keyword hits) with one neighbour each; paragraphs embedded when the pipeline is built, stored in <out>/paragraphs |
+| verdictLine | false | the reply starts with a line FOUND or NOT_FOUND, which code reads for the not-found state instead of the NOT_IN_SOURCES marker |
+| documentAffinity | false | a question naming a file (its name, cover title, or a type word such as Policy or Template that only it has; src/main/browse/identifiers.ts) multiplies the fused score of that file's sections by 1.5; naming exactly one file restricts citation verification to its sections; source headers carry file name and type and flag same-title sections of different files; same-title sources are chosen by overlap, never order; naming two or more files selects 6 sections (AFFINITY_MULTI_SECTIONS) instead of the scope's count. Results column affinity lists the files named |
+| enumerateWhenAsked | false | a set question (a count before a plural noun, or what are the, list, each, all, components, steps, conditions, requirements, activities, elements, factors, or their Chinese equivalents) gets one more rule: count the items in the cited sources and give every one with its citation |
+| enumerateFollowUp | false | with enumerateWhenAsked: when the question states a count and the answer enumerates fewer items (list lines, else inline (1) markers, else cited sentences), one follow-up call with the same sources asks for the missing items; results column follow_up |
+| noSummarizing | false | one rule on every question in place of the enumerateWhenAsked set rule: do not summarize, merge or group what the sources say; state each listed item separately with its citation; give every member of a set (round 9a, not kept) |
+| decomposeQuestions | false | split a question on explicit structure only (asks joined by and, as well as or a comma list, each starting with a question word, after a lead-in; or Compare A and B: ask), run the whole pipeline per part, merge the answers under lead-ins with citations renumbered against the union of sources; each part's retrieval is cached by its own question; results column split (how, parts, time per part, parts not found) (round 9b, not kept) |
+| dropUnsupportedHedges | false | after verifyCitations: delete a sentence marked unsupported that only says information is missing (not specified, not stated, not explicitly, not mentioned, not provided, no information and equivalents, also Chinese) when the answer keeps a supported sentence; never a supported sentence, never all; each deletion logged; the text then is the kept sentences; results column hedges_dropped (on in the presets) |
 
 Two top-level keys complete the pipeline settings: scope (strict, balanced or broad; which section count and floor a run uses, default balanced) and temperature. contextTokens is the context length (0 means 8192, the presets' value); rerankerDir is where the reranker files are (default .eval-data/models/reranker).
 
@@ -119,6 +139,7 @@ Two top-level keys complete the pipeline settings: scope (strict, balanced or br
 | workspace | askfiles-eval | Base name of the hidden workspace |
 | dataDir | .eval-data in the repository | Managed mode: data directory kept between runs |
 | ollamaBin | ollama on PATH | Managed mode: path of the ollama binary |
+| ollamaPort | 0 | Managed mode: port of an Ollama already running (11434 for the Ollama app on the Mac), used instead of starting one; 0 starts one |
 | scope | balanced | Answer scope of the pipeline run |
 | answer | the defaults above | Answer parameters (table above) |
 | rerankerDir | .eval-data/models/reranker | Reranker files; fetched here when missing |
@@ -137,7 +158,7 @@ questions.csv has the columns id, category, question, expected_answer, expected_
 - question: phrased as the target user would type it, in the language they would use. Do not copy the document's wording; paraphrase the way a person who has not read it would ask.
 - expected_answer: the short fact that makes an answer correct, with the unit. For absent questions write Not in the documents.
 - expected_source_file: file name only, as it is in the corpus folder. Several files are separated by semicolons (cross_document, version).
-- expected_section: the section title exactly as it appears in the document, including its numbering (2.1 Lost devices, 3 提交期限). For a spreadsheet it is the sheet name. Several sections are separated by semicolons; for section_listing list every section a good answer should name. Case, full-width characters and extra spaces are ignored when matching.
+- expected_section: the section title exactly as it appears in the document, including its numbering (2.1 Lost devices, 3 提交期限). For a spreadsheet it is the sheet name. Several sections are separated by semicolons; for section_listing list every section a good answer should name. Case, full-width characters and extra spaces are ignored when matching. A semicolon that is part of a title is written \; (STATES GO,RNM\;:: (page 7)).
 - expected_page: the PDF page number as the viewer shows it (1 for the first page), or a range such as 4-6. For a spreadsheet, the sheet number (1 for the first sheet). Leave it empty for Word and Markdown files, which have no pages.
 - expected_section_path: optional, the headings from the outside in down to the section, separated by >, as the source cards print them (Employee handbook > Leave > Annual leave). The end of the path is enough (Leave > Annual leave) when the outer headings do not matter. When it is set it is used instead of expected_section; several paths are separated by semicolons.
 - key_elements: phrases a correct answer must contain, separated by semicolons. Write the smallest pieces that carry the fact: the number with its unit when the unit matters (27 days), the name (operations director), the code (IT-4521). Case and whitespace are ignored (27days matches 27 Days), so do not list spelling variants of spacing; list a second element instead of one long sentence. Each element should also appear verbatim in the expected section, because attribution accuracy looks for the elements in the cited sections. Leave it empty for absent questions.
@@ -179,10 +200,14 @@ Per category:
 Computed by the harness for pipeline runs (stage 2) and by eval:score for every run, per question and per configuration and category:
 
 - Target section hit: every expected section is among the cited sections (stage 2) or among the selected sections (stage 1). A section matches when its file is the expected file and its path ends with expected_section_path (or its title equals expected_section). Not counted for absent questions or questions without an expected section.
-- Key element coverage: the share of key_elements present in the answer text, case and whitespace insensitive. A not-found answer covers nothing. Not counted for questions without key_elements.
-- Attribution accuracy: true when every cited section contains at least one key element, or when the answer is a refusal (the not-found state) to an absent question. An answer that cites nothing, a refusal to an answerable question, and any answer to an absent question are false. This catches a citation that points at the wrong file or section even when the answer text is right.
+- Key element coverage: the share of key_elements present in the answer text, case and whitespace insensitive, counted only over the key elements that appear word for word (same normalization) in the expected sections' text; the others are paraphrases no quoting answer can contain. Before stage 2 the harness prints the key elements without a literal match per question and stores them in run.json (keyElementsWithoutLiteralMatch). A not-found answer covers nothing. Not counted for questions without key_elements or without a literal one.
+- Attribution accuracy: checks the citations against what the answer says. The stated elements are the key elements found in the answer text. True when the answer states at least one, every cited section contains at least one stated element, and every stated element is in a cited section; so citing a section that holds some other key element but not the fact the answer gives is false (since 2026-10-31; before, any key element in each cited section was enough). True also for a refusal (the not-found marker, with or without the sections it says it checked) to an absent question. An answer that states no key element, cites nothing, a refusal to an answerable question, and any non-refusal to an absent question are false.
 - Section listing questions are measured on the listed sections when the answer is the no-answer state: target section hit when they include every expected section, key element coverage over their section paths, attribution correct when the target is listed. In stage 1 they are measured on the nearest list (best reranked candidates, no floor, up to 8) for every count and floor of the sweep. For upstream runs the fallback list plays this part.
-- Latency: median first token and total time. For stage 2, total is the cached retrieval's time plus the model call.
+- Latency: median first token and total time. For stage 2, total is the cached retrieval's time plus the model call (both calls in quoted mode).
+- False refusals: answerable questions answered with the not-found state, over answerable questions. False answers: absent questions given an answer, over absent questions. They replace the single correct-abstention figure (docs/plan.md, Acceptance and stopping rules).
+- Unsupported sentences per answer: sentences with no valid citation; in quoted mode also those citing a source with no verified excerpt.
+- Matching (key elements, passages): NFKC, lower case, every dash to -, curly quotes straight, a word broken across a line joined, the percent sign dropped from the first number of a range (0%-15% is 0-15%), whitespace removed. Attribution leaves out stated elements the question itself contains.
+- A question whose notes contain [unsupported: reason] (a spreadsheet formula the split does not keep) is run and written to results.csv but left out of the sweep and every summary; the summary counts it as excluded.
 
 For upstream-route runs eval:score computes the same three metrics with the sources the server returned standing in for the cited sections, so the two routes can be compared on one table.
 
@@ -231,7 +256,7 @@ For two upstream-route runs: each category's headline rate for A and B with the 
 ## Limits
 
 - Word and Markdown files have no page numbers; their page fields are 0 and the search page shows no page.
-- OCR text from the collector has no page or section structure: a scanned PDF becomes one section titled by its file name, cut into sub-chunks.
+- OCR text has no heading structure: a scanned PDF becomes one section per page titled Page N; OCRed pages of a PDF with a text layer keep the sections its bookmarks give.
 - PDF sections come from bookmarks, else from font size, else one per page. A bookmark that points well above its heading can pull the line above it into the next section.
 - The harness measures latency on the machine it runs on; the Electron app adds nothing to it but window rendering. The reranker runs in the harness's Node process here and in the app's main process there.
 - The stage 1 cache is keyed by question text and index hash only: after changing the pipeline code itself, delete .eval-data/retrieval-cache.

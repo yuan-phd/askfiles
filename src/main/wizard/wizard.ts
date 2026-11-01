@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { NO_RERANKER } from '../answer/params.js';
 import { normalizeTag, OllamaClient, type FetchLike, type PullProgress } from '../ollama/client.js';
 import {
   chooseTier,
@@ -10,6 +11,7 @@ import {
   type PresetFile,
   type TierChoice,
 } from '../presets/index.js';
+import { verifyPinnedModel } from '../models/pinned.js';
 import { markUpstreamOnboarded } from './upstream.js';
 
 export const STEPS = ['detectRam', 'chooseTier', 'pullModels', 'writeConfig', 'markOnboarded'] as const;
@@ -50,7 +52,8 @@ export type WizardEvent =
       tierId: string;
       label: string;
       belowMinimum: boolean;
-      chatModel: string;
+      /** Null on a tier with Ask off. */
+      chatModel: string | null;
       embeddingModel: string;
     }
   | ({ type: 'progress'; index: number; count: number } & PullProgress);
@@ -176,9 +179,12 @@ export class Wizard extends EventEmitter<{ event: [WizardEvent] }> {
   private async pullModels(): Promise<void> {
     const p = this.s.tier!.preset;
     // Embedder first: it is the smaller download and indexing needs it before any question.
-    const tags = [...new Set([p.embeddingModel, p.chatModel])];
+    // A tier with Ask off pulls no chat model.
+    const tags = [...new Set([p.embeddingModel, ...(p.chatModel ? [p.chatModel] : [])])];
     const fetchReranker = this.deps.fetchReranker;
-    const count = tags.length + (fetchReranker ? 1 : 0);
+    // rerankerModel none has nothing to fetch.
+    const withReranker = fetchReranker && p.answer.rerankerModel !== NO_RERANKER;
+    const count = tags.length + (withReranker ? 1 : 0);
     const installed = await this.deps.ollama.list();
     for (const [index, tag] of tags.entries()) {
       const base = { type: 'progress' as const, index, count };
@@ -199,7 +205,10 @@ export class Wizard extends EventEmitter<{ event: [WizardEvent] }> {
       await this.deps.ollama.pull(tag, (pr) => this.emit('event', { ...base, ...pr }));
       this.log(`pulled ${tag}`);
     }
-    if (fetchReranker) {
+    // Installed before or just pulled, a pinned chat model must be the measured file.
+    if (p.chatModel && p.chatModelFile)
+      await verifyPinnedModel(this.deps.ollama, p.chatModel, p.chatModelFile, (m) => this.deps.log?.(m));
+    if (withReranker) {
       const repo = p.answer.rerankerModel;
       this.log(`fetching reranker ${repo}`);
       await fetchReranker(repo, (pr) => this.emit('event', { type: 'progress', index: tags.length, count, ...pr }));

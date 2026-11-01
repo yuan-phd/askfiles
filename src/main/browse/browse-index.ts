@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FileRecord } from '../watcher/index.js';
 import { buildDocument, documentId, type StoredChunk } from './build.js';
+import { buildIdentities, type FileIdentity } from './identifiers.js';
 import { rankSections, sectionFrequency, type FoldedSection, type RankedSection } from './rank.js';
 import { fold, markRanges, occurrences, queryTerms, snippetOf } from './search.js';
 import type {
@@ -29,6 +30,9 @@ export interface BrowseIndexOptions {
 /** Matching sections returned at most per search; more are counted in total only. */
 const SEARCH_LIMIT = 200;
 
+/** The file identities (identifiers.ts), beside the document files; load() skips it. */
+const IDENTITIES_FILE = 'identifiers.json';
+
 /**
  * The browse view's own index (plan phase 4): per document its outline and the full text of every
  * section, built from the watcher's index.json records and the section documents, kept current
@@ -39,6 +43,8 @@ export class BrowseIndex {
   private readonly docs = new Map<string, BrowseDocument>();
   /** Folded title and text per section, built on the first search after a change. */
   private readonly folded = new Map<string, string[]>();
+  /** Rebuilt after any document changed; null until then. */
+  private identityList: FileIdentity[] | null = null;
   private readonly root: string | undefined;
   private readonly log: (msg: string) => void;
 
@@ -62,7 +68,7 @@ export class BrowseIndex {
     this.folded.clear();
     let names: string[];
     try {
-      names = fs.readdirSync(this.o.dir).filter((n) => n.endsWith('.json'));
+      names = fs.readdirSync(this.o.dir).filter((n) => n.endsWith('.json') && n !== IDENTITIES_FILE);
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === 'ENOENT') return;
       throw e;
@@ -70,8 +76,8 @@ export class BrowseIndex {
     for (const name of names) {
       try {
         const doc = JSON.parse(fs.readFileSync(path.join(this.o.dir, name), 'utf8')) as BrowseDocument;
-        // Older versions lack paths and labels; skipped here, the next sync rebuilds them.
-        if (doc?.version === 2 && typeof doc.id === 'string' && Array.isArray(doc.sections)) this.docs.set(doc.id, doc);
+        // Older versions lack paths, labels or sub-chunks; skipped here, the next sync rebuilds them.
+        if (doc?.version === 3 && typeof doc.id === 'string' && Array.isArray(doc.sections)) this.docs.set(doc.id, doc);
       } catch (e) {
         this.log(`skipped ${name}: ${(e as Error).message}`);
       }
@@ -95,6 +101,7 @@ export class BrowseIndex {
       }
     }
     this.log(`sync: ${records.length} files, ${built} built, ${dropped} dropped`);
+    this.identities();
   }
 
   /**
@@ -231,6 +238,28 @@ export class BrowseIndex {
     return result;
   }
 
+  /**
+   * Per file the names a question may use for it. They depend on the whole library (a type word
+   * names a file only when no other file has it), so they are rebuilt after any change and stored.
+   */
+  identities(): FileIdentity[] {
+    if (this.identityList) return this.identityList;
+    const docs = [...this.docs.values()].sort((a, b) => a.relPath.localeCompare(b.relPath));
+    this.identityList = buildIdentities(docs);
+    const file = path.join(this.o.dir, IDENTITIES_FILE);
+    try {
+      // An empty library leaves no file behind, as it leaves no documents.
+      if (!docs.length) fs.rmSync(file, { force: true });
+      else {
+        fs.mkdirSync(this.o.dir, { recursive: true });
+        fs.writeFileSync(file, JSON.stringify(this.identityList));
+      }
+    } catch (e) {
+      this.log(`identifiers not stored: ${(e as Error).message}`);
+    }
+    return this.identityList;
+  }
+
   /** Number of sections over all documents. */
   sectionTotal(): number {
     let n = 0;
@@ -276,6 +305,7 @@ export class BrowseIndex {
   private store(doc: BrowseDocument): void {
     this.docs.set(doc.id, doc);
     this.folded.delete(doc.id);
+    this.identityList = null;
     fs.mkdirSync(this.o.dir, { recursive: true });
     const file = path.join(this.o.dir, `${doc.id}.json`);
     // Temp file and rename, so a crash mid-write never leaves half a document.
@@ -287,6 +317,7 @@ export class BrowseIndex {
   private drop(id: string): void {
     this.docs.delete(id);
     this.folded.delete(id);
+    this.identityList = null;
     fs.rmSync(path.join(this.o.dir, `${id}.json`), { force: true });
   }
 }

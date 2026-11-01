@@ -21,17 +21,27 @@ function problemsOf(data: unknown): string[] {
 }
 
 describe('config/presets.json', () => {
-  it('validates, with tiers 8, 16 and 32 GB and thinking off everywhere', () => {
+  it('validates the v1 result: Ask off on 8 GB, pinned Q3_K_M on 16 GB, q4_K_M on 32 GB, context 8192', () => {
     const p = loadPresets(PRESETS_FILE);
     expect(p.tiers.map((t) => [t.id, t.minRamGb, t.chatModel])).toEqual([
-      ['8gb', 8, 'qwen3:4b'],
-      ['16gb', 16, 'qwen3:8b'],
-      ['32gb', 32, 'qwen3:14b'],
+      ['8gb', 8, null],
+      ['16gb', 16, 'hf.co/unsloth/Qwen3-14B-GGUF:Q3_K_M'],
+      ['32gb', 32, 'qwen3:14b-q4_K_M'],
     ]);
+    expect(p.tiers[1]!.chatModelFile).toEqual({
+      repository: 'unsloth/Qwen3-14B-GGUF',
+      revision: 'a04a82c4739b3ef5fa6da7d10261db2c67dd1985',
+      file: 'Qwen3-14B-Q3_K_M.gguf',
+      sha256: '9694f1db203d5a18bea6f19a36be01b2d2c79bf9b7f8df553a4cc5cff870b47e',
+      sizeBytes: 7321313664,
+    });
+    const on = ['verifyCitations', 'enumerateWhenAsked', 'dropUnsupportedHedges'];
     for (const t of p.tiers) {
       expect(t.reasoningEffort).toBe('off');
       expect(t.embeddingModel).toBe('bge-m3:567m');
-      expect(t.comment).toMatch(/starting value/i);
+      expect(t.contextLength).toBe(8192);
+      const switches = Object.entries(t.answer).filter(([k, v]) => typeof v === 'boolean' && k !== 'rerankerBypassCjk');
+      expect(switches.filter(([, v]) => v).map(([k]) => k)).toEqual(on);
     }
   });
 });
@@ -48,7 +58,7 @@ describe('validatePresets failures', () => {
     };
     delete (d.tiers[1]!.answer as Record<string, unknown>).rrfK;
     expect(problemsOf(d)).toEqual([
-      expect.stringMatching(/^tiers\[0\]\.answer\.rerankerModel must be one of Xenova\/ms-marco-MiniLM-L-6-v2, /),
+      expect.stringMatching(/^tiers\[0\]\.answer\.rerankerModel must be one of none, Xenova\/ms-marco-MiniLM-L-6-v2, /),
       'tiers[0].answer.rerankFloor.strict must be a number from 0 to 1',
       'tiers[0].answer.extra is not a known field',
       'tiers[1].answer.rrfK is missing',
@@ -73,7 +83,7 @@ describe('validatePresets failures', () => {
     expect(problemsOf(d)).toEqual([
       'version must be 1',
       'tiers[0].chatModel is missing',
-      'tiers[0].embeddingModel must be an Ollama model tag such as qwen3:8b',
+      'tiers[0].embeddingModel must be an Ollama model tag such as qwen3:8b or hf.co/<user>/<repository>:<quant>',
       'tiers[1].similarityThreshold must be a number from 0 to 1',
       'tiers[1].chatMode must be "query"',
       'tiers[1].reasoningEffort must be "off"',
@@ -92,10 +102,20 @@ describe('validatePresets failures', () => {
     ]);
   });
 
-  it('requires the starting value marker in each comment', () => {
+  it('checks the pinned file and that its chat model comes from its repository', () => {
     const d = base();
-    d.tiers[0]!.comment = 'measured';
-    expect(problemsOf(d)).toEqual(['tiers[0].comment must say these are starting values']);
+    const file = d.tiers[1]!.chatModelFile as Record<string, unknown>;
+    d.tiers[1]!.chatModelFile = { ...file, sha256: 'abc', extra: 1 };
+    d.tiers[2]!.chatModelFile = file;
+    d.tiers[0]!.chatModel = 'hf.co/unsloth/Qwen3-14B-GGUF';
+    expect(problemsOf(d)).toEqual([
+      'tiers[1].chatModelFile.sha256 must be 64 hex digits',
+      'tiers[2].chatModelFile needs chatModel hf.co/<its repository>:<quant>',
+    ]);
+    d.tiers[1]!.chatModelFile = { ...file, extra: 1 };
+    d.tiers[2]!.chatModelFile = undefined;
+    delete d.tiers[2]!.chatModelFile;
+    expect(problemsOf(d)).toEqual(['tiers[1].chatModelFile.extra is not a known field']);
   });
 
   it('caps the chunk maximum below the embedding truncation limit', () => {
@@ -107,10 +127,10 @@ describe('validatePresets failures', () => {
   it('rejects values that would break the .env file', () => {
     const d = base();
     d.tiers[0]!.ocrLanguages = 'eng#x';
-    d.tiers[1]!.chatModel = 'qwen3:8b"';
+    d.tiers[2]!.chatModel = 'qwen3:8b"';
     expect(problemsOf(d)).toEqual([
       'tiers[0].ocrLanguages must not contain quotes, #, \\ or control characters',
-      'tiers[1].chatModel must not contain quotes, #, \\ or control characters',
+      'tiers[2].chatModel must not contain quotes, #, \\ or control characters',
     ]);
   });
 

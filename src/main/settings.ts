@@ -29,7 +29,8 @@ import {
 
 export interface ModelChoice {
   choice: AnswerModel;
-  model: string;
+  /** Null on a tier with Ask off. */
+  model: string | null;
   /** The tier the model comes from, such as 16 GB. */
   tierLabel: string;
 }
@@ -55,7 +56,8 @@ export function modelChoices(presets: PresetFile, machine: Preset): SettingsView
   return {
     better: { choice: 'better', model: machine.chatModel, tierLabel: machine.label },
     faster:
-      below && below.chatModel !== machine.chatModel
+      // A tier below with Ask off has no model to fall back to.
+      below && below.chatModel && below.chatModel !== machine.chatModel
         ? { choice: 'faster', model: below.chatModel, tierLabel: below.label }
         : null,
   };
@@ -96,15 +98,33 @@ export function runSettingsFor(o: {
 export function effectivePreset(presets: PresetFile, machine: Preset, s: Settings): Preset {
   const models = modelChoices(presets, machine);
   const chat = s.answerModel === 'faster' && models.faster ? models.faster.model : machine.chatModel;
-  return { ...machine, chatModel: chat, contextLength: s.contextLength ?? machine.contextLength };
+  // The pin travels with the model: Faster takes the lower tier's file, if it has one.
+  const file = presets.tiers.find((t) => t.chatModel === chat)?.chatModelFile;
+  const rest = { ...machine };
+  delete rest.chatModelFile;
+  return {
+    ...rest,
+    chatModel: chat,
+    ...(file ? { chatModelFile: file } : {}),
+    contextLength: s.contextLength ?? machine.contextLength,
+  };
 }
 
 /** The server .env lines the settings decide. */
 export function settingsEnv(p: Preset): EnvEntry[] {
   return [
-    ['OLLAMA_MODEL_PREF', p.chatModel],
+    ...(p.chatModel ? [['OLLAMA_MODEL_PREF', p.chatModel] as const] : []),
     ['OLLAMA_MODEL_TOKEN_LIMIT', String(p.contextLength)],
   ];
+}
+
+/** Shown on the Ask page of a tier with Ask off, the one place that tier mentions it. */
+export const ASK_OFF_NOTICE =
+  'Ask needs a Mac with 16 GB of memory or more; on this Mac use Browse and Find to read your documents.';
+
+/** The Ask page's notice for this Mac: ASK_OFF_NOTICE when its tier has no chat model, else null. */
+export function askNoticeFor(machine: Preset): string | null {
+  return machine.chatModel ? null : ASK_OFF_NOTICE;
 }
 
 export function settingsView(presets: PresetFile, machine: Preset, s: Settings): SettingsView {

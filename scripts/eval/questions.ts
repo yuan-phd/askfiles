@@ -43,12 +43,23 @@ export interface Question {
   notes: string;
 }
 
-/** A list cell: values separated by semicolons (ASCII or full-width), blanks dropped. */
+/**
+ * A list cell: values separated by semicolons (ASCII or full-width), blanks dropped. A backslash
+ * before a semicolon keeps it inside the value, for a section title that holds one.
+ */
 export function listOf(cell: string | undefined): string[] {
   return (cell ?? '')
-    .split(/[;；]/)
-    .map((s) => s.trim())
+    .split(/(?<!\\)[;；]/)
+    .map((s) => s.replace(/\\([;；])/g, '$1').trim())
     .filter(Boolean);
+}
+
+/**
+ * Marked [unsupported: reason] in its notes: run, but left out of every metric (a spreadsheet
+ * formula the split does not keep). docs/plan.md, Acceptance and stopping rules.
+ */
+export function isUnsupported(q: { notes?: string }): boolean {
+  return /\[unsupported:/i.test(q.notes ?? '');
 }
 
 /** Expected pages as numbers; a range such as 4-6 expands to 4, 5, 6. */

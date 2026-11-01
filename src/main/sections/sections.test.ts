@@ -1,13 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { chunkSections, foldEmptySections, splitToFit } from './chunk.js';
+import { chunkSections, foldEmptySections, splitLongByPage, splitToFit } from './chunk.js';
 import { directOutlineLevels, headingStyles, levelFromStyleName, sectionsFromHtml } from './docx.js';
 import { isAcceptableHeading } from './headings.js';
 import { isSupported, parseFile } from './index.js';
 import { parseMarkdown } from './markdown.js';
 import { encodePng, pdfPageImages } from './pdf-images.js';
-import { linesFromItems, marksFromFontSize, sectionsFromMarks, type Line } from './pdf.js';
+import { isGarbled, linesFromItems, marksFromFontSize, pageQuality, sectionsFromMarks, type Line } from './pdf.js';
 import { decodeText, parseCsv, parseCsvRows, sheetToText } from './xlsx.js';
 import { readZipEntry } from './zip.js';
 import type { Section } from './types.js';
@@ -484,5 +484,72 @@ describe('zip and PNG helpers', () => {
       [2, 1, undefined],
     ]);
     expect(pages[0]!.images[0]!.readUInt32BE(16)).toBe(1240);
+  });
+});
+
+describe('pageQuality', () => {
+  it('passes clean prose, contents leaders and tables of figures, and flags garbage', () => {
+    const prose = 'The Borrower develops a Project Procurement Strategy for each operation, e.g. a U.S. one.';
+    expect(isGarbled(pageQuality(prose.repeat(2)))).toBe(false);
+    const contents =
+      'Tool: Risk Management Quadrant . . . . . . . . . . . . . . . . 32\nAnnex 1 ............................ 40';
+    expect(isGarbled(pageQuality(contents.repeat(2)))).toBe(false);
+    expect(isGarbled(pageQuality('Total 2025 2026 48000 51000 12.5% 3/4 1,200 '.repeat(3)))).toBe(false);
+    const garbage = '\'\'. C"D7.I21C ...,,-omr<-l - .... --("-38rl(*l =--, ~|; x9#@ !!q %% ^^ Cl@ #r';
+    expect(pageQuality(garbage).wordShare).toBeLessThan(0.85);
+    expect(isGarbled(pageQuality(garbage))).toBe(true);
+    // Too short to judge.
+    expect(isGarbled(pageQuality('x9#@ !!q'))).toBe(false);
+    expect(pageQuality('员工每年享有带薪年假二十七天。').charShare).toBeGreaterThan(0.9);
+  });
+
+  it('finds no garbled page in a clean PDF', async () => {
+    const doc = await parseFile(path.join(FIXTURES, 'eval-s/corpus/it-handbook.pdf'));
+    expect(doc.ocrPages).toBeUndefined();
+  });
+});
+
+describe('splitLongByPage', () => {
+  const block = (page: number) => ({ text: `Text of page ${page}. `.repeat(60).trim(), page });
+  const long: Section = {
+    title: 'Operational Matters',
+    level: 2,
+    blocks: [1, 2, 3].map(block),
+    path: ['Bank', 'Operational Matters'],
+  };
+
+  it('splits a long section without sub-headings into one sub-section per page', () => {
+    const out = splitLongByPage([long], 400);
+    expect(out.map((s) => [s.title, s.level, s.path, s.lead])).toEqual([
+      [
+        'Operational Matters (page 1)',
+        3,
+        ['Bank', 'Operational Matters', 'Operational Matters (page 1)'],
+        ['Operational Matters'],
+      ],
+      ['Operational Matters (page 2)', 3, ['Bank', 'Operational Matters', 'Operational Matters (page 2)'], undefined],
+      ['Operational Matters (page 3)', 3, ['Bank', 'Operational Matters', 'Operational Matters (page 3)'], undefined],
+    ]);
+    expect(out[1]!.blocks).toEqual([block(2)]);
+    const chunks = chunkSections([{ ...long, path: undefined }], { maxChars: 400 });
+    expect([...new Set(chunks.map((c) => c.sectionTitle))]).toEqual([
+      'Operational Matters (page 1)',
+      'Operational Matters (page 2)',
+      'Operational Matters (page 3)',
+    ]);
+    expect(chunks[0]!.text.startsWith('Operational Matters\nOperational Matters (page 1)\n')).toBe(true);
+  });
+
+  it('leaves short and single-page sections alone, and splits one followed by sub-sections too', () => {
+    expect(splitLongByPage([long], 2000)).toEqual([long]);
+    const onePage = { ...long, blocks: [block(4), block(4), block(4)] };
+    expect(splitLongByPage([onePage], 400)).toEqual([onePage]);
+    const child: Section = { title: 'Child', level: 3, blocks: [block(4)] };
+    expect(splitLongByPage([long, child], 400).map((s) => s.title)).toEqual([
+      'Operational Matters (page 1)',
+      'Operational Matters (page 2)',
+      'Operational Matters (page 3)',
+      'Child',
+    ]);
   });
 });

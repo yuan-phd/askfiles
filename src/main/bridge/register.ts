@@ -152,6 +152,7 @@ export function registerBridge(ipc: IpcMainLike, h: BridgeHandlers): void {
         folder: null,
         libraryId: null,
         libraryName: null,
+        askNotice: null,
       };
     }
   });

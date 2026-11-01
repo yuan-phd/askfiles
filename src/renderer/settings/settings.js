@@ -39,7 +39,9 @@ function render(v) {
   const faster = v.models.faster;
   $('model-faster').dataset.unavailable = String(!faster);
   $('model-faster-detail').textContent = faster ? `(${faster.model})` : '(not available on this Mac)';
-  $('model-better-detail').textContent = `(${v.models.better.model})`;
+  $('model-better-detail').textContent = v.models.better.model
+    ? `(${v.models.better.model})`
+    : '(Ask is off on this Mac)';
   for (const r of document.querySelectorAll('input[name="model"]')) r.checked = r.value === v.values.answerModel;
   const current = v.values.contextLength ?? v.contextDefault;
   // Built once; later renders only move the check, so a clicked radio is never replaced under the pointer.

@@ -91,12 +91,71 @@ export function cutSection(text: string, cap: number, hitTexts: string[] = []): 
   return `${start > 0 ? '...' : ''}${text.slice(start, end).trim()}${end < text.length ? '...' : ''}`;
 }
 
+/** Folds text for a keyword test the way the browse index does (NFKC, lower case). */
+function fold(t: string): string {
+  return t.normalize('NFKC').toLowerCase();
+}
+
+/** Index of the part holding a vector hit, by its probe line; -1 when none does. */
+function partOf(parts: string[], hit: string): number {
+  const probe = probeOf(hit);
+  return probe ? parts.findIndex((p) => p.includes(probe)) : -1;
+}
+
+/**
+ * The passage of a long section: its matched sub-chunks (a vector hit, best first, then a keyword
+ * term, in document order), each with one neighbour on both sides, in document order without
+ * repeats, joined by blank lines, ... where parts are left out. Matched parts come first when the
+ * cap does not hold them all, neighbours after; with no match, the section's start. A section
+ * that fits wholeChars (twice the chunk maximum) and the cap is sent whole.
+ */
+export function assembleSection(
+  parts: string[],
+  o: { cap: number; wholeChars: number; hitTexts?: string[]; terms?: string[] },
+): string {
+  const whole = parts.join('\n\n');
+  if (whole.length <= Math.min(o.cap, o.wholeChars)) return whole;
+  const matched: number[] = [];
+  const add = (i: number) => {
+    if (i >= 0 && !matched.includes(i)) matched.push(i);
+  };
+  for (const h of o.hitTexts ?? []) add(partOf(parts, h));
+  const terms = (o.terms ?? []).map(fold).filter(Boolean);
+  if (terms.length) parts.forEach((p, i) => terms.some((t) => fold(p).includes(t)) && add(i));
+  if (!matched.length) return cutSection(whole, o.cap);
+  const order = [...matched, ...matched.flatMap((m) => [m - 1, m + 1])].filter((i) => i >= 0 && i < parts.length);
+  const chosen = new Set<number>();
+  // 5 is the separator or gap marker each part brings along.
+  let used = 0;
+  for (const i of order) {
+    if (chosen.has(i)) continue;
+    const cost = parts[i]!.length + 5;
+    if (chosen.size && used + cost > o.cap) continue;
+    chosen.add(i);
+    used += cost;
+  }
+  const idx = [...chosen].sort((a, b) => a - b);
+  let out = idx[0]! > 0 ? '...\n\n' : '';
+  idx.forEach((i, k) => {
+    if (k) out += i === idx[k - 1]! + 1 ? '\n\n' : '\n\n...\n\n';
+    out += parts[i]!;
+  });
+  if (idx[idx.length - 1]! < parts.length - 1) out += '\n\n...';
+  return out.length > o.cap ? cutSection(out, o.cap) : out;
+}
+
 export function toAnswerSection(
   doc: BrowseDocument,
   s: BrowseSection,
   cap: number,
   hitTexts: string[] = [],
+  o: { wholeChars?: number; terms?: string[] } = {},
 ): AnswerSection {
+  // Browse files from before version 3 have no parts; the window around the hit is the fallback.
+  const parts = Array.isArray(s.parts) && s.parts.length ? s.parts : null;
+  const text = parts
+    ? assembleSection(parts, { cap, wholeChars: o.wholeChars ?? cap, hitTexts, terms: o.terms })
+    : cutSection(s.text || s.title, cap, hitTexts);
   return {
     key: sectionKey(doc.id, s.index),
     documentId: doc.id,
@@ -109,7 +168,7 @@ export function toAnswerSection(
     pageStart: s.pageStart,
     pageEnd: s.pageEnd,
     pageLabel: pageLabelOf(s),
-    text: cutSection(s.text || s.title, cap, hitTexts),
+    text: text || s.title,
     fullLength: s.text.length,
   };
 }

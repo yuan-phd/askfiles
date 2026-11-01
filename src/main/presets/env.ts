@@ -23,7 +23,8 @@ export function presetEnv(preset: Preset, o: { ollamaBaseUrl: string }): EnvEntr
   return [
     ['LLM_PROVIDER', 'ollama'],
     ['OLLAMA_BASE_PATH', ollama],
-    ['OLLAMA_MODEL_PREF', preset.chatModel],
+    // A tier with Ask off names no chat model; upstream's own chat route is not used.
+    ...(preset.chatModel ? [['OLLAMA_MODEL_PREF', preset.chatModel] as const] : []),
     ['OLLAMA_MODEL_TOKEN_LIMIT', String(preset.contextLength)],
     ['EMBEDDING_ENGINE', 'ollama'],
     ['EMBEDDING_BASE_PATH', ollama],
@@ -58,7 +59,7 @@ export function workspaceSettings(preset: Preset): Record<string, string | numbe
 }
 
 export function presetHeader(preset: Preset): string {
-  return `# Preset ${preset.id} (${preset.label}): starting values, phase 2 replaces them.`;
+  return `# Preset ${preset.id} (${preset.label}): values measured in phase 2 (docs/plan.md, v1 result).`;
 }
 
 function formatLine([key, value]: EnvEntry): string {

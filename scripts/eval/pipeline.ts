@@ -7,14 +7,22 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   answer,
+  answerSplit,
   choose,
+  describeSplit,
+  splitQuestion,
   rerankerProcess,
   ensureReranker,
   ollamaChat,
+  ollamaEmbed,
+  ParagraphStore,
   NEAREST_COUNT,
   ranked,
+  rerankerOff,
   retrieve,
+  setFloor,
   upstreamVectorSearch,
+  type AnswerParams,
   type AnswerResult,
   type AnswerSection,
   type PipelineDeps,
@@ -23,24 +31,32 @@ import {
   type SourceCard,
 } from '../../src/main/answer/index.js';
 import { BrowseIndex, chunkReader } from '../../src/main/browse/index.js';
+import { sectionPath } from '../../src/main/answer/sections.js';
 import { createSourceResolver } from '../../src/main/watcher/index.js';
 import { readSectionText } from '../../src/main/watcher/section-docs.js';
 import {
   attributionOk,
   expectedSections,
   keyCoverage,
+  literalElements,
   sectionMatches,
   targetHit,
   type CitedRecord,
 } from './answer-metrics.js';
 import type { EvalConfig } from './config.js';
 import type { Library } from './library.js';
-import type { Question } from './questions.js';
+import { isUnsupported, type Question } from './questions.js';
 
 /** Context length when the config leaves contextTokens at 0, as the presets set it. */
 export const DEFAULT_CONTEXT = 8192;
 export const DEFAULT_COUNTS = [1, 2, 3, 4, 5, 6];
 export const DEFAULT_FLOORS = [0, 0.01, 0.05, 0.1, 0.2, 0.3, 0.5, 0.7];
+/** Without a reranker the floor is on vector similarity, where bge-m3 scores sit between about 0.3 and 0.8. */
+export const DEFAULT_VECTOR_FLOORS = [0, 0.3, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65];
+
+export function defaultFloors(params: Pick<AnswerParams, 'rerankerModel'>): number[] {
+  return rerankerOff(params) ? DEFAULT_VECTOR_FLOORS : DEFAULT_FLOORS;
+}
 
 export function runSettings(
   config: EvalConfig,
@@ -49,7 +65,7 @@ export function runSettings(
 ): RunSettings {
   const params = structuredClone(config.answer);
   if (o.count !== undefined) params.sectionCount[config.scope] = o.count;
-  if (o.floor !== undefined) params.rerankFloor[config.scope] = o.floor;
+  if (o.floor !== undefined) setFloor(params, config.scope, o.floor);
   return {
     params,
     scope: config.scope,
@@ -75,6 +91,8 @@ export function indexHash(config: EvalConfig, library: Pick<Library, 'records'>)
       p.rrfK,
       p.candidateSections,
       p.sectionCapChars,
+      // Only when on, so the hash of runs without it stays the same.
+      ...(p.documentAffinity ? ['documentAffinity'] : []),
     ],
   };
   return createHash('sha256').update(JSON.stringify(key)).digest('hex').slice(0, 16);
@@ -119,19 +137,42 @@ export async function buildPipeline(o: {
     readText: (l) => readSectionText(o.storageDir, l),
   });
   const repo = o.config.answer.rerankerModel;
-  await ensureReranker({ repo, modelsDir: o.config.rerankerDir, log: o.log });
-  const reranker = rerankerProcess({
-    transformersDir: path.join(o.root, 'upstream', 'server', 'node_modules', '@xenova', 'transformers'),
-    modelsDir: o.config.rerankerDir,
-    repo,
-    log: o.log,
-  });
+  let reranker: PipelineDeps['reranker'] = null;
+  if (!rerankerOff(o.config.answer)) {
+    await ensureReranker({ repo, modelsDir: o.config.rerankerDir, log: o.log });
+    reranker = rerankerProcess({
+      transformersDir: path.join(o.root, 'upstream', 'server', 'node_modules', '@xenova', 'transformers'),
+      modelsDir: o.config.rerankerDir,
+      repo,
+      log: o.log,
+    });
+  }
+  let paragraphs: ParagraphStore | null = null;
+  if (o.config.answer.paragraphSelection) {
+    // Index time for the eval: every long section embedded before the first question.
+    paragraphs = new ParagraphStore({
+      dir: path.join(o.workDir, 'paragraphs'),
+      model: o.config.embeddingModel,
+      minSectionChars: 2 * o.config.chunkMax,
+      embed: ollamaEmbed(() => o.ollamaUrl, o.config.embeddingModel),
+      log: o.log,
+    });
+    const t0 = performance.now();
+    let n = 0;
+    for (const d of index.listDocuments()) {
+      const doc = index.getDocument({ id: d.id });
+      if (doc) n += await paragraphs.ensure(doc);
+    }
+    o.log(`[paragraphs] ${n} paragraphs embedded in ${Math.round(performance.now() - t0)} ms`);
+  }
   return {
     vectorSearch: upstreamVectorSearch({ baseUrl: () => o.baseUrl, apiKey: o.apiKey, slug: o.library.slug }),
     resolveSources: (s) => resolver(s),
     index,
     reranker,
     chat: ollamaChat(() => o.ollamaUrl),
+    log: o.log,
+    paragraphs,
   };
 }
 
@@ -166,7 +207,7 @@ export interface SweepCell {
   nAbsent: number;
 }
 
-/** Target-section hit rate per section count and rerank floor, from cached retrievals only. */
+/** Target-section hit rate per section count and floor (rerank, or vector without a reranker), from cached retrievals only. */
 export function sweep(
   items: { q: Question; retrieval: Retrieval }[],
   config: EvalConfig,
@@ -179,6 +220,7 @@ export function sweep(
     for (const floor of floors) {
       const cell: SweepCell = { count, floor, hit: 0, n: 0, emptyAbsent: 0, nAbsent: 0 };
       for (const { q, retrieval } of items) {
+        if (isUnsupported(q)) continue;
         const s = runSettings(config, chunkMaxChars, { count, floor });
         const hit = targetHit(q, stage1Sections(q, retrieval, s));
         if (hit !== null) {
@@ -256,8 +298,27 @@ export async function answerOnce(
   retrieval: Retrieval,
   s: RunSettings,
   deps: PipelineDeps,
+  cacheDir?: string,
 ): Promise<AnswerRow> {
   const t0 = performance.now();
+  const split = s.params.decomposeQuestions ? splitQuestion(q.question) : null;
+  if (split) {
+    // Each part retrieves on its own question, from the cache like the whole questions.
+    deps.log?.(`[answer] decompose ${q.id}: ${describeSplit(split)}`);
+    let retrievalMs = 0;
+    try {
+      const result = await answerSplit(split, async (part, emit) => {
+        const r = cacheDir
+          ? (await cachedRetrieve(part.text, s, deps, cacheDir)).retrieval
+          : await retrieve(part.text, s, deps);
+        retrievalMs += r.timings.vectorMs + r.timings.keywordMs + r.timings.rerankMs;
+        return answer(part.text, r, choose(r, s), s, deps, emit);
+      });
+      return { result, error: '', totalMs: Math.round(retrievalMs + (performance.now() - t0)) };
+    } catch (e) {
+      return { result: null, error: (e as Error).message, totalMs: Math.round(performance.now() - t0) };
+    }
+  }
   try {
     const result = await answer(q.question, retrieval, choose(retrieval, s), s, deps);
     const t = retrieval.timings;
@@ -267,12 +328,37 @@ export async function answerOnce(
   }
 }
 
+/** The full text of the sections a question expects, from the browse index; empty when none is found. */
+export function expectedText(q: Question, index: Pick<BrowseIndex, 'listDocuments' | 'getDocument'>): string {
+  const want = expectedSections(q);
+  if (!want.length) return '';
+  const out: string[] = [];
+  for (const d of index.listDocuments()) {
+    const doc = index.getDocument({ id: d.id });
+    if (!doc) continue;
+    for (const s of doc.sections) {
+      const rec = { file: doc.title, path: sectionPath(doc, s), title: s.title };
+      if (want.some((w) => sectionMatches(w, rec))) out.push(s.text);
+    }
+  }
+  return out.join('\n\n');
+}
+
+/** Per question, the key elements coverage counts: those found word for word in the expected sections. */
+export function literalElementsOf(
+  questions: Question[],
+  index: Pick<BrowseIndex, 'listDocuments' | 'getDocument'>,
+): Map<string, { literal: string[]; missing: string[] }> {
+  return new Map(questions.map((q) => [q.id, literalElements(q, expectedText(q, index))]));
+}
+
 /**
- * The three metrics of one answer. A section_listing question answered with the no-answer state
- * is measured on the listed sections: target hit when they include the expected ones, coverage
- * of the key elements in their paths, attribution correct when the target is listed.
+ * The three metrics of one answer, coverage over literal when given (literalElementsOf). A
+ * section_listing question answered with the no-answer state is measured on the listed sections:
+ * target hit when they include the expected ones, coverage of the key elements in their paths,
+ * attribution correct when the target is listed.
  */
-export function answerMetrics(q: Question, row: AnswerRow) {
+export function answerMetrics(q: Question, row: AnswerRow, literal?: string[]) {
   const r = row.result;
   if (!r) return { targetHit: null, keyCoverage: null, attribution: null };
   if (q.category === 'section_listing' && r.notFound) {
@@ -287,7 +373,7 @@ export function answerMetrics(q: Question, row: AnswerRow) {
   const cited = r.cited.map(cardRecord);
   return {
     targetHit: targetHit(q, cited),
-    keyCoverage: r.notFound ? (keyCoverage(q, '') === null ? null : 0) : keyCoverage(q, r.text),
-    attribution: attributionOk(q, { refused: r.notFound, cited }),
+    keyCoverage: r.notFound ? (keyCoverage(q, '', literal) === null ? null : 0) : keyCoverage(q, r.text, literal),
+    attribution: attributionOk(q, { refused: r.notFound, answer: r.text, cited }),
   };
 }

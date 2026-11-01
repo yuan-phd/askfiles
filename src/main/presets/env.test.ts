@@ -29,6 +29,15 @@ function tmpFile(): string {
   return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'askfiles-env-')), 'server', '.env');
 }
 
+describe('server .env for the 8 GB tier, Ask off', () => {
+  it('names no chat model and keeps the rest', () => {
+    const tier8 = presets.tiers.find((t) => t.id === '8gb')!;
+    const keys = presetEnv(tier8, { ollamaBaseUrl: OLLAMA }).map(([k]) => k);
+    expect(keys).not.toContain('OLLAMA_MODEL_PREF');
+    expect(keys).toContain('EMBEDDING_MODEL_PREF');
+  });
+});
+
 describe('server .env for the 16 GB tier', () => {
   it('matches the fixture byte for byte after the process manager wrote the base file', () => {
     const file = tmpFile();
@@ -54,7 +63,7 @@ describe('server .env for the 16 GB tier', () => {
     const env = util.parseEnv(fs.readFileSync(file, 'utf8'));
     expect(env.JWT_SECRET).toBe('test-secret-1');
     expect(env.SIG_SALT).toBe('test-secret-3');
-    expect(env.OLLAMA_MODEL_PREF).toBe('qwen3:8b');
+    expect(env.OLLAMA_MODEL_PREF).toBe('hf.co/unsloth/Qwen3-14B-GGUF:Q3_K_M');
     expect(env.SERVER_PORT).toBeUndefined();
   });
 });

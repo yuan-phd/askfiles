@@ -18,7 +18,7 @@ import {
 import { parseRecords } from './csv.js';
 import type { SourceRecord } from './metrics.js';
 import { sweepTable, type SweepCell } from './pipeline.js';
-import type { Question } from './questions.js';
+import { isUnsupported, type Question } from './questions.js';
 import { readRun } from './results.js';
 
 const num = (v: string | undefined) => (v === undefined || v.trim() === '' ? null : Number(v));
@@ -40,6 +40,9 @@ export function metricRowsOf(csv: string, mode: string): MetricRow[] {
         attribution: bool(r.attribution_ok),
         firstTokenMs: num(r.first_token_ms),
         totalMs: r.error ? null : num(r.total_ms),
+        refused: bool(r.not_found),
+        unsupported: num(r.unsupported_sentences),
+        excluded: isUnsupported(r),
       };
     }
     const q = r as unknown as Question;
@@ -83,9 +86,11 @@ export function metricRowsOf(csv: string, mode: string): MetricRow[] {
       config: 'upstream',
       targetHit: refused ? targetHit(q, []) : targetHit(q, cited),
       keyCoverage: keyCoverage(q, refused ? '' : (r.answer ?? '')),
-      attribution: attributionOk(q, { refused, cited }),
+      attribution: attributionOk(q, { refused, answer: r.answer ?? '', cited }),
       firstTokenMs: num(r.first_token_ms),
       totalMs: r.error ? null : num(r.total_ms),
+      refused,
+      excluded: isUnsupported(r),
     };
   });
 }

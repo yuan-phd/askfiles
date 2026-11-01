@@ -20,7 +20,7 @@ import { applySets, loadConfig, redact, type EvalConfig } from './config.js';
 import { csvHeader, csvLine } from './csv.js';
 import { prepareLibrary, type ChunkInfo, type Library, type LibraryClient } from './library.js';
 import { describeSources, fileHit, pageHit, sectionHit, sectionRecall, type SourceRecord } from './metrics.js';
-import { listOf, loadQuestions, type Question } from './questions.js';
+import { isUnsupported, listOf, loadQuestions, type Question } from './questions.js';
 import {
   answerMetrics,
   answerOnce,
@@ -29,16 +29,21 @@ import {
   cardRecord,
   DEFAULT_COUNTS,
   DEFAULT_FLOORS,
+  DEFAULT_VECTOR_FLOORS,
+  defaultFloors,
   describeCards,
   expectedRank,
   indexHash,
+  literalElementsOf,
   runSettings,
   stage1Sections,
   sweep,
   sweepTable,
 } from './pipeline.js';
 import { ANSWER_COLUMNS, RESULT_COLUMNS, RETRIEVAL_COLUMNS } from './results.js';
-import { choose, type PipelineDeps, type Retrieval } from '../../src/main/answer/index.js';
+import { choose, floorOf, rerankerOff, type PipelineDeps, type Retrieval } from '../../src/main/answer/index.js';
+import type { BrowseIndex } from '../../src/main/browse/index.js';
+import { collectorOcr, createLibraryApi } from '../../src/main/watcher/index.js';
 import { targetHit } from './answer-metrics.js';
 import { startManaged, type Stack } from './stack.js';
 
@@ -54,7 +59,8 @@ const USAGE = `usage: npm run eval -- <corpus folder> <questions.csv> [options]
   --answer        stage 2: also run the model and score the answers (default: stage 1, retrieval only)
   --try spec      stage 2 configuration, repeatable: --try count=3,floor=0.1 (default: the config's scope values)
   --counts list   stage 1 sweep of section counts (default ${DEFAULT_COUNTS.join(',')})
-  --floors list   stage 1 sweep of rerank floors (default ${DEFAULT_FLOORS.join(',')})
+  --floors list   stage 1 sweep of rerank floors (default ${DEFAULT_FLOORS.join(',')}), or of vector
+                  floors with rerankerModel none (default ${DEFAULT_VECTOR_FLOORS.join(',')})
   --upstream      ask through the upstream chat route instead, as before the answer pipeline
   --corpus-label  name of the corpus recorded in run.json (default: corpus folder name)
   --out           run folder (default eval-runs/<time>-<corpus>-<config label>)`;
@@ -307,7 +313,7 @@ export async function main(argv: string[]): Promise<number> {
   const mode = values.upstream ? 'upstream' : values.answer ? 'pipeline-answer' : 'pipeline-retrieval';
   const tries = values.try!.map(parseTry);
   const counts = numberList(values.counts, DEFAULT_COUNTS, 'counts');
-  const floors = numberList(values.floors, DEFAULT_FLOORS, 'floors');
+  const floors = numberList(values.floors, defaultFloors(config.answer), 'floors');
   // A folder named corpus is labelled by its parent, so test/fixtures/eval-s/corpus becomes eval-s.
   const corpusLabel =
     values['corpus-label'] ??
@@ -390,17 +396,15 @@ export async function main(argv: string[]): Promise<number> {
     );
     save();
 
-    const removeDocuments = async (names: string[]) => {
-      const r = await fetch(`${stack!.baseUrl}/api/v1/system/remove-documents`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ names }),
-      });
-      if (!r.ok) log(`could not remove OCR upload ${names.join(', ')}: ${r.status}`);
-    };
+    // The app's OCR path: scanned pages go to the collector one by one, cached by file hash.
+    const ocr = collectorOcr({
+      api: createLibraryApi({ baseUrl: stack.baseUrl, apiKey }),
+      cacheDir: path.join(stack.storageDir, 'askfiles-eval-cache', 'ocr-pages'),
+      log,
+    });
     const library: Library = await prepareLibrary({
       client: client as unknown as LibraryClient,
-      removeDocuments,
+      ocr,
       config,
       corpusDir,
       storageDir: stack.storageDir,
@@ -528,7 +532,7 @@ async function runStages(o: Parameters<typeof runPipeline>[0], deps: PipelineDep
   run.indexHash = hash;
   run.retrievalCache = cacheDir;
   const base = runSettings(config, config.chunkMax);
-  const mark = { count: base.params.sectionCount[config.scope], floor: base.params.rerankFloor[config.scope] };
+  const mark = { count: base.params.sectionCount[config.scope], floor: floorOf(base.params, config.scope) };
 
   // Stage 1: retrieval once per question, cached; its rows go to retrieval.csv.
   const stage1File = path.join(o.outDir, o.answerStage ? 'retrieval.csv' : 'results.csv');
@@ -579,10 +583,24 @@ async function runStages(o: Parameters<typeof runPipeline>[0], deps: PipelineDep
   };
   o.save();
   console.log(
-    `\nTarget section hit rate in the selected sections, scope ${config.scope} (bold: the config's values)\n`,
+    `\nTarget section hit rate in the selected sections, scope ${config.scope}, ${rerankerOff(base.params) ? 'vector' : 'rerank'} floor (bold: the config's values)\n`,
   );
   console.log(sweepTable(cells, mark));
   if (!o.answerStage) return 0;
+
+  // Coverage counts only the key elements found word for word in the expected sections.
+  const literal = literalElementsOf(
+    questions,
+    deps.index as unknown as Pick<BrowseIndex, 'listDocuments' | 'getDocument'>,
+  );
+  const unmatched = questions
+    .map((q) => ({ id: q.id, missing: literal.get(q.id)?.missing ?? [] }))
+    .filter((x) => x.missing.length && !isUnsupported(questions.find((q) => q.id === x.id)!));
+  run.keyElementsWithoutLiteralMatch = Object.fromEntries(unmatched.map((x) => [x.id, x.missing]));
+  console.log(
+    `\nKey elements without a literal match in the expected section, left out of coverage: ${unmatched.length ? '' : 'none'}`,
+  );
+  for (const x of unmatched) console.log(`- ${x.id}: ${x.missing.join('; ')}`);
 
   // Stage 2: the model, per named configuration.
   const configs = (o.tries.length ? o.tries : [{}]).map((t) => ({
@@ -613,8 +631,8 @@ async function runStages(o: Parameters<typeof runPipeline>[0], deps: PipelineDep
     const s = runSettings(config, config.chunkMax, c);
     for (let pass = 1; pass <= config.passes; pass++) {
       for (const [i, { q, retrieval }] of items.entries()) {
-        const out = await answerOnce(q, retrieval, s, deps);
-        const m = answerMetrics(q, out);
+        const out = await answerOnce(q, retrieval, s, deps, cacheDir);
+        const m = answerMetrics(q, out, literal.get(q.id)?.literal);
         const r = out.result;
         if (out.error) errors++;
         metricRows.push({
@@ -626,6 +644,9 @@ async function runStages(o: Parameters<typeof runPipeline>[0], deps: PipelineDep
           attribution: m.attribution,
           firstTokenMs: r?.timings.firstTokenMs ?? null,
           totalMs: out.error ? null : out.totalMs,
+          refused: r ? r.notFound : null,
+          unsupported: r ? r.claims.filter((x) => x.unsupported).length : null,
+          excluded: isUnsupported(q),
         });
         const row: Record<string, unknown> = {
           run_id: o.runId,
@@ -648,7 +669,40 @@ async function runStages(o: Parameters<typeof runPipeline>[0], deps: PipelineDep
           prompt_tokens: r?.stats.promptTokens ?? '',
           completion_tokens: r?.stats.completionTokens ?? '',
           error: out.error,
+          verification: r?.verification
+            ? `${r.verification.sentences} sentences, ${r.verification.reattributed} re-attributed, ${r.verification.attributed} attributed, ${r.verification.unsupported} unsupported`
+            : '',
+          affinity: retrieval.affinity?.files.join('; ') ?? '',
+          follow_up: r?.followUp
+            ? `${r.followUp.given} of ${r.followUp.wanted} items, ${r.followUp.added ? 'added' : 'nothing added'}, ${r.followUp.ms} ms`
+            : '',
+          split: r?.split
+            ? `${r.split.how}, ${r.split.parts.length} parts, ${r.split.ms.join(' + ')} ms${
+                r.split.notFound.some(Boolean)
+                  ? `, not found: ${r.split.notFound
+                      .map((x, k) => (x ? k + 1 : 0))
+                      .filter(Boolean)
+                      .join(', ')}`
+                  : ''
+              }`
+            : '',
+          // The answer as the Ask page renders it: each claim, its [n], a muted mark when unsupported.
+          shown:
+            r && !r.notFound
+              ? r.claims
+                  .map(
+                    (x) =>
+                      x.text.replace(/\s+$/, '') +
+                      x.citations.map((n) => `[${n}]`).join('') +
+                      (x.unsupported ? ' (no source supports this sentence)' : '') +
+                      (/\s+$/.exec(x.text)?.[0] ?? ' '),
+                  )
+                  .join('')
+                  .trim()
+              : '',
+          hedges_dropped: r?.hedgesDropped?.join(' | ') ?? '',
           cited_json: r?.cited.length ? JSON.stringify(r.cited.map(cardRecord)) : '',
+          considered_json: r?.considered.length ? JSON.stringify(r.considered.map(cardRecord)) : '',
         };
         fs.appendFileSync(resultsFile, csvLine(ANSWER_COLUMNS.map((k) => row[k])));
         log(

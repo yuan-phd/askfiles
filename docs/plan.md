@@ -118,13 +118,13 @@ Outcome: one preset per RAM tier, chosen from measured results, with a known rat
 
 **Answer pipeline** (Session L; docs/app.md, Answer pipeline; docs/eval.md for the tuning loop)
 
-Answer scope maps to the number of sections the model reads and the lowest rerank score a section needs. Starting values, the same in every tier; phase 2 tunes them with the stage 1 sweep of the eval. Read through the bridge from the settings store Session K adds; Balanced until it exists.
+Answer scope maps to the number of sections the model reads and the lowest score a section needs: the rerank score with a reranker, the vector similarity of its best sub-chunk without one (rerankerModel none, every tier since 2026-10-30 because onnxruntime-node crashes on the owner's Mac). Read through the bridge from the settings store Session K adds. Values in every tier since 2026-10-31, measured on the owner's first corpus (Retrieval tuning below); the rerank floors are the starting values and apply only when a reranker is configured again.
 
-| Answer scope | Sections (sectionCount) | Rerank floor (rerankFloor) |
-| --- | --- | --- |
-| Strict | 2 | 0.5 |
-| Balanced | 3 | 0.1 |
-| Broad | 5 | 0.01 |
+| Answer scope | Sections (sectionCount) | Vector floor (vectorFloor) | Rerank floor (rerankFloor) | Stage 1 target section hit |
+| --- | --- | --- | --- | --- |
+| Strict | 3 | 0.6 | 0.5 | 67% (6/9) |
+| Balanced | 5 | 0.55 | 0.1 | 78% (7/9) |
+| Broad | 6 | 0.5 | 0.01 | 89% (8/9) |
 
 Reranker comparison on the fixture corpora (test/fixtures/eval-s and eval-l, 13 answerable questions in all, all-minilm embedder, CJK bypass off, 8 candidate sections), 2026-10-30, measured in the cloud container (4 vCPU x86, Linux, while the stack ran beside it). Target section hit is the share of answerable questions whose expected sections were all among the selected sections, at floor 0:
 
@@ -157,7 +157,237 @@ The runner is 3 to 4 times slower than the 4 vCPU Linux container on these model
 
 **Pass criteria to aim for** (adjust after the first run): 80 percent correct on single fact and table questions at the 16 GB tier, 90 percent correct refusals on unrelated questions, 70 percent on related-but-absent questions, expected section listed on 80 percent of section listing questions, citation correct whenever the answer is correct. Reported separately for corpus S and corpus L.
 
+### Retrieval tuning, 2026-10-31: 32 GB tier, MacBook Pro (MacBookPro18,2, Apple M1 Max, 64 GB, macOS 14.8.5)
+
+Corpus: the owner's first test library (12 files: 8 digital PDFs, 1 scanned PDF, 2 Word files, 1 macro workbook; 1262 chunks, embedded in 130 s), ten questions (~/AskFiles-eval/questions.csv, outside the repository; 9 answerable, 1 absent_related). qwen3:14b Q4_K_M and bge-m3:567m F16 on Ollama 0.40.11, reranker off (rerankerModel none), chunk maximum 2000, context 8192. UPSTREAM_VERSION v1.19.0; base commit 616b5e17 with the branch local/retrieval-tuning changes (the commit that adds this record). Run folders in ~/AskFiles-eval/runs.
+
+Changes measured against the run of 2026-10-30 (same corpus and questions): fusion by best sub-chunk with a tie-breaker of at most 10 percent instead of the sum (Q02 and Q05: the target was first in both lists but fourth to sixth after summing); passages assembled from the matched sub-chunks and their neighbours instead of one window around the best hit (Q01: the effective date fell outside the window); long sections without sub-headings split by page (the nine-page cover sections of the Policy, Directive and Procedure); garbled PDF pages replaced by OCR (26 of 50 pages of the scanned file; the JBIG2 scans gave no page image at all until pdfPageImages passed wasmUrl, a bug since the pdfjs-dist 6 update); a stricter not-found rule in the prompt; attribution now requires the cited sections to hold the key elements the answer states. Q01, Q04 and Q08 expect the new page sections; their facts are the same.
+
+Stage 1, target section hit rate over the 9 answerable questions, 2026-10-30 before the arrow (->), 2026-10-31 after (counts 4, 6 and 8 only on 2026-10-31):
+
+| Sections \ vector floor | 0 | 0.3 | 0.4 | 0.45 | 0.5 | 0.55 | 0.6 | 0.65 |
+|---|---|---|---|---|---|---|---|---|
+| 2 | 33 -> 56% | 33 -> 56% | 33 -> 56% | 33 -> 56% | 33 -> 56% | 33 -> 56% | 44 -> 56% | 44 -> 56% |
+| 3 | 44 -> 67% | 44 -> 67% | 44 -> 67% | 44 -> 67% | 44 -> 67% | 44 -> 67% | 56 -> 67% | 56 -> 67% |
+| 4 | 78% | 78% | 78% | 78% | 78% | 78% | 78% | 67% |
+| 5 | 78 -> 78% | 78 -> 78% | 78 -> 78% | 78 -> 78% | 78 -> 78% | 89 -> 78% | 89 -> 78% | 67 -> 67% |
+| 6 | 89% | 89% | 89% | 89% | 89% | 89% | 89% | 78% |
+| 8 | 100% | 100% | 100% | 100% | 100% | 89% | 89% | 78% |
+
+The 89 percent of 5 / 0.55 on 2026-10-30 counted a Q08 hit on the old garbled section (pages 7 and 8, from the scan's bad text layer); the page 7 section after OCR ranks eighth. Q04 needs six sections now: the Directive's page 7 ranks sixth behind its definitions page. The absent question gets sections at every floor below 0.65 (the template is on topic). Presets: Balanced is the best of the original grid (2, 3, 5 sections), 5 / 0.55, inside the 0 to 0.6 plateau; Strict one step tighter, 3 / 0.6; Broad one step looser, 6 / 0.5. Eight sections reach 100 percent in stage 1 but were not run through the model and exceed the 6656 token source budget at full section size.
+
+Stage 2 at 5 sections, vector floor 0.55, two passes; latency is pass 1 (pass 2 repeats the prompts and Ollama answers from its prompt cache, first token about 0.2 s):
+
+| Run | Target section cited | Key element coverage | Attribution (new rule) | Median first token / total, pass 1 | Median prompt tokens |
+| --- | --- | --- | --- | --- | --- |
+| 2026-10-30 | 56% (10/18) | 56% | 55% (11/20); 70% under the old rule | 23.1 s / 27.0 s | 4088 |
+| 2026-10-31 | 67% (12/18) | 64% | 60% (12/20) | 14.9 s / 20.3 s | 2789 |
+| 2026-10-31, firmer not-found wording (not kept) | 44% (8/18) | 47% | 60% (12/20) | 14.9 s / 17.5 s | 2830 |
+
+Per question, 2026-10-31 (pass 1; both passes agree): Q01 effective date found (was not found); Q02 cites the Standstill Period (was a Request for Bids section); Q03 right section, attribution fails because the Contents page is cited too; Q04 cites the Policy page and the Directive's page 3, not page 7; Q05 and Q06 correct; Q07 says the formula is not in the sources (true: the split keeps cached values only) without the marker; Q08 not found, the page 7 OCR is poor (SUBJECT read as SETRITN; the scan is about 100 dpi); Q09 SMART and the signing rule right, the Contract Management Plan section was selected but not cited; Q10 states the placeholders correctly in its own words instead of the marker, so the harness scores it false. The firmer wording (start with the marker, never explain in own words, one example) made Q10 correct but refused Q03, Q04 and Q07, whose one missing part (a page number, a formula) is not the whole question.
+
+### Acceptance and stopping rules
+
+Recorded 2026-10-31. They govern every tuning round from round 1 on.
+
+**Two fixed sets.** ~/AskFiles-eval/questions-v2.csv is the tuning set. ~/AskFiles-eval/questions-check.csv is the check set: never used for tuning, run once at the end of every round. Both stay outside the repository and on the owner's corpus.
+
+**Gating thresholds**, on both sets:
+
+| Metric | Threshold |
+| --- | --- |
+| Right section cited | at least 90 percent |
+| Attribution | at least 90 percent |
+| Key element coverage | at least 85 percent |
+| Median total latency | at most 20 s |
+| False refusals: answerable questions returned not-found | at most 5 percent |
+| False answers: absent questions given an answer | at most 10 percent |
+
+cross_document is reported without a threshold. Formula questions (a spreadsheet formula the split does not keep; marked [unsupported: formula] in notes) are marked unsupported and excluded from every metric. The two abstention figures replace the single correct-abstention figure.
+
+**Round rules.** One class of change per round. The results of both sets are appended to the round table below with the round number and the change. Any gating metric falling more than 3 points on either set reverts the whole round. Two consecutive rounds with less than 3 points gain on the tuning set stop the work.
+
+**Variance band** (from round 6 on, recorded 2026-10-31). The kept configuration was run three times on all three sets; a change counts as real only when it falls outside the min to max range of those three runs, and the 3 point revert rule still applies. The band on qwen3:14b q4_K_M, context 8192, Balanced, verifyCitations on: tuning set coverage 73.5 to 74.3 percent (spread 0.8), median 18.3 to 18.5 s (0.3), every other gating metric identical in all three runs; check set identical in every metric, median 14.6 to 14.7 s; absent set 0 of 10 false answers in all three, median 12.1 to 12.2 s. With temperature 0.1 and Ollama restarted before every run the answers barely move: only Q04 (cross_document, attribution), Q17 and Q22 (coverage) changed between the runs. A band this narrow means one question is outside it, so a round's per-question changes are listed and judged with it.
+
+**Stop** when both sets meet every threshold, or after round 4, whichever comes first.
+
+| Round | Change | Set | Right section cited | Attribution | Key element coverage | Median total | False refusals | False answers | Kept |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 0 | Baseline: single mode, Balanced 5 / 0.55, scored with the round 1 harness rules | tuning | 92% (23/25) | 70% (19/27) | 55% | 18.3 s | 4% (1/25) | 50% (1/2) | baseline |
+| 0 | same | check | 80% (8/10) | 71% (10/14) | 33% | 14.6 s | 0% (0/10) | 0% (0/4) | baseline |
+| 1 | Quote-grounded answering (answerMode quoted, extraction N 6; N 8 gave the same quality and 28.1 s on the tuning set) | tuning | 84% (21/25) | 63% (17/27) | 41% | 23.6 s | 12% (3/25) | 50% (1/2) | no: cited -8, attribution -7, coverage -14 points |
+| 1 | same | check | 80% (8/10) | 71% (10/14) | 28% | 19.9 s | 20% (2/10) | 0% (0/4) | no |
+| 0' | Baseline rerun before round 2: single mode, all switches off, scored with the round 2 harness (coverage over literal key elements only) | tuning | 92% (23/25) | 70% (19/27) | 81% | 18.3 s | 4% (1/25) | 50% (1/2) | baseline |
+| 0' | same | check | 80% (8/10) | 71% (10/14) | 76% | 14.6 s | 0% (0/10) | 0% (0/4) | baseline |
+| 2 | Citation verification in code (verifyCitations, overlap 0.5) | tuning | 92% (23/25) | 70% (19/27) | 81% | 18.3 s | 4% (1/25) | 50% (1/2) | yes: no metric fell; gain 0 points |
+| 2 | same | check | 90% (9/10) | 71% (10/14) | 76% | 14.6 s | 0% (0/10) | 0% (0/4) | yes |
+| 2' | New baseline: round 2 (verifyCitations) on the repaired answer key | tuning | 92% (23/25) | 85% (23/27) | 74% | 18.3 s | 4% (1/25) | 50% (1/2) | baseline |
+| 2' | same | check | 90% (9/10) | 79% (11/14) | 53% | 14.6 s | 0% (0/10) | 0% (0/4) | baseline |
+| 3 | Paragraph-level selection by embeddings (paragraphSelection), on round 2 | tuning | 88% (22/25) | 85% (23/27) | 75% | 15.0 s | 4% (1/25) | 50% (1/2) | no: cited -4 points |
+| 4 | Structured abstention (verdictLine), on round 2 | tuning | 84% (21/25) | 85% (23/27) | 72% | 17.4 s | 8% (2/25) | 0% (0/2) | no: cited -8 points, false refusals 8 percent |
+| 5 | Answer style (promptVariant complete: every condition, exception, step and figure, in the sources' own terms) and each citation of a sentence must pass verification on its own, on round 2 | tuning | 88% (22/25) | 74% (20/27) | 79% | 18.4 s | 4% (1/25) | 100% (2/2) | no: coverage +5 but cited -4, attribution -11, false answers +50 points |
+| 6 | Variance band: round 2' configuration three times (qwen3:14b-q4_K_M, context 8192), min to max | tuning | 92% (23/25) | 85% (23/27) | 74% (73.5 to 74.3) | 18.3 to 18.5 s | 4% (1/25) | 50% (1/2) | baseline |
+| 6 | same | check | 90% (9/10) | 79% (11/14) | 53% | 14.6 to 14.7 s | 0% (0/10) | 0% (0/4) | baseline |
+| 6 | same | absent | - | - | - | 12.1 to 12.2 s | - | 0% (0/10) | baseline |
+| 7 | Document affinity (documentAffinity: file names, cover titles and type words in the question raise that file's sections 1.5 times, restrict verification to a single named file; file and type in source headers; same-title sources chosen by overlap) | tuning | 96% (24/25) | 85% (23/27) | 77% | 15.9 s | 4% (1/25) | 100% (2/2) | no: false answers +50, check set cited -10, attribution -8, coverage -7 |
+| 7 | same | check | 80% (8/10) | 71% (10/14) | 46% | 17.1 s | 0% (0/10) | 0% (0/4) | no |
+| 7 | same | absent | - | - | - | 12.4 s | - | 0% (0/10) | no |
+| 8a | Conditional completeness, prompt half (enumerateWhenAsked: set questions are told to count the items in the cited sources and give every one with its citation), on round 2' | tuning | 92% (23/25) | 89% (24/27) | 74% | 18.4 s | 4% (1/25) | 0% (0/2) | yes: attribution +4 and false answers -50, both outside the band; nothing fell |
+| 8a | same | check | 90% (9/10) | 79% (11/14) | 53% | 13.9 s | 0% (0/10) | 0% (0/4) | yes |
+| 8a | same | absent | - | - | - | 12.5 s | - | 0% (0/10) | yes |
+| 8c | 8a plus the follow-up check (enumerateFollowUp: a stated count with fewer items enumerated makes one more call for the missing ones) | tuning | 92% (23/25) | 89% (24/27) | 73% | 18.3 s | 4% (1/25) | 0% (0/2) | no: no gain; fired once and added nothing usable |
+| 8c | same | check | 90% (9/10) | 79% (11/14) | 53% | 14.4 s | 0% (0/10) | 0% (0/4) | no |
+| 8c | same | absent | - | - | - | 12.5 s | - | 0% (0/10) | no |
+| 9a | No summarizing (noSummarizing: one rule on every question in place of the enumerateWhenAsked set rule: do not summarize, merge or group; state each listed item separately with its citation; give every member of a set), on 8a | tuning | 88% (22/25) | 78% (21/27) | 78% | 18.4 s | 4% (1/25) | 50% (1/2) | no: coverage +4, but attribution -11, cited -4 and false answers +50 (Q10 answered again) |
+| 9a | same | check | 90% (9/10) | 71% (10/14) | 51% | 13.6 s | 0% (0/10) | 0% (0/4) | no: attribution -8, coverage -2 |
+| 9a | same | absent | - | - | - | 11.2 s | - | 0% (0/10) | no |
+| 9b | Question decomposition (decomposeQuestions: split only on explicit structure, the whole pipeline per part, answers merged under lead-ins), on 9a | tuning | 92% (23/25) | 74% (20/27) | 78% | 19.9 s | 4% (1/25) | 50% (1/2) | no: split questions 59 to 58 percent coverage against 9a, attribution -4 more |
+| 9b | same | check | 90% (9/10) | 71% (10/14) | 51% | 16.4 s | 0% (0/10) | 0% (0/4) | no: split questions unchanged against 9a |
+| 9b | same | absent | - | - | - | 11.3 s | - | 0% (0/10) | no: no absent question splits |
+| 9b' | decomposeQuestions on 8a, without 9a (run because 9a was reverted, so 9b alone could not be adopted) | tuning | 96% (24/25) | 85% (23/27) | 75% | 19.6 s | 4% (1/25) | 0% (0/2) | no: split questions 55 percent coverage as in 8a, attribution -4 (Q25) |
+| 9b' | same | check | 90% (9/10) | 71% (10/14) | 55% | 16.6 s | 0% (0/10) | 0% (0/4) | no: split questions 70 to 76 percent coverage, but attribution -8 (Q38) |
+| 9b' | same | absent | - | - | - | 12.5 s | - | 0% (0/10) | no |
+
+Round 1 notes (2026-10-31, same Mac, corpus and models as the retrieval tuning above; one pass per question; run folders ~/AskFiles-eval/runs/r1-*). Gated figures leave out cross_document (tuning set: single 0/2, quoted 1/2 cited) and the formula questions Q07 and Q41. Key element coverage counts the answer key's elements as written; over only the elements found word for word in the expected section it was 81 percent (single) and 68 percent (quoted) on the tuning set. The harness changes of round 1 (normalization of dashes, quotes, broken words and percent ranges; question-copied phrases left out of attribution; false refusals and false answers) apply to every row above. Quoted mode is kept as an option (answerMode, default single) and not used in any preset. Its causes on the tuning set: 8 selection cuts (the extraction returned no verifiable excerpt of the expected section, or not the sentences holding the answer), 7 model errors, 1 retrieval miss, 1 abstention error (Q10). Its table-of-contents filter also flags three table or sheet sections whose lines end in numbers (Initial Technical Score, Final Weighted Technical Score, Foreign Currency Summary page), which took Q40's expected section out of the extraction. The extraction call alone takes 4 to 29 s. The check-set N 8 run followed the N 6 run on the same questions and Ollama reused cached prompt prefixes, so its 9.1 s median is not comparable. Round count: 1 of 4; round 1 gained nothing on the tuning set (first round under 3 points).
+
+Round 2 notes (2026-10-31, same Mac, corpus and models; one pass per question; Ollama restarted before every run so no prompt prefix came from its cache; run folders ~/AskFiles-eval/runs/r0-*, r2-*). Two harness and filter fixes came first and apply to rows 0' and 2: key element coverage counts only the elements found word for word in the expected section after normalization (the harness prints the others before stage 2: 17 of 27 tuning questions and 10 of 11 check questions have at least one), and the table-of-contents filter of quoted mode needs dot leaders or a Contents title. Claims were also split wrongly: a full stop and its space arriving in two streamed pieces did not end a sentence, so most answers counted as one sentence and unsupported sentences were undercounted (round 0' re-parsed: 0.28 per answer on the tuning set, 0.70 on the check set, against 0.24 and 0.30 with verifyCitations). Verification threshold 0.5 from the round 1 answers: 41 of 44 cited sentences share at least half their content tokens with the source they cite; the three below are remarks about the sources. In round 2 no tuning sentence was re-attributed; verification cited uncited sentences to a source in 4 tuning and 3 check answers and marked 8 and 5 sentences unsupported. The check-set gain is Q39, whose four uncited sentences went to the expected section. Attribution did not move because of the answer key, not the citations: in 5 of the 7 remaining tuning failures the answer states no key element word for word (Q13, Q18, Q24, Q27 none, Q25 only one), which attribution requires; Q03 cites a second, correct section for the tool's location. Round count: 2 of 4; rounds 1 and 2 both gained under 3 points on the tuning set, so the work stops by the round rules. paragraphSelection and verdictLine are built and unit tested, off in every preset and not measured. Presets: verifyCitations on.
+
+Stop overridden once (owner, 2026-10-31): rounds 1 and 2 were measured against key elements that are paraphrases, so attribution and coverage could not move; the round cap of 4 stays. Before rounds 3 and 4 the answer key was repaired: every key element without a literal match in its expected section was replaced by the shortest literal phrase of the sentence that states the same fact (~/AskFiles-eval/questions-v3.csv and questions-check-v2.csv; the old files are kept). 67 elements were replaced; 12 stay as written and out of coverage because no sentence in the expected section states them: page numbers from the file (Q29, Q34), OCR that does not hold the field (Q08, Q34), section numbers found only in the heading path (Q36, Q37), and computed or inferred values (Q11, Q39, Q40). Round 2 on the repaired sets is the new baseline (row 2').
+
+Rounds 3 and 4 notes (2026-10-31, run folders ~/AskFiles-eval/runs/b2-*, r3-*, r4-*; Ollama restarted before every run). The check set was run only for the baseline, since neither round was kept. Round 3: 1078 paragraphs from 36 sections longer than 4000 characters, embedded in 30 s with bge-m3; 13 of 30 questions had at least one selected section cut to paragraphs, and their prompts fell from 3072 to 2663 tokens on average (all questions: mean 2544 to 2361, median 2722 to 2521); median total 18.3 to 15.0 s. The lost point is Q14: the same answer text cited Debriefing by the Borrower instead of the section that holds paragraph 5.88. Round 4: Q10 now abstains (false answers 50 to 0 percent), but Q03, answerable, got NOT_FOUND, and Q14 again cited the wrong section; the round needed false refusals within 5 percent. Both one pass per question, so a single question is 4 points; the Q14 citation changed between runs with identical answer text, which points at run-to-run variance as much as at the switches. Remaining failures on the repaired tuning set are mostly coverage: answers paraphrase the literal phrases (14 of the 15 model errors in round 2' include a coverage miss), retrieval misses Q04 (fused rank 6) and Q08 (rank 8). Round count: 4 of 4; the work stops. Presets: verifyCitations on, paragraphSelection and verdictLine off.
+
+Round 5 (2026-10-31), approved by the owner as one extra round under the same rules; kept only if coverage rises by at least 3 points and no gating metric falls by more than 3. Run folder ~/AskFiles-eval/runs/r5-v3. Two rules added after the citation rule: name every condition, exception, step and figure in the cited sources that bears on the question; use the sources' own terms, names and numbers. Verification was tightened in the same round: of a sentence with several citations only those passing 0.5 on their own stay, the rest dropped and logged (2 citations dropped over the 30 questions). Coverage rose 74 to 79 percent, but Q30 (absent) answered that the date is not specified instead of abstaining, Q14 again cited the wrong section, attribution was lost on Q14, Q18 and Q30 and gained on Q04. Not kept, so the check set was not run; the tightening was taken out again and promptVariant complete stays an option no preset uses.
+
+Measurements on the round 2' configuration (2026-10-31, repaired sets, Ollama restarted before every run; run folders m8b-*, m27b-*, broad-v3):
+
+| Model or scope | Set | Right section cited | Attribution | Key element coverage | Median total | False refusals | False answers |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| qwen3:14b, Balanced (2') | tuning | 92% (23/25) | 85% (23/27) | 74% | 18.3 s | 4% (1/25) | 50% (1/2) |
+| qwen3:8b, Balanced | tuning | 84% (21/25) | 63% (17/27) | 72% | 8.8 s | 4% (1/25) | 100% (2/2) |
+| qwen3.8:27b, Balanced | tuning | 92% (23/25) | 81% (22/27) | 79% | 38.1 s | 8% (2/25) | 0% (0/2) |
+| qwen3:14b, Broad 6 / 0.5 | tuning | 92% (23/25) | 81% (22/27) | 76% | 20.3 s | 4% (1/25) | 50% (1/2) |
+| qwen3:14b, Balanced (2') | check | 90% (9/10) | 79% (11/14) | 53% | 14.6 s | 0% (0/10) | 0% (0/4) |
+| qwen3:8b, Balanced | check | 90% (9/10) | 71% (10/14) | 50% | 7.8 s | 0% (0/10) | 25% (1/4) |
+| qwen3.8:27b, Balanced | check | 90% (9/10) | 71% (10/14) | 57% | 29.1 s | 10% (1/10) | 0% (0/4) |
+
+qwen3:8b against 14b: half the latency, but two cited sections lost (Q13, Q23), attribution lost on Q13, Q18, Q23, Q25, Q26, Q30 and Q44 (gained on Q04), and both absent_related questions of the tuning set plus Q44 of the check set answered instead of abstaining. qwen3.8:27b (no plain Qwen3 model above 14b is installed; qwen3.6:35b is also present) adds coverage and abstains on Q10 but doubles the median past 20 s and refuses an answerable question on each set. Broad adds 460 prompt tokens per question and 2 s for no gain in cited sections.
+
+Quantization and context matrix (2026-10-31, measurement only, no pipeline or preset change; round 2' configuration: verifyCitations on, Balanced 5 / 0.55, qwen3:14b; Ollama 0.40.11 restarted before every run; run folders ~/AskFiles-eval/runs/x-<quant>-<context>-<set>). Each configuration ran the tuning set (questions-v3.csv), the check set (questions-check-v2.csv) and a new absent set (questions-absent.csv), one pass per question. Models: q4_K_M is the library tag qwen3:14b-q4_K_M (digest bdbd181c33f2, the same as qwen3:14b, 9276198565 bytes); the library has no q4_K_S or q3_K_M tag and the official Qwen GGUF repository has neither, so both come from hf.co/unsloth/Qwen3-14B-GGUF:Q4_K_S (0ead9e0f1a13, 8573478436 bytes) and :Q3_K_M (63e5e1881899, 7321315876 bytes), which carry Unsloth's own chat template, so a difference between the rows is not only the quantization.
+
+The absent set holds 10 questions, Q46 to Q50 absent_related (close to a real section, with the likely false citation in the notes) and Q51 to Q55 absent_unrelated. It is provisional: a full negative search of the 12 original files has not been done. False answers count all 16 absent questions (Q10, Q30, Q42 to Q45 and the 10 new ones). Cited, attribution, coverage and false refusals are tuning and check sets together, without cross_document and the formula questions Q07 and Q41, as in the rows above. Model memory is the size /api/ps reports for the chat model alone (weights plus KV cache, all on the GPU), measured once per configuration after the runs; the footprint is the peak of top's MEM for the Ollama and llama-server processes, sampled every 3 s during the runs, which leaves out the memory-mapped weights. The /api/ps sum the sampler took during the runs also counts the embedding model (about 0.6 GiB), and in the first run it still saw models loaded before the restart, so it is not used.
+
+| Run | Right section cited | Attribution | Key element coverage | False refusals | False answers (16 absent) | Median total, all sets / answerable | Chat model in memory | Peak process footprint |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| q4_K_M, 8192 (baseline) | 91% (32/35) | 83% (34/41) | 68% | 3% (1/35) | 6% (1/16) | 14.9 / 16.6 s | 9.17 GiB | 10.2 GiB |
+| q4_K_M, 4096 | 86% (30/35), -6 | 80% (33/41), -2 | 66%, -2 | 6% (2/35), +3 | 6% (1/16), 0 | 12.3 / 13.1 s, -2.6 | 8.40 GiB, -0.77 | 8.6 GiB |
+| q4_K_S, 8192 | 91% (32/35), 0 | 80% (33/41), -2 | 69%, +1 | 3% (1/35), 0 | 6% (1/16), 0 | 14.5 / 15.1 s, -0.4 | 8.52 GiB, -0.65 | 9.3 GiB |
+| q4_K_S, 4096 | 86% (30/35), -6 | 76% (31/41), -7 | 66%, -2 | 6% (2/35), +3 | 6% (1/16), 0 | 12.2 / 12.6 s, -2.7 | 7.74 GiB, -1.43 | 8.5 GiB |
+| q3_K_M, 8192 | 91% (32/35), 0 | 80% (33/41), -2 | 68%, 0 | 3% (1/35), 0 | 6% (1/16), 0 | 15.9 / 16.7 s, +1.0 | 7.45 GiB, -1.72 | 9.3 GiB |
+| q3_K_M, 4096 | 86% (30/35), -6 | 78% (32/41), -5 | 64%, -4 | 6% (2/35), +3 | 6% (1/16), 0 | 12.6 / 13.3 s, -2.3 | 6.67 GiB, -2.50 | 8.5 GiB |
+
+Questions whose outcome differs from the baseline in any run:
+
+| Question | Category | Change against the baseline |
+| --- | --- | --- |
+| Q04 | cross_document (not gated) | attribution no to yes in all five other runs |
+| Q09 | cross_document (not gated) | q4_K_M 4096: cited no to yes; q4_K_S 8192: cited no to yes, coverage 0.86 to 1.00; q4_K_S 4096: attribution yes to no |
+| Q14 | single_fact | q4_K_S 8192: coverage 0.60 to 0.40 |
+| Q17 | middle_of_long_doc | coverage 0.80 to 0.60 (q4_K_M 4096), to 0.40 (q4_K_S 4096, q3_K_M 4096) |
+| Q18 | middle_of_long_doc | coverage 0.60 to 0.80 in all five; attribution yes to no in q4_K_S 4096 and q3_K_M 8192 |
+| Q25 | table_number | coverage 0.17 to 0.33 in q4_K_S and q3_K_M at both contexts; q3_K_M 4096: attribution yes to no |
+| Q26 | single_fact | q3_K_M 8192: coverage 0.20 to 0.40 |
+| Q29 | single_fact | q4_K_S at both contexts: attribution yes to no |
+| Q31 | single_fact | every 4096 run: cited yes to no |
+| Q32 | single_fact | every 4096 run: refused (NOT_IN_SOURCES), so cited, attribution and coverage 0.75 to 0 |
+| Q36 | middle_of_long_doc | coverage 0.60 to 0.80 (q4_K_S, both contexts), to 0.40 (q3_K_M, both contexts) |
+| Q38 | middle_of_long_doc | coverage 0.67 to 0.50 (q4_K_S 8192, q3_K_M at both contexts) |
+| Q40 | table_number | q3_K_M at both contexts: coverage 0.40 to 0.20 |
+
+Every run answers Q10 (the only false answer) and refuses Q08 (OCR, retrieval rank 8); all 10 new absent questions abstain in all six runs. Context 4096 is the larger effect: the same three questions change in every quantization, and the cause is the section budget, not the model. Q32's Price Adjustment section is sent with 3189 characters at 8192, the 1.0 factor at character 2993; at 4096 it is cut to 1521 characters and the model abstains. 4096 saves 2.3 to 2.7 s median and 0.77 GiB of KV cache and costs 6 points cited and one more false refusal. At 8192 q4_K_S and q3_K_M hold the gated metrics within 2 points of q4_K_M, all from single-question changes (Q18, Q29), and save 0.65 and 1.72 GiB; q3_K_M is 1 s slower. One pass per question, so one question is 3 points on cited and 2 to 3 on attribution, and the per-question changes of the 8192 rows are within the run-to-run variance seen in rounds 3 and 4. Presets unchanged.
+
+Spot-check of answer completeness (owner, open). The coverage metric counts literal key elements, so it cannot tell whether an answer is complete in the user's eyes. ~/AskFiles-eval/spot-check.md holds 10 answerable questions from the baseline run (x-q4km-8192, tuning and check sets), picked with Python random.Random(20261031).sample over the 37 sorted ids that are neither absent nor Q07 or Q41: Q03, Q05, Q08, Q09, Q18, Q22, Q27, Q33, Q36, Q39. For each it shows the question, the answer as the Ask page shows it (sentences after verifyCitations with their [n] markers, unsupported sentences marked, or the not-found state), the source cards cited, the expected file, section and page, and the key elements. To fill it in: read only the answer and its cards, then mark Complete yes when a user would get everything the question asks for with correct citations, no otherwise, and note what is missing or wrong. Compare the share of yes with the run's key element coverage on the same 10 questions; if they disagree by more than one or two questions, coverage is not a usable acceptance metric and the acceptance rules above need revisiting. Executor: owner.
+
+Rounds 6 to 8 (2026-10-31, approved by the owner as three measured rounds under the rules above; one model, qwen3:14b-q4_K_M at context 8192, Balanced 5 / 0.55, verifyCitations on; Ollama restarted before every run; one pass per question; run folders ~/AskFiles-eval/runs/r6-1-* to r6-3-*, r7-*, r8a-*, r8c-*). The tuning and check rows count the absent questions inside those sets (Q10, Q30; Q42 to Q45); the absent set (questions-absent.csv, provisional) is its own row. Gated figures leave out cross_document and Q07 and Q41 as before. The unit tests and lint of the worktree ran for about a minute while round 6 run 1 started its check set, so that run's check-set latency may be a little high; it is inside the band anyway.
+
+Round 7 detail. The identifier map (src/main/browse/identifiers.ts, stored as <library>/browse/identifiers.json) names a file correctly in every one of the 55 questions that names one and in none that does not (Q15's streamlined procedure and Q54's Federal Acquisition Regulation name nothing); Memorandum is in the type list but no file name or PDF cover holds it, so in this corpus it names nothing, and the Word and Excel files have no cover title. Gains: Q04 (cross_document) cites both the Policy and the Directive pages for the first time (the boost lifted the Directive page from fused rank 6), Q27 cites its section, and Q18, Q23, Q25 gain coverage. Losses: Q30 (absent, names the Template) now answers that the date is not specified, with a citation, instead of the marker; Q34 (check set) changed its answer text with the new headers, named the wrong header fields, and verification moved two sentences from page 19 to page 17 of the same file, so cited, attribution and coverage fell; Q09 lost attribution. Q33's expected section stays out (fused rank 13 without the boost, still not selected with it). The restriction to the named file and the same-title rule did not change a citation in the tuning or check set except through Q34. Reverted: documentAffinity off.
+
+Round 8a detail. 9 of the 55 questions count as set questions: Q06, Q15 (requirements), Q16 (factors), Q33, Q36 (each), Q39, and the absent Q10, Q48, Q53 (what are the); Q06, Q33 and Q39 state a count. The gain is Q10: with the rule it replies NOT_IN_SOURCES (it answered from the template's placeholders in every round 6 run). Q16 lists the factors as a numbered list but loses one key element (coverage 1.0 to 0.8). Q33 shows a side effect the owner should know about: the model wrote its counting into the answer (The question asks for three activities ... Count: 1 item found in the sources.), because the section that holds the three activities is not selected (retrieval miss, fused rank 13). Kept: enumerateWhenAsked on in every preset.
+
+Round 8c detail. The follow-up check fired once in 55 questions, on Q33 (1 of 3 items, the retrieval miss), took 1.0 s, and appended the reply Nothing. to the answer; the harness's not-found check did not catch that word. Q06 and Q39 already listed their stated number of items, so nothing fired there. No metric gained, so the second half is not kept: enumerateFollowUp off. Round count: round 7 reverted, round 8a gained (attribution +4 on the tuning set), 8c gained nothing; presets: verifyCitations and enumerateWhenAsked on, documentAffinity, enumerateFollowUp, paragraphSelection and verdictLine off.
+
+Cause tables (r6-1 as the baseline, then the kept round 8a; causes as in rounds 1 to 5):
+
+| Run | Set | Retrieval miss | Selection cut | Model error | Abstention error | No failure |
+| --- | --- | --- | --- | --- | --- | --- |
+| 6 (run 1) | tuning | 2 (Q04, Q08) | 0 | 16 | 1 (Q10) | 10 |
+| 6 (run 1) | check | 1 (Q33) | 0 | 9 | 0 | 4 |
+| 7 | tuning | 1 (Q08) | 0 | 15 | 2 (Q10, Q30) | 11 |
+| 7 | check | 1 (Q33) | 0 | 9 | 0 | 4 |
+| 8a | tuning | 2 (Q04, Q08) | 0 | 16 | 0 | 11 |
+| 8a | check | 1 (Q33) | 0 | 9 | 0 | 4 |
+
+Almost every model error is a coverage miss (the answer paraphrases or leaves out a literal key element); the gated attribution failures left after 8a are Q03 (cites the Contents page too), Q08 (OCR, retrieval miss) and Q27 in the tuning set, Q33 (retrieval miss), Q39 and Q40 (table arithmetic) in the check set.
+
+Round 9 (2026-10-31, approved by the owner as two changes measured in sequence on the kept configuration, round 2' plus enumerateWhenAsked; same model, settings, sets and procedure as rounds 6 to 8; run folders ~/AskFiles-eval/runs/r9a-*, r9b-*, r9b0-*). Judge: keep 9a if coverage rises and no gating metric drops more than 3 points; keep 9b if coverage rises further on the split questions and nothing drops.
+
+Round 9a detail. Coverage rose on Q18, Q25, Q26 and Q28 (tuning), but the rule to state every listed item made the model add items from neighbouring sections it was given: Q26 adds a third circumstance from Formula Redesign, Q38 adds the formula, indices and base date from the Procurement Regulations' Price Adjustments, so their attribution fails; Q14 cites the neighbouring Debriefing section for the same sentence; and Q10 lists the template's placeholder fields as the items instead of replying NOT_IN_SOURCES, which undoes the round 8a gain. Not kept: noSummarizing off.
+
+Round 9b detail. The splitter (src/main/answer/decompose.ts) splits 13 of the 55 questions: Q04 by its Compare A and B set (2 parts), Q06, Q08, Q09 (3 parts, the former and the latter resolved to the two guidances named before the asks), Q15, Q21, Q25 (3 parts), Q26, Q27 in the tuning set and Q31, Q32, Q36, Q38 in the check set; none of the absent set. It leaves whole every question whose later ask points back with a pronoun (Q02, Q13, Q17, Q20, Q35, Q37, Q39 and others), whose asks have no lead-in (Q11, Q18, Q30, Q52) or that has two question sentences (Q41). Lead-ins repeat the question's words, so coverage was also measured with them removed: identical on every split question. On 9a, the split questions' coverage moved 59 to 58 percent on the tuning set and stayed at 66 percent on the check set; Q04 fell from 0.50 to 0.25 because each document's part answers only for its own document. Since 9a was reverted, decomposition was also run on 8a (9b'): coverage on the split questions 55 percent as in 8a on the tuning set (Q25 0.17 to 0.50, Q26 0.20 to 0.40, Q04 0.50 to 0.25, Q15 1.0 to 0.75) and 70 to 76 percent on the check set (Q36 0.6 to 0.8), but each part retrieves its own sections and cites extra ones: Q25's second part cites a second section and Q38's first part cites the Procurement Regulations, so attribution fell on both sets. Latency on split questions: mean total 15.7 to 28.6 s on the tuning set and 19.0 to 27.8 s on the check set (8a to 9b'), one full pipeline per part; the longest is Q06 at 41.1 s. Not kept: decomposeQuestions off. Round count: 9a and 9b reverted, presets unchanged from round 8a.
+
+Cause tables, round 9 (as above):
+
+| Run | Set | Retrieval miss | Selection cut | Model error | Abstention error | No failure |
+| --- | --- | --- | --- | --- | --- | --- |
+| 9a | tuning | 2 (Q04, Q08) | 0 | 15 | 1 (Q10) | 11 |
+| 9a | check | 1 (Q33) | 0 | 9 | 0 | 4 |
+| 9b | tuning | 2 (Q04, Q08) | 0 | 15 | 1 (Q10) | 11 |
+| 9b | check | 1 (Q33) | 0 | 9 | 0 | 4 |
+| 9b' | tuning | 2 (Q04, Q08) | 0 | 18 | 0 | 9 |
+| 9b' | check | 1 (Q33) | 0 | 9 | 0 | 4 |
+
+Neither change moves the cause mix: the model errors are coverage misses, and the extra items both changes bring in come with citations to sections the answer key does not expect. The external grading sheet ~/AskFiles-eval/spot-check-grading.md (the same 10 questions as spot-check.md, seed 20261031) carries the round 8a answers as shown, the full expected section text and the key elements, for a grader independent of the literal coverage count.
+
+Hedge filter and document affinity re-test (2026-10-31, approved by the owner as two small changes and one targeted run on the kept configuration, round 2' plus enumerateWhenAsked; qwen3:14b-q4_K_M, context 8192, Balanced, verifyCitations on, both switches on together, Ollama restarted first; Q03, Q04, Q09, Q18, Q30, Q34 and the 10 absent-set questions, 16 in all; run folder ~/AskFiles-eval/runs/r10-targeted, compared with r8a). Judge: keep both only if Q04 and Q09 improve, Q03 and Q18 lose their hedge sentences, Q34 keeps its section and the absent set stays at 0 false answers; keep a passing switch alone when the other fails.
+
+dropUnsupportedHedges (src/main/answer/hedges.ts) deletes, after verification, a sentence marked unsupported that only says information is missing, when the answer keeps a supported sentence. In the run it deleted Q18's sentence (The duration for which the risk owner should monitor the risk is not explicitly stated in the provided sources.). Q03 had no hedge to delete, because with documentAffinity's source headers the model replaced it with an unsupported page claim (It is on the physical PDF page 32 and the printed page 32.). Since the filter only acts on the verified sentences, it was also applied to every recorded round 8a answer of the three sets: it deletes exactly four sentences, all unsupported hedges, Q03's (The physical PDF page and printed page are not specified in the sources.) and Q18's, plus one each in the formula questions Q07 and Q41, which are outside the gate; no supported sentence and no whole answer. Passes: kept, on in every preset.
+
+documentAffinity as built in round 7, plus 6 sections (AFFINITY_MULTI_SECTIONS) when a question names two or more files. Q04 improves (both documents named, 6 sections: right section cited, attribution yes, coverage 0.50 to 1.00). Q09 does not: both guidances named, but the third ask is answered from the Value for Money Guidance's own Contract Management Plan section, so the expected section is still not cited and attribution falls from yes to no (coverage 0.86 both). Q34 loses its section: the Scanned Historical Records file is named, and the answer comes from page 17 instead of 19 (wrong agent and SUBJECT, coverage 0.50 to 0.00). Q30, an absent question in the tuning set that names the Template, is answered again (not specified ... [1] twice) instead of NOT_IN_SOURCES, as in round 7. The absent set stays at 0 of 10 false answers. Fails: documentAffinity stays off. Presets: verifyCitations, enumerateWhenAsked and dropUnsupportedHedges on; documentAffinity, enumerateFollowUp, noSummarizing, decomposeQuestions, paragraphSelection and verdictLine off.
+
 **User test**: give the DMG by USB to one or two real target users with a one-page task sheet (install, add a folder, ask five questions). Do not help. Record where they stop and time to first answer. Executor: YOU.
+
+
+### v1 result
+
+Phase 2 closed on 2026-11-01 (owner decision). The kept configuration is config/presets.json:
+
+| Tier | Ask | Chat model | Source |
+| --- | --- | --- | --- |
+| 32 GB and above | on | qwen3:14b-q4_K_M | Ollama library (digest bdbd181c33f2, the same weights as qwen3:14b) |
+| 16 GB | on | hf.co/unsloth/Qwen3-14B-GGUF:Q3_K_M | Pinned: repository unsloth/Qwen3-14B-GGUF, revision a04a82c4739b3ef5fa6da7d10261db2c67dd1985, file Qwen3-14B-Q3_K_M.gguf, sha256 9694f1db203d5a18bea6f19a36be01b2d2c79bf9b7f8df553a4cc5cff870b47e, 7321313664 bytes. Ollama cannot pull a revision, so the app checks the pulled weights against the sha256 and refuses any other file (docs/presets.md) |
+| 8 GB | off | none | The Ask page shows one line (Ask needs a Mac with 16 GB of memory or more; on this Mac use Browse and Find to read your documents.); Browse and Find are unchanged; only the embedder is pulled |
+
+Every tier: embedder bge-m3:567m, context 8192 tokens, chunk maximum 2000 characters, no reranker (fused order with a vector floor), sections and floor per scope strict 3 / 0.6, Balanced 5 / 0.55 (the default), broad 6 / 0.5, temperature 0.1, thinking off, answerMode single, promptVariant default. Answer switches on: verifyCitations (round 2), enumerateWhenAsked (round 8a), dropUnsupportedHedges (after round 9). Unused options, built and measured but off on every tier: paragraphSelection, verdictLine, documentAffinity (with its 6 sections for questions naming several files), enumerateFollowUp, noSummarizing, decomposeQuestions, answerMode quoted, promptVariant strict and complete.
+
+Metrics of the kept configuration on the 32 GB tier: round 8a (qwen3:14b-q4_K_M, context 8192, Balanced, one pass per question, Ollama restarted before every run; run folders ~/AskFiles-eval/runs/r8a-*). dropUnsupportedHedges came later and only deletes unsupported hedge sentences; applied to the recorded round 8a answers it deletes four (Q03, Q18 and the formula questions Q07, Q41) and changes no metric (Q03 coverage stays 1.00, Q18 0.60). Gated figures leave out cross_document and Q07 and Q41; the variance band is under Acceptance and stopping rules.
+
+| Set | Right section cited | Attribution | Key element coverage | Median total | False refusals | False answers |
+| --- | --- | --- | --- | --- | --- | --- |
+| tuning (questions-v3.csv) | 92% (23/25) | 89% (24/27) | 74% | 18.4 s | 4% (1/25) | 0% (0/2) |
+| check (questions-check-v2.csv) | 90% (9/10) | 79% (11/14) | 53% | 13.9 s | 0% (0/10) | 0% (0/4) |
+| absent (questions-absent.csv, provisional) | - | - | - | 12.5 s | - | 0% (0/10) |
+
+Attribution as measured: 24 of 27 answers on the tuning set and 11 of 14 on the check set have the right attribution (the expected section cited, or a correct refusal), so about 1 in 9 tuning answers and 1 in 5 check answers cite a section other than the expected one or miss it. The failures are Q03 (cites the Contents page as well), Q08 (OCR, retrieval miss) and Q27 on the tuning set, and Q33 (retrieval miss, fused rank 13), Q39 and Q40 (table arithmetic) on the check set.
+
+The 16 GB model was measured in the quantization and context matrix (above) with the round 2' configuration, before enumerateWhenAsked and the hedge filter: tuning and check sets together 91% (32/35) cited, 80% (33/41) attribution, 68% coverage, 3% false refusals, 6% (1/16) false answers, median 15.9 s, 7.45 GiB for the chat model in memory against 9.17 GiB for q4_K_M. It ran on the 64 GB Mac; it has not run on a 16 GB Mac.
+
+Completeness, graded by the owner from ~/AskFiles-eval/grading-all.md (round 8a answers as shown, the full expected section text and the key elements, formula questions left out): 28 of 35 complete: the sheet holds 37 entries (21 single_fact, 9 middle_of_long_doc, 5 table_number, 2 cross_document), and Q08 (OCR) and Q33 (retrieval miss) were left out of the grading. By category: single document and long document 25 of 28, tables 3 of 5, cross document 0 of 2.
+
+Known limits of v1:
+
+- Table reading: answers misread or miscompute table cells (Q25, Q39, Q40; 3 of 5 table questions complete).
+- Cross-document questions: an answer that needs a section from each of two files usually finds one and says the other does not cover it (Q04, Q09; 0 of 2 complete). documentAffinity fixed Q04 but lost Q09 and Q34 and answered the absent Q30, so it is off.
+- OCR quality: scanned pages give poor text for retrieval and for the answer (Q08 not retrieved; Q34 cites its page but gets the agent name partly unsupported).
+- Spreadsheet formulas: the split does not keep a workbook's formulas (see Acceptance and stopping rules), so a question about a formula cannot be answered from the indexed text (Q07, Q41, marked unsupported and outside every metric).
 
 ## Phase 3: own search interface and folder watching
 

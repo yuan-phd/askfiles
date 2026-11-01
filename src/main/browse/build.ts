@@ -120,10 +120,11 @@ export function buildDocument(
         pageLabelStart: labelStart,
         pageLabelEnd: labelEnd,
         text: bodies.join('\n\n'),
+        parts: bodies,
       };
     });
   return {
-    version: 2,
+    version: 3,
     id: documentId(rec.path),
     path: rec.path,
     url: rec.url,

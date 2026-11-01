@@ -43,6 +43,13 @@ import {
   type Reranker,
   type RunSettings,
   type TermStats,
+  NO_RERANKER,
+  setFloor,
+  assembleSection,
+  isContentsSection,
+  normalizeForMatch,
+  parseExcerpts,
+  verifyExcerpts,
 } from './index.js';
 
 const cleanups: (() => void)[] = [];
@@ -120,7 +127,7 @@ describe('extractTerms', () => {
 });
 
 describe('fuse', () => {
-  it('scores a section by the reciprocal ranks of all its chunks and its keyword hit', () => {
+  it('scores a section by its best chunk and its keyword hit, with a capped bonus for more chunks', () => {
     const a = sectionKey('d1', 1);
     const b = sectionKey('d1', 2);
     const c = sectionKey('d2', 1);
@@ -137,11 +144,70 @@ describe('fuse', () => {
       ],
       60,
     );
-    expect(fused.map((f) => f.key)).toEqual([b, a, c]);
-    expect(fused[0]!.score).toBeCloseTo(rrf(1, 60) + rrf(3, 60));
-    expect(fused[1]).toMatchObject({ vectorRank: 2, keywordRank: 2, terms: ['leave'] });
-    expect(fused[1]!.score).toBeCloseTo(rrf(2, 60) + rrf(2, 60));
-    expect(fused[0]!.hitTexts).toEqual(['x', 'z']);
+    // a: found by both lists; b: two sub-chunks, the second worth at most 10 percent; c: keyword only.
+    expect(fused.map((f) => f.key)).toEqual([a, b, c]);
+    expect(fused[0]).toMatchObject({ vectorRank: 2, keywordRank: 2, terms: ['leave'] });
+    expect(fused[0]!.score).toBeCloseTo(rrf(2, 60) + rrf(2, 60));
+    expect(fused[1]!.score).toBeCloseTo(rrf(1, 60) * 1.1);
+    expect(fused[1]!.extraVector).toBeCloseTo(rrf(3, 60));
+    expect(fused[1]!.hitTexts).toEqual(['x', 'z']);
+  });
+
+  it('ranks the section first in both lists above a long one with several weaker hits', () => {
+    const target = sectionKey('regs', 84);
+    const long = sectionKey('rfb', 18);
+    const vector = [
+      { id: 't', text: 't', score: 0.8, section: target },
+      ...Array.from({ length: 9 }, (_, i) => ({ id: `f${i}`, text: `f${i}`, score: 0.7, section: `filler#${i}` })),
+      ...[11, 12, 13].map((r) => ({ id: `l${r}`, text: `l${r}`, score: 0.6, section: long })),
+    ];
+    const fused = fuse(
+      vector,
+      [
+        { section: target, score: 9, terms: ['5.79'] },
+        ...Array.from({ length: 26 }, (_, i) => ({ section: `kw#${i}`, score: 1, terms: [] })),
+        { section: long, score: 1, terms: [] },
+      ],
+      60,
+    );
+    expect(fused[0]!.key).toBe(target);
+    const l = fused.find((f) => f.key === long)!;
+    const base = rrf(11, 60) + rrf(28, 60);
+    expect(l.score).toBeCloseTo(base * 1.1);
+  });
+});
+
+describe('assembleSection', () => {
+  const part = (n: number) => `Part ${n} body sentence number ${n}. `.repeat(8).trim();
+  const parts = Array.from({ length: 10 }, (_, i) => part(i + 1));
+  const len = parts[0]!.length;
+
+  it('sends a section whole when it fits twice the chunk maximum', () => {
+    const few = parts.slice(0, 3);
+    expect(assembleSection(few, { cap: 10_000, wholeChars: 10_000 })).toBe(few.join('\n\n'));
+  });
+
+  it('takes matched parts with one neighbour each side, in document order, without repeats', () => {
+    const out = assembleSection(parts, {
+      cap: 10_000,
+      wholeChars: len * 3,
+      hitTexts: [`Heading\n${parts[6]}`],
+      terms: ['part 2 body'],
+    });
+    expect(out).toBe([parts[0], parts[1], parts[2], '...', parts[5], parts[6], parts[7], '...'].join('\n\n'));
+  });
+
+  it('keeps matched parts before neighbours when the cap is tight, and the start without a match', () => {
+    const out = assembleSection(parts, {
+      cap: len * 2 + 20,
+      wholeChars: 0,
+      hitTexts: [parts[6]!],
+      terms: ['part 2 body'],
+    });
+    expect(out).toContain(parts[6]);
+    expect(out).toContain(parts[1]);
+    expect(out).not.toContain(parts[5]);
+    expect(assembleSection(parts, { cap: len + 10, wholeChars: 0 }).startsWith(parts[0]!.slice(0, 40))).toBe(true);
   });
 });
 
@@ -214,7 +280,7 @@ describe('selectSections', () => {
       count: DEFAULT_PARAMS.sectionCount[scope],
       floor: DEFAULT_PARAMS.rerankFloor[scope],
       budgetTokens,
-      bypass: false,
+      floorOn: 'rerank',
     });
 
   it('maps each scope to its count and floor', () => {
@@ -245,9 +311,21 @@ describe('selectSections', () => {
   it('ignores the floor when reranking was bypassed', () => {
     const sel = selectSections(
       ranked.map((r) => ({ ...r, rerank: null })),
-      { count: 3, floor: 0.5, budgetTokens: 100_000, bypass: true },
+      { count: 3, floor: 0.5, budgetTokens: 100_000, floorOn: 'none' },
     );
     expect(sel.selected.map((s) => s.section.key)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('applies the floor to vector similarity without a reranker; keyword-only sections pass only 0', () => {
+    const vectors = [0.71, null, 0.55, 0.62, 0.4, 0.3];
+    const byVector = ranked.map((r, i) => ({ ...r, rerank: null, vector: vectors[i] }));
+    const pick = (floor: number) =>
+      selectSections(byVector, { count: 3, floor, budgetTokens: 100_000, floorOn: 'vector' }).selected.map(
+        (s) => s.section.key,
+      );
+    expect(pick(0.5)).toEqual(['a', 'c', 'd']);
+    expect(pick(0.7)).toEqual(['a']);
+    expect(pick(0)).toEqual(['a', 'b', 'c']);
   });
 
   it('derives the budget from the context length unless set', () => {
@@ -288,6 +366,19 @@ describe('prompt', () => {
     expect(isNotFound(`**${NOT_FOUND_MARKER}**`)).toBe(true);
     expect(isNotFound(`I could not find it. ${NOT_FOUND_MARKER}`)).toBe(true);
     expect(isNotFound('Leave is 27 days [1].')).toBe(false);
+  });
+});
+
+describe('claims of a streamed answer', () => {
+  it('splits sentences also when the stream cuts between a full stop and its space', () => {
+    const text = 'Leave is 27 days [1]. The carry-over is not stated in the sources.';
+    const stream = new CitationStream();
+    const parts = (text.match(/.{1,3}/g) ?? []).flatMap((piece) => stream.push(piece));
+    parts.push(...stream.end());
+    expect(claimsOf(parts, 2).map((c) => [c.citations, c.unsupported])).toEqual([
+      [[1], false],
+      [[], true],
+    ]);
   });
 });
 
@@ -493,6 +584,162 @@ describe('pipeline', () => {
     expect(r.bypassReason).toBe('question is mainly CJK');
     const sel = choose(r, settings);
     expect(sel.selected[0]!.section.file).toBe('制度.docx');
+  });
+
+  it('with rerankerModel none never calls the reranker and floors on vector similarity', async () => {
+    let scored = false;
+    const { deps } = setup({
+      reranker: {
+        score: async (_q, t) => {
+          scored = true;
+          return t.map(() => 1);
+        },
+      },
+    });
+    const off = (floor: number): RunSettings => ({
+      ...settings,
+      params: setFloor(structuredClone({ ...DEFAULT_PARAMS, rerankerModel: NO_RERANKER }), 'balanced', floor),
+    });
+    const r = await retrieve('How many days of annual leave?', off(0), deps);
+    expect(scored).toBe(false);
+    expect(r.bypassReason).toBe('reranker disabled');
+    // Fused order: Annual leave (vector 0.4 and keyword) above Travel (vector 0.5 only).
+    expect(choose(r, off(0.3)).selected.map((s) => s.section.title)).toEqual(['Annual leave', 'Travel']);
+    expect(choose(r, off(0.45)).selected.map((s) => s.section.title)).toEqual(['Travel']);
+    expect(choose(r, off(0.6)).selected).toEqual([]);
+  });
+});
+
+describe('quoted mode', () => {
+  it('normalizes whitespace, dashes, quotes, case and broken words for the excerpt check', () => {
+    expect(normalizeForMatch('Natural or man‑made  disaster or con- flicts, “A”')).toBe(
+      normalizeForMatch('natural or man-made disaster or conflicts, "a"'),
+    );
+  });
+
+  it('recognizes a table of contents by its title or its dot leaders, never by numbers alone', () => {
+    const sec = (title: string, text: string) => ({ title, path: ['Guide', title], text });
+    expect(isContentsSection(sec('Contents', 'Intro'))).toBe(true);
+    const leaders = [
+      'Overview . . . . . . . 3',
+      'Risk Analysis . . . . . 30',
+      'Tool: Quadrant ........ 32',
+      'Annex A ...... 85',
+    ];
+    expect(isContentsSection(sec('PPSD Sections 11', leaders.join('\n')))).toBe(true);
+    expect(isContentsSection(sec('Annual leave', 'Employees get 27 days of paid annual leave per year.'))).toBe(false);
+    const scores = ['Bidder A 72', 'Bidder B 65', 'Bidder C 80', 'Bidder D 58'];
+    expect(isContentsSection(sec('Final Weighted Technical Score', scores.join('\n')))).toBe(false);
+  });
+
+  it('keeps only excerpts found in their own section, piece by piece, and counts the rest', () => {
+    const sections = [
+      { text: 'The Standstill Period shall last ten (10) Business Days after such transmission.' },
+      { text: 'Other text about meals and travel.' },
+    ];
+    expect(parseExcerpts('not json', 2)).toEqual([]);
+    const ex = parseExcerpts(
+      JSON.stringify({
+        excerpts: [
+          { source: 1, text: '"The Standstill Period shall last ten (10) Business Days"' },
+          { source: 1, text: 'shall last ten (10) business days ... after such transmission' },
+          { source: 2, text: 'The Standstill Period shall last ten (10) Business Days' },
+          { source: 1, text: 'The period lasts two weeks' },
+          { source: 9, text: 'out of range' },
+        ],
+      }),
+      2,
+    );
+    expect(ex).toHaveLength(4);
+    const v = verifyExcerpts(ex, sections);
+    expect([...v.verified.keys()]).toEqual([1]);
+    expect(v.verified.get(1)).toEqual([
+      'The Standstill Period shall last ten (10) Business Days',
+      'shall last ten (10) business days',
+      'after such transmission',
+    ]);
+    expect(v.dropped).toBe(2);
+  });
+
+  const quoted: RunSettings = {
+    params: { ...DEFAULT_PARAMS, answerMode: 'quoted', extractSections: 6 },
+    scope: 'balanced',
+    chatModel: 'test-model',
+    contextLength: 4096,
+    chunkMaxChars: 1000,
+    temperature: 0.1,
+  };
+
+  function quotedSetup(replies: string[]) {
+    const lib = fixtureLibrary([
+      {
+        name: 'handbook.pdf',
+        sections: [
+          { title: 'Annual leave', parts: ['Employees get 27 days of paid annual leave per year.'], page: 2 },
+          { title: 'Travel', parts: ['Travel is booked through the portal.'], page: 7 },
+        ],
+      },
+    ]);
+    cleanups.push(lib.cleanup);
+    const resolver = createSourceResolver({ files: () => lib.records, readText: (l) => lib.chunkText.get(l) ?? null });
+    const calls: { format: boolean; content: string }[] = [];
+    const chat: ChatFn = async (o, onText) => {
+      calls.push({ format: !!o.format, content: o.messages.map((m) => m.content).join('\n') });
+      onText(replies[calls.length - 1] ?? '');
+      return { promptTokens: 10, completionTokens: 5 };
+    };
+    const deps: PipelineDeps = {
+      vectorSearch: async () => [
+        {
+          id: 'v1',
+          text: lib.chunkText.get('askfiles/handbook.pdf-1-1.json'),
+          metadata: { url: lib.records[0]!.url, title: 'handbook.pdf' },
+          score: 0.8,
+        },
+        {
+          id: 'v2',
+          text: lib.chunkText.get('askfiles/handbook.pdf-2-1.json'),
+          metadata: { url: lib.records[0]!.url, title: 'handbook.pdf' },
+          score: 0.7,
+        },
+      ],
+      resolveSources: (x) => resolver(x),
+      index: lib.index,
+      reranker: null,
+      chat,
+    };
+    return { deps, calls };
+  }
+
+  it('extracts, verifies and composes from the verified excerpts, which the cards show', async () => {
+    const extraction = JSON.stringify({
+      excerpts: [
+        { source: 1, text: 'Employees get 27 days of paid annual leave per year.' },
+        { source: 2, text: 'Travel needs a director approval.' },
+      ],
+    });
+    const { deps, calls } = quotedSetup([extraction, 'Employees get 27 days [1]. Travel is free [2].']);
+    const r = await retrieve('How many days of annual leave?', quoted, deps);
+    const result = await answer('How many days of annual leave?', r, choose(r, quoted), quoted, deps);
+    expect(calls.map((c) => c.format)).toEqual([true, false]);
+    expect(calls[1]!.content).toContain('Employees get 27 days of paid annual leave per year.');
+    expect(calls[1]!.content).not.toContain('Travel');
+    expect(result.quoted).toMatchObject({ excerpts: 2, verified: 1, dropped: 1, supported: 1 });
+    expect(result.cited.map((c) => [c.title, c.passage])).toEqual([
+      ['Annual leave', 'Employees get 27 days of paid annual leave per year.'],
+    ]);
+    // [2] has no verified excerpt: the sentence citing it is unsupported.
+    expect(result.claims.map((c) => c.unsupported)).toEqual([false, true]);
+  });
+
+  it('shows the not-found state without a second call when nothing is verified', async () => {
+    const { deps, calls } = quotedSetup([JSON.stringify({ excerpts: [{ source: 1, text: 'Interns get 10 days.' }] })]);
+    const r = await retrieve('How many days do interns get?', quoted, deps);
+    const result = await answer('How many days do interns get?', r, choose(r, quoted), quoted, deps);
+    expect(calls).toHaveLength(1);
+    expect(result).toMatchObject({ notFound: true, skippedModel: false, cited: [] });
+    expect(result.nearest.length).toBeGreaterThan(0);
+    expect(result.quoted).toMatchObject({ verified: 0, dropped: 1 });
   });
 });
 

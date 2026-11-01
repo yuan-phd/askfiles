@@ -1,13 +1,13 @@
 {
   "version": 1,
-  "comment": "One preset per RAM tier. Every value below is a starting value from docs/plan.md phase 2 and docs/upstream-analysis.md Q7 and Q10; phase 2 (task 2.6) replaces each one with a measured value. Tiers are matched on total RAM in GiB: the highest tier whose minRamGb is not above the machine's RAM.",
+  "comment": "One preset per RAM tier, the v1 result of phase 2 (docs/plan.md, v1 result): every value was measured on the owner's Mac with the evaluation harness (docs/eval.md) or fixed by the plan. Tiers are matched on total RAM in GiB: the highest tier whose minRamGb is not above the machine's RAM. Answer switches on: verifyCitations, enumerateWhenAsked, dropUnsupportedHedges; the others are unused options, off (docs/eval.md, answer switches).",
   "tiers": [
     {
       "id": "8gb",
       "label": "8 GB",
       "minRamGb": 8,
-      "comment": "Starting values, not measured. Chat model: 4B class Q4, smallest qwen3 tag of that class (owner choice 2026-10-29). Embedder bge-m3 for all tiers (Q10). Phase 2 replaces every value.",
-      "chatModel": "qwen3:4b",
+      "comment": "Ask off on this tier (chatModel null), owner decision 2026-11-01: answers were measured acceptable only with qwen3 14B, which needs 16 GB (qwen3:8b already lost attribution and abstention against it, docs/plan.md). Browse and Find work; the Ask page shows one line saying Ask needs 16 GB. Embedder bge-m3 on every tier (Q10). Context 8192 tokens on every tier (quantization and context matrix, docs/plan.md). Reranker off (rerankerModel none, selection by fused order with vectorFloor): onnxruntime-node 1.14 crashes with EXC_BREAKPOINT on the owner's Mac when a bge reranker loads (2026-10-30). sectionCount and vectorFloor measured on 2026-10-31: balanced 5 / 0.55, strict 3 / 0.6, broad 6 / 0.5.",
+      "chatModel": null,
       "embeddingModel": "bge-m3:567m",
       "contextLength": 8192,
       "chunkMaxChars": 2000,
@@ -19,7 +19,7 @@
       "ocrLanguages": "eng,chi_sim",
       "systemPrompt": "Answer only from the provided context. Cite the source document for what you say. If the context does not contain the answer, say that you do not know.",
       "answer": {
-        "rerankerModel": "Xenova/ms-marco-MiniLM-L-6-v2",
+        "rerankerModel": "none",
         "rerankerBypassCjk": true,
         "vectorTopK": 30,
         "keywordTopK": 30,
@@ -27,25 +27,48 @@
         "candidateSections": 12,
         "sectionCapChars": 0,
         "sectionCount": {
-          "strict": 2,
-          "balanced": 3,
-          "broad": 5
+          "strict": 3,
+          "balanced": 5,
+          "broad": 6
         },
         "rerankFloor": {
           "strict": 0.5,
           "balanced": 0.1,
           "broad": 0.01
         },
+        "vectorFloor": {
+          "strict": 0.6,
+          "balanced": 0.55,
+          "broad": 0.5
+        },
         "contextBudgetTokens": 0,
-        "promptVariant": "default"
+        "promptVariant": "default",
+        "answerMode": "single",
+        "extractSections": 6,
+        "verifyCitations": true,
+        "paragraphSelection": false,
+        "verdictLine": false,
+        "documentAffinity": false,
+        "enumerateWhenAsked": true,
+        "enumerateFollowUp": false,
+        "noSummarizing": false,
+        "decomposeQuestions": false,
+        "dropUnsupportedHedges": true
       }
     },
     {
       "id": "16gb",
       "label": "16 GB",
       "minRamGb": 16,
-      "comment": "Starting values, not measured. Chat model: 8B class Q4 (qwen3:8b, owner choice 2026-10-29). Embedder bge-m3 for all tiers (Q10). Phase 2 replaces every value.",
-      "chatModel": "qwen3:8b",
+      "comment": "qwen3 14B at Q3_K_M from Unsloth, pinned by chatModelFile: Ollama pulls the repository's current file and the app refuses it unless its sha256 is the measured one. Measured against q4_K_M and Q4_K_S in the quantization and context matrix. Embedder bge-m3 on every tier (Q10). Context 8192 tokens on every tier (quantization and context matrix, docs/plan.md). Reranker off (rerankerModel none, selection by fused order with vectorFloor): onnxruntime-node 1.14 crashes with EXC_BREAKPOINT on the owner's Mac when a bge reranker loads (2026-10-30). sectionCount and vectorFloor measured on 2026-10-31: balanced 5 / 0.55, strict 3 / 0.6, broad 6 / 0.5.",
+      "chatModel": "hf.co/unsloth/Qwen3-14B-GGUF:Q3_K_M",
+      "chatModelFile": {
+        "repository": "unsloth/Qwen3-14B-GGUF",
+        "revision": "a04a82c4739b3ef5fa6da7d10261db2c67dd1985",
+        "file": "Qwen3-14B-Q3_K_M.gguf",
+        "sha256": "9694f1db203d5a18bea6f19a36be01b2d2c79bf9b7f8df553a4cc5cff870b47e",
+        "sizeBytes": 7321313664
+      },
       "embeddingModel": "bge-m3:567m",
       "contextLength": 8192,
       "chunkMaxChars": 2000,
@@ -57,7 +80,7 @@
       "ocrLanguages": "eng,chi_sim",
       "systemPrompt": "Answer only from the provided context. Cite the source document for what you say. If the context does not contain the answer, say that you do not know.",
       "answer": {
-        "rerankerModel": "Xenova/bge-reranker-base",
+        "rerankerModel": "none",
         "rerankerBypassCjk": false,
         "vectorTopK": 30,
         "keywordTopK": 30,
@@ -65,25 +88,41 @@
         "candidateSections": 8,
         "sectionCapChars": 0,
         "sectionCount": {
-          "strict": 2,
-          "balanced": 3,
-          "broad": 5
+          "strict": 3,
+          "balanced": 5,
+          "broad": 6
         },
         "rerankFloor": {
           "strict": 0.5,
           "balanced": 0.1,
           "broad": 0.01
         },
+        "vectorFloor": {
+          "strict": 0.6,
+          "balanced": 0.55,
+          "broad": 0.5
+        },
         "contextBudgetTokens": 0,
-        "promptVariant": "default"
+        "promptVariant": "default",
+        "answerMode": "single",
+        "extractSections": 6,
+        "verifyCitations": true,
+        "paragraphSelection": false,
+        "verdictLine": false,
+        "documentAffinity": false,
+        "enumerateWhenAsked": true,
+        "enumerateFollowUp": false,
+        "noSummarizing": false,
+        "decomposeQuestions": false,
+        "dropUnsupportedHedges": true
       }
     },
     {
       "id": "32gb",
       "label": "32 GB and above",
       "minRamGb": 32,
-      "comment": "Starting values, not measured. Chat model: 14B class Q4 (qwen3:14b, owner choice 2026-10-29). Embedder bge-m3 for all tiers (Q10). Phase 2 replaces every value.",
-      "chatModel": "qwen3:14b",
+      "comment": "qwen3 14B at q4_K_M from the Ollama library, the model of every tuning round. Embedder bge-m3 on every tier (Q10). Context 8192 tokens on every tier (quantization and context matrix, docs/plan.md). Reranker off (rerankerModel none, selection by fused order with vectorFloor): onnxruntime-node 1.14 crashes with EXC_BREAKPOINT on the owner's Mac when a bge reranker loads (2026-10-30). sectionCount and vectorFloor measured on 2026-10-31: balanced 5 / 0.55, strict 3 / 0.6, broad 6 / 0.5.",
+      "chatModel": "qwen3:14b-q4_K_M",
       "embeddingModel": "bge-m3:567m",
       "contextLength": 8192,
       "chunkMaxChars": 2000,
@@ -95,7 +134,7 @@
       "ocrLanguages": "eng,chi_sim",
       "systemPrompt": "Answer only from the provided context. Cite the source document for what you say. If the context does not contain the answer, say that you do not know.",
       "answer": {
-        "rerankerModel": "onnx-community/bge-reranker-v2-m3-ONNX",
+        "rerankerModel": "none",
         "rerankerBypassCjk": false,
         "vectorTopK": 30,
         "keywordTopK": 30,
@@ -103,17 +142,33 @@
         "candidateSections": 8,
         "sectionCapChars": 0,
         "sectionCount": {
-          "strict": 2,
-          "balanced": 3,
-          "broad": 5
+          "strict": 3,
+          "balanced": 5,
+          "broad": 6
         },
         "rerankFloor": {
           "strict": 0.5,
           "balanced": 0.1,
           "broad": 0.01
         },
+        "vectorFloor": {
+          "strict": 0.6,
+          "balanced": 0.55,
+          "broad": 0.5
+        },
         "contextBudgetTokens": 0,
-        "promptVariant": "default"
+        "promptVariant": "default",
+        "answerMode": "single",
+        "extractSections": 6,
+        "verifyCitations": true,
+        "paragraphSelection": false,
+        "verdictLine": false,
+        "documentAffinity": false,
+        "enumerateWhenAsked": true,
+        "enumerateFollowUp": false,
+        "noSummarizing": false,
+        "decomposeQuestions": false,
+        "dropUnsupportedHedges": true
       }
     }
   ]

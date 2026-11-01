@@ -5,16 +5,31 @@
  */
 import { RERANKER_MODELS } from './reranker-models.js';
 
+/** rerankerModel value that turns the cross-encoder off: fused order, vectorFloor instead of rerankFloor. */
+export const NO_RERANKER = 'none';
+
 export const SCOPES = ['strict', 'balanced', 'broad'] as const;
 export type AnswerScope = (typeof SCOPES)[number];
 
-export const PROMPT_VARIANTS = ['default', 'strict'] as const;
+/** complete: name every condition, exception, step and figure, in the sources' own words (round 5). */
+export const PROMPT_VARIANTS = ['default', 'strict', 'complete'] as const;
+
+/**
+ * single: one model call over the selected sections. quoted: an extraction call returns verbatim
+ * excerpts from the top extractSections sections, code keeps only those found in the section text,
+ * and a composition call answers from the verified excerpts alone (src/main/answer/quoted.ts).
+ */
+export const ANSWER_MODES = ['single', 'quoted'] as const;
+export type AnswerMode = (typeof ANSWER_MODES)[number];
 export type PromptVariant = (typeof PROMPT_VARIANTS)[number];
 
 export type PerScope<T> = Record<AnswerScope, T>;
 
 export interface AnswerParams {
-  /** Hugging Face repository of the cross-encoder, stored under <dataDir>/models/reranker. */
+  /**
+   * Hugging Face repository of the cross-encoder, stored under <dataDir>/models/reranker, or none:
+   * sections are then taken in fused order and vectorFloor replaces rerankFloor.
+   */
   rerankerModel: string;
   /**
    * Skip reranking for a question when it or any candidate section is mainly Chinese, Japanese or
@@ -35,9 +50,58 @@ export interface AnswerParams {
   sectionCount: PerScope<number>;
   /** Lowest rerank score a section needs, per answer scope. */
   rerankFloor: PerScope<number>;
+  /**
+   * With rerankerModel none: lowest vector similarity a section's best sub-chunk needs, per answer
+   * scope. A section found by the keyword index alone has none and passes only a floor of 0.
+   */
+  vectorFloor: PerScope<number>;
   /** Tokens for the numbered sources; 0 derives it from the context length. */
   contextBudgetTokens: number;
   promptVariant: PromptVariant;
+  answerMode: AnswerMode;
+  /** quoted mode: sections sent to the extraction call (N), table-of-contents sections left out. */
+  extractSections: number;
+  /**
+   * single mode: check each sentence against the source it cites by content-word overlap, move it
+   * to a better source or mark it unsupported; cards show only what stays cited (verify.ts).
+   */
+  verifyCitations: boolean;
+  /**
+   * A selected section longer than twice the chunk maximum is sent as its paragraphs closest to
+   * the question by embedding similarity plus keyword hits, with one neighbour each (paragraphs.ts).
+   */
+  paragraphSelection: boolean;
+  /** The answer starts with a line FOUND or NOT_FOUND, which code reads to decide the not-found state. */
+  verdictLine: boolean;
+  /**
+   * A question that names a file (its name, title or a type word only it has) raises the fused
+   * score of that file's sections; when it names exactly one, citations may move only to its
+   * sections; when it names two or more, AFFINITY_MULTI_SECTIONS sections are selected instead of
+   * the scope's count. Sources in the prompt then carry file name and type (docs/plan.md round 7).
+   */
+  documentAffinity: boolean;
+  /** A question asking for a set (three factors, list the steps) is told to give every item (round 8). */
+  enumerateWhenAsked: boolean;
+  /**
+   * With enumerateWhenAsked: when the question states a count and the answer lists fewer items,
+   * one follow-up call with the same sources asks for the missing ones.
+   */
+  enumerateFollowUp: boolean;
+  /**
+   * One rule on every question in place of the enumerateWhenAsked set rule: do not summarize,
+   * merge or group, state each listed item separately with its citation (docs/plan.md round 9).
+   */
+  noSummarizing: boolean;
+  /**
+   * Split a question on its explicit structure only (asks joined by and, as well as or a comma
+   * list, or Compare A and B), answer each part with the full pipeline, merge (decompose.ts).
+   */
+  decomposeQuestions: boolean;
+  /**
+   * After verifyCitations: delete an unsupported sentence that only says information is missing
+   * (not specified, not stated) when the answer has a supported sentence (hedges.ts).
+   */
+  dropUnsupportedHedges: boolean;
 }
 
 export const DEFAULT_PARAMS: AnswerParams = {
@@ -50,8 +114,20 @@ export const DEFAULT_PARAMS: AnswerParams = {
   sectionCapChars: 0,
   sectionCount: { strict: 2, balanced: 3, broad: 5 },
   rerankFloor: { strict: 0.5, balanced: 0.1, broad: 0.01 },
+  vectorFloor: { strict: 0, balanced: 0, broad: 0 },
   contextBudgetTokens: 0,
   promptVariant: 'default',
+  answerMode: 'single',
+  extractSections: 6,
+  verifyCitations: false,
+  paragraphSelection: false,
+  verdictLine: false,
+  documentAffinity: false,
+  enumerateWhenAsked: false,
+  enumerateFollowUp: false,
+  noSummarizing: false,
+  decomposeQuestions: false,
+  dropUnsupportedHedges: false,
 };
 
 /** Tokens kept free for the answer itself and for the instructions and the question. */
@@ -67,6 +143,22 @@ export function contextBudget(params: AnswerParams, contextLength: number): numb
 
 export function sectionCap(params: AnswerParams, chunkMaxChars: number): number {
   return params.sectionCapChars > 0 ? params.sectionCapChars : chunkMaxChars * 2;
+}
+
+export function rerankerOff(params: Pick<AnswerParams, 'rerankerModel'>): boolean {
+  return params.rerankerModel === NO_RERANKER;
+}
+
+/** The floor that decides selection: vectorFloor without a reranker, else rerankFloor. */
+export function floorOf(params: AnswerParams, scope: AnswerScope): number {
+  return rerankerOff(params) ? params.vectorFloor[scope] : params.rerankFloor[scope];
+}
+
+/** Sets the floor that decides selection for one scope; returns params for chaining. */
+export function setFloor(params: AnswerParams, scope: AnswerScope, floor: number): AnswerParams {
+  if (rerankerOff(params)) params.vectorFloor[scope] = floor;
+  else params.rerankFloor[scope] = floor;
+  return params;
 }
 
 export function isScope(v: unknown): v is AnswerScope {
@@ -98,10 +190,14 @@ const perScope =
     return null;
   };
 
+const bool = (v: unknown): Problem => (typeof v === 'boolean' ? null : 'must be true or false');
+
 const CHECKS: Record<keyof AnswerParams, (v: unknown) => Problem> = {
   rerankerModel: (v) =>
-    typeof v === 'string' && v in RERANKER_MODELS ? null : `must be one of ${Object.keys(RERANKER_MODELS).join(', ')}`,
-  rerankerBypassCjk: (v) => (typeof v === 'boolean' ? null : 'must be true or false'),
+    typeof v === 'string' && (v === NO_RERANKER || v in RERANKER_MODELS)
+      ? null
+      : `must be one of ${[NO_RERANKER, ...Object.keys(RERANKER_MODELS)].join(', ')}`,
+  rerankerBypassCjk: bool,
   vectorTopK: intAtLeast(1),
   keywordTopK: intAtLeast(0),
   rrfK: intAtLeast(1),
@@ -109,9 +205,21 @@ const CHECKS: Record<keyof AnswerParams, (v: unknown) => Problem> = {
   sectionCapChars: intAtLeast(0),
   sectionCount: perScope(intAtLeast(1)),
   rerankFloor: perScope(numIn(0, 1)),
+  vectorFloor: perScope(numIn(0, 1)),
   contextBudgetTokens: intAtLeast(0),
   promptVariant: (v) =>
-    (PROMPT_VARIANTS as readonly unknown[]).includes(v) ? null : `must be ${PROMPT_VARIANTS.join(' or ')}`,
+    (PROMPT_VARIANTS as readonly unknown[]).includes(v) ? null : `must be one of ${PROMPT_VARIANTS.join(', ')}`,
+  answerMode: (v) => ((ANSWER_MODES as readonly unknown[]).includes(v) ? null : `must be ${ANSWER_MODES.join(' or ')}`),
+  extractSections: intAtLeast(1),
+  verifyCitations: bool,
+  paragraphSelection: bool,
+  verdictLine: bool,
+  documentAffinity: bool,
+  enumerateWhenAsked: bool,
+  enumerateFollowUp: bool,
+  noSummarizing: bool,
+  decomposeQuestions: bool,
+  dropUnsupportedHedges: bool,
 };
 
 /** Problems with an answer block, each prefixed with at; every key is required. */

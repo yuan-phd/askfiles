@@ -5,8 +5,10 @@ import { describe, expect, it } from 'vitest';
 import { QUESTION_COLUMNS as CASE_COLUMNS, appendEvalCase, type Retrieval } from '../../src/main/answer/index.js';
 import {
   attributionOk,
+  squash,
   expectedSections,
   keyCoverage,
+  literalElements,
   metricsTable,
   summarizeMetrics,
   targetHit,
@@ -59,15 +61,48 @@ describe('answer metrics', () => {
     expect(keyCoverage(q({ key_elements: '' }), 'x')).toBeNull();
   });
 
-  it('accepts attribution only when every cited section holds a key element, or a correct refusal', () => {
+  it('counts coverage only over the key elements found word for word in the expected section', () => {
+    const split = literalElements(
+      q({ key_elements: '27 days; paid; generous' }),
+      'Employees get 27  Days of paid leave.',
+    );
+    expect(split).toEqual({ literal: ['27 days', 'paid'], missing: ['generous'] });
+    expect(keyCoverage(q(), 'You get 27 days.', split.literal)).toBe(0.5);
+    expect(keyCoverage(q(), 'x', [])).toBeNull();
+  });
+
+  it('accepts attribution only when the cited sections hold the key elements the answer states', () => {
     const good = { passage: 'Employees get 27 days of leave.' };
+    const paid = { passage: 'Leave is paid.' };
     const bad = { passage: 'Parking is free.' };
-    expect(attributionOk(q(), { refused: false, cited: [good] })).toBe(true);
-    expect(attributionOk(q(), { refused: false, cited: [good, bad] })).toBe(false);
-    expect(attributionOk(q(), { refused: false, cited: [] })).toBe(false);
-    expect(attributionOk(q(), { refused: true, cited: [] })).toBe(false);
-    expect(attributionOk(q({ category: 'absent_unrelated' }), { refused: true, cited: [] })).toBe(true);
-    expect(attributionOk(q({ category: 'absent_unrelated' }), { refused: false, cited: [good] })).toBe(false);
+    const says = (answer: string, cited: { passage: string }[]) =>
+      attributionOk(q(), { refused: false, answer, cited });
+    expect(says('You get 27 days [1].', [good])).toBe(true);
+    expect(says('You get 27 days [1][2].', [good, bad])).toBe(false);
+    expect(says('You get 27 days [1].', [])).toBe(false);
+    // The cited section holds a key element, but not the one the answer gives.
+    expect(says('You get 27 days [1].', [paid])).toBe(false);
+    expect(says('It is paid [1].', [paid])).toBe(true);
+    // No key element in the answer: nothing to check the citation against.
+    expect(says('You get plenty [1].', [good])).toBe(false);
+    expect(attributionOk(q(), { refused: true, answer: '', cited: [] })).toBe(false);
+    const absent = q({ category: 'absent_related' });
+    expect(attributionOk(absent, { refused: true, answer: 'NOT_IN_SOURCES [1]', cited: [good] })).toBe(true);
+    expect(attributionOk(absent, { refused: false, answer: 'You get 27 days [1].', cited: [good] })).toBe(false);
+  });
+
+  it('normalizes dashes, quotes, broken words and percent ranges, and ignores phrases copied from the question', () => {
+    expect(squash('0%–15% and con- flicts, “quoted”')).toBe(squash('0-15% and conflicts, "quoted"'));
+    const copied = q({ question: 'What does paragraph 5.88 say?', key_elements: 'paragraph 5.88; award the contract' });
+    const passage = { passage: '5.88 The Borrower shall award the contract.' };
+    expect(
+      attributionOk(copied, {
+        refused: false,
+        answer: 'Under paragraph 5.88 they award the contract [1].',
+        cited: [passage],
+      }),
+    ).toBe(true);
+    expect(attributionOk(copied, { refused: false, answer: 'See paragraph 5.88 [1].', cited: [passage] })).toBe(false);
   });
 
   it('summarizes per configuration and category with medians', () => {
@@ -81,6 +116,8 @@ describe('answer metrics', () => {
         attribution: true,
         firstTokenMs: 100,
         totalMs: 900,
+        refused: false,
+        unsupported: 0,
       },
       {
         id: 'b',
@@ -91,6 +128,8 @@ describe('answer metrics', () => {
         attribution: false,
         firstTokenMs: 300,
         totalMs: 1100,
+        refused: true,
+        unsupported: 2,
       },
       {
         id: 'c',
@@ -101,6 +140,19 @@ describe('answer metrics', () => {
         attribution: true,
         firstTokenMs: null,
         totalMs: 500,
+        refused: false,
+        unsupported: 1,
+      },
+      {
+        id: 'f',
+        category: 'table_number',
+        config: 'c1',
+        targetHit: false,
+        keyCoverage: 0,
+        attribution: false,
+        firstTokenMs: 100,
+        totalMs: 100,
+        excluded: true,
       },
     ];
     const all = summarizeMetrics(rows).find((s) => s.category === 'all')!;
@@ -111,9 +163,13 @@ describe('answer metrics', () => {
       attribution: { hit: 2, n: 3 },
       firstTokenMedianMs: 200,
       totalMedianMs: 900,
+      falseRefusals: { hit: 1, n: 2 },
+      falseAnswers: { hit: 1, n: 1 },
+      unsupportedMean: 1,
+      excluded: 1,
     });
     expect(metricsTable([all]).split('\n')[2]).toBe(
-      '| c1 | all | 3 | 50% (1/2) | 75% (2) | 67% (2/3) | 200 ms | 900 ms |',
+      '| c1 | all | 3 (+1 excluded) | 50% (1/2) | 75% (2) | 67% (2/3) | 50% (1/2) | 100% (1/1) | 1.00 | 200 ms | 900 ms |',
     );
   });
 });
@@ -302,6 +358,7 @@ describe('section listing answers', () => {
       cited: [],
       considered: [],
       nearest: [card('A'), card('C'), card('B')],
+      checked: [],
       skippedModel: true,
       timings: { firstTokenMs: null, modelMs: 0 },
       stats: { promptTokens: null, completionTokens: null },
@@ -355,6 +412,8 @@ describe('score on upstream results', () => {
         attribution: true,
         firstTokenMs: 100,
         totalMs: 800,
+        refused: false,
+        excluded: false,
       },
     ]);
   });

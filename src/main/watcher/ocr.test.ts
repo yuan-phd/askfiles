@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { fakeApi, manualWatch } from './__fixtures__/fakes.js';
 import { collectorOcr } from './ocr.js';
-import { sectionSplitter } from './splitter.js';
+import { sectionSplitter, splitWithOcr } from './splitter.js';
 import type { IndexData, OcrApi } from './types.js';
 import { FolderWatcher } from './watcher.js';
 
@@ -200,5 +200,67 @@ describe('OCR of a PDF without a text layer, page by page', () => {
     expect(doc).toMatchObject({ pageStart: 2, pageEnd: 2 });
     expect(doc.pageContent).toContain('Dinner is refunded up to 40 euros.');
     expect(collector.images).toEqual(['scan-page-1-1.png', 'scan-page-2-1.png']);
+  });
+});
+
+describe('OCR of garbled pages in a PDF with a text layer', () => {
+  // Page 1 carries a garbage text layer over its scan, page 2 a clean one of more than 200 characters.
+  const GARBAGE = [
+    '~|; x9#@ !!q %% ^^ Cl@ #r 1-, agn:,e.111,rnt',
+    '\'\'. C"D7.I21C ...,,-omr<-l - .... --("-38rl(*l =--,',
+  ];
+  const CLEAN = [
+    'Meals on a work trip are refunded against receipts.',
+    'Lunch is refunded up to 25 euros and dinner up to 40 euros.',
+    'Receipts must show the date, the restaurant and the amount paid.',
+    'Alcohol is never refunded, whatever the occasion of the meal.',
+    'Meals bought for guests need the names of the guests on the claim.',
+  ];
+  async function garbledPdf(): Promise<string> {
+    const { buildScannedPdfWithText } = await import('../../../test/fixtures/make-scanned-pdf.mjs');
+    const dir = path.dirname(SCANNED);
+    const file = path.join(tmp, 'records.pdf');
+    fs.writeFileSync(
+      file,
+      buildScannedPdfWithText([
+        { jpg: fs.readFileSync(path.join(dir, 'scanned-page.jpg')), text: GARBAGE },
+        { jpg: fs.readFileSync(path.join(dir, 'scanned-page-2.jpg')), text: CLEAN },
+      ]),
+    );
+    return file;
+  }
+
+  it('OCRs only the garbled page, replaces its text and logs it', async () => {
+    const file = await garbledPdf();
+    const api = fakeCollector();
+    const logs: string[] = [];
+    const { chunks, ocrReplaced, parsed } = await splitWithOcr(file, {
+      maxChars: 2000,
+      ocr: collectorOcr({ api, cacheDir: path.join(tmp, 'ocr-cache') }),
+      log: (m) => logs.push(m),
+    });
+    expect(parsed.ocrPages).toEqual([1]);
+    expect(ocrReplaced).toEqual([1]);
+    expect(api.images).toEqual(['records-page-1-1.png']);
+    const all = chunks.map((c) => c.text).join('\n');
+    expect(all).toContain('Train journeys are booked in second class.');
+    expect(all).not.toContain('agn:,e');
+    expect(all).toContain('Alcohol is never refunded');
+    expect(logs).toEqual([expect.stringContaining('garbled text layer on pages 1; replaced with OCR: 1')]);
+  });
+
+  it('keeps the text layer without an OCR hook, and when OCR finds nothing', async () => {
+    const file = await garbledPdf();
+    const logs: string[] = [];
+    const without = await splitWithOcr(file, { maxChars: 2000, log: (m) => logs.push(m) });
+    expect(without.ocrReplaced).toEqual([]);
+    expect(without.chunks.map((c) => c.text).join('\n')).toContain('agn:,e');
+    expect(logs[0]).toContain('kept (no OCR available)');
+    const empty = await splitWithOcr(file, {
+      maxChars: 2000,
+      ocr: collectorOcr({ api: fakeCollector({}), cacheDir: path.join(tmp, 'ocr-cache-2') }),
+    });
+    expect(empty.ocrReplaced).toEqual([]);
+    expect(empty.chunks.map((c) => c.text).join('\n')).toContain('agn:,e');
   });
 });

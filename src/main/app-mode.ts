@@ -23,6 +23,32 @@ export const LIBRARY_FOLDER_ENV = 'ASKFILES_LIBRARY_FOLDER';
 /** Shows the Developer page in the menu: raw preset values and the data directory. */
 export const DEVELOPER_ENV = 'ASKFILES_DEVELOPER';
 
+/** npm run dev: the app from source, with the backend from the repository (devBackend). */
+export const DEV_ENV = 'ASKFILES_DEV';
+/** Port of the Ollama a dev run uses; default the Mac's own, 11434. */
+export const OLLAMA_PORT_ENV = 'ASKFILES_OLLAMA_PORT';
+
+/** Where a dev run takes its backend from, in place of the app bundle. */
+export interface DevBackend {
+  /** Stands in for process.resourcesPath: upstream/ holds server/ and collector/ like Resources. */
+  resourcesPath: string;
+  /** Plain Node for server and collector: their native modules were built by yarn for it, not for Electron. */
+  nodePath: string;
+  externalOllamaPort: number;
+}
+
+export function devBackend(env: Env, appPath: string): DevBackend | null {
+  if (env[DEV_ENV] !== '1') return null;
+  const raw = env[OLLAMA_PORT_ENV];
+  const port = raw ? Number(raw) : 11434;
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error(`${OLLAMA_PORT_ENV} must be a port number`);
+  return {
+    resourcesPath: path.join(appPath, 'upstream'),
+    nodePath: env.npm_node_execpath || 'node',
+    externalOllamaPort: port,
+  };
+}
+
 export type StartPage = 'upstream' | 'ask' | 'onboarding';
 
 export function upstreamUiEnabled(env: Env): boolean {

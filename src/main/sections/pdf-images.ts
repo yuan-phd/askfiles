@@ -1,4 +1,18 @@
+import path from 'node:path';
 import zlib from 'node:zlib';
+
+/**
+ * pdfjs-dist 6 decodes JBIG2 and JPEG 2000 with WebAssembly it loads from wasmUrl; without it those
+ * images come back empty and a scan stored as JBIG2 (most black-and-white scans) gives no page
+ * images. Resolved like the tesseract data (src/main/tesseract.ts), so it works from app.asar too.
+ */
+function pdfjsWasmUrl(): string | undefined {
+  try {
+    return path.join(path.dirname(require.resolve('pdfjs-dist/package.json')), 'wasm') + path.sep;
+  } catch {
+    return undefined;
+  }
+}
 
 /** A decoded image as pdfjs hands it over: kind 1 is 1-bit gray (packed rows), 2 RGB, 3 RGBA. */
 export interface RawImage {
@@ -102,7 +116,11 @@ export interface PageImages {
  * in JavaScript, no canvas) and encoded as PNG for the collector's image OCR. Image masks are not
  * taken: their bits mean paint or skip rather than gray values.
  */
-export async function* pdfPageImages(buffer: Buffer, o: { timeoutMs?: number } = {}): AsyncGenerator<PageImages> {
+export async function* pdfPageImages(
+  buffer: Buffer,
+  o: { timeoutMs?: number; pages?: number[] } = {},
+): AsyncGenerator<PageImages> {
+  const only = o.pages ? new Set(o.pages) : null;
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const task = pdfjs.getDocument({
     data: new Uint8Array(buffer),
@@ -110,11 +128,13 @@ export async function* pdfPageImages(buffer: Buffer, o: { timeoutMs?: number } =
     useSystemFonts: false,
     isOffscreenCanvasSupported: false,
     isImageDecoderSupported: false,
+    wasmUrl: pdfjsWasmUrl(),
     verbosity: 0,
   });
   try {
     const doc = await task.promise;
     for (let n = 1; n <= doc.numPages; n++) {
+      if (only && !only.has(n)) continue;
       try {
         const page = (await doc.getPage(n)) as unknown as PdfPage;
         const ops = await page.getOperatorList();

@@ -3,7 +3,7 @@ import path from 'node:path';
 import { AppController } from './app.js';
 import { messagePage, STARTING_PAGE } from './message-page.js';
 import { APP_ORIGIN, APP_SCHEME, appProtocolHandler, pageUrl, type PageName } from './app-protocol.js';
-import { developerEnabled, upstreamUiEnabled, WINDOW_TITLE } from './app-mode.js';
+import { devBackend, developerEnabled, upstreamUiEnabled, WINDOW_TITLE } from './app-mode.js';
 import type { BridgeHandlers } from './bridge/contract.js';
 import { registerBridge } from './bridge/register.js';
 import { createLogger, resolveLogDir, resolvePort, PORT_ENV, CONFIG_ENV } from './config.js';
@@ -23,7 +23,15 @@ function externalHandlers(baseUrl: string | null, log: (m: string) => void): Bri
     throw new Error('not available when AskFiles connects to an external server');
   };
   return {
-    shellConfig: () => ({ baseUrl, apiKey: null, workspace: null, folder: null, libraryId: null, libraryName: null }),
+    shellConfig: () => ({
+      baseUrl,
+      apiKey: null,
+      workspace: null,
+      folder: null,
+      libraryId: null,
+      libraryName: null,
+      askNotice: null,
+    }),
     setupReplay: () => [],
     setupStart: unavailable,
     setupRetry: unavailable,
@@ -73,8 +81,12 @@ function externalHandlers(baseUrl: string | null, log: (m: string) => void): Bri
 }
 
 function main(): void {
+  const dev = devBackend(process.env, app.getAppPath());
+  // Its own data directory, so a dev run never touches the installed app's library or models.
+  if (dev) app.setPath('userData', path.join(app.getPath('appData'), 'AskFiles-dev'));
   const log = createLogger(resolveLogDir(process.env, app.getPath('logs')), 'main');
   log(`starting version ${app.getVersion()} pid ${process.pid}`);
+  if (dev) log(`dev run: backend from ${dev.resourcesPath}, node ${dev.nodePath}, ollama on ${dev.externalOllamaPort}`);
 
   let external: string | null = null;
   let configError: string | null = null;
@@ -159,11 +171,12 @@ function main(): void {
       const target = upstreamUiEnabled(process.env) ? external + '/' : pageUrl('ask');
       log(`opening ${target}`);
       void win.loadURL(target);
-    } else if (app.isPackaged) {
+    } else if (app.isPackaged || dev) {
       controller = new AppController({
         win,
         log,
         env: process.env,
+        dev,
         broadcast,
         openModelsWindow: () => openPage('models', { width: 900, height: 640 }),
       });

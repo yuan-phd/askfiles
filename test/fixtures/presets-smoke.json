@@ -36,8 +36,24 @@
           "balanced": 0.0,
           "broad": 0.0
         },
+        "vectorFloor": {
+          "strict": 0,
+          "balanced": 0,
+          "broad": 0
+        },
         "contextBudgetTokens": 0,
-        "promptVariant": "default"
+        "promptVariant": "default",
+        "answerMode": "single",
+        "extractSections": 6,
+        "verifyCitations": false,
+        "paragraphSelection": false,
+        "verdictLine": false,
+        "documentAffinity": false,
+        "enumerateWhenAsked": false,
+        "enumerateFollowUp": false,
+        "noSummarizing": false,
+        "decomposeQuestions": false,
+        "dropUnsupportedHedges": false
       }
     }
   ]

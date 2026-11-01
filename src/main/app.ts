@@ -6,7 +6,10 @@ import util from 'node:util';
 import {
   AnswerService,
   ensureReranker,
+  NO_RERANKER,
   ollamaChat,
+  ollamaEmbed,
+  ParagraphStore,
   rerankerProcess,
   rerankerReady,
   upstreamVectorSearch,
@@ -18,15 +21,22 @@ import {
   type ServiceEvent,
 } from './answer/index.js';
 import { APP_ORIGIN, pageUrl, type PageName } from './app-protocol.js';
-import { chooseStartPage, developerEnabled, presetFolder, presetsFilePath, type StartPage } from './app-mode.js';
+import {
+  chooseStartPage,
+  developerEnabled,
+  presetFolder,
+  presetsFilePath,
+  type DevBackend,
+  type StartPage,
+} from './app-mode.js';
 import { bundledBackendConfig } from './backend-config.js';
 import { BrowseIndex, chunkReader, followWatcher, type DocumentRef } from './browse/index.js';
 import { CHANNELS, type BridgeHandlers, type DeveloperInfo, type WatcherView } from './bridge/contract.js';
 import type { Env, Logger } from './config.js';
 import { FirstRun } from './first-run.js';
-import { LibraryManager, moveLegacyLibraryFiles, type AddResult } from './libraries.js';
+import { LibraryManager, libraryDir, moveLegacyLibraryFiles, type AddResult } from './libraries.js';
 import { deleteWorkspace, ensureApiKey, ensureLibrary, ensureWorkspace, workspaceNameOf } from './library.js';
-import { ModelManager } from './models/index.js';
+import { ModelManager, verifyPinnedModel } from './models/index.js';
 import { OllamaClient } from './ollama/index.js';
 import { findOriginal } from './open-original.js';
 import { messagePage } from './message-page.js';
@@ -40,7 +50,15 @@ import {
   type PresetFile,
 } from './presets/index.js';
 import { ProcessManager } from './process-manager/index.js';
-import { checkSettingsChange, effectivePreset, runSettingsFor, settingsEnv, settingsView } from './settings.js';
+import {
+  ASK_OFF_NOTICE,
+  askNoticeFor,
+  checkSettingsChange,
+  effectivePreset,
+  runSettingsFor,
+  settingsEnv,
+  settingsView,
+} from './settings.js';
 import {
   currentLibraryOf,
   DEFAULT_LIBRARY_ID,
@@ -67,6 +85,8 @@ export interface AppDeps {
    * entry; only the Developer page opens it.
    */
   openModelsWindow(): void;
+  /** npm run dev: backend from the repository and the Mac's own Ollama, not from the bundle. */
+  dev?: DevBackend | null;
 }
 
 /**
@@ -89,9 +109,12 @@ export class AppController implements BridgeHandlers {
   private stopped = false;
   private readonly rerankerDir = path.join(this.dataDir, 'models', 'reranker');
   private reranker: { repo: string; instance: Reranker & { stop(): void } } | null = null;
+  private paragraphs: { key: string; store: ParagraphStore } | null = null;
   private readonly answers: AnswerService;
+  private readonly resourcesPath: string;
 
   constructor(private readonly d: AppDeps) {
+    this.resourcesPath = d.dev?.resourcesPath ?? process.resourcesPath;
     const loaded = loadShellState(this.dataDir, d.log);
     const { migrated, ...state } = loaded;
     this.state = state;
@@ -150,10 +173,11 @@ export class AppController implements BridgeHandlers {
     log(`start page ${start}`);
     this.manager = new ProcessManager(
       bundledBackendConfig({
-        resourcesPath: process.resourcesPath,
+        resourcesPath: this.resourcesPath,
         dataDir: this.dataDir,
         logDir: app.getPath('logs'),
-        nodePath: process.execPath,
+        nodePath: this.d.dev?.nodePath ?? process.execPath,
+        externalOllamaPort: this.d.dev?.externalOllamaPort,
         serverEnv,
         allowedOrigins: [APP_ORIGIN],
       }),
@@ -201,6 +225,7 @@ export class AppController implements BridgeHandlers {
       folder: null,
       libraryId: lib.id,
       libraryName: lib.name,
+      askNotice: this.machinePreset ? askNoticeFor(this.machinePreset) : null,
     };
   }
 
@@ -325,11 +350,13 @@ export class AppController implements BridgeHandlers {
     const next: Settings = { ...this.state.settings, ...checkSettingsChange(change, view.models) };
     const before = effectivePreset(presets, machine, this.state.settings);
     const after = effectivePreset(presets, machine, next);
-    if (after.chatModel !== before.chatModel) {
+    if (after.chatModel && after.chatModel !== before.chatModel) {
       if (!(await this.ollamaClient().has(after.chatModel))) {
         this.d.log(`[settings] pulling ${after.chatModel}`);
         await this.modelManager().pull(after.chatModel, (p) => this.d.broadcast(CHANNELS.modelsProgress, p));
       }
+      if (after.chatModelFile)
+        await verifyPinnedModel(this.ollamaClient(), after.chatModel, after.chatModelFile, this.d.log);
     }
     this.saveState({ ...this.state, settings: next });
     if (after.chatModel !== before.chatModel || after.contextLength !== before.contextLength) {
@@ -419,8 +446,12 @@ export class AppController implements BridgeHandlers {
     return this.machinePreset;
   }
 
-  /** The chat model the server .env names (the model page may have switched it), else the preset's. */
-  private chatModel(): string {
+  /**
+   * The chat model the server .env names (the model page may have switched it), else the preset's;
+   * null on a tier with Ask off.
+   */
+  private chatModel(): string | null {
+    if (!this.requireMachinePreset().chatModel) return null;
     try {
       const env = util.parseEnv(fs.readFileSync(this.envFile(), 'utf8')) as Record<string, string>;
       if (env.OLLAMA_MODEL_PREF) return env.OLLAMA_MODEL_PREF;
@@ -434,23 +465,25 @@ export class AppController implements BridgeHandlers {
   private runSettings(): RunSettings {
     const machine = this.machinePreset;
     if (!machine || !this.presets) throw new Error('AskFiles has not loaded its settings yet');
+    const chatModel = this.chatModel();
+    if (!chatModel) throw new Error(ASK_OFF_NOTICE);
     return runSettingsFor({
       presets: this.presets,
       machine,
       settings: this.state.settings,
-      chatModel: this.chatModel(),
+      chatModel,
     });
   }
 
   /** The preset's reranker, loaded once; null until its files are in the data directory. */
   private currentReranker(): Reranker | null {
     const repo = this.machinePreset?.answer.rerankerModel;
-    if (!repo || !rerankerReady(this.rerankerDir, repo)) return null;
+    if (!repo || repo === NO_RERANKER || !rerankerReady(this.rerankerDir, repo)) return null;
     if (this.reranker?.repo !== repo) {
       this.reranker?.instance.stop();
       // A child process of the app's own binary: a model call would block the main process.
       const instance = rerankerProcess({
-        transformersDir: path.join(process.resourcesPath, 'server', 'node_modules', '@xenova', 'transformers'),
+        transformersDir: path.join(this.resourcesPath, 'server', 'node_modules', '@xenova', 'transformers'),
         modelsDir: this.rerankerDir,
         repo,
         execPath: process.execPath,
@@ -475,8 +508,43 @@ export class AppController implements BridgeHandlers {
       resolveSources: (sources) => watcher.resolveSources(sources),
       index: browse,
       reranker: this.currentReranker(),
+      log: this.d.log,
       chat: ollamaChat(() => `http://127.0.0.1:${this.manager?.status().ports?.ollama ?? ollamaPort}`),
+      paragraphs: this.paragraphStore(browse),
     };
+  }
+
+  /**
+   * With paragraphSelection on: the current library's paragraph store, brought up to date in the
+   * background on every question, so a changed file gets its paragraphs soon after it is indexed;
+   * until then its long sections are sent as before.
+   */
+  private paragraphStore(browse: BrowseIndex): ParagraphStore | null {
+    const preset = this.machinePreset;
+    if (!preset?.answer.paragraphSelection) return null;
+    const lib = currentLibraryOf(this.state);
+    const key = `${lib.id}|${preset.embeddingModel}|${preset.chunkMaxChars}`;
+    if (this.paragraphs?.key !== key) {
+      const port = () => this.manager?.status().ports?.ollama;
+      this.paragraphs = {
+        key,
+        store: new ParagraphStore({
+          dir: path.join(libraryDir(this.dataDir, lib.id), 'paragraphs'),
+          model: preset.embeddingModel,
+          minSectionChars: 2 * preset.chunkMaxChars,
+          embed: ollamaEmbed(() => `http://127.0.0.1:${port()}`, preset.embeddingModel),
+          log: this.d.log,
+        }),
+      };
+    }
+    const store = this.paragraphs.store;
+    void store.refresh(() =>
+      browse
+        .listDocuments()
+        .map((d) => browse.getDocument({ id: d.id }))
+        .filter((d): d is NonNullable<typeof d> => d !== null),
+    );
+    return store;
   }
 
   /**
@@ -485,7 +553,7 @@ export class AppController implements BridgeHandlers {
    */
   private async fetchMissingReranker(): Promise<void> {
     const repo = this.machinePreset?.answer.rerankerModel;
-    if (!repo || rerankerReady(this.rerankerDir, repo)) return;
+    if (!repo || repo === NO_RERANKER || rerankerReady(this.rerankerDir, repo)) return;
     this.d.log(`[answer] reranker ${repo} missing, fetching in the background`);
     try {
       await ensureReranker({ repo, modelsDir: this.rerankerDir, log: (m) => this.d.log(`[answer] ${m}`) });
@@ -610,6 +678,7 @@ export class AppController implements BridgeHandlers {
               cacheDir: path.join(this.dataDir, 'ocr-cache'),
               log: (m) => log(`[watcher] ${m}`),
             }),
+            log: (m) => log(`[watcher] ${m}`),
           }),
           watch: chokidarWatch,
           log: (m) => log(`[watcher] ${m}`),

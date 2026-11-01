@@ -14,6 +14,20 @@ const cfg = bundledBackendConfig({
 });
 
 describe('bundledBackendConfig', () => {
+  it('uses an external Ollama for a dev run and spawns none', () => {
+    const dev = bundledBackendConfig({
+      resourcesPath: '/repo/upstream',
+      dataDir: '/d',
+      logDir: '/l',
+      nodePath: '/usr/local/bin/node',
+      externalOllamaPort: 11434,
+    });
+    expect(dev.externalOllamaPort).toBe(11434);
+    expect(dev.ollama).toBeUndefined();
+    expect(dev.server.args).toEqual(['/repo/upstream/server/index.js']);
+    expect(cfg.externalOllamaPort).toBeUndefined();
+  });
+
   it('runs server and collector from Resources with the app binary as Node', () => {
     expect(cfg.server).toEqual({
       command: '/Applications/AskFiles.app/Contents/MacOS/AskFiles',
@@ -31,8 +45,8 @@ describe('bundledBackendConfig', () => {
   });
 
   it('keeps models and all writable data in the data directory', () => {
-    expect(cfg.ollama.command).toBe(`${res}/ollama/ollama`);
-    expect(cfg.ollama.env).toEqual({ OLLAMA_MODELS: '/Users/u/Library/Application Support/AskFiles/ollama' });
+    expect(cfg.ollama!.command).toBe(`${res}/ollama/ollama`);
+    expect(cfg.ollama!.env).toEqual({ OLLAMA_MODELS: '/Users/u/Library/Application Support/AskFiles/ollama' });
     expect(cfg.dataDir).toBe('/Users/u/Library/Application Support/AskFiles');
     expect(cfg.logDir).toBe('/Users/u/Library/Logs/AskFiles');
     expect(cfg.killProcessGroup).toBe(true);
