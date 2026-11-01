@@ -9,6 +9,7 @@ import {
   CROSS_DOCUMENT_QUOTA,
   CROSS_DOCUMENT_RULES,
   DEFAULT_PARAMS,
+  FILE_SCOPED_VECTOR_POOL,
   NO_RERANKER,
   parseCitations,
   quotaSections,
@@ -198,5 +199,84 @@ describe('crossDocument in the pipeline', () => {
     expect(single.crossDocument).toBeUndefined();
     const off = settingsWith({});
     expect((await retrieve(q, off, deps)).crossDocument).toBeUndefined();
+  });
+});
+
+describe('fileScopedQuota', () => {
+  // 40 note sections fill the library-wide vector list (vectorTopK 30), so the named files'
+  // sections are found only by a search inside each file.
+  const notes = Array.from({ length: 40 }, (_, i) => ({ title: `Note ${i}`, parts: [`General remark ${i}.`] }));
+  const regs = [
+    { title: 'Scope', parts: ['Scope of these rules.'] },
+    { title: 'Approval', parts: ['Approval of the contract plan by the board.'] },
+    { title: 'Records', parts: ['Records are kept for seven years.'] },
+    { title: 'Signing', parts: ['Signing of the contract plan by the director.'] },
+  ];
+  const guidance = [
+    { title: 'Intro', parts: ['Introduction to the guidance.'] },
+    { title: 'Timing', parts: ['The contract plan approval comes before signing.'] },
+  ];
+  function setup() {
+    const lib = fixtureLibrary([
+      { name: 'Other_Notes.pdf', sections: notes },
+      { name: 'Procurement_Regulations.pdf', sections: regs },
+      { name: 'Contract_Management_Guidance.pdf', sections: guidance },
+    ]);
+    cleanups.push(lib.cleanup);
+    const resolver = createSourceResolver({ files: () => lib.records, readText: (l) => lib.chunkText.get(l) ?? null });
+    // Vector order: every note, then the Regulations as Records, Scope, Signing, Approval, then the Guidance.
+    const order = [
+      ...lib.records[0]!.sections.map((x) => [0, x.location] as const),
+      ...[3, 1, 4, 2].map((i) => [1, lib.records[1]!.sections[i - 1]!.location] as const),
+      ...lib.records[2]!.sections.map((x) => [2, x.location] as const),
+    ];
+    const topKs: number[] = [];
+    const deps: PipelineDeps = {
+      vectorSearch: async (_q, topK) => {
+        topKs.push(topK);
+        return order.slice(0, topK).map(([f, loc], i) => ({
+          id: loc,
+          text: lib.chunkText.get(loc)!,
+          metadata: { url: lib.records[f]!.url, title: lib.records[f]!.name },
+          score: 0.9 - i * 0.001,
+        }));
+      },
+      resolveSources: (x) => resolver(x),
+      index: lib.index,
+      reranker: null,
+      chat: async () => ({ promptTokens: 1, completionTokens: 1 }),
+    };
+    const docId = (n: number) => lib.index.getDocument({ url: lib.records[n]!.url, title: lib.records[n]!.name })!.id;
+    return { deps, topKs, regs: docId(1), guidance: docId(2) };
+  }
+  const q = 'Compare the Procurement Regulations and the Contract Management Guidance on approval and signing.';
+
+  it('takes each named file top 3 by vector and keyword search inside the file, fused by RRF', async () => {
+    const { deps, topKs, regs, guidance } = setup();
+    const s = settingsWith({ crossDocQuota: true, fileScopedQuota: true });
+    const r = await retrieve(q, s, deps);
+    expect(topKs).toEqual([s.params.vectorTopK, FILE_SCOPED_VECTOR_POOL]);
+    // Approval and Signing are found by both searches inside the file, Records by vector rank 1 only;
+    // Scope (vector rank 2 in the file, no keyword hit) is fourth.
+    const quota = r.crossDocument!.quota;
+    expect(quota.slice(0, 2).sort()).toEqual([`${regs}#2`, `${regs}#4`]);
+    expect(quota[2]).toBe(`${regs}#3`);
+    expect(quota.slice(3).sort()).toEqual([`${guidance}#1`, `${guidance}#2`]);
+    // Records ranks below the library-wide vector list and holds no term, so only the scoped search finds it;
+    // it still becomes a candidate and is selected.
+    expect(r.candidates.map((c) => c.key)).toContain(`${regs}#3`);
+    expect(choose(r, s).selected.map((x) => x.section.key)).toEqual(expect.arrayContaining(quota));
+
+    // Off: the quota comes from the library-wide fused list, which never saw Records.
+    const plain = await retrieve(q, settingsWith({ crossDocQuota: true }), deps);
+    expect(plain.crossDocument!.quota).not.toContain(`${regs}#3`);
+  });
+
+  it('changes nothing for a question naming one file', async () => {
+    const { deps, topKs } = setup();
+    const s = settingsWith({ crossDocQuota: true, fileScopedQuota: true });
+    const r = await retrieve('What do the Procurement Regulations say on signing?', s, deps);
+    expect(r.crossDocument).toBeUndefined();
+    expect(topKs).toEqual([s.params.vectorTopK]);
   });
 });

@@ -57,7 +57,8 @@
         "cjkOverlap": true,
         "crossDocument": false,
         "crossDocumentParts": ["quota", "grouped", "verify"],
-        "crossDocQuota": true
+        "crossDocQuota": true,
+        "fileScopedQuota": false
       },
       "indexing": {
         "structuredTables": true,
@@ -127,7 +128,8 @@
         "cjkOverlap": true,
         "crossDocument": false,
         "crossDocumentParts": ["quota", "grouped", "verify"],
-        "crossDocQuota": true
+        "crossDocQuota": true,
+        "fileScopedQuota": false
       },
       "indexing": {
         "structuredTables": true,
@@ -190,7 +192,8 @@
         "cjkOverlap": true,
         "crossDocument": false,
         "crossDocumentParts": ["quota", "grouped", "verify"],
-        "crossDocQuota": true
+        "crossDocQuota": true,
+        "fileScopedQuota": false
       },
       "indexing": {
         "structuredTables": true,

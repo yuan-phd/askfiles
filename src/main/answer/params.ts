@@ -130,6 +130,13 @@ export interface AnswerParams {
    * verification unchanged.
    */
   crossDocQuota: boolean;
+  /**
+   * With the quota part: a named file's quota sections come from retrieval inside that file
+   * (vector search and keyword search restricted to its sections, fused by RRF, top
+   * CROSS_DOCUMENT_QUOTA) instead of from its best sections in the library-wide fused list
+   * (docs/plan.md, round C1).
+   */
+  fileScopedQuota: boolean;
 }
 
 /** The crossDocument parts in effect: crossDocument's own, or the quota alone with crossDocQuota. */
@@ -168,6 +175,7 @@ export const DEFAULT_PARAMS: AnswerParams = {
   crossDocument: false,
   crossDocumentParts: [...CROSS_DOCUMENT_PARTS],
   crossDocQuota: false,
+  fileScopedQuota: false,
 };
 
 /** Tokens kept free for the answer itself and for the instructions and the question. */
@@ -267,6 +275,7 @@ const CHECKS: Record<keyof AnswerParams, (v: unknown) => Problem> = {
       ? null
       : `must be a list of ${CROSS_DOCUMENT_PARTS.join(', ')}`,
   crossDocQuota: bool,
+  fileScopedQuota: bool,
 };
 
 /** Problems with an answer block, each prefixed with at; every key is required. */

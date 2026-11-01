@@ -127,6 +127,75 @@ export function quotaSections(fused: FusedSection[], documentIds: string[], per 
 }
 
 /**
+ * fileScopedQuota: chunks fetched by one library-wide vector search before they are filtered to
+ * the named files. Upstream's vector search takes no file filter, and its LanceDB search is exact
+ * (no approximate index), so with every chunk of the library in the pool the filtered list is the
+ * search restricted to the file. 2000 covers the eval corpora (1304 and 693 chunks); in a larger
+ * library a file's chunks ranked below the pool are not seen.
+ */
+export const FILE_SCOPED_VECTOR_POOL = 2000;
+
+type VectorHit = VectorCandidate & { file: string | null; documentId: string | null };
+
+/** Upstream hits as candidates of their sections. */
+async function vectorCandidates(raw: RawVectorHit[], deps: PipelineDeps, keep?: Set<string>): Promise<VectorHit[]> {
+  const chunks = raw.map((r, i) => ({
+    id: r.id ?? `chunk-${i}`,
+    url: r.metadata?.url ?? null,
+    title: r.metadata?.title ?? null,
+    text: chunkBody(r.text ?? ''),
+    score: typeof r.score === 'number' ? r.score : null,
+  }));
+  // Filtered by document before the sources are resolved, which maps chunks by their text.
+  const wanted = keep
+    ? chunks.filter((c) => {
+        const d = deps.index.getDocument({ url: c.url, title: c.title });
+        return !!d && keep.has(d.id);
+      })
+    : chunks;
+  const located = await deps.resolveSources(wanted);
+  return located.map((c) => {
+    const doc = deps.index.getDocument({ url: c.url, title: c.title });
+    const section = doc && typeof c.sectionIndex === 'number' ? sectionKey(doc.id, c.sectionIndex) : null;
+    return { id: c.id, text: c.text, score: c.score, section, file: doc?.title ?? c.title, documentId: doc?.id ?? null };
+  });
+}
+
+/**
+ * Each named document's top sections by retrieval inside it: its chunks of one wide vector search
+ * (the first vectorTopK), its sections in the keyword ranking (the first keywordTopK; term weights
+ * stay those of the library), fused by RRF. Per document in documentIds order, each in fused order.
+ */
+export async function fileScopedSections(
+  question: string,
+  terms: Term[],
+  documentIds: string[],
+  p: AnswerParams,
+  deps: PipelineDeps,
+  signal?: AbortSignal,
+  per = CROSS_DOCUMENT_QUOTA,
+): Promise<FusedSection[]> {
+  const ids = new Set(documentIds);
+  const hits = await vectorCandidates(await deps.vectorSearch(question, FILE_SCOPED_VECTOR_POOL, signal), deps, ids);
+  const ranking = terms.length
+    ? deps.index.rankSections(
+        terms.map((t) => t.text),
+        deps.index.sectionTotal(),
+      )
+    : [];
+  const out: FusedSection[] = [];
+  for (const id of new Set(documentIds)) {
+    const vector = hits.filter((h) => h.documentId === id).slice(0, p.vectorTopK);
+    const keyword = ranking
+      .filter((r) => r.documentId === id)
+      .slice(0, p.keywordTopK)
+      .map((r) => ({ section: sectionKey(r.documentId, r.sectionIndex), score: r.score, terms: r.terms }));
+    out.push(...fuse(vector, keyword, p.rrfK).slice(0, per));
+  }
+  return out;
+}
+
+/**
  * Factor on the fused score of a named file's sections. Fused scores are reciprocal ranks with
  * k 60: a section both lists put first scores 2/61, one found by a single list at rank r 1/(60+r).
  * 1.5 lifts a named file's section found by one list at rank 1 (1.5/61) above every other file's
@@ -154,20 +223,9 @@ export async function retrieve(
 ): Promise<Retrieval> {
   const p = s.params;
   const t0 = performance.now();
-  const raw = await deps.vectorSearch(question, p.vectorTopK, signal);
-  const chunks = raw.map((r, i) => ({
-    id: r.id ?? `chunk-${i}`,
-    url: r.metadata?.url ?? null,
-    title: r.metadata?.title ?? null,
-    text: chunkBody(r.text ?? ''),
-    score: typeof r.score === 'number' ? r.score : null,
-  }));
-  const located = await deps.resolveSources(chunks);
-  const vector = located.map((c) => {
-    const doc = deps.index.getDocument({ url: c.url, title: c.title });
-    const section = doc && typeof c.sectionIndex === 'number' ? sectionKey(doc.id, c.sectionIndex) : null;
-    return { id: c.id, text: c.text, score: c.score, section, file: doc?.title ?? c.title };
-  });
+  const vector = (await vectorCandidates(await deps.vectorSearch(question, p.vectorTopK, signal), deps)).map(
+    ({ documentId: _, ...v }) => v,
+  );
   const t1 = performance.now();
 
   const terms = extractTerms(question, {
@@ -203,9 +261,20 @@ export async function retrieve(
     if (groups.length >= 2) {
       const files = groups.flat();
       const documentIds = files.map((f) => f.documentId);
-      const quota = parts.has('quota') ? quotaSections(fused, documentIds) : [];
+      let quota: string[] = [];
+      if (parts.has('quota') && p.fileScopedQuota) {
+        const scoped = await fileScopedSections(question, terms, documentIds, p, deps, signal);
+        quota = scoped.map((f) => f.key);
+        // A section found only inside its file joins the end of the fused list, so it can become a
+        // candidate; the library-wide ranks stay as they were.
+        const seen = new Set(fused.map((f) => f.key));
+        fused = [...fused, ...scoped.filter((f) => !seen.has(f.key))];
+      } else if (parts.has('quota')) quota = quotaSections(fused, documentIds);
       crossDocument = { documentIds, files: files.map((f) => f.file), quota };
-      deps.log?.(`[answer] cross-document: ${crossDocument.files.join(', ')}; ${quota.length} quota sections`);
+      deps.log?.(
+        `[answer] cross-document: ${crossDocument.files.join(', ')}; ${quota.length} quota sections` +
+          (p.fileScopedQuota && parts.has('quota') ? ' (file-scoped)' : ''),
+      );
     }
   }
   const cap = sectionCap(p, s.chunkMaxChars);

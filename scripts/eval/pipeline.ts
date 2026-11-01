@@ -98,6 +98,7 @@ export function indexHash(config: EvalConfig, library: Pick<Library, 'records'>)
       ...(crossDocumentPartsOf(p).size
         ? [`crossDocument:${crossDocumentPartsOf(p).has('quota') ? 'quota' : 'names'}`]
         : []),
+      ...(crossDocumentPartsOf(p).has('quota') && p.fileScopedQuota ? ['fileScopedQuota'] : []),
     ],
   };
   return createHash('sha256').update(JSON.stringify(key)).digest('hex').slice(0, 16);

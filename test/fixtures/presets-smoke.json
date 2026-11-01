@@ -57,7 +57,8 @@
         "cjkOverlap": false,
         "crossDocument": false,
         "crossDocumentParts": ["quota", "grouped", "verify"],
-        "crossDocQuota": false
+        "crossDocQuota": false,
+        "fileScopedQuota": false
       }
     }
   ]
