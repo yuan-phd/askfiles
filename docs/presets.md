@@ -23,6 +23,7 @@ chatModelFile pins a chat model pulled from Hugging Face: repository, revision, 
 | temperature | 0.1 | 0.1 | 0.1 | Plan phase 2 |
 | reasoningEffort | off | off | off | Plan phase 2, Session C patch 7 |
 | ocrLanguages (TARGET_OCR_LANG) | eng,chi_sim | same | same | Q7, Q14 |
+| indexing | structuredTables on; cjkHeadings, ocrUpscale off | same | same | Indexing rounds I1 to I3 (docs/plan.md, Indexing rounds, 2026-11-01): tables gained on the tuning and Chinese sets; Chinese headings lost cited sections through citation verification on short sections; OCR upscaling misread more on the scanned file |
 | systemPrompt | Answer only from the provided context. Cite the source document for what you say. If the context does not contain the answer, say that you do not know. | same | same | Plan phase 2 wording |
 
 Chat model candidates found on 2026-10-29 (download size from registry.ollama.ai manifests): 4B class qwen3:4b 2.50 GB, qwen3.5:4b 3.32 GB; 8B class qwen2.5:7b 4.68 GB, qwen3:8b 5.23 GB, qwen3.5:9b 6.55 GB; 14B class qwen2.5:14b 8.99 GB, qwen3:14b 9.28 GB. bge-m3:567m is 1.16 GB.
@@ -40,6 +41,7 @@ Total RAM in GiB (os.totalmem() / 1024^3; a 16 GB Mac reports exactly 1717986918
 | DEFAULT_REASONING_EFFORT=off | server .env and the server's spawn environment (presetSpawnEnv) | .env at writeConfig; spawn env at every start. Upstream dumpENV rewrites .env from an allow list on any settings change and that list does not contain this key (upstream/server/utils/helpers/updateENV.js, dumpENV), so the file alone would lose it. A test fails if the preset gains another key dumpENV drops |
 | Onboarding complete | Upstream sets system_settings onboarding_complete at boot because LLM_PROVIDER and VECTOR_DB are set (Q5); the wizard also calls POST /api/onboarding and checks GET /api/onboarding | Wizard step markOnboarded, after the server restart |
 | chatMode, similarityThreshold, topN, openAiTemp, openAiPrompt | Library workspace columns through POST /api/v1/workspace/new or /api/v1/workspace/{slug}/update (workspaceSettings) | markOnboarded calls deps.applyWorkspaceSettings when given; the library setup must also pass them when it creates the workspace |
+| indexing | The shell's section splitter (sectionSplitter, collectorOcr's upscale); every switch that is on, with its revision, is part of the split key, so changing one reindexes every library once. Optional in the schema; missing means all off | Splitter reads it from the preset |
 | chunkMaxChars | The shell's section splitter (folder watcher, Session F) and EMBEDDING_MODEL_MAX_CHUNK_LENGTH; upstream's chunk size defaults to that limit (upstream/server/utils/TextSplitter/index.js:47-57), so a section up to this size stays one chunk | Splitter reads it from the preset |
 
 The 16 GB .env, byte for byte, is in src/main/presets/__fixtures__/server-16gb.env (secrets replaced by test values).
