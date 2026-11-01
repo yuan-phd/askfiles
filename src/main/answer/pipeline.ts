@@ -157,7 +157,14 @@ async function vectorCandidates(raw: RawVectorHit[], deps: PipelineDeps, keep?: 
   return located.map((c) => {
     const doc = deps.index.getDocument({ url: c.url, title: c.title });
     const section = doc && typeof c.sectionIndex === 'number' ? sectionKey(doc.id, c.sectionIndex) : null;
-    return { id: c.id, text: c.text, score: c.score, section, file: doc?.title ?? c.title, documentId: doc?.id ?? null };
+    return {
+      id: c.id,
+      text: c.text,
+      score: c.score,
+      section,
+      file: doc?.title ?? c.title,
+      documentId: doc?.id ?? null,
+    };
   });
 }
 
@@ -223,9 +230,13 @@ export async function retrieve(
 ): Promise<Retrieval> {
   const p = s.params;
   const t0 = performance.now();
-  const vector = (await vectorCandidates(await deps.vectorSearch(question, p.vectorTopK, signal), deps)).map(
-    ({ documentId: _, ...v }) => v,
-  );
+  const vector = (await vectorCandidates(await deps.vectorSearch(question, p.vectorTopK, signal), deps)).map((h) => ({
+    id: h.id,
+    text: h.text,
+    score: h.score,
+    section: h.section,
+    file: h.file,
+  }));
   const t1 = performance.now();
 
   const terms = extractTerms(question, {

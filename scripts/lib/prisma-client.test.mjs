@@ -10,7 +10,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const schema = (url) =>
   `generator client {\n  provider = "prisma-client-js"\n}\n\n// datasource db {\n//   url = "file:old.db"\n// }\ndatasource db {\n  provider = "sqlite"\n  url      = ${url}\n}\n`;
 const PATCHED = schema('env("DATABASE_URL")');
-const UPSTREAM = schema('"file:../storage/anythingllm.db"');
+const UPSTREAM = schema('"file:../storage/upstream.db"');
 
 let dir;
 afterEach(() => dir && rmSync(dir, { recursive: true, force: true }));
@@ -28,7 +28,7 @@ function server(source, generated) {
 describe('prisma-client check', () => {
   it('reads the datasource url, ignoring commented blocks', () => {
     expect(datasourceUrl(PATCHED)).toBe('env("DATABASE_URL")');
-    expect(datasourceUrl(UPSTREAM)).toBe('"file:../storage/anythingllm.db"');
+    expect(datasourceUrl(UPSTREAM)).toBe('"file:../storage/upstream.db"');
   });
 
   it('accepts a client generated from the patched schema', () => {
@@ -38,7 +38,7 @@ describe('prisma-client check', () => {
   it('rejects a client generated while upstream was restored, naming both database sources', () => {
     const r = checkClient(server(PATCHED, UPSTREAM));
     expect(r.ok).toBe(false);
-    expect(r.reason).toContain('"file:../storage/anythingllm.db"');
+    expect(r.reason).toContain('"file:../storage/upstream.db"');
     expect(r.reason).toContain('env("DATABASE_URL")');
     expect(r.reason).toContain('without the patches');
   });

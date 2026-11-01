@@ -3,7 +3,7 @@
 //
 // Why: prisma generate copies prisma/schema.prisma into node_modules/.prisma/client, and the client
 // opens the database the copy names. A generate run while upstream/ is restored (git checkout --
-// upstream, or yarn install's postinstall) bakes in upstream's file:../storage/anythingllm.db in
+// upstream, or yarn install's postinstall) bakes in upstream's hard-coded file:../storage/ path in
 // place of patch 002's env("DATABASE_URL"); the server then opens an empty database inside the
 // server code, rejects the stored API key and the dev app cannot finish onboarding. build.sh's
 // build stamp does not see it, since the patched sources hash the same as before.
@@ -30,7 +30,8 @@ export function checkClient(serverDir) {
   const source = read('prisma/schema.prisma');
   const generated = read('node_modules/.prisma/client/schema.prisma');
   if (source === null) return { ok: false, reason: 'prisma/schema.prisma is missing' };
-  if (generated === null) return { ok: false, reason: 'node_modules/.prisma/client has no schema.prisma; run prisma generate' };
+  if (generated === null)
+    return { ok: false, reason: 'node_modules/.prisma/client has no schema.prisma; run prisma generate' };
   if (generated === source) return { ok: true };
   const [s, g] = [datasourceUrl(source), datasourceUrl(generated)];
   return {
