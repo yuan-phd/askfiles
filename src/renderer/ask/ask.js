@@ -6,6 +6,7 @@
 // (../browse/view.js) in place of the Ask page, without a reload.
 import { createBrowseView } from '../browse/view.js';
 import { createClient, generateApiKey } from '../api/client.js';
+import { createHistory, isBackKey } from '../shared/history.js';
 import { mountTopBar } from '../shared/topbar.js';
 
 const RECENT_LIMIT = 12;
@@ -80,9 +81,26 @@ const state = {
   expected: null,
 };
 
+// One page history over Ask and Browse; Back on the Document page and Cmd+[ go through it.
+const history = createHistory({
+  initial: { view: 'search' },
+  apply: (entry) => applyEntry(entry),
+  capture: (entry) => ({
+    scroll: entry.view === 'search' ? els.searchView.scrollTop : (state.browse?.scrollTop() ?? 0),
+  }),
+});
+
 const bar = mountTopBar($('top-bar'), {
   views: { search: els.searchView, browse: els.browseView },
-  onView: (view) => showView(view),
+  onView: (view) =>
+    history.navigate(() => {
+      showView(view);
+      return view === 'search' ? { view: 'search' } : state.browse.current();
+    }),
+  // Another library is a fresh start: nothing to go back to. (Selecting one normally reloads the
+  // window, which clears the history too.)
+  onLibraryChange: () =>
+    history.reset(state.view === 'browse' && state.browse ? state.browse.current() : { view: 'search' }),
 });
 
 function setState(kind, text) {
@@ -188,18 +206,31 @@ async function openSource(c) {
 
 function showView(view) {
   state.view = view;
-  if (view === 'browse' && !state.browse) state.browse = createBrowseView(els.browseView);
+  if (view === 'browse' && !state.browse) state.browse = createBrowseView(els.browseView, { history });
   bar.setView(view);
-  if (view === 'search' && !bar.isEmpty()) els.query.focus();
+  if (view === 'search' && !bar.isEmpty()) els.query.focus({ preventScroll: true });
 }
 
-/** Opens the cited section on the browse view's document page. */
-function readSection(c) {
+/** Goes back to a history entry: the Ask results as they were, or a Browse page with its state. */
+async function applyEntry(entry) {
+  if (entry.view === 'search') {
+    showView('search');
+    if (typeof entry.scroll === 'number') els.searchView.scrollTop = entry.scroll;
+    return;
+  }
   showView('browse');
-  state.browse.openDocument(
-    { id: c.documentId, url: c.url, title: c.file },
-    { sectionIndex: c.sectionIndex, sectionTitle: c.title },
-  );
+  await state.browse.restore(entry);
+}
+
+/** Opens the cited section on the browse view's document page, one step in the history. */
+function readSection(c) {
+  const ref = { id: c.documentId, url: c.url, title: c.file };
+  const target = { sectionIndex: c.sectionIndex, sectionTitle: c.title };
+  history.navigate(() => {
+    showView('browse');
+    void state.browse.openDocument(ref, target, { record: false });
+    return { view: 'browse', page: 'document', ref, target };
+  });
 }
 
 function setOptional(el, text) {
@@ -307,7 +338,10 @@ function renderStreaming(parts, max) {
   );
 }
 
-/** The finished answer, sentence by sentence; a sentence citing nothing gets a muted marker. */
+/**
+ * The finished answer, sentence by sentence. A sentence no source supports stays muted and gets
+ * an asterisk; the note under the answer says what the asterisk means.
+ */
 function renderClaims(claims) {
   els.answerText.replaceChildren(
     ...claims.map((c) => {
@@ -319,7 +353,9 @@ function renderClaims(claims) {
       if (c.unsupported) {
         const mark = document.createElement('span');
         mark.className = 'unsupported-mark';
-        mark.title = 'No source supports this sentence';
+        mark.dataset.testid = 'unsupported-mark';
+        mark.textContent = '*';
+        mark.title = 'No supporting passage in the library; may be inaccurate';
         span.append(mark);
       }
       const trailing = /\s+$/.exec(c.text)?.[0] ?? ' ';
@@ -568,6 +604,11 @@ els.query.addEventListener('keydown', (e) => {
 });
 
 document.addEventListener('keydown', (e) => {
+  if (isBackKey(e)) {
+    e.preventDefault();
+    history.back();
+    return;
+  }
   if (e.key === 'Escape' && !e.isComposing && state.view === 'search') {
     e.preventDefault();
     clearAll();

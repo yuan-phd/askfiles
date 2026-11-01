@@ -1,10 +1,16 @@
-// The top bar of the main window (Session K): library switcher with the indexed count and state,
-// the Add button, and the Ask and Browse switch. It stays fixed while the views scroll. It also
+// The top bar of the main window (Session K): the Ask and Browse switch at the far left, in line
+// with the Browse sidebar below it; the library switcher with the indexed count and state and the
+// Add button at the right. It stays fixed while the views scroll. It also
 // owns the empty state of a library without sources, shown in place of both views, and adding
 // by drag and drop anywhere in the window. Everything goes through window.askfiles (the preload
 // bridge); without it (a plain browser) the bar shows the status counts only.
 
 const MARKUP = `
+<div class="view-switch" role="group" aria-label="View">
+  <button type="button" data-view="search" data-testid="view-search" aria-pressed="true">Ask</button>
+  <button type="button" data-view="browse" data-testid="view-browse" aria-pressed="false">Browse</button>
+</div>
+<p class="add-result" data-testid="add-result" role="status" hidden></p>
 <div class="topbar-library">
   <button type="button" class="library-switcher" data-testid="library-switcher" aria-haspopup="true" aria-expanded="false">
     <span class="library-name" data-testid="library-name">Library</span>
@@ -45,11 +51,6 @@ const MARKUP = `
     <button type="button" role="menuitem" data-testid="add-folder">Add folder<span>Links it; AskFiles never changes it</span></button>
   </div>
 </div>
-<p class="add-result" data-testid="add-result" role="status" hidden></p>
-<div class="view-switch" role="group" aria-label="View">
-  <button type="button" data-view="search" data-testid="view-search" aria-pressed="true">Ask</button>
-  <button type="button" data-view="browse" data-testid="view-browse" aria-pressed="false">Browse</button>
-</div>
 `;
 
 const EMPTY_MARKUP = `
@@ -89,11 +90,12 @@ export function statusOf(s) {
 
 /**
  * Mounts the bar into header. views maps a view name (search, browse) to its container, which the
- * empty state hides. onView(name) is called when the user switches. Returns an object the page
+ * empty state hides. onView(name) is called when the user switches; onLibraryChange(id) when the
+ * current library changes without a reload of the window. Returns an object the page
  * uses: setView(name), setConnection(kind, text) for its own connection problems,
  * setFallbackCount(n) for a count when no watcher reports one, and isEmpty().
  */
-export function mountTopBar(header, { views = {}, onView = () => {} } = {}) {
+export function mountTopBar(header, { views = {}, onView = () => {}, onLibraryChange = () => {} } = {}) {
   header.classList.add('topbar');
   header.dataset.testid = 'status-bar';
   header.innerHTML = MARKUP;
@@ -232,7 +234,9 @@ export function mountTopBar(header, { views = {}, onView = () => {} } = {}) {
 
   function applyLibraries(v) {
     if (!v) return;
+    const before = state.libraries?.current;
     state.libraries = v;
+    if (before && v.current !== before) onLibraryChange(v.current);
     renderLibraries();
     renderStatus();
   }

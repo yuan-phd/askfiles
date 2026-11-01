@@ -11,7 +11,7 @@ export type { StoredChunk } from './build.js';
 export { normalizeHeading } from './normalize.js';
 export { idf, rankSections, sectionFrequency } from './rank.js';
 export type { FoldedSection, RankedSection } from './rank.js';
-export { fold, markRanges, queryTerms, snippetOf } from './search.js';
+export { fold, markRanges, matchTier, queryTerms, snippetOf } from './search.js';
 export * from './types.js';
 
 /** The parts of FolderWatcher the browse index follows. */

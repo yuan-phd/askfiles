@@ -6,9 +6,15 @@
 // document is open, labelled with its file name and with its outline below it. Opening a document
 // (from any page, or Read section on the Ask page) always lands on Document and never changes what
 // Library, Headings or Find show.
+//
+// Every move between pages and documents goes into the page history (shared/history.js): the
+// Ask page passes its own, which spans Ask and Browse; on its own the view keeps one. Back at the
+// top of the sidebar, always shown and disabled when there is nothing to go back to, and Cmd+[
+// return to the place before, as it was left.
 
 const MARKUP = `
 <nav class="browse-sidebar" aria-label="Browse" data-testid="browse-sidebar">
+  <button type="button" class="sidebar-back" data-testid="browse-back" aria-keyshortcuts="Meta+BracketLeft" title="Back (Cmd+[)" disabled>Back</button>
   <button type="button" class="browse-tab" data-tab="library" data-testid="browse-tab-library">Library</button>
   <button type="button" class="browse-tab" data-tab="headings" data-testid="browse-tab-headings">Headings</button>
   <button type="button" class="browse-tab" data-tab="find" data-testid="browse-tab-find">Find</button>
@@ -66,12 +72,14 @@ const MARKUP = `
     <input id="find-query" type="search" data-testid="find-query" placeholder="Find words in your documents" spellcheck="false" />
     <button type="submit" data-testid="find-submit">Find</button>
   </form>
-  <p class="hint">Every word must appear in the section. Chinese matches anywhere in the text.</p>
+  <p class="hint">Every word must appear in the section; put words in quotes for an exact phrase. Sections with the words side by side come first. Chinese matches anywhere in the text.</p>
   <p class="find-summary" data-testid="find-summary" hidden></p>
   <ol class="find-results" data-testid="find-results"></ol>
 </section>
 </div>
 `;
+
+import { createHistory, isBackKey } from '../shared/history.js';
 
 const bridge = window.askfiles?.browse;
 const watcher = window.askfiles?.watcher;
@@ -154,10 +162,12 @@ async function openOriginal(doc) {
 }
 
 /**
- * Builds the browse view inside root. Returns { show(tab), openDocument(ref, target) }:
- * ref is { id } or a source's { url, title }; target is { sectionIndex, sectionTitle }.
+ * Builds the browse view inside root. Returns { show(tab), openDocument(ref, target), current(),
+ * restore(entry), scrollTop() }: ref is { id } or a source's { url, title }; target is
+ * { sectionIndex, sectionTitle }. history is the page history to record moves in; without one the
+ * view keeps its own and listens for Cmd+[ itself.
  */
-export function createBrowseView(root) {
+export function createBrowseView(root, { history: shared = null } = {}) {
   root.classList.add('browse');
   root.innerHTML = MARKUP;
   const q = (testid) => root.querySelector(`[data-testid="${testid}"]`);
@@ -175,6 +185,23 @@ export function createBrowseView(root) {
   };
 
   const content = q('browse-content');
+  const history =
+    shared ||
+    createHistory({
+      initial: { view: 'browse', page: 'library' },
+      apply: (e) => restore(e),
+      capture: () => ({ scroll: content.scrollTop }),
+    });
+  if (!shared) {
+    document.addEventListener('keydown', (e) => {
+      if (!isBackKey(e)) return;
+      e.preventDefault();
+      history.back();
+    });
+  }
+  const renderBack = () => (q('browse-back').disabled = !history.canGoBack());
+  history.onChange(renderBack);
+  q('browse-back').addEventListener('click', () => history.back());
   /** Scroll position per page, so coming back to a page finds it where it was left. */
   const scrolls = {};
 
@@ -200,7 +227,38 @@ export function createBrowseView(root) {
     if (tab === 'find') q('find-query').focus();
   }
 
-  for (const t of tabs) t.addEventListener('click', () => show(t.dataset.tab));
+  /** The page shown, as a history entry. */
+  function current() {
+    const entry = { view: 'browse', page: state.page };
+    if (state.page === 'headings') entry.headingKey = state.headingKey;
+    if (state.page === 'find') entry.query = state.findQuery ?? '';
+    if (state.page === 'document') Object.assign(entry, { ref: state.docRef, target: state.docTarget ?? {} });
+    return entry;
+  }
+
+  /** Goes to an entry of the history without recording it, and puts its scroll position back. */
+  async function restore(entry) {
+    if (entry.page === 'document') await openDocument(entry.ref, entry.target, { record: false });
+    else {
+      show(entry.page);
+      if (entry.page === 'headings' && entry.headingKey && entry.headingKey !== state.headingKey)
+        await showHeading(entry.headingKey);
+      if (entry.page === 'find' && (entry.query ?? '') !== (state.findQuery ?? '')) {
+        q('find-query').value = entry.query ?? '';
+        await find(entry.query ?? '');
+      }
+    }
+    if (typeof entry.scroll === 'number') content.scrollTop = entry.scroll;
+  }
+
+  for (const t of tabs) {
+    t.addEventListener('click', () =>
+      history.navigate(() => {
+        show(t.dataset.tab);
+        return current();
+      }),
+    );
+  }
 
   // --- library -------------------------------------------------------------------------------
 
@@ -376,8 +434,17 @@ export function createBrowseView(root) {
     }
   }
 
-  async function openDocument(ref, target = {}) {
+  /** Opens a document at a section; record false when going back through the history. */
+  async function openDocument(ref, target = {}, { record = true } = {}) {
+    if (record) {
+      history.navigate(() => {
+        state.docRef = ref;
+        state.docTarget = target;
+        return { view: 'browse', page: 'document', ref, target };
+      });
+    }
     state.docRef = ref;
+    state.docTarget = target;
     showDocEntry(
       state.doc && (ref.id ? state.doc.id === ref.id : state.doc.url === ref.url)
         ? state.doc.title
@@ -461,6 +528,7 @@ export function createBrowseView(root) {
 
   async function showHeading(key) {
     state.headingKey = key;
+    if (state.page === 'headings') history.replace({ headingKey: key });
     for (const b of root.querySelectorAll('.heading-item')) b.classList.toggle('active', b.dataset.key === key);
     const detail = q('headings-detail');
     let group = null;
@@ -506,6 +574,8 @@ export function createBrowseView(root) {
   // --- find ----------------------------------------------------------------------------------
 
   async function find(query) {
+    state.findQuery = query;
+    if (state.page === 'find') history.replace({ query });
     const summary = q('find-summary');
     const list = q('find-results');
     if (!query.trim()) {
@@ -590,5 +660,6 @@ export function createBrowseView(root) {
 
   renderState();
   show('library');
-  return { show, openDocument, ready: () => state.loaded };
+  renderBack();
+  return { show, openDocument, current, restore, scrollTop: () => content.scrollTop, ready: () => state.loaded };
 }
