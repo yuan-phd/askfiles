@@ -676,6 +676,7 @@ export class AppController implements BridgeHandlers {
             indexing: preset.indexing,
             ocr: collectorOcr({
               api,
+              upscale: Boolean(preset.indexing?.ocrUpscale),
               cacheDir: path.join(this.dataDir, 'ocr-cache'),
               log: (m) => log(`[watcher] ${m}`),
             }),
