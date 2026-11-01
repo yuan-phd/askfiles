@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { documentName, targetHit } from './answer-metrics.js';
+import { documentName, expectedSections, targetHit } from './answer-metrics.js';
 
 describe('duplicate documents share credit', () => {
   const q = {
@@ -23,5 +23,25 @@ describe('duplicate documents share credit', () => {
     expect(targetHit(q, [copy])).toBe(false);
     const other = { file: '07_必须招标的基础设施和公用事业项目范围规定.pdf', path: ['第二条'], title: '第二条' };
     expect(targetHit(q, [{ ...other, passage: '400万元人民币 200万元人民币' }])).toBe(false);
+  });
+});
+
+describe('alternative expected sections', () => {
+  it('accepts either section of an entry written A | B, and nothing else', () => {
+    const q = {
+      category: 'middle_of_long_doc',
+      expected_source_file: '01_标准设备采购招标文件_2017年版.pdf',
+      expected_section: '4.2 交货前检验 | 4.1 监造',
+      expected_section_path: '',
+      key_elements: '提前 7 日',
+    } as never;
+    expect(expectedSections(q)).toHaveLength(1);
+    const at = (title: string, file = '01_标准设备采购招标文件_2017年版.pdf') => [
+      { file, path: ['4. 监造及交货前检验', title], title },
+    ];
+    expect(targetHit(q, at('4.1 监造'))).toBe(true);
+    expect(targetHit(q, at('4.2 交货前检验'))).toBe(true);
+    expect(targetHit(q, at('4.3 包装'))).toBe(false);
+    expect(targetHit(q, at('4.1 监造', '02_标准材料采购招标文件_2017年版.pdf'))).toBe(false);
   });
 });

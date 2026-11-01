@@ -48,29 +48,43 @@ export interface ExpectedSection {
   file: string | null;
   /** Normalized headings, outermost first; one entry when only a title is known. */
   path: string[];
+  /**
+   * Other sections of the same file that count as this one, written after | in the key
+   * (4.2 交货前检验 | 4.1 监造): a key whose facts two sections hold alike (docs/plan.md, Q12).
+   */
+  alternatives?: string[][];
 }
 
 /**
  * The sections a question expects: expected_section_path entries when given (A > B), else
  * expected_section titles. Files pair with sections by position when the counts match; one file
- * applies to every section; otherwise the file is not checked.
+ * applies to every section; otherwise the file is not checked. An entry A | B accepts either.
  */
 export function expectedSections(q: MetricQuestion): ExpectedSection[] {
   const paths = listOf(q.expected_section_path);
   const raw = paths.length ? paths : listOf(q.expected_section);
   const files = listOf(q.expected_source_file);
-  return raw.map((p, i) => ({
-    file: files.length === raw.length ? baseName(files[i]!) : files.length === 1 ? baseName(files[0]!) : null,
-    path: p.split(PATH_SPLIT).map(normalizeName).filter(Boolean),
-  }));
+  const pathOf = (x: string) => x.split(PATH_SPLIT).map(normalizeName).filter(Boolean);
+  return raw.map((p, i) => {
+    const [first, ...rest] = p
+      .split('|')
+      .map((x) => x.trim())
+      .filter(Boolean);
+    return {
+      file: files.length === raw.length ? baseName(files[i]!) : files.length === 1 ? baseName(files[0]!) : null,
+      path: pathOf(first ?? ''),
+      ...(rest.length ? { alternatives: rest.map(pathOf) } : {}),
+    };
+  });
 }
 
 /** True when the cited section is the expected one: same file if named, and its path ends with the expected path. */
 export function sectionMatches(want: ExpectedSection, c: Pick<CitedRecord, 'file' | 'path' | 'title'>): boolean {
   if (want.file && baseName(c.file) !== want.file) return false;
   const have = (c.path.length ? c.path : [c.title]).map(normalizeName);
-  if (want.path.length > have.length) return false;
-  return want.path.every((h, i) => have[have.length - want.path.length + i] === h);
+  const ends = (path: string[]) =>
+    path.length <= have.length && path.every((h, i) => have[have.length - path.length + i] === h);
+  return ends(want.path) || (want.alternatives ?? []).some(ends);
 }
 
 /** A file name without its number prefix and extension: 04_必须招标的工程项目规定.pdf and 13_必须招标的工程项目规定.docx are one document. */
