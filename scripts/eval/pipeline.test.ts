@@ -239,6 +239,20 @@ describe('config overrides', () => {
     ).toThrow(/answer.topK is not a known field/);
   });
 
+  it('reads the indexing switches from the config and from --set indexing.<switch>', () => {
+    expect(base().indexing).toEqual({ structuredTables: false, cjkHeadings: false, ocrUpscale: false });
+    const c = applySets(base(), ['indexing.structuredTables=true', 'indexing.ocrUpscale=true']);
+    expect(c.indexing).toEqual({ structuredTables: true, cjkHeadings: false, ocrUpscale: true });
+    const file = resolveConfig(
+      { label: 'x', chatModel: 'm', embeddingModel: 'e', systemPrompt: 'p', indexing: { cjkHeadings: true } },
+      ROOT,
+      ROOT,
+    );
+    expect(file.indexing.cjkHeadings).toBe(true);
+    expect(() => applySets(base(), ['indexing.tables=true'])).toThrow(/unknown key indexing.tables/);
+    expect(() => applySets(base(), ['indexing.cjkHeadings=yes'])).toThrow(/indexing.cjkHeadings must be true or false/);
+  });
+
   it('parses --try specs', () => {
     expect(parseTry('count=3,floor=0.1')).toEqual({ count: 3, floor: 0.1 });
     expect(parseTry('floor=0')).toEqual({ floor: 0 });
