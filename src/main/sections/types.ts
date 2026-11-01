@@ -34,6 +34,17 @@ export interface IndexingOptions extends SplitOptions {
 
 export const INDEXING_SWITCHES = ['structuredTables', 'cjkHeadings', 'ocrUpscale'] as const;
 
+/**
+ * Revision of each switch's output, part of the split key next to its name: bumped whenever a
+ * change to that switch's code changes the chunks, like SPLITTER_VERSION for the splitter as a
+ * whole, so documents and cached vectors of an earlier revision are never reused.
+ */
+export const INDEXING_REVISION: Record<(typeof INDEXING_SWITCHES)[number], number> = {
+  structuredTables: 2,
+  cjkHeadings: 1,
+  ocrUpscale: 1,
+};
+
 /** One heading and the text under it, up to the next heading of any level. */
 export interface Section {
   title: string;
