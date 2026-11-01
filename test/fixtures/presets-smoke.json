@@ -58,7 +58,8 @@
         "crossDocument": false,
         "crossDocumentParts": ["quota", "grouped", "verify"],
         "crossDocQuota": false,
-        "fileScopedQuota": false
+        "fileScopedQuota": false,
+        "scopedQuotaV2": false
       }
     }
   ]

@@ -137,6 +137,13 @@ export interface AnswerParams {
    * (docs/plan.md, round C1).
    */
   fileScopedQuota: boolean;
+  /**
+   * fileScopedQuota's search inside each named file with three changes (docs/plan.md, round C3):
+   * table-of-contents sections are no candidates inside the file (neither list), the quota is
+   * SCOPED_V2_QUOTA sections per file, and a question naming two or more files gets at most
+   * SCOPED_V2_MAX_SECTIONS sections in all, the files' quota sections taken in turn.
+   */
+  scopedQuotaV2: boolean;
 }
 
 /** The crossDocument parts in effect: crossDocument's own, or the quota alone with crossDocQuota. */
@@ -176,6 +183,7 @@ export const DEFAULT_PARAMS: AnswerParams = {
   crossDocumentParts: [...CROSS_DOCUMENT_PARTS],
   crossDocQuota: false,
   fileScopedQuota: false,
+  scopedQuotaV2: false,
 };
 
 /** Tokens kept free for the answer itself and for the instructions and the question. */
@@ -276,6 +284,7 @@ const CHECKS: Record<keyof AnswerParams, (v: unknown) => Problem> = {
       : `must be a list of ${CROSS_DOCUMENT_PARTS.join(', ')}`,
   crossDocQuota: bool,
   fileScopedQuota: bool,
+  scopedQuotaV2: bool,
 };
 
 /** Problems with an answer block, each prefixed with at; every key is required. */

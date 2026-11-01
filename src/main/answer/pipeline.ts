@@ -135,6 +135,10 @@ export function quotaSections(fused: FusedSection[], documentIds: string[], per 
  */
 export const FILE_SCOPED_VECTOR_POOL = 2000;
 
+/** scopedQuotaV2: sections per named file, and the most sections a question naming several files gets. */
+export const SCOPED_V2_QUOTA = 5;
+export const SCOPED_V2_MAX_SECTIONS = 8;
+
 type VectorHit = VectorCandidate & { file: string | null; documentId: string | null };
 
 /** Upstream hits as candidates of their sections. */
@@ -180,8 +184,9 @@ export async function fileScopedSections(
   p: AnswerParams,
   deps: PipelineDeps,
   signal?: AbortSignal,
-  per = CROSS_DOCUMENT_QUOTA,
+  o: { per?: number; skipContents?: boolean } = {},
 ): Promise<FusedSection[]> {
+  const per = o.per ?? CROSS_DOCUMENT_QUOTA;
   const ids = new Set(documentIds);
   const hits = await vectorCandidates(await deps.vectorSearch(question, FILE_SCOPED_VECTOR_POOL, signal), deps, ids);
   const ranking = terms.length
@@ -190,11 +195,28 @@ export async function fileScopedSections(
         deps.index.sectionTotal(),
       )
     : [];
+  // Inside a file its table of contents holds every heading word, so keyword search ranks it high
+  // (round C1); scopedQuotaV2 leaves such sections out of both lists.
+  const contents = new Map<string, boolean>();
+  const isContents = (docId: string, index: number): boolean => {
+    if (!o.skipContents) return false;
+    const key = sectionKey(docId, index);
+    let v = contents.get(key);
+    if (v === undefined) {
+      const found = deps.index.section(docId, index);
+      v = !!found && isContentsSection(found.section);
+      contents.set(key, v);
+    }
+    return v;
+  };
   const out: FusedSection[] = [];
   for (const id of new Set(documentIds)) {
-    const vector = hits.filter((h) => h.documentId === id).slice(0, p.vectorTopK);
+    const vector = hits
+      .filter((h) => h.documentId === id)
+      .filter((h) => !h.section || !isContents(id, Number(h.section.slice(h.section.lastIndexOf('#') + 1))))
+      .slice(0, p.vectorTopK);
     const keyword = ranking
-      .filter((r) => r.documentId === id)
+      .filter((r) => r.documentId === id && !isContents(id, r.sectionIndex))
       .slice(0, p.keywordTopK)
       .map((r) => ({ section: sectionKey(r.documentId, r.sectionIndex), score: r.score, terms: r.terms }));
     out.push(...fuse(vector, keyword, p.rrfK).slice(0, per));
@@ -273,8 +295,17 @@ export async function retrieve(
       const files = groups.flat();
       const documentIds = files.map((f) => f.documentId);
       let quota: string[] = [];
-      if (parts.has('quota') && p.fileScopedQuota) {
-        const scoped = await fileScopedSections(question, terms, documentIds, p, deps, signal);
+      const scopedSearch = p.fileScopedQuota || p.scopedQuotaV2;
+      if (parts.has('quota') && scopedSearch) {
+        const scoped = await fileScopedSections(
+          question,
+          terms,
+          documentIds,
+          p,
+          deps,
+          signal,
+          p.scopedQuotaV2 ? { per: SCOPED_V2_QUOTA, skipContents: true } : {},
+        );
         quota = scoped.map((f) => f.key);
         // A section found only inside its file joins the end of the fused list, so it can become a
         // candidate; the library-wide ranks stay as they were.
@@ -284,7 +315,7 @@ export async function retrieve(
       crossDocument = { documentIds, files: files.map((f) => f.file), quota };
       deps.log?.(
         `[answer] cross-document: ${crossDocument.files.join(', ')}; ${quota.length} quota sections` +
-          (p.fileScopedQuota && parts.has('quota') ? ' (file-scoped)' : ''),
+          (scopedSearch && parts.has('quota') ? (p.scopedQuotaV2 ? ' (file-scoped v2)' : ' (file-scoped)') : ''),
       );
     }
   }
@@ -377,11 +408,18 @@ export function choose(r: Retrieval, s: ChoiceSettings): Selection {
     // the scope's count; quota first, so the budget drops an overall section before a quota one.
     const floor = floorOf(s.params, s.scope);
     const score = (x: Ranked) => (floorOn === 'vector' ? (x.vector ?? 0) : (x.rerank ?? 0));
-    const own = list.filter((x) => quota.has(x.section.key));
+    let own = list.filter((x) => quota.has(x.section.key));
     const top = list.filter((x) => floorOn === 'none' || score(x) >= floor).slice(0, s.params.sectionCount[s.scope]);
     const extra = top.filter((x) => !quota.has(x.section.key));
+    let count = own.length + extra.length;
+    if (s.params.scopedQuotaV2) {
+      // Each file's best quota section first, then each file's second and so on, so the cap of
+      // SCOPED_V2_MAX_SECTIONS takes the same number from every file before an overall section.
+      own = takeInTurn(r.crossDocument?.quota ?? [], own);
+      count = Math.min(count, SCOPED_V2_MAX_SECTIONS);
+    }
     return selectSections([...own, ...extra], {
-      count: own.length + extra.length,
+      count,
       floor: 0,
       budgetTokens: contextBudget(s.params, s.contextLength),
       floorOn: 'none',
@@ -393,6 +431,24 @@ export function choose(r: Retrieval, s: ChoiceSettings): Selection {
     budgetTokens: contextBudget(s.params, s.contextLength),
     floorOn,
   });
+}
+
+/** The ranked quota sections ordered by their rank inside their file, the files taken in turn. */
+export function takeInTurn<T extends { section: { key: string } }>(quota: string[], own: T[]): T[] {
+  const docOf = (k: string) => k.slice(0, k.lastIndexOf('#'));
+  const byKey = new Map(own.map((x) => [x.section.key, x]));
+  const files = new Map<string, T[]>();
+  for (const k of quota) {
+    const x = byKey.get(k);
+    if (!x) continue;
+    const list = files.get(docOf(k)) ?? [];
+    list.push(x);
+    files.set(docOf(k), list);
+  }
+  const out: T[] = [];
+  for (let i = 0; out.length < byKey.size && i < quota.length; i++)
+    for (const list of files.values()) if (list[i]) out.push(list[i]!);
+  return out;
 }
 
 /** A source card's fields, all from the section records, none from the model's text. */

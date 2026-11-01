@@ -58,7 +58,8 @@
         "crossDocument": false,
         "crossDocumentParts": ["quota", "grouped", "verify"],
         "crossDocQuota": true,
-        "fileScopedQuota": false
+        "fileScopedQuota": false,
+        "scopedQuotaV2": false
       },
       "indexing": {
         "structuredTables": true,
@@ -129,7 +130,8 @@
         "crossDocument": false,
         "crossDocumentParts": ["quota", "grouped", "verify"],
         "crossDocQuota": true,
-        "fileScopedQuota": false
+        "fileScopedQuota": false,
+        "scopedQuotaV2": false
       },
       "indexing": {
         "structuredTables": true,
@@ -193,7 +195,8 @@
         "crossDocument": false,
         "crossDocumentParts": ["quota", "grouped", "verify"],
         "crossDocQuota": true,
-        "fileScopedQuota": false
+        "fileScopedQuota": false,
+        "scopedQuotaV2": false
       },
       "indexing": {
         "structuredTables": true,

@@ -18,6 +18,7 @@ import {
   ollamaEmbed,
   ParagraphStore,
   NEAREST_COUNT,
+  NOT_FOUND_MARKER,
   ranked,
   rerankerOff,
   retrieve,
@@ -99,6 +100,7 @@ export function indexHash(config: EvalConfig, library: Pick<Library, 'records'>)
         ? [`crossDocument:${crossDocumentPartsOf(p).has('quota') ? 'quota' : 'names'}`]
         : []),
       ...(crossDocumentPartsOf(p).has('quota') && p.fileScopedQuota ? ['fileScopedQuota'] : []),
+      ...(crossDocumentPartsOf(p).has('quota') && p.scopedQuotaV2 ? ['scopedQuotaV2'] : []),
     ],
   };
   return createHash('sha256').update(JSON.stringify(key)).digest('hex').slice(0, 16);
@@ -377,8 +379,12 @@ export function answerMetrics(q: Question, row: AnswerRow, literal?: string[]) {
     };
   }
   const cited = r.cited.map(cardRecord);
+  // An answer holding the not-found marker is no citation of the expected section, whatever sources
+  // it lists (owner, round C3): isNotFound treats the marker beside [n] citations as an answer, so
+  // without this a refusal citing the sources it checked counted as cited.
+  const refusal = r.notFound || r.text.includes(NOT_FOUND_MARKER);
   return {
-    targetHit: targetHit(q, cited),
+    targetHit: refusal ? targetHit(q, []) : targetHit(q, cited),
     keyCoverage: r.notFound ? (keyCoverage(q, '', literal) === null ? null : 0) : keyCoverage(q, r.text, literal),
     attribution: attributionOk(q, { refused: r.notFound, answer: r.text, cited }),
   };

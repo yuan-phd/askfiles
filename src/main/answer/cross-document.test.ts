@@ -10,6 +10,9 @@ import {
   CROSS_DOCUMENT_RULES,
   DEFAULT_PARAMS,
   FILE_SCOPED_VECTOR_POOL,
+  SCOPED_V2_MAX_SECTIONS,
+  SCOPED_V2_QUOTA,
+  takeInTurn,
   NO_RERANKER,
   parseCitations,
   quotaSections,
@@ -278,5 +281,70 @@ describe('fileScopedQuota', () => {
     const r = await retrieve('What do the Procurement Regulations say on signing?', s, deps);
     expect(r.crossDocument).toBeUndefined();
     expect(topKs).toEqual([s.params.vectorTopK]);
+  });
+});
+
+describe('scopedQuotaV2', () => {
+  // Two named files of seven sections each, one of them a table of contents that names every heading.
+  const sections = (w: string) => [
+    { title: 'Contents', parts: [`Approval ${w} 3\nSigning ${w} 4\nRecords ${w} 5`] },
+    ...Array.from({ length: 6 }, (_, i) => ({ title: `Part ${i}`, parts: [`Approval and signing rule ${w} ${i}.`] })),
+  ];
+  function setup() {
+    const lib = fixtureLibrary([
+      { name: 'Procurement_Regulations.pdf', sections: sections('reg') },
+      { name: 'Contract_Management_Guidance.pdf', sections: sections('guide') },
+    ]);
+    cleanups.push(lib.cleanup);
+    const resolver = createSourceResolver({ files: () => lib.records, readText: (l) => lib.chunkText.get(l) ?? null });
+    // Vector search puts each file's contents first.
+    const order = lib.records.flatMap((r, f) => r.sections.map((x) => [f, x.location] as const));
+    const deps: PipelineDeps = {
+      vectorSearch: async (_q, topK) =>
+        order.slice(0, topK).map(([f, loc], i) => ({
+          id: loc,
+          text: lib.chunkText.get(loc)!,
+          metadata: { url: lib.records[f]!.url, title: lib.records[f]!.name },
+          score: 0.9 - i * 0.001,
+        })),
+      resolveSources: (x) => resolver(x),
+      index: lib.index,
+      reranker: null,
+      chat: async () => ({ promptTokens: 1, completionTokens: 1 }),
+    };
+    const id = (n: number) => lib.index.getDocument({ url: lib.records[n]!.url, title: lib.records[n]!.name })!.id;
+    return { deps, ids: [id(0), id(1)] };
+  }
+  const q = 'Compare the Procurement Regulations and the Contract Management Guidance on approval and signing.';
+
+  it('leaves contents out inside the file, takes 5 per file and selects at most 8, the files in turn', async () => {
+    const { deps, ids } = setup();
+    const v1 = await retrieve(q, settingsWith({ crossDocQuota: true, fileScopedQuota: true }), deps);
+    // C1 takes each file's contents into its quota.
+    expect(v1.crossDocument!.quota).toContain(`${ids[0]}#1`);
+
+    const s = settingsWith({ crossDocQuota: true, scopedQuotaV2: true });
+    const r = await retrieve(q, s, deps);
+    const quota = r.crossDocument!.quota;
+    expect(quota).toHaveLength(2 * SCOPED_V2_QUOTA);
+    expect(quota).not.toContain(`${ids[0]}#1`);
+    expect(quota).not.toContain(`${ids[1]}#1`);
+    const picked = choose(r, s).selected.map((x) => x.section.key);
+    expect(picked).toHaveLength(SCOPED_V2_MAX_SECTIONS);
+    // Four of each file, alternating.
+    const docOf = (k: string) => k.slice(0, k.lastIndexOf('#'));
+    expect(picked.map(docOf)).toEqual([0, 1, 0, 1, 0, 1, 0, 1].map((i) => ids[i]));
+  });
+
+  it('takes the quota sections of several files in turn', () => {
+    const x = (key: string) => ({ section: { key } });
+    const own = ['a#2', 'b#1', 'a#5', 'a#7', 'b#3'].map(x);
+    expect(takeInTurn(['a#5', 'a#2', 'a#7', 'b#3', 'b#1'], own).map((y) => y.section.key)).toEqual([
+      'a#5',
+      'b#3',
+      'a#2',
+      'b#1',
+      'a#7',
+    ]);
   });
 });
