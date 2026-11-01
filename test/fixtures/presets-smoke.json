@@ -56,7 +56,8 @@
         "dropUnsupportedHedges": false,
         "cjkOverlap": false,
         "crossDocument": false,
-        "crossDocumentParts": ["quota", "grouped", "verify"]
+        "crossDocumentParts": ["quota", "grouped", "verify"],
+        "crossDocQuota": false
       }
     }
   ]

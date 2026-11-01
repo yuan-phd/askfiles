@@ -56,7 +56,8 @@
         "dropUnsupportedHedges": true,
         "cjkOverlap": true,
         "crossDocument": false,
-        "crossDocumentParts": ["quota", "grouped", "verify"]
+        "crossDocumentParts": ["quota", "grouped", "verify"],
+        "crossDocQuota": false
       },
       "indexing": {
         "structuredTables": true,
@@ -125,7 +126,8 @@
         "dropUnsupportedHedges": true,
         "cjkOverlap": true,
         "crossDocument": false,
-        "crossDocumentParts": ["quota", "grouped", "verify"]
+        "crossDocumentParts": ["quota", "grouped", "verify"],
+        "crossDocQuota": false
       },
       "indexing": {
         "structuredTables": true,
@@ -187,7 +189,8 @@
         "dropUnsupportedHedges": true,
         "cjkOverlap": true,
         "crossDocument": false,
-        "crossDocumentParts": ["quota", "grouped", "verify"]
+        "crossDocumentParts": ["quota", "grouped", "verify"],
+        "crossDocQuota": false
       },
       "indexing": {
         "structuredTables": true,

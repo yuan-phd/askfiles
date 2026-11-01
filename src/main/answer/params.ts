@@ -124,6 +124,20 @@ export interface AnswerParams {
   crossDocument: boolean;
   /** The parts crossDocument applies; all three by default. */
   crossDocumentParts: CrossDocumentPart[];
+  /**
+   * crossDocument's quota part alone (docs/plan.md, round A2a): a question naming two or more
+   * files gets each named file's top sections of the fused list in its selection; prompt and
+   * verification unchanged.
+   */
+  crossDocQuota: boolean;
+}
+
+/** The crossDocument parts in effect: crossDocument's own, or the quota alone with crossDocQuota. */
+export function crossDocumentPartsOf(
+  p: Pick<AnswerParams, 'crossDocument' | 'crossDocumentParts' | 'crossDocQuota'>,
+): Set<CrossDocumentPart> {
+  if (p.crossDocument) return new Set(p.crossDocumentParts);
+  return new Set(p.crossDocQuota ? ['quota'] : []);
 }
 
 export const DEFAULT_PARAMS: AnswerParams = {
@@ -153,6 +167,7 @@ export const DEFAULT_PARAMS: AnswerParams = {
   cjkOverlap: false,
   crossDocument: false,
   crossDocumentParts: [...CROSS_DOCUMENT_PARTS],
+  crossDocQuota: false,
 };
 
 /** Tokens kept free for the answer itself and for the instructions and the question. */
@@ -251,6 +266,7 @@ const CHECKS: Record<keyof AnswerParams, (v: unknown) => Problem> = {
     Array.isArray(v) && v.every((x) => (CROSS_DOCUMENT_PARTS as readonly unknown[]).includes(x))
       ? null
       : `must be a list of ${CROSS_DOCUMENT_PARTS.join(', ')}`,
+  crossDocQuota: bool,
 };
 
 /** Problems with an answer block, each prefixed with at; every key is required. */

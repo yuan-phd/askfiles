@@ -73,12 +73,39 @@ export function sectionMatches(want: ExpectedSection, c: Pick<CitedRecord, 'file
   return want.path.every((h, i) => have[have.length - want.path.length + i] === h);
 }
 
+/** A file name without its number prefix and extension: 04_必须招标的工程项目规定.pdf and 13_必须招标的工程项目规定.docx are one document. */
+export function documentName(file: string): string {
+  return baseName(file)
+    .replace(/\.[^.]+$/, '')
+    .replace(/^\d+[_\s-]+/, '');
+}
+
+/**
+ * Duplicate documents share credit (docs/plan.md, round A3b): a cited section of another file
+ * with the same document name as the expected file (the Word copy of a regulation) counts as the
+ * expected section when its text holds every key element of the question.
+ */
+function duplicateHolds(
+  q: MetricQuestion,
+  want: ExpectedSection,
+  c: Partial<Pick<CitedRecord, 'passage'>> & Pick<CitedRecord, 'file'>,
+): boolean {
+  if (!want.file || c.passage === undefined || baseName(c.file) === want.file) return false;
+  if (documentName(c.file) !== documentName(want.file)) return false;
+  const elements = listOf(q.key_elements).map(squash);
+  const text = squash(c.passage);
+  return elements.length > 0 && elements.every((e) => text.includes(e));
+}
+
 /** Every expected section among the given ones; null when the question expects none or is absent. */
-export function targetHit(q: MetricQuestion, sections: Pick<CitedRecord, 'file' | 'path' | 'title'>[]): boolean | null {
+export function targetHit(
+  q: MetricQuestion,
+  sections: (Pick<CitedRecord, 'file' | 'path' | 'title'> & Partial<Pick<CitedRecord, 'passage'>>)[],
+): boolean | null {
   if ((ABSENT as readonly string[]).includes(q.category)) return null;
   const want = expectedSections(q);
   if (!want.length) return null;
-  return want.every((w) => sections.some((c) => sectionMatches(w, c)));
+  return want.every((w) => sections.some((c) => sectionMatches(w, c) || duplicateHolds(q, w, c)));
 }
 
 /**

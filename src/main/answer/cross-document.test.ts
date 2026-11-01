@@ -183,6 +183,16 @@ describe('crossDocument in the pipeline', () => {
     expect(result.claims.map((c) => c.citations)).toEqual([[1], [2]]);
     expect(logs).toContain('[answer] cross-document: 2 of 2 sentences name a file');
 
+    // crossDocQuota: the same quota, the prompt and verification as without the switch.
+    const quotaOnly = settingsWith({ crossDocQuota: true });
+    const rq = await retrieve(q, quotaOnly, deps);
+    expect(rq.crossDocument?.quota).toEqual(r.crossDocument!.quota);
+    expect(choose(rq, quotaOnly).selected.map((x) => x.section.key)).toEqual(sel.selected.map((x) => x.section.key));
+    prompts.length = 0;
+    await answer(q, rq, choose(rq, quotaOnly), quotaOnly, deps);
+    expect(prompts[0]).not.toContain('Sources from');
+    expect(prompts[0]).toContain('Never write page numbers, file names or section names');
+
     // A question naming one file, or the switch off, is unchanged.
     const single = await retrieve('What do the Procurement Regulations say about the plan?', on, deps);
     expect(single.crossDocument).toBeUndefined();

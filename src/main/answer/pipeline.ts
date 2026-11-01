@@ -17,6 +17,7 @@ import {
   floorOf,
   rerankerOff,
   sectionCap,
+  crossDocumentPartsOf,
   type AnswerParams,
   type AnswerScope,
   type RunSettings,
@@ -196,12 +197,13 @@ export async function retrieve(
     if (named.length) deps.log?.(`[answer] affinity: ${affinity.files.join(', ')}`);
   }
   let crossDocument: Retrieval['crossDocument'];
-  if (p.crossDocument) {
+  const parts = crossDocumentPartsOf(p);
+  if (parts.size) {
     const groups = namedFileGroups(question, deps.index.identities?.() ?? []);
     if (groups.length >= 2) {
       const files = groups.flat();
       const documentIds = files.map((f) => f.documentId);
-      const quota = p.crossDocumentParts.includes('quota') ? quotaSections(fused, documentIds) : [];
+      const quota = parts.has('quota') ? quotaSections(fused, documentIds) : [];
       crossDocument = { documentIds, files: files.map((f) => f.file), quota };
       deps.log?.(`[answer] cross-document: ${crossDocument.files.join(', ')}; ${quota.length} quota sections`);
     }
@@ -289,7 +291,7 @@ export function choose(r: Retrieval, s: ChoiceSettings): Selection {
   const quoted = s.params.answerMode === 'quoted';
   const list = quoted ? ranked(r).filter((x) => !isContentsSection(x.section)) : ranked(r);
   const multi = s.params.documentAffinity && (r.affinity?.documentIds.length ?? 0) >= 2;
-  const quota = new Set(s.params.crossDocument && !quoted ? (r.crossDocument?.quota ?? []) : []);
+  const quota = new Set(crossDocumentPartsOf(s.params).has('quota') && !quoted ? (r.crossDocument?.quota ?? []) : []);
   if (quota.size) {
     // Each named file's top sections whatever their score, then the overall top sections up to
     // the scope's count; quota first, so the budget drops an overall section before a quota one.
@@ -450,6 +452,7 @@ export async function answer(
   );
   // crossDocument: the question names several files; grouped orders the sources by file.
   const cross = s.params.crossDocument ? r.crossDocument : undefined;
+  // grouped and verify belong to crossDocument; crossDocQuota is the quota alone.
   const crossParts = new Set(cross ? s.params.crossDocumentParts : []);
   let picked = sel.selected.map((x, i) => ({ x, section: sections[i]! }));
   if (crossParts.has('grouped')) {
