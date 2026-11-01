@@ -102,8 +102,8 @@ export interface Retrieval {
   /** documentAffinity: the documents the question names; absent when the switch is off. */
   affinity?: { documentIds: string[]; files: string[] };
   /**
-   * crossDocument: the question names two or more file groups; the files in library order, and
-   * with the quota part the section keys taken as each file's top sections.
+   * crossDocument: the question names two or more file groups; the files in the order the question
+   * names them, and with the quota part the section keys taken as each file's top sections.
    */
   crossDocument?: { documentIds: string[]; files: string[]; quota: string[] };
 }
@@ -211,7 +211,10 @@ export async function retrieve(
   const quotaKeys = new Set(crossDocument?.quota ?? []);
   for (const f of fused) {
     // The quota sections of a cross-document question are candidates wherever they rank.
-    if (candidates.length >= p.candidateSections && !quotaKeys.has(f.key)) continue;
+    if (candidates.length >= p.candidateSections) {
+      if (!quotaKeys.size) break;
+      if (!quotaKeys.has(f.key)) continue;
+    }
     const [docId, idx] = [f.key.slice(0, f.key.lastIndexOf('#')), Number(f.key.slice(f.key.lastIndexOf('#') + 1))];
     const found = deps.index.section(docId, idx);
     if (found)
