@@ -36,7 +36,7 @@ function isLabel(c: string): boolean {
     /\p{L}/u.test(c) &&
     c.length <= 60 &&
     !NUMBER.test(c) &&
-    !/^[\d０-９$€¥￥#（([【「“‘,，、。.;；:：…-]/u.test(c) &&
+    !/^[\d０-９$€¥￥#（([【「“‘,，、。.;；:：…•◾▪■□-]/u.test(c) &&
     !/[，。；、“”《》]|[.;,] /u.test(c) &&
     // A one-character CJK label (年, 月) is a fill-in blank's word, not a column name.
     !/^[\u3400-\u9fff]$/u.test(c) &&
@@ -345,6 +345,11 @@ function buildTable(lines: VLine[], page: number): Omit<PdfTable, 'used'> | null
   const data = (header.length ? rows.slice(1) : rows).filter((r) => r.some(Boolean));
   if (!data.length) return null;
   if (!header.length && (cols.length < 3 || data.length < 3)) return null;
+  if (cols.length === 2 && data.length < 2) return null;
+  // Lines of a wrapped paragraph set in boxes (a quadrant diagram) start in lower case where they
+  // go on; table cells rarely do.
+  const cells = data.flat().filter(Boolean);
+  if (cells.filter((c) => /^\p{Ll}/u.test(c)).length >= 0.4 * cells.length) return null;
   // Fill-in forms and text set in gapped lines look like rows; their columns are running text. A
   // table keeps at most half of its columns for text (a definitions or remarks column).
   const proseCols = cols.filter((_, c) => {
