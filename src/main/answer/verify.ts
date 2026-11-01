@@ -132,6 +132,8 @@ export interface VerifyOptions {
   minTokens?: number;
   /** Source numbers a sentence may be attributed to; all when absent. */
   allowed?: Set<number>;
+  /** Per claim (by index), in place of allowed: crossDocument's sources of the files a sentence names. */
+  allowedFor?: (Set<number> | undefined)[];
   /** File and section title per source (meta[n - 1]), for the same-title rule; off when absent. */
   meta?: { file: string; title: string }[];
   /**
@@ -156,10 +158,9 @@ export function verifyClaims(
   const wordSources = passages.map((p) => new Set(contentTokens(p)));
   let pairSources: Set<string>[] | null = null;
   const pairsOf = () => (pairSources ??= passages.map((p) => new Set(cjkTokens(p))));
-  const eligible = (n: number) => !o.allowed || o.allowed.has(n);
   const titleOf = (n: number) => o.meta?.[n - 1]?.title.trim().toLowerCase() ?? '';
   // Same-title sources of other files, per source.
-  const twins = (n: number): number[] => {
+  const twins = (n: number, eligible: (m: number) => boolean): number[] => {
     if (!o.meta || !titleOf(n)) return [];
     const out: number[] = [];
     for (let m = 1; m <= passages.length; m++)
@@ -168,7 +169,9 @@ export function verifyClaims(
     return out;
   };
   const stats: VerifyStats = { sentences: 0, reattributed: 0, attributed: 0, unsupported: 0 };
-  const out = claims.map((c): Claim => {
+  const out = claims.map((c, i): Claim => {
+    const allow = o.allowedFor?.[i] ?? o.allowed;
+    const eligible = (n: number) => !allow || allow.has(n);
     if (!/[\p{L}\p{N}]{2}/u.test(c.text)) return c;
     stats.sentences++;
     const byPairs = Boolean(o.cjk) && mainlyCjk(c.text);
@@ -186,7 +189,7 @@ export function verifyClaims(
       // A same-title source of another file that overlaps more takes the citation's place.
       let moved = false;
       const chosen = kept.map((n) => {
-        const better = twins(n).filter((m) => share(m) > share(n));
+        const better = twins(n, eligible).filter((m) => share(m) > share(n));
         if (!better.length) return n;
         moved = true;
         return better.reduce((a, b) => (share(b) > share(a) ? b : a));
@@ -210,7 +213,7 @@ export function verifyClaims(
       if (c.citations.length) stats.reattributed++;
       else stats.attributed++;
       // An exact tie between same-title sections of different files is not broken by order.
-      const tied = twins(best).filter((m) => share(m) === bestShare);
+      const tied = twins(best, eligible).filter((m) => share(m) === bestShare);
       return { ...c, citations: [best, ...tied].sort((a, b) => a - b), unsupported: false };
     }
     stats.unsupported++;

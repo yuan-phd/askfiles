@@ -16,6 +16,12 @@ export interface FileIdentity {
   type: string;
   /** Strings that name this file and no other. */
   identifiers: Identifier[];
+  /**
+   * identifiers plus the name forms this file shares with files of the same name in another
+   * format (必须招标的工程项目规定 for the .pdf and the .docx): crossDocument counts such a name
+   * as one mention of both files. Absent in identities built before round A2.
+   */
+  names?: Identifier[];
 }
 
 export interface Identifier {
@@ -50,7 +56,19 @@ function fold(t: string): string {
   return t.normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
-/** 01_Procurement_Regulations_2025.pdf: Procurement Regulations 2025, and without the year. */
+const CJK = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]/;
+
+/** True for a name with Chinese, Japanese or Korean characters, which is matched without word boundaries. */
+function isCjkName(text: string): boolean {
+  return CJK.test(text);
+}
+
+/**
+ * 01_Procurement_Regulations_2025.pdf: Procurement Regulations 2025, and without the year. A CJK
+ * name has no spaces, so its title is the first part before an underscore with the number prefix
+ * removed: 01_标准设备采购招标文件_2017年版.pdf is 标准设备采购招标文件, the form a question
+ * writes in title marks (《标准设备采购招标文件》).
+ */
 function nameForms(file: string): string[] {
   const stem = file.replace(/\.[^.]+$/, '');
   const spaced = stem
@@ -58,7 +76,14 @@ function nameForms(file: string): string[] {
     .replace(/^\d+\s+/, '')
     .trim();
   const noYear = spaced.replace(/\s+(19|20)\d\d$/, '').trim();
-  return [...new Set([file, stem, spaced, noYear])].filter((x) => x.split(' ').length >= 2 || x === file || x === stem);
+  const cjkTitle = stem
+    .replace(/^\d+[_\s-]+/, '')
+    .split('_')[0]!
+    .trim();
+  const cjk = isCjkName(cjkTitle) && [...cjkTitle].length >= 4 ? [cjkTitle] : [];
+  return [
+    ...new Set([file, stem, ...[spaced, noYear].filter((x) => x.split(' ').length >= 2 && !isCjkName(x)), ...cjk]),
+  ];
 }
 
 /**
@@ -87,8 +112,8 @@ export function buildIdentities(docs: BrowseDocument[]): FileIdentity[] {
     const title = entries.join(' ');
     const names = nameForms(d.title);
     const spaced = names[names.length - 1] ?? d.title;
-    const phrases = [
-      ...names.map((text) => ({ text, caseSensitive: false })),
+    const phrases: (Identifier & { fromName?: boolean })[] = [
+      ...names.map((text) => ({ text, caseSensitive: false, fromName: true })),
       // A cover line that ends in a type word (Bank Procedure); other lines are fragments (VALUE FOR).
       ...entries
         .filter((e) => e.split(' ').length >= 2 && TYPE_WORDS.some((w) => fold(e).endsWith(` ${fold(w)}`)))
@@ -118,6 +143,16 @@ export function buildIdentities(docs: BrowseDocument[]): FileIdentity[] {
       if (!owners.has(k)) owners.set(k, new Set());
       owners.get(k)!.add(c.d.id);
     }
+  // A name form several files share is a name of each when it comes from every owner's file name.
+  const fromNames = new Map<string, Set<string>>();
+  for (const c of candidates)
+    for (const p of c.phrases)
+      if (p.fromName) {
+        const k = fold(p.text);
+        if (!fromNames.has(k)) fromNames.set(k, new Set());
+        fromNames.get(k)!.add(c.d.id);
+      }
+  const plain = (p: Identifier): Identifier => ({ text: p.text, caseSensitive: p.caseSensitive });
   return candidates.map((c) => {
     const seen = new Set<string>();
     const identifiers = c.phrases.filter((p) => {
@@ -126,7 +161,19 @@ export function buildIdentities(docs: BrowseDocument[]): FileIdentity[] {
       seen.add(k);
       return true;
     });
-    return { documentId: c.d.id, file: c.d.title, title: c.title, type: c.type, identifiers };
+    const shared = c.phrases.filter((p) => {
+      const k = fold(p.text);
+      const n = owners.get(k)!.size;
+      return p.fromName && n > 1 && fromNames.get(k)!.size === n && !seen.has(`${k}|${p.caseSensitive}`);
+    });
+    return {
+      documentId: c.d.id,
+      file: c.d.title,
+      title: c.title,
+      type: c.type,
+      identifiers: identifiers.map(plain),
+      names: [...identifiers, ...shared].map(plain),
+    };
   });
 }
 
@@ -134,8 +181,12 @@ function escape(t: string): string {
   return t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/** Whether the question names the identifier as a whole word sequence. */
-function mentions(question: string, id: Identifier): boolean {
+/**
+ * Where the question names the identifier as a whole word sequence, -1 when it does not; a CJK
+ * name anywhere, spaces ignored (the position is then in the text without spaces).
+ */
+function mentionAt(question: string, id: Identifier): number {
+  if (isCjkName(id.text)) return fold(question).replace(/\s+/g, '').indexOf(fold(id.text).replace(/\s+/g, ''));
   const words = id.text
     .trim()
     .split(/[\s_]+/)
@@ -144,12 +195,44 @@ function mentions(question: string, id: Identifier): boolean {
   if (id.caseSensitive) {
     // Capitalized or all capitals, never lower case.
     const upper = id.text.toUpperCase().split(/\s+/).map(escape).join('\\s+');
-    return new RegExp(`(?<![\\p{L}\\p{N}])(?:${words}|${upper})(?![\\p{L}\\p{N}])`, 'u').test(question);
+    return question.search(new RegExp(`(?<![\\p{L}\\p{N}])(?:${words}|${upper})(?![\\p{L}\\p{N}])`, 'u'));
   }
-  return new RegExp(`(?<![\\p{L}\\p{N}])${words}(?![\\p{L}\\p{N}])`, 'iu').test(question.normalize('NFKC'));
+  return question.normalize('NFKC').search(new RegExp(`(?<![\\p{L}\\p{N}])${words}(?![\\p{L}\\p{N}])`, 'iu'));
+}
+
+function mentions(question: string, id: Identifier): boolean {
+  return mentionAt(question, id) >= 0;
 }
 
 /** The documents the question names, in library order. */
 export function mentionedDocuments(question: string, identities: FileIdentity[]): FileIdentity[] {
   return identities.filter((f) => f.identifiers.some((id) => mentions(question, id)));
+}
+
+/**
+ * The files a text names, one group per name, in the order the text names them (crossDocument,
+ * docs/plan.md round A2): a name that several files share by their file names (the same
+ * regulation as .pdf and .docx) is one group of all of them; a group inside another (the file
+ * name and its title) counts once. A question naming two or more groups asks about several
+ * documents.
+ */
+export function namedFileGroups(text: string, identities: FileIdentity[]): FileIdentity[][] {
+  const byName = new Map<string, { docs: Set<string>; at: number }>();
+  for (const f of identities)
+    for (const id of f.names ?? f.identifiers) {
+      const at = mentionAt(text, id);
+      if (at < 0) continue;
+      const k = fold(id.text);
+      const g = byName.get(k) ?? { docs: new Set<string>(), at };
+      g.docs.add(f.documentId);
+      byName.set(k, g);
+    }
+  const kept: { docs: Set<string>; at: number }[] = [];
+  for (const g of [...byName.values()].sort((a, b) => b.docs.size - a.docs.size || a.at - b.at)) {
+    const outer = kept.find((k) => [...g.docs].every((d) => k.docs.has(d)));
+    if (outer) outer.at = Math.min(outer.at, g.at);
+    else kept.push({ ...g });
+  }
+  // In the order the text names them; files of one group in library order.
+  return kept.sort((a, b) => a.at - b.at).map((g) => identities.filter((f) => g.docs.has(f.documentId)));
 }
