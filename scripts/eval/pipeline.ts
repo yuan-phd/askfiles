@@ -9,6 +9,7 @@ import {
   answer,
   answerSplit,
   choose,
+  crossDocumentPartsOf,
   describeSplit,
   splitQuestion,
   rerankerProcess,
@@ -93,6 +94,10 @@ export function indexHash(config: EvalConfig, library: Pick<Library, 'records'>)
       p.sectionCapChars,
       // Only when on, so the hash of runs without it stays the same.
       ...(p.documentAffinity ? ['documentAffinity'] : []),
+      // The retrieval records the named files whenever crossDocument is on; quota changes the candidates.
+      ...(crossDocumentPartsOf(p).size
+        ? [`crossDocument:${crossDocumentPartsOf(p).has('quota') ? 'quota' : 'names'}`]
+        : []),
     ],
   };
   return createHash('sha256').update(JSON.stringify(key)).digest('hex').slice(0, 16);

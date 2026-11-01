@@ -42,7 +42,11 @@
     "promptVariant": "default",
     "verifyCitations": true,
     "enumerateWhenAsked": true,
-    "dropUnsupportedHedges": true
+    "dropUnsupportedHedges": true,
+    "cjkOverlap": true,
+    "crossDocument": false,
+    "crossDocumentParts": ["quota", "grouped", "verify"],
+    "crossDocQuota": true
   },
   "contextTokens": 8192,
   "indexing": {

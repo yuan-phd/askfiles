@@ -29,6 +29,19 @@ const STRICT_RULES = [
   'Keep the answer short: the fewest sentences that answer the question.',
 ];
 
+/**
+ * crossDocument (round A2), in place of the rule against file names: a question about several
+ * files gets its sources grouped under each file's name and is answered one file at a time, each
+ * part citing only that file, then compared. The part names its file so that verification can
+ * keep a sentence on the sources of the file it is about.
+ */
+export const CROSS_DOCUMENT_RULES = [
+  'Never write page numbers or section names in your answer; the citations are enough.',
+  'The question asks about several files. The sources are grouped under a line naming their file.',
+  "First answer for each file in turn, in its own paragraph that names the file as the question does and cites only that file's sources.",
+  'Then compare the files in a last paragraph.',
+];
+
 /** verdictLine: the first line of the reply, which code reads instead of looking for the marker. */
 export const VERDICT_FOUND = 'FOUND';
 export const VERDICT_NOT_FOUND = 'NOT_FOUND';
@@ -47,16 +60,18 @@ const COMPLETE_RULES = [
 
 export function systemPrompt(
   variant: PromptVariant,
-  o: { verdictLine?: boolean; enumerate?: boolean; noSummarizing?: boolean } = {},
+  o: { verdictLine?: boolean; enumerate?: boolean; noSummarizing?: boolean; crossDocument?: boolean } = {},
 ): string {
   // The verdict rules take the place of the two not-found marker rules.
-  const base = o.verdictLine ? [...RULES.slice(0, 3), ...VERDICT_RULES, ...RULES.slice(5)] : RULES;
+  const marked = o.verdictLine ? [...RULES.slice(0, 3), ...VERDICT_RULES, ...RULES.slice(5)] : RULES;
+  const base = o.crossDocument ? [...marked.slice(0, 2), ...CROSS_DOCUMENT_RULES, ...marked.slice(3)] : marked;
   const extra = [
     ...(variant === 'strict' ? STRICT_RULES : variant === 'complete' ? COMPLETE_RULES : []),
     // noSummarizing takes the place of the enumerateWhenAsked rule, which set questions only got.
     ...(o.noSummarizing ? [NO_SUMMARIZING_RULE] : o.enumerate ? [ENUMERATE_RULE] : []),
   ];
-  const rules = [...base.slice(0, 3), ...extra, ...base.slice(3)];
+  const head = o.crossDocument ? 2 + CROSS_DOCUMENT_RULES.length : 3;
+  const rules = [...base.slice(0, head), ...extra, ...base.slice(head)];
   return rules.join('\n');
 }
 
@@ -87,6 +102,8 @@ export interface PromptSource {
   /** Document type of the file (Policy, Guidance); '' when it has none. */
   type?: string;
   title?: string;
+  /** crossDocument: the file the source is grouped under; '' for the files the question does not name. */
+  group?: string;
 }
 
 /** [n] file | type | full path, and a note when another source has the same section title. */
@@ -108,10 +125,17 @@ export function sourceHeader(sources: PromptSource[], i: number): string {
   return `[${i + 1}] ${fields}${note}`;
 }
 
-export function userMessage(question: string, sources: PromptSource[], o: { fileHeaders?: boolean } = {}): string {
-  const blocks = sources.map(
-    (s, i) => `${o.fileHeaders ? sourceHeader(sources, i) : `[${i + 1}] ${s.path.join(' > ')}`}\n${s.text.trim()}`,
-  );
+export function userMessage(
+  question: string,
+  sources: PromptSource[],
+  o: { fileHeaders?: boolean; grouped?: boolean } = {},
+): string {
+  const blocks = sources.map((s, i) => {
+    const block = `${o.fileHeaders ? sourceHeader(sources, i) : `[${i + 1}] ${s.path.join(' > ')}`}\n${s.text.trim()}`;
+    // grouped: sources come ordered by file, with a line naming the file before each group.
+    if (!o.grouped || (i > 0 && sources[i - 1]!.group === s.group)) return block;
+    return `${s.group ? `Sources from ${s.group}:` : 'Sources from other files:'}\n\n${block}`;
+  });
   return `Sources:\n\n${blocks.join('\n\n')}\n\nQuestion: ${question.trim()}`;
 }
 
@@ -124,7 +148,14 @@ export function buildMessages(
   question: string,
   sources: PromptSource[],
   variant: PromptVariant,
-  o: { verdictLine?: boolean; fileHeaders?: boolean; enumerate?: boolean; noSummarizing?: boolean } = {},
+  o: {
+    verdictLine?: boolean;
+    fileHeaders?: boolean;
+    enumerate?: boolean;
+    noSummarizing?: boolean;
+    crossDocument?: boolean;
+    grouped?: boolean;
+  } = {},
 ): ChatMessage[] {
   return [
     { role: 'system', content: systemPrompt(variant, o) },

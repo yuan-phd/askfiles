@@ -4,7 +4,7 @@ import type { StoredChunk } from './build.js';
 
 export { BrowseIndex } from './browse-index.js';
 export type { BrowseIndexOptions } from './browse-index.js';
-export { buildIdentities, mentionedDocuments } from './identifiers.js';
+export { buildIdentities, mentionedDocuments, namedFileGroups } from './identifiers.js';
 export type { FileIdentity, Identifier } from './identifiers.js';
 export { buildDocument, buildOutline, documentId, splitHead } from './build.js';
 export type { StoredChunk } from './build.js';

@@ -7,7 +7,7 @@ export interface Preset {
   label: string;
   /** Lowest total RAM, in GiB, that gets this tier. */
   minRamGb: number;
-  /** Where the values come from: the phase 2 measurements (docs/plan.md, v1 result). */
+  /** Where the values come from: the phase 2 measurements (docs/plan.md, Phase 2 result). */
   comment: string;
   /** Null turns Ask off on this tier: no chat model is pulled, Browse and Find stay. */
   chatModel: string | null;

@@ -8,7 +8,7 @@
  * retrieve (candidates, fusion, sections, rerank), choose (floor, count, budget), answer.
  */
 import type { BrowseDocument, BrowseSection, DocumentRef, RankedSection } from '../browse/index.js';
-import { mentionedDocuments, type FileIdentity } from '../browse/identifiers.js';
+import { mentionedDocuments, namedFileGroups, type FileIdentity } from '../browse/identifiers.js';
 import { citationOrder, claimsOf, CitationStream, parseCitations, type Claim, type Part } from './citations.js';
 import { fuse, sectionKey, type FusedSection, type KeywordCandidate, type VectorCandidate } from './fusion.js';
 import type { ChatFn } from './ollama-chat.js';
@@ -17,6 +17,7 @@ import {
   floorOf,
   rerankerOff,
   sectionCap,
+  crossDocumentPartsOf,
   type AnswerParams,
   type AnswerScope,
   type RunSettings,
@@ -101,6 +102,28 @@ export interface Retrieval {
   timings: { vectorMs: number; keywordMs: number; rerankMs: number };
   /** documentAffinity: the documents the question names; absent when the switch is off. */
   affinity?: { documentIds: string[]; files: string[] };
+  /**
+   * crossDocument: the question names two or more file groups; the files in the order the question
+   * names them, and with the quota part the section keys taken as each file's top sections.
+   */
+  crossDocument?: { documentIds: string[]; files: string[]; quota: string[] };
+}
+
+/** crossDocument: sections of each named file taken from the fused list (round A2). */
+export const CROSS_DOCUMENT_QUOTA = 3;
+
+/** Section keys of each named document's best fused sections, in fused order. */
+export function quotaSections(fused: FusedSection[], documentIds: string[], per = CROSS_DOCUMENT_QUOTA): string[] {
+  const docOf = (k: string) => k.slice(0, k.lastIndexOf('#'));
+  const left = new Map(documentIds.map((d) => [d, per]));
+  const out: string[] = [];
+  for (const f of fused) {
+    const n = left.get(docOf(f.key));
+    if (!n) continue;
+    out.push(f.key);
+    left.set(docOf(f.key), n - 1);
+  }
+  return out;
 }
 
 /**
@@ -173,10 +196,27 @@ export async function retrieve(
     fused = boostDocuments(fused, new Set(affinity.documentIds));
     if (named.length) deps.log?.(`[answer] affinity: ${affinity.files.join(', ')}`);
   }
+  let crossDocument: Retrieval['crossDocument'];
+  const parts = crossDocumentPartsOf(p);
+  if (parts.size) {
+    const groups = namedFileGroups(question, deps.index.identities?.() ?? []);
+    if (groups.length >= 2) {
+      const files = groups.flat();
+      const documentIds = files.map((f) => f.documentId);
+      const quota = parts.has('quota') ? quotaSections(fused, documentIds) : [];
+      crossDocument = { documentIds, files: files.map((f) => f.file), quota };
+      deps.log?.(`[answer] cross-document: ${crossDocument.files.join(', ')}; ${quota.length} quota sections`);
+    }
+  }
   const cap = sectionCap(p, s.chunkMaxChars);
   const candidates: AnswerSection[] = [];
+  const quotaKeys = new Set(crossDocument?.quota ?? []);
   for (const f of fused) {
-    if (candidates.length >= p.candidateSections) break;
+    // The quota sections of a cross-document question are candidates wherever they rank.
+    if (candidates.length >= p.candidateSections) {
+      if (!quotaKeys.size) break;
+      if (!quotaKeys.has(f.key)) continue;
+    }
     const [docId, idx] = [f.key.slice(0, f.key.lastIndexOf('#')), Number(f.key.slice(f.key.lastIndexOf('#') + 1))];
     const found = deps.index.section(docId, idx);
     if (found)
@@ -214,6 +254,7 @@ export async function retrieve(
     bypassReason,
     timings: { vectorMs: Math.round(t1 - t0), keywordMs: Math.round(t2 - t1), rerankMs: Math.round(t3 - t2) },
     ...(affinity ? { affinity } : {}),
+    ...(crossDocument ? { crossDocument } : {}),
   };
 }
 
@@ -250,6 +291,22 @@ export function choose(r: Retrieval, s: ChoiceSettings): Selection {
   const quoted = s.params.answerMode === 'quoted';
   const list = quoted ? ranked(r).filter((x) => !isContentsSection(x.section)) : ranked(r);
   const multi = s.params.documentAffinity && (r.affinity?.documentIds.length ?? 0) >= 2;
+  const quota = new Set(crossDocumentPartsOf(s.params).has('quota') && !quoted ? (r.crossDocument?.quota ?? []) : []);
+  if (quota.size) {
+    // Each named file's top sections whatever their score, then the overall top sections up to
+    // the scope's count; quota first, so the budget drops an overall section before a quota one.
+    const floor = floorOf(s.params, s.scope);
+    const score = (x: Ranked) => (floorOn === 'vector' ? (x.vector ?? 0) : (x.rerank ?? 0));
+    const own = list.filter((x) => quota.has(x.section.key));
+    const top = list.filter((x) => floorOn === 'none' || score(x) >= floor).slice(0, s.params.sectionCount[s.scope]);
+    const extra = top.filter((x) => !quota.has(x.section.key));
+    return selectSections([...own, ...extra], {
+      count: own.length + extra.length,
+      floor: 0,
+      budgetTokens: contextBudget(s.params, s.contextLength),
+      floorOn: 'none',
+    });
+  }
   return selectSections(list, {
     count: quoted ? s.params.extractSections : multi ? AFFINITY_MULTI_SECTIONS : s.params.sectionCount[s.scope],
     floor: floorOf(s.params, s.scope),
@@ -393,7 +450,22 @@ export async function answer(
     deps,
     signal,
   );
-  const sources = sel.selected.map((x, i) => cardOf(i + 1, sections[i]!, x.rerank, x.trimmed));
+  // crossDocument: the question names several files; grouped orders the sources by file.
+  const cross = s.params.crossDocument ? r.crossDocument : undefined;
+  // grouped and verify belong to crossDocument; crossDocQuota is the quota alone.
+  const crossParts = new Set(cross ? s.params.crossDocumentParts : []);
+  let picked = sel.selected.map((x, i) => ({ x, section: sections[i]! }));
+  if (crossParts.has('grouped')) {
+    const rank = (id: string) => {
+      const k = cross!.documentIds.indexOf(id);
+      return k < 0 ? cross!.documentIds.length : k;
+    };
+    picked = picked
+      .map((y, i) => ({ y, i }))
+      .sort((a, b) => rank(a.y.section.documentId) - rank(b.y.section.documentId) || a.i - b.i)
+      .map(({ y }) => y);
+  }
+  const sources = picked.map((y, i) => cardOf(i + 1, y.section, y.x.rerank, y.x.trimmed));
   emit({ type: 'sources', sources });
   const base = {
     claims: [],
@@ -418,12 +490,13 @@ export async function answer(
   const verdictLine = s.params.verdictLine;
   const affinity = s.params.documentAffinity;
   const typeOf = new Map((affinity ? (deps.index?.identities?.() ?? []) : []).map((f) => [f.documentId, f.type]));
-  const promptSources: PromptSource[] = sections.map((x) => ({
+  const promptSources: PromptSource[] = picked.map(({ section: x }) => ({
     path: x.path,
     text: x.text,
     file: x.file,
     title: x.title,
     type: typeOf.get(x.documentId) ?? '',
+    group: cross?.documentIds.includes(x.documentId) ? x.file : '',
   }));
   const enumerate = s.params.enumerateWhenAsked && isSetQuestion(question);
   const messages = buildMessages(question, promptSources, s.params.promptVariant, {
@@ -431,6 +504,8 @@ export async function answer(
     fileHeaders: affinity,
     enumerate,
     noSummarizing: s.params.noSummarizing,
+    crossDocument: crossParts.has('grouped'),
+    grouped: crossParts.has('grouped'),
   });
   const t0 = performance.now();
   let firstTokenMs: number | null = null;
@@ -516,12 +591,16 @@ export async function answer(
     const v = verifyClaims(
       claims,
       sources.map((c) => c.passage),
-      affinity
-        ? {
-            meta: sources.map((c) => ({ file: c.file, title: c.title })),
-            ...(own.length ? { allowed: new Set(own) } : {}),
-          }
-        : {},
+      {
+        ...(affinity
+          ? {
+              meta: sources.map((c) => ({ file: c.file, title: c.title })),
+              ...(own.length ? { allowed: new Set(own) } : {}),
+            }
+          : {}),
+        ...(s.params.cjkOverlap ? { cjk: true } : {}),
+        ...(crossParts.has('verify') ? { allowedFor: ownFiles(claims, sources, deps) } : {}),
+      },
     );
     claims = v.claims;
     verification = v.stats;
@@ -563,6 +642,26 @@ export async function answer(
   };
   emit({ type: 'done', result });
   return result;
+}
+
+/**
+ * crossDocument verify part: for each sentence that names files (namedFileGroups), the sources of
+ * those files, so it is attributed only to them; undefined for a sentence that names none, or only
+ * files with no selected source.
+ */
+export function ownFiles(
+  claims: Claim[],
+  sources: Pick<SourceCard, 'n' | 'documentId'>[],
+  deps: Pick<AnswerDeps, 'index' | 'log'>,
+): (Set<number> | undefined)[] {
+  const identities = deps.index?.identities?.() ?? [];
+  const out = claims.map((c) => {
+    const docs = new Set(namedFileGroups(c.text, identities).flatMap((g) => g.map((f) => f.documentId)));
+    const own = sources.filter((x) => docs.has(x.documentId)).map((x) => x.n);
+    return own.length ? new Set(own) : undefined;
+  });
+  deps.log?.(`[answer] cross-document: ${out.filter(Boolean).length} of ${claims.length} sentences name a file`);
+  return out;
 }
 
 /** One more call over the same sources for the items the first reply left out; '' when none. */
