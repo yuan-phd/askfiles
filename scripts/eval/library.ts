@@ -129,6 +129,7 @@ export async function prepareLibrary(opts: {
     strategy: config.chunkStrategy,
     maxChars: config.chunkMax,
     embeddingModel: config.embeddingModel,
+    indexing: config.indexing,
   });
   const docDir = path.join(storageDir, 'documents', DOC_FOLDER);
   fs.mkdirSync(docDir, { recursive: true });
@@ -162,7 +163,12 @@ export async function prepareLibrary(opts: {
     let ocrReplaced: number[];
     try {
       // The watcher's own split (src/main/watcher/splitter.ts), so the eval measures what the app indexes.
-      ({ parsed, chunks, ocrReplaced } = await splitWithOcr(abs, { maxChars: config.chunkMax, ocr: opts.ocr, log }));
+      ({ parsed, chunks, ocrReplaced } = await splitWithOcr(abs, {
+        maxChars: config.chunkMax,
+        ocr: opts.ocr,
+        log,
+        indexing: config.indexing,
+      }));
     } catch (e) {
       files.push({
         file: rel,

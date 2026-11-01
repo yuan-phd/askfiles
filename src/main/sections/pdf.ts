@@ -1,6 +1,7 @@
 import { isAcceptableHeading } from './headings.js';
+import { findPdfTables, itemsOutside } from './tables.js';
 import { docTitleOf, joinWrapped } from './text.js';
-import type { Block, OutlineSource, ParsedDocument, Section } from './types.js';
+import type { Block, OutlineSource, ParsedDocument, Section, SplitOptions, TableData } from './types.js';
 
 /** One visual line of a page: text, baseline y (PDF units, grows upwards), font size. */
 export interface Line {
@@ -8,6 +9,8 @@ export interface Line {
   y: number;
   size: number;
   text: string;
+  /** A table found on the page (structuredTables); text is empty and the line becomes one block. */
+  table?: TableData;
 }
 
 /** A bookmark resolved to a page and, when the destination has one, a y position. */
@@ -63,6 +66,11 @@ export function blocksFromLines(lines: Line[]): Block[] {
   const blocks: Block[] = [];
   let prev: Line | null = null;
   for (const l of lines) {
+    if (l.table) {
+      blocks.push({ text: '', page: l.page, table: l.table });
+      prev = null;
+      continue;
+    }
     const gap = prev ? prev.y - l.y : 0;
     const newBlock = !prev || prev.page !== l.page || gap > Math.max(l.size, prev.size) * 1.6 || gap < 0;
     if (newBlock) blocks.push({ text: l.text, page: l.page });
@@ -121,6 +129,73 @@ export function marksFromFontSize(lines: Line[]): Mark[] {
   return lines
     .filter(isHeading)
     .map((l) => ({ title: l.text, level: sizes.indexOf(Math.round(l.size * 2) / 2) + 1, page: l.page, y: l.y + 1 }));
+}
+
+/**
+ * The page's lines with every table found by its text positions (findPdfTables) taken out and put
+ * back as one table line at the table's top, among the lines in reading order.
+ */
+export function withTables(items: TextItem[], page: number): Line[] {
+  const tables = findPdfTables(items, page);
+  if (!tables.length) return linesFromItems(items, page);
+  let keep = items.map(() => true);
+  for (const t of tables) {
+    const outside = itemsOutside(items, t);
+    keep = keep.map((k, i) => k && outside[i]!);
+  }
+  const lines = linesFromItems(
+    items.filter((_, i) => keep[i]),
+    page,
+  );
+  for (const t of tables) {
+    const line: Line = { page, y: t.top, size: t.size, text: '', table: t.table };
+    const at = lines.findIndex((l) => !l.table && l.y < t.top);
+    if (at < 0) lines.push(line);
+    else lines.splice(at, 0, line);
+  }
+  return lines;
+}
+
+/**
+ * A table that goes on over a page break is one table: a table at the top of a page continues the
+ * table that ended the page before when at most three lines (page number, running header) stand
+ * between them, the column count is the same and it has no header of its own or repeats the
+ * same one.
+ */
+export function joinPageTables(lines: Line[]): Line[] {
+  const out: Line[] = [];
+  let last: Line | null = null;
+  // Page of the last part joined to last, so a table over three pages joins twice.
+  let lastPage = 0;
+  let between = 0;
+  for (const l of lines) {
+    if (!l.table) {
+      between++;
+      out.push(l);
+      continue;
+    }
+    const a = last?.table;
+    const b = l.table;
+    const width = (t: TableData) => t.header.length || t.rows[0]?.cells.length || 0;
+    if (
+      a &&
+      lastPage === l.page - 1 &&
+      between <= 3 &&
+      width(a) === width(b) &&
+      (!b.header.length || b.header.join('|') === a.header.join('|')) &&
+      !b.title
+    ) {
+      a.rows.push(...b.rows);
+      lastPage = l.page;
+      between = 0;
+      continue;
+    }
+    out.push(l);
+    last = l;
+    lastPage = l.page;
+    between = 0;
+  }
+  return out;
 }
 
 /** Text quality of one page's text layer, both shares from 0 to 1. */
@@ -288,7 +363,7 @@ function ocrLines(text: string, page: number, size: number): Line[] {
 export async function parsePdf(
   buffer: Buffer,
   fileName: string,
-  o: { pageText?: Map<number, string> } = {},
+  o: { pageText?: Map<number, string> } & SplitOptions = {},
 ): Promise<ParsedDocument> {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const task = pdfjs.getDocument({
@@ -304,14 +379,16 @@ export async function parsePdf(
     const sparse: number[] = [];
     for (let p = 1; p <= doc.numPages; p++) {
       const page = await doc.getPage(p);
-      const pageLines = linesFromItems((await page.getTextContent()).items as TextItem[], p);
-      lines.push(...pageLines);
+      const items = (await page.getTextContent()).items as TextItem[];
+      const pageLines = linesFromItems(items, p);
+      lines.push(...(o.structuredTables ? withTables(items, p) : pageLines));
       const q = pageQuality(pageLines.map((l) => l.text).join('\n'));
       if (isGarbled(q)) garbled.push(p);
       else if (q.chars < SPARSE_CHARS && (await drawsImage(page, pdfjs.OPS))) sparse.push(p);
     }
     if (!lines.some((l) => /\S/.test(l.text)))
       return { sections: [], outline: 'none', pages: doc.numPages, needsOcr: true, ...(await pageLabelsOf(doc)) };
+    if (o.structuredTables) lines = joinPageTables(lines);
     const ocrPages = garbled.length ? [...garbled, ...sparse].sort((a, b) => a - b) : [];
     if (o.pageText?.size) {
       const size = bodySize(lines.filter((l) => !o.pageText!.has(l.page)));

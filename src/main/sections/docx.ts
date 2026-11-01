@@ -1,7 +1,8 @@
 import mammoth from 'mammoth';
 import { isAcceptableHeading } from './headings.js';
 import { docTitleOf, tidy } from './text.js';
-import type { ParsedDocument, Section } from './types.js';
+import { looksLikeHeader } from './tables.js';
+import type { ParsedDocument, Section, SplitOptions } from './types.js';
 import { readZipEntry } from './zip.js';
 
 // Word stores built-in heading styles under English names, but documents written by WPS and some
@@ -144,13 +145,14 @@ function decode(s: string): string {
  * table becomes one block with one line per row and cells separated by a vertical bar.
  * mammoth's output is well formed and flat enough that a tag scanner is sufficient.
  */
-export function sectionsFromHtml(html: string, fileName: string): ParsedDocument {
+export function sectionsFromHtml(html: string, fileName: string, o: SplitOptions = {}): ParsedDocument {
   const sections: Section[] = [];
   let current: Section = { title: docTitleOf(fileName), level: 0, blocks: [] };
   let text = '';
   let headingLevel = 0;
   let row: string[] | null = null;
   let rows: string[] | null = null;
+  let cells: string[][] = [];
   const push = (t: string) => {
     const clean = tidy(t);
     if (clean) current.blocks.push({ text: clean, page: 0 });
@@ -185,14 +187,19 @@ export function sectionsFromHtml(html: string, fileName: string): ParsedDocument
         push(text);
         text = '';
         rows = [];
+        cells = [];
       } else if (rows) {
-        push(rows.join('\n'));
+        if (o.structuredTables && cells.length) current.blocks.push(tableBlock(current, cells));
+        else push(rows.join('\n'));
         rows = null;
       }
     } else if (tag === 'tr') {
       if (!closing) row = [];
       else if (row && rows) {
-        if (row.some(Boolean)) rows.push(row.join(' | '));
+        if (row.some(Boolean)) {
+          rows.push(row.join(' | '));
+          cells.push(row);
+        }
         row = null;
       }
     } else if (tag === 'td' || tag === 'th') {
@@ -213,12 +220,30 @@ export function sectionsFromHtml(html: string, fileName: string): ParsedDocument
   return { sections, outline: sections.some((s) => s.level > 0) ? 'headings' : 'none', pages: 0, needsOcr: false };
 }
 
+const CAPTION = /^(?:table|tab\.|表|附表)\s*[\d一二三四五六七八九十]/iu;
+
+/**
+ * A Word table as a table block: the first row is the header when it looks like one; a caption
+ * paragraph right above it (Table 2 ..., 表 1 ...) becomes its title and leaves the body.
+ */
+function tableBlock(current: Section, rows: string[][]): Section['blocks'][number] {
+  const last = current.blocks[current.blocks.length - 1];
+  let title = '';
+  if (last && !last.table && last.text.length <= 120 && !last.text.includes('\n') && CAPTION.test(last.text)) {
+    title = last.text;
+    current.blocks.pop();
+  }
+  const header = rows.length >= 2 && looksLikeHeader(rows[0]!) ? rows[0]! : [];
+  const data = header.length ? rows.slice(1) : rows;
+  return { text: '', page: 0, table: { title, header, rows: data.map((cells) => ({ cells, page: 0 })) } };
+}
+
 /**
  * Word files have no page numbers without a layout engine, so every block gets page 0. Headings
  * come from paragraph styles and outline levels read from the file itself (headingStyles,
  * directOutlineLevels), since mammoth's own map knows only the English built-in style names.
  */
-export async function parseDocx(buffer: Buffer, fileName: string): Promise<ParsedDocument> {
+export async function parseDocx(buffer: Buffer, fileName: string, o: SplitOptions = {}): Promise<ParsedDocument> {
   let styles = new Map<string, number>();
   let direct: (number | null)[] = [];
   try {
@@ -235,5 +260,5 @@ export async function parseDocx(buffer: Buffer, fileName: string): Promise<Parse
       transformDocument: markHeadings(styles, direct),
     },
   );
-  return sectionsFromHtml(value, fileName);
+  return sectionsFromHtml(value, fileName, o);
 }

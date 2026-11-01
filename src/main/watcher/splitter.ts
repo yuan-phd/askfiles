@@ -7,6 +7,7 @@ import {
   SPLITTER_VERSION,
   docTitleOf,
   type Chunk,
+  type IndexingOptions,
   type ParsedDocument,
 } from '../sections/index.js';
 import type { Section } from '../sections/index.js';
@@ -34,6 +35,11 @@ export function sectionsFromOcr(pages: OcrPage[], fileName: string): Section[] {
 /** OCR of a whole scanned PDF, or with pages of those pages only (collectorOcr). */
 export type OcrFn = (filePath: string, pages?: number[]) => Promise<OcrPage[]>;
 
+/** The parser switches of the indexing options (the OCR switch belongs to the ocr hook). */
+function splitOptions(o: IndexingOptions = {}) {
+  return { structuredTables: Boolean(o.structuredTables), cjkHeadings: Boolean(o.cjkHeadings) };
+}
+
 /**
  * Parses and chunks one file; shared by the watcher and the eval harness so both index the same
  * split. A PDF without a text layer is OCRed whole. A PDF with garbled pages (ocrPages) gets those
@@ -42,9 +48,10 @@ export type OcrFn = (filePath: string, pages?: number[]) => Promise<OcrPage[]>;
  */
 export async function splitWithOcr(
   filePath: string,
-  o: { maxChars: number; ocr?: OcrFn; log?: (msg: string) => void },
+  o: { maxChars: number; ocr?: OcrFn; log?: (msg: string) => void; indexing?: IndexingOptions },
 ): Promise<{ parsed: ParsedDocument; chunks: Chunk[]; ocrReplaced: number[] }> {
-  let parsed = await parseFile(filePath);
+  const so = splitOptions(o.indexing);
+  let parsed = await parseFile(filePath, so);
   let sections = parsed.sections;
   let ocrReplaced: number[] = [];
   if (parsed.needsOcr) {
@@ -64,7 +71,7 @@ export async function splitWithOcr(
           (kept.length ? `; kept (OCR found no text): ${kept.join(', ')}` : ''),
       );
       if (text.size) {
-        parsed = { ...(await parseFile(filePath, { pageText: text })), ocrPages: parsed.ocrPages };
+        parsed = { ...(await parseFile(filePath, { pageText: text, ...so })), ocrPages: parsed.ocrPages };
         sections = parsed.sections;
       }
     }
@@ -88,12 +95,15 @@ export function sectionSplitter(o: {
   embeddingModel: string;
   ocr?: OcrFn;
   log?: (msg: string) => void;
+  /** The preset's indexing switches; part of the split key. */
+  indexing?: IndexingOptions;
 }): Splitter {
   const splitKey = splitKeyOf({
     splitterVersion: SPLITTER_VERSION,
     strategy: SPLIT_STRATEGY,
     maxChars: o.maxChars,
     embeddingModel: o.embeddingModel,
+    indexing: o.indexing,
   });
   return {
     splitKey,

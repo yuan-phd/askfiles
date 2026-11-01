@@ -5,11 +5,12 @@ import { parseDocx } from './docx.js';
 import { parseMarkdown } from './markdown.js';
 import { parsePdf } from './pdf.js';
 import { parsePlainText } from './text.js';
-import type { Chunk, ParsedDocument } from './types.js';
+import type { Chunk, ParsedDocument, SplitOptions } from './types.js';
 import { parseCsv, parseXls, parseXlsx } from './xlsx.js';
 
 export * from './types.js';
 export { chunkSections, foldEmptySections, pageTitle, splitLongByPage, splitToFit, withPaths } from './chunk.js';
+export { findPdfTables, formatRow, headerLine, looksLikeHeader, tableSections } from './tables.js';
 export { isGarbled, pageQuality, GARBLED_CHAR_SHARE, GARBLED_WORD_SHARE, SPARSE_CHARS } from './pdf.js';
 export { isAcceptableHeading, stripNumbering, MAX_HEADING_CHARS } from './headings.js';
 export { docTitleOf, paragraphs, parsePlainText } from './text.js';
@@ -40,7 +41,10 @@ export function isSupported(file: string): boolean {
 }
 
 /** Reads and parses one file into sections by its extension. */
-export async function parseFile(file: string, o: { pageText?: Map<number, string> } = {}): Promise<ParsedDocument> {
+export async function parseFile(
+  file: string,
+  o: { pageText?: Map<number, string> } & SplitOptions = {},
+): Promise<ParsedDocument> {
   const name = path.basename(file);
   const ext = path.extname(file).toLowerCase();
   const buffer = await fs.readFile(file);
@@ -48,14 +52,14 @@ export async function parseFile(file: string, o: { pageText?: Map<number, string
     case '.pdf':
       return parsePdf(buffer, name, o);
     case '.docx':
-      return parseDocx(buffer, name);
+      return parseDocx(buffer, name, o);
     case '.xlsx':
     case '.xlsm':
-      return parseXlsx(buffer);
+      return parseXlsx(buffer, o);
     case '.xls':
-      return parseXls(buffer);
+      return parseXls(buffer, o);
     case '.csv':
-      return parseCsv(buffer, name);
+      return parseCsv(buffer, name, o);
     case '.md':
     case '.markdown':
       return parseMarkdown(buffer.toString('utf8'), name);
@@ -68,9 +72,9 @@ export async function parseFile(file: string, o: { pageText?: Map<number, string
 
 export async function splitFile(
   file: string,
-  { maxChars }: { maxChars: number },
+  { maxChars, ...o }: { maxChars: number } & SplitOptions,
 ): Promise<{ parsed: ParsedDocument; chunks: Chunk[] }> {
-  const parsed = await parseFile(file);
+  const parsed = await parseFile(file, o);
   return { parsed, chunks: chunkSections(parsed.sections, { maxChars, pageLabels: parsed.pageLabels }) };
 }
 export * from './documents.js';

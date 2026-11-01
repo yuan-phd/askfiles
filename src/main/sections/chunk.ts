@@ -1,3 +1,4 @@
+import { tableSections } from './tables.js';
 import type { Block, Chunk, Section } from './types.js';
 
 /** Longest section title written into the chunk text; the full title stays in sectionTitle. */
@@ -64,6 +65,8 @@ export function pageTitle(title: string, page: number): string {
  */
 export function splitLongByPage(sections: Section[], maxChars: number): Section[] {
   return sections.flatMap((s) => {
+    // A table is cut by rows in chunkSections, with its header in every chunk.
+    if (s.table) return [s];
     const length = s.blocks.reduce((n, b) => n + b.text.length, 0);
     const pages = [...new Set(s.blocks.map((b) => b.page).filter((p) => p > 0))];
     if (length <= PAGE_SPLIT_FACTOR * maxChars || pages.length < 2) return [s];
@@ -138,7 +141,9 @@ function pagesOf(pieces: Piece[]): [number, number] {
  * Turns sections into chunks of at most maxChars characters. A section that fits is one chunk;
  * a longer one is cut at paragraph, line and sentence boundaries, in that order of preference,
  * into sub-chunks that each start with the section title, so every sub-chunk is embedded with
- * the context of its section.
+ * the context of its section. Table blocks (structuredTables) become sections of their own first
+ * (tableSections); a table section is cut only between rows, a row longer than the room left
+ * being the one exception, and every sub-chunk carries the caption and header line after the title.
  */
 export function chunkSections(
   sections: Section[],
@@ -149,19 +154,22 @@ export function chunkSections(
   }
   const chunks: Chunk[] = [];
   const label = (page: number) => (page > 0 ? (pageLabels?.[page - 1] ?? '') : '');
-  splitLongByPage(foldEmptySections(withPaths(sections)), maxChars).forEach((section, i) => {
+  splitLongByPage(foldEmptySections(withPaths(tableSections(sections))), maxChars).forEach((section, i) => {
     const headOf = (titles: string[]) =>
       titles
         .map((t) => t.replace(/\s+/g, ' ').trim().slice(0, MAX_TITLE_IN_TEXT))
         .filter(Boolean)
         .map((t) => `${t}\n`)
         .join('');
-    let head = headOf([...(section.lead ?? []), section.title]);
+    const tableHead = section.table ? [section.table.caption ?? '', section.table.header] : [];
+    let head = headOf([...(section.lead ?? []), section.title, ...tableHead]);
     // A long run of folded headings must not eat the room for the text; the title alone fits.
+    if (head.length > maxChars / 2) head = headOf([section.title, ...tableHead]);
     if (head.length > maxChars / 2) head = headOf([section.title]);
     const budget = maxChars - head.length;
+    const rowSep = section.table ? '\n' : '\n\n';
     const pieces: Piece[] = section.blocks.flatMap((b: Block, bi: number) =>
-      splitToFit(b.text, budget).map((text, pi) => ({ text, page: b.page, sep: bi > 0 && pi === 0 ? '\n\n' : '' })),
+      splitToFit(b.text, budget).map((text, pi) => ({ text, page: b.page, sep: bi > 0 && pi === 0 ? rowSep : '' })),
     );
     const groups: Piece[][] = [];
     let len = 0;
