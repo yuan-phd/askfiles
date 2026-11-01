@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "comment": "One preset per RAM tier, the result of phase 2 (docs/plan.md, Phase 2 result): every value was measured on the owner's Mac with the evaluation harness (docs/eval.md) or fixed by the plan. Tiers are matched on total RAM in GiB: the highest tier whose minRamGb is not above the machine's RAM. Answer switches on: verifyCitations, enumerateWhenAsked, dropUnsupportedHedges, cjkOverlap (docs/plan.md, Answer layer rounds, 2026-11-01, round A1), crossDocQuota (A2a), scopedQuotaV2 (C3); crossDocument (A2), fileScopedQuota (C1) and the others are unused options, off (docs/eval.md, answer switches). Indexing switches (docs/plan.md, Indexing rounds, 2026-11-01): structuredTables on (round I1); cjkHeadings (I2, again in A3, A3b, C2 and C4) and ocrUpscale (I3) measured and off.",
+  "comment": "One preset per RAM tier, the result of phase 2 (docs/plan.md, Phase 2 result): every value was measured on the owner's Mac with the evaluation harness (docs/eval.md) or fixed by the plan. Tiers are matched on total RAM in GiB: the highest tier whose minRamGb is not above the machine's RAM. Answer switches on: verifyCitations, enumerateWhenAsked, dropUnsupportedHedges, cjkOverlap (docs/plan.md, Answer layer rounds, 2026-11-01, round A1), crossDocQuota (A2a), scopedQuotaV2 (C3); crossDocument (A2), fileScopedQuota (C1) and the others are unused options, off (docs/eval.md, answer switches). Indexing switches (docs/plan.md, Indexing rounds, 2026-11-01): structuredTables on (round I1); cjkHeadings on by owner ruling after round C4 (an exception to the round rule, docs/plan.md); ocrUpscale (I3) measured and off.",
   "tiers": [
     {
       "id": "8gb",
@@ -63,7 +63,7 @@
       },
       "indexing": {
         "structuredTables": true,
-        "cjkHeadings": false,
+        "cjkHeadings": true,
         "ocrUpscale": false
       }
     },
@@ -135,7 +135,7 @@
       },
       "indexing": {
         "structuredTables": true,
-        "cjkHeadings": false,
+        "cjkHeadings": true,
         "ocrUpscale": false
       }
     },
@@ -200,7 +200,7 @@
       },
       "indexing": {
         "structuredTables": true,
-        "cjkHeadings": false,
+        "cjkHeadings": true,
         "ocrUpscale": false
       }
     }

@@ -52,8 +52,8 @@ describe('config/presets.json', () => {
       const switches = Object.entries(t.answer).filter(([k, v]) => typeof v === 'boolean' && k !== 'rerankerBypassCjk');
       expect(switches.filter(([, v]) => v).map(([k]) => k)).toEqual(on);
       expect(t.answer.crossDocumentParts).toEqual(['quota', 'grouped', 'verify']);
-      // Indexing rounds 2026-11-01: tables kept (I1); Chinese headings (I2, A3, A3b, C2, C4) and OCR upscaling (I3) not.
-      expect(t.indexing).toEqual({ structuredTables: true, cjkHeadings: false, ocrUpscale: false });
+      // Indexing rounds 2026-11-01: tables kept (I1); Chinese headings on by owner ruling after C4; OCR upscaling (I3) not.
+      expect(t.indexing).toEqual({ structuredTables: true, cjkHeadings: true, ocrUpscale: false });
     }
   });
 });

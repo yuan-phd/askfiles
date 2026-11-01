@@ -53,7 +53,7 @@
   "contextTokens": 8192,
   "indexing": {
     "structuredTables": true,
-    "cjkHeadings": false,
+    "cjkHeadings": true,
     "ocrUpscale": false
   }
 }
