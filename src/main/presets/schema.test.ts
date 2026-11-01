@@ -35,7 +35,7 @@ describe('config/presets.json', () => {
       sha256: '9694f1db203d5a18bea6f19a36be01b2d2c79bf9b7f8df553a4cc5cff870b47e',
       sizeBytes: 7321313664,
     });
-    // cjkOverlap kept in answer round A1, crossDocQuota in A2a; crossDocument (A2) not.
+    // cjkOverlap kept in answer round A1, crossDocQuota in A2a; crossDocument (A2) and fileScopedQuota (C1) not.
     const on = ['verifyCitations', 'enumerateWhenAsked', 'dropUnsupportedHedges', 'cjkOverlap', 'crossDocQuota'];
     for (const t of p.tiers) {
       expect(t.reasoningEffort).toBe('off');
@@ -44,7 +44,7 @@ describe('config/presets.json', () => {
       const switches = Object.entries(t.answer).filter(([k, v]) => typeof v === 'boolean' && k !== 'rerankerBypassCjk');
       expect(switches.filter(([, v]) => v).map(([k]) => k)).toEqual(on);
       expect(t.answer.crossDocumentParts).toEqual(['quota', 'grouped', 'verify']);
-      // Indexing rounds 2026-11-01: tables kept (I1); Chinese headings (I2, A3, A3b) and OCR upscaling (I3) not.
+      // Indexing rounds 2026-11-01: tables kept (I1); Chinese headings (I2, A3, A3b, C2) and OCR upscaling (I3) not.
       expect(t.indexing).toEqual({ structuredTables: true, cjkHeadings: false, ocrUpscale: false });
     }
   });
