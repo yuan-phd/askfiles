@@ -120,12 +120,16 @@ else
 fi
 
 step "4/8 prisma generate"
-if [ "$REUSE" = 1 ]; then
+# The build stamp cannot tell a client generated while upstream/ was restored (unpatched schema,
+# hard-coded database path) from a good one, so a reused client must also match the patched schema.
+if [ "$REUSE" = 1 ] && node "$ROOT/scripts/lib/prisma-client.mjs" check "$UPSTREAM/server" >/dev/null 2>&1; then
   echo "[build] reusing node_modules/.prisma/client"
 else
+  [ "$REUSE" = 1 ] && echo "[build] node_modules/.prisma/client does not match prisma/schema.prisma (generated while upstream/ was restored?), generating again"
   (cd "$UPSTREAM/server" && "$NODE_BIN" node_modules/prisma/build/index.js generate --schema prisma/schema.prisma)
 fi
 [ -f "$UPSTREAM/server/node_modules/.prisma/client/index.js" ] || fail "prisma generate did not produce node_modules/.prisma/client"
+node "$ROOT/scripts/lib/prisma-client.mjs" check "$UPSTREAM/server" || fail "the generated Prisma client does not match the patched schema; see the message above"
 
 step "5/8 prisma engines"
 if [ "$PACKAGE_TARGET" = "mac-arm64" ]; then
