@@ -1,7 +1,7 @@
 // Page history of the main window: one entry per place the user went (Ask, a Browse page, a
 // document at a section), each with what it needs to come back as it was left: the scroll
-// position, the heading selected, the words found. Back (the control on the Document page, or
-// Cmd+[ anywhere) returns to the entry before. Views keep their own content when hidden, so an
+// position, the heading selected, the words found. Back (at the top of the Browse sidebar, or
+// Cmd+[ anywhere) returns to the entry before. Changing the library clears the history. Views keep their own content when hidden, so an
 // entry only says where to go and what to restore; the Ask results stay as they were.
 
 /** Most entries kept; older ones are dropped first. */
@@ -50,6 +50,11 @@ export function createHistory({ initial, apply, capture = () => ({}) }) {
     /** Updates the current entry with state that changed in place (a heading chosen, a search run). */
     replace(patch) {
       Object.assign(top(), patch);
+    },
+    /** Forgets every entry and starts again from entry (another library is a fresh start). */
+    reset(entry) {
+      entries.splice(0, entries.length, entry);
+      changed();
     },
     /** Goes to the entry before; false when there is none. */
     back() {

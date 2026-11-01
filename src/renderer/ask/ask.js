@@ -97,6 +97,10 @@ const bar = mountTopBar($('top-bar'), {
       showView(view);
       return view === 'search' ? { view: 'search' } : state.browse.current();
     }),
+  // Another library is a fresh start: nothing to go back to. (Selecting one normally reloads the
+  // window, which clears the history too.)
+  onLibraryChange: () =>
+    history.reset(state.view === 'browse' && state.browse ? state.browse.current() : { view: 'search' }),
 });
 
 function setState(kind, text) {

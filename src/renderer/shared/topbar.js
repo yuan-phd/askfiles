@@ -90,11 +90,12 @@ export function statusOf(s) {
 
 /**
  * Mounts the bar into header. views maps a view name (search, browse) to its container, which the
- * empty state hides. onView(name) is called when the user switches. Returns an object the page
+ * empty state hides. onView(name) is called when the user switches; onLibraryChange(id) when the
+ * current library changes without a reload of the window. Returns an object the page
  * uses: setView(name), setConnection(kind, text) for its own connection problems,
  * setFallbackCount(n) for a count when no watcher reports one, and isEmpty().
  */
-export function mountTopBar(header, { views = {}, onView = () => {} } = {}) {
+export function mountTopBar(header, { views = {}, onView = () => {}, onLibraryChange = () => {} } = {}) {
   header.classList.add('topbar');
   header.dataset.testid = 'status-bar';
   header.innerHTML = MARKUP;
@@ -233,7 +234,9 @@ export function mountTopBar(header, { views = {}, onView = () => {} } = {}) {
 
   function applyLibraries(v) {
     if (!v) return;
+    const before = state.libraries?.current;
     state.libraries = v;
+    if (before && v.current !== before) onLibraryChange(v.current);
     renderLibraries();
     renderStatus();
   }

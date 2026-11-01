@@ -49,6 +49,9 @@ test.describe('Find', () => {
     await expect(snippet).not.toContainText('recorded in the portal');
     await expect(snippet.locator('mark')).toHaveText(['Annual', 'leave', 'annual', 'leave']);
 
+    // The order is the explanation: no hit says why it ranks where it does.
+    await expect(page.getByTestId('find-hit').first()).not.toContainText(/exact|phrase|paragraph|rank/i);
+
     await findWords(page, '"annual leave"');
     await expect(page.getByTestId('find-file')).toHaveText(['c-adjacent.md']);
     await expect(page.getByTestId('find-snippet').locator('mark')).toHaveText(['Annual leave', 'annual leave']);
@@ -86,8 +89,17 @@ test.describe('Back', () => {
     // Ask -> Read section -> Document; Back returns to the Ask results.
     await page.getByTestId('source-read').click();
     await expect(page.getByTestId('doc-title')).toHaveText('leave-policy-v2.md');
-    await expect(page.getByTestId('doc-back')).toBeVisible();
-    await page.getByTestId('doc-back').click();
+    // Back sits at the top of the sidebar, above Library; the Document page has none of its own.
+    const back = page.getByTestId('browse-back');
+    await expect(back).toBeVisible();
+    await expect(back).toBeEnabled();
+    const [backBox, libraryTab] = [
+      await back.boundingBox(),
+      await page.getByTestId('browse-tab-library').boundingBox(),
+    ];
+    expect(backBox.y + backBox.height).toBeLessThanOrEqual(libraryTab.y);
+    await expect(page.getByTestId('document').getByRole('button', { name: 'Back' })).toHaveCount(0);
+    await back.click();
     await expect(page.getByTestId('search-view')).toBeVisible();
     await expect(page.getByTestId('view-search')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId('answer-text')).toHaveText('Sixteen weeks.[1]');
@@ -110,7 +122,7 @@ test.describe('Back', () => {
     await expect(page.getByTestId('find-group')).toHaveCount(2);
     await page.getByTestId('find-hit').first().click();
     await expect(page.getByTestId('browse-tab-document')).toHaveClass(/active/);
-    await page.getByTestId('doc-back').click();
+    await page.getByTestId('browse-back').click();
     await expect(page.getByTestId('browse-tab-find')).toHaveClass(/active/);
     await expect(page.getByTestId('find-query')).toHaveValue('medical certificate');
     await expect(page.getByTestId('find-group')).toHaveCount(2);
@@ -142,12 +154,51 @@ test.describe('Back', () => {
     await stubBrowseBridge(page, findSeed.index);
     await page.goto(browseUrl());
     await expect(page.getByTestId('library-item')).toHaveCount(4);
+    // Always shown, disabled while there is nothing to go back to.
+    await expect(page.getByTestId('browse-back')).toBeVisible();
+    await expect(page.getByTestId('browse-back')).toBeDisabled();
     await findWords(page, 'annual leave');
     await page.getByTestId('find-hit').first().click();
     await expect(page.getByTestId('doc-title')).toHaveText('c-adjacent.md');
-    await page.getByTestId('doc-back').click();
+    await page.getByTestId('browse-back').click();
     await expect(page.getByTestId('browse-tab-find')).toHaveClass(/active/);
     await expect(page.getByTestId('find-file')).toHaveCount(4);
+  });
+});
+
+test.describe('Back after a library change', () => {
+  test('starts again: nothing to go back to, and Cmd+[ stays put', async ({ page }) => {
+    const libs = (current) => ({
+      current,
+      libraries: [
+        library({ isCurrent: current === 'all-files', indexed: 6, sources: [folderSource('/Users/anna/Documents')] }),
+        library({
+          id: 'lib-1',
+          name: 'Work',
+          isDefault: false,
+          isCurrent: current === 'lib-1',
+          indexed: 6,
+          sources: [folderSource('/Users/anna/Work')],
+        }),
+      ],
+    });
+    await mockLibrary(page, { documents: 6 });
+    await stubBrowseBridge(page, corpus.index, { status: watcherStatus({ indexed: 6 }) });
+    await stubLibraries(page, { libraries: libs('all-files') });
+    await page.goto(pageUrl());
+    await expect(page.getByTestId('library-name')).toHaveText('All files');
+    await page.getByTestId('view-browse').click();
+    await page.getByTestId('browse-tab-headings').click();
+    await page.getByTestId('browse-tab-find').click();
+    await expect(page.getByTestId('browse-back')).toBeEnabled();
+
+    // The main process reports another current library (normally it also reloads the window).
+    await page.evaluate((v) => window.__librariesEvent(v), libs('lib-1'));
+    await expect(page.getByTestId('library-name')).toHaveText('Work');
+    await expect(page.getByTestId('browse-back')).toBeDisabled();
+    await page.keyboard.press('Meta+BracketLeft');
+    await expect(page.getByTestId('browse-tab-find')).toHaveClass(/active/);
+    await expect(page.getByTestId('browse-view')).toBeVisible();
   });
 });
 

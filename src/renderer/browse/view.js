@@ -8,11 +8,13 @@
 // Library, Headings or Find show.
 //
 // Every move between pages and documents goes into the page history (shared/history.js): the
-// Ask page passes its own, which spans Ask and Browse; on its own the view keeps one. Back on the
-// Document page and Cmd+[ return to the place before, as it was left.
+// Ask page passes its own, which spans Ask and Browse; on its own the view keeps one. Back at the
+// top of the sidebar, always shown and disabled when there is nothing to go back to, and Cmd+[
+// return to the place before, as it was left.
 
 const MARKUP = `
 <nav class="browse-sidebar" aria-label="Browse" data-testid="browse-sidebar">
+  <button type="button" class="sidebar-back" data-testid="browse-back" aria-keyshortcuts="Meta+BracketLeft" title="Back (Cmd+[)" disabled>Back</button>
   <button type="button" class="browse-tab" data-tab="library" data-testid="browse-tab-library">Library</button>
   <button type="button" class="browse-tab" data-tab="headings" data-testid="browse-tab-headings">Headings</button>
   <button type="button" class="browse-tab" data-tab="find" data-testid="browse-tab-find">Find</button>
@@ -42,7 +44,6 @@ const MARKUP = `
 <section class="browse-page" data-page="document" data-testid="document" aria-label="Document" hidden>
   <article class="doc-body">
     <header class="doc-head">
-      <button type="button" class="link doc-back" data-testid="doc-back" hidden>Back</button>
       <h1 class="doc-title" data-testid="doc-title"></h1>
       <p class="doc-path" data-testid="doc-path"></p>
       <button type="button" class="open" data-testid="doc-open">Open original</button>
@@ -198,9 +199,9 @@ export function createBrowseView(root, { history: shared = null } = {}) {
       history.back();
     });
   }
-  const renderBack = () => (q('doc-back').hidden = !history.canGoBack());
+  const renderBack = () => (q('browse-back').disabled = !history.canGoBack());
   history.onChange(renderBack);
-  q('doc-back').addEventListener('click', () => history.back());
+  q('browse-back').addEventListener('click', () => history.back());
   /** Scroll position per page, so coming back to a page finds it where it was left. */
   const scrolls = {};
 
