@@ -25,6 +25,13 @@ export type PromptVariant = (typeof PROMPT_VARIANTS)[number];
 
 export type PerScope<T> = Record<AnswerScope, T>;
 
+/**
+ * The three parts of crossDocument, each of which can be left out for a measurement: quota
+ * retrieval, the prompt grouped by file, and verification by the file a sentence names.
+ */
+export const CROSS_DOCUMENT_PARTS = ['quota', 'grouped', 'verify'] as const;
+export type CrossDocumentPart = (typeof CROSS_DOCUMENT_PARTS)[number];
+
 export interface AnswerParams {
   /**
    * Hugging Face repository of the cross-encoder, stored under <dataDir>/models/reranker, or none:
@@ -102,6 +109,21 @@ export interface AnswerParams {
    * (not specified, not stated) when the answer has a supported sentence (hedges.ts).
    */
   dropUnsupportedHedges: boolean;
+  /**
+   * verifyCitations measures a mainly Chinese, Japanese or Korean sentence by character pairs
+   * against the source and with its own threshold (VERIFY_MIN_OVERLAP_CJK); other sentences keep
+   * content words and 0.5 (docs/plan.md, round A1).
+   */
+  cjkOverlap: boolean;
+  /**
+   * Questions that name two or more files (file identifiers, browse/identifiers.ts): each named
+   * file's top sections join the selection, the prompt groups the sources by file and asks for one
+   * part per file before the comparison, and a sentence naming a file may cite only that file's
+   * sources (docs/plan.md, round A2). A question naming one file is unchanged.
+   */
+  crossDocument: boolean;
+  /** The parts crossDocument applies; all three by default. */
+  crossDocumentParts: CrossDocumentPart[];
 }
 
 export const DEFAULT_PARAMS: AnswerParams = {
@@ -128,6 +150,9 @@ export const DEFAULT_PARAMS: AnswerParams = {
   noSummarizing: false,
   decomposeQuestions: false,
   dropUnsupportedHedges: false,
+  cjkOverlap: false,
+  crossDocument: false,
+  crossDocumentParts: [...CROSS_DOCUMENT_PARTS],
 };
 
 /** Tokens kept free for the answer itself and for the instructions and the question. */
@@ -220,6 +245,12 @@ const CHECKS: Record<keyof AnswerParams, (v: unknown) => Problem> = {
   noSummarizing: bool,
   decomposeQuestions: bool,
   dropUnsupportedHedges: bool,
+  cjkOverlap: bool,
+  crossDocument: bool,
+  crossDocumentParts: (v) =>
+    Array.isArray(v) && v.every((x) => (CROSS_DOCUMENT_PARTS as readonly unknown[]).includes(x))
+      ? null
+      : `must be a list of ${CROSS_DOCUMENT_PARTS.join(', ')}`,
 };
 
 /** Problems with an answer block, each prefixed with at; every key is required. */
@@ -272,7 +303,7 @@ export function applyOverrides(params: AnswerParams, sets: string[]): AnswerPara
     if (!name || rest.length || !(name in CHECKS))
       throw new Error(`--set ${set}: unknown parameter ${set.slice(0, eq)}`);
     const cur = out[name];
-    const isPerScope = cur !== null && typeof cur === 'object';
+    const isPerScope = cur !== null && typeof cur === 'object' && !Array.isArray(cur);
     if (scope !== undefined) {
       if (!isPerScope || !isScope(scope)) throw new Error(`--set ${set}: ${name} has no part ${scope}`);
       (cur as Record<string, unknown>)[scope] = value;

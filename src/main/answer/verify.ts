@@ -22,6 +22,16 @@ import type { Claim } from './citations.js';
  */
 export const VERIFY_MIN_OVERLAP = 0.5;
 
+/**
+ * cjkOverlap: the share a mainly Chinese, Japanese or Korean sentence needs, by character pairs
+ * (cjkTokens). Calibrated on the recorded answers of the Chinese set (docs/plan.md, round A1): the
+ * highest value at which every citation the model placed on its expected section survives
+ * verification. Correct citations share 0.25 to 1.0 of their pairs with the section (paraphrase,
+ * and a comparison sentence over several sources), against 0.5 to 1.0 for English words; one
+ * fragment with no fact in it (这些信息来源于。) shares none and is left out.
+ */
+export const VERIFY_MIN_OVERLAP_CJK = 0.3;
+
 /** Below this many content tokens the share says nothing; the sentence keeps what it had. */
 export const VERIFY_MIN_TOKENS = 2;
 
@@ -66,6 +76,40 @@ export function contentTokens(text: string): string[] {
   return out;
 }
 
+const CJK_CHAR = '[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]';
+const CJK_GAP = new RegExp(`(${CJK_CHAR})\\s+(?=${CJK_CHAR})`, 'gu');
+const CJK_RUN = new RegExp(`${CJK_CHAR}+`, 'gu');
+
+/**
+ * Tokens of a mainly CJK text for cjkOverlap: character pairs of every CJK run, with the spaces
+ * PDF text puts between characters (中 华 人 民) closed up first, so a pair is never lost to a
+ * space; every number whole; Latin words as contentTokens takes them. Punctuation and numbers
+ * end a run, so a pair never spans a clause boundary.
+ */
+export function cjkTokens(text: string): string[] {
+  const t = fold(text).replace(CJK_GAP, '$1');
+  const out: string[] = [];
+  for (const m of t.matchAll(/\d+(?:\.\d+)*|[\p{L}\p{M}]+/gu)) {
+    const w = m[0];
+    if (/^\d/.test(w)) {
+      out.push(w.replace(/\.$/, ''));
+      continue;
+    }
+    for (const part of w.split(CJK_RUN)) if (part.length >= 3 && !STOPWORDS.has(part)) out.push(part);
+    for (const run of w.match(CJK_RUN) ?? []) {
+      if (run.length === 1) out.push(run);
+      for (let i = 0; i + 1 < run.length; i++) out.push(run.slice(i, i + 2));
+    }
+  }
+  return out;
+}
+
+/** True when at least 30 percent of the letters and digits are CJK (as isMainlyCjk in terms.ts). */
+export function mainlyCjk(text: string): boolean {
+  const letters = text.match(/[\p{L}\p{N}]/gu)?.length ?? 0;
+  return letters > 0 && (text.match(CJK_RUN)?.join('').length ?? 0) / letters >= 0.3;
+}
+
 /** Share of the sentence's distinct content tokens that occur in the source tokens. */
 export function overlap(sentence: string[], source: Set<string>): number {
   const distinct = [...new Set(sentence)];
@@ -90,6 +134,12 @@ export interface VerifyOptions {
   allowed?: Set<number>;
   /** File and section title per source (meta[n - 1]), for the same-title rule; off when absent. */
   meta?: { file: string; title: string }[];
+  /**
+   * cjkOverlap: a mainly CJK sentence is measured by cjkTokens against cjkTokens of the sources,
+   * with cjkMinOverlap; other sentences keep contentTokens and minOverlap.
+   */
+  cjk?: boolean;
+  cjkMinOverlap?: number;
 }
 
 /**
@@ -102,16 +152,17 @@ export function verifyClaims(
   passages: string[],
   o: VerifyOptions = {},
 ): { claims: Claim[]; stats: VerifyStats } {
-  const min = o.minOverlap ?? VERIFY_MIN_OVERLAP;
   const minTokens = o.minTokens ?? VERIFY_MIN_TOKENS;
-  const sources = passages.map((p) => new Set(contentTokens(p)));
+  const wordSources = passages.map((p) => new Set(contentTokens(p)));
+  let pairSources: Set<string>[] | null = null;
+  const pairsOf = () => (pairSources ??= passages.map((p) => new Set(cjkTokens(p))));
   const eligible = (n: number) => !o.allowed || o.allowed.has(n);
   const titleOf = (n: number) => o.meta?.[n - 1]?.title.trim().toLowerCase() ?? '';
   // Same-title sources of other files, per source.
   const twins = (n: number): number[] => {
     if (!o.meta || !titleOf(n)) return [];
     const out: number[] = [];
-    for (let m = 1; m <= sources.length; m++)
+    for (let m = 1; m <= passages.length; m++)
       if (m !== n && eligible(m) && titleOf(m) === titleOf(n) && o.meta[m - 1]?.file !== o.meta[n - 1]?.file)
         out.push(m);
     return out;
@@ -120,7 +171,10 @@ export function verifyClaims(
   const out = claims.map((c): Claim => {
     if (!/[\p{L}\p{N}]{2}/u.test(c.text)) return c;
     stats.sentences++;
-    const tokens = contentTokens(c.text);
+    const byPairs = Boolean(o.cjk) && mainlyCjk(c.text);
+    const min = byPairs ? (o.cjkMinOverlap ?? VERIFY_MIN_OVERLAP_CJK) : (o.minOverlap ?? VERIFY_MIN_OVERLAP);
+    const sources = byPairs ? pairsOf() : wordSources;
+    const tokens = byPairs ? cjkTokens(c.text) : contentTokens(c.text);
     if (new Set(tokens).size < minTokens) {
       if (c.unsupported) stats.unsupported++;
       return c;

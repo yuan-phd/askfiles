@@ -53,7 +53,10 @@
         "enumerateFollowUp": false,
         "noSummarizing": false,
         "decomposeQuestions": false,
-        "dropUnsupportedHedges": false
+        "dropUnsupportedHedges": false,
+        "cjkOverlap": false,
+        "crossDocument": false,
+        "crossDocumentParts": ["quota", "grouped", "verify"]
       }
     }
   ]

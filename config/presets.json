@@ -53,7 +53,10 @@
         "enumerateFollowUp": false,
         "noSummarizing": false,
         "decomposeQuestions": false,
-        "dropUnsupportedHedges": true
+        "dropUnsupportedHedges": true,
+        "cjkOverlap": false,
+        "crossDocument": false,
+        "crossDocumentParts": ["quota", "grouped", "verify"]
       },
       "indexing": {
         "structuredTables": true,
@@ -119,7 +122,10 @@
         "enumerateFollowUp": false,
         "noSummarizing": false,
         "decomposeQuestions": false,
-        "dropUnsupportedHedges": true
+        "dropUnsupportedHedges": true,
+        "cjkOverlap": false,
+        "crossDocument": false,
+        "crossDocumentParts": ["quota", "grouped", "verify"]
       },
       "indexing": {
         "structuredTables": true,
@@ -178,7 +184,10 @@
         "enumerateFollowUp": false,
         "noSummarizing": false,
         "decomposeQuestions": false,
-        "dropUnsupportedHedges": true
+        "dropUnsupportedHedges": true,
+        "cjkOverlap": false,
+        "crossDocument": false,
+        "crossDocumentParts": ["quota", "grouped", "verify"]
       },
       "indexing": {
         "structuredTables": true,

@@ -516,12 +516,15 @@ export async function answer(
     const v = verifyClaims(
       claims,
       sources.map((c) => c.passage),
-      affinity
-        ? {
-            meta: sources.map((c) => ({ file: c.file, title: c.title })),
-            ...(own.length ? { allowed: new Set(own) } : {}),
-          }
-        : {},
+      {
+        ...(affinity
+          ? {
+              meta: sources.map((c) => ({ file: c.file, title: c.title })),
+              ...(own.length ? { allowed: new Set(own) } : {}),
+            }
+          : {}),
+        ...(s.params.cjkOverlap ? { cjk: true } : {}),
+      },
     );
     claims = v.claims;
     verification = v.stats;
