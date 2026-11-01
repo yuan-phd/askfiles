@@ -48,7 +48,7 @@
     "crossDocumentParts": ["quota", "grouped", "verify"],
     "crossDocQuota": true,
     "fileScopedQuota": false,
-    "scopedQuotaV2": false
+    "scopedQuotaV2": true
   },
   "contextTokens": 8192,
   "indexing": {

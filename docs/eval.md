@@ -88,7 +88,7 @@ The run folder holds results.csv (stage 1 rows, or stage 2 rows with retrieval.c
 
 The answer block of a config file holds the same keys, with the same names, as the answer block of each tier in config/presets.json; a value found here is copied into the preset unchanged. A config may list only the keys it changes. Defaults below are those of src/main/answer/params.ts; the presets set some per tier.
 
-The presets (docs/plan.md, Phase 2 result) turn on verifyCitations, enumerateWhenAsked, dropUnsupportedHedges, cjkOverlap and crossDocQuota. crossDocument, fileScopedQuota, paragraphSelection, verdictLine, documentAffinity, enumerateFollowUp, noSummarizing, decomposeQuestions, answerMode quoted and promptVariant strict or complete are unused options: kept in the code for later measurements, off on every tier.
+The presets (docs/plan.md, Phase 2 result) turn on verifyCitations, enumerateWhenAsked, dropUnsupportedHedges, cjkOverlap, crossDocQuota and scopedQuotaV2. crossDocument, fileScopedQuota, paragraphSelection, verdictLine, documentAffinity, enumerateFollowUp, noSummarizing, decomposeQuestions, answerMode quoted and promptVariant strict or complete are unused options: kept in the code for later measurements, off on every tier.
 
 | Parameter | Default | Effect |
 | --- | --- | --- |
@@ -120,6 +120,7 @@ The presets (docs/plan.md, Phase 2 result) turn on verifyCitations, enumerateWhe
 | crossDocumentParts | ["quota", "grouped", "verify"] | the parts crossDocument applies; for measuring one part at a time |
 | crossDocQuota | false | crossDocument's quota part alone (round A2a, on in the presets): a question naming two or more files gets each named file's top 3 fused sections in its selection, plus the overall top sections up to the scope's count; prompt and verification as without it. Results column affinity lists the files named |
 | fileScopedQuota | false | With the quota (crossDocQuota or crossDocument's quota part): a named file's 3 quota sections come from retrieval inside the file, vector search and keyword search restricted to its sections and fused by RRF, instead of its best sections in the library-wide fused list (round C1). Upstream's vector search takes no file filter, so one search of FILE_SCOPED_VECTOR_POOL (2000) chunks is filtered to the named files; its LanceDB search is exact, so that is the restricted search while the library holds at most 2000 chunks. A quota section found only inside its file joins the end of the fused list. Changes the stage 1 cache key |
+| scopedQuotaV2 | false | C1's search inside each named file (needs the quota, with or without fileScopedQuota) without the file's table-of-contents sections in either list (isContentsSection), 5 quota sections per file (SCOPED_V2_QUOTA), and at most 8 sections (SCOPED_V2_MAX_SECTIONS) for a question naming two or more files, the files' quota sections taken in turn (round C3, on in the presets). Changes the stage 1 cache key |
 
 ### Indexing switches
 
