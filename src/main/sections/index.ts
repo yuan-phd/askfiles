@@ -11,6 +11,7 @@ import { parseCsv, parseXls, parseXlsx } from './xlsx.js';
 export * from './types.js';
 export { chunkSections, foldEmptySections, pageTitle, splitLongByPage, splitToFit, withPaths } from './chunk.js';
 export { findPdfTables, formatRow, headerLine, looksLikeHeader, tableSections } from './tables.js';
+export { cjkHeading, cjkMarks, cjkSectionsFromBlocks, cleanCjkLines, despace, isCjkText } from './cjk.js';
 export { isGarbled, pageQuality, GARBLED_CHAR_SHARE, GARBLED_WORD_SHARE, SPARSE_CHARS } from './pdf.js';
 export { isAcceptableHeading, stripNumbering, MAX_HEADING_CHARS } from './headings.js';
 export { docTitleOf, paragraphs, parsePlainText } from './text.js';
@@ -64,7 +65,7 @@ export async function parseFile(
     case '.markdown':
       return parseMarkdown(buffer.toString('utf8'), name);
     case '.txt':
-      return parsePlainText(buffer.toString('utf8'), name);
+      return parsePlainText(buffer.toString('utf8'), name, o);
     default:
       throw new Error(`unsupported file type ${ext || '(none)'}: ${name}`);
   }

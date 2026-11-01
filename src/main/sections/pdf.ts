@@ -1,3 +1,4 @@
+import { cjkMarks, cleanCjkLines, isCjkText } from './cjk.js';
 import { isAcceptableHeading } from './headings.js';
 import { findPdfTables, itemsOutside } from './tables.js';
 import { docTitleOf, joinWrapped } from './text.js';
@@ -11,6 +12,9 @@ export interface Line {
   text: string;
   /** A table found on the page (structuredTables); text is empty and the line becomes one block. */
   table?: TableData;
+  /** Left and right end of the line's text, in PDF units. */
+  x0?: number;
+  x1?: number;
 }
 
 /** A bookmark resolved to a page and, when the destination has one, a y position. */
@@ -32,8 +36,10 @@ interface TextItem {
 /** Groups pdf.js text items into lines by baseline, inserting spaces where Latin words have gaps. */
 export function linesFromItems(items: TextItem[], page: number): Line[] {
   const lines: Line[] = [];
-  let cur: (Line & { endX: number }) | null = null;
+  let cur: (Line & { endX: number; startX: number }) | null = null;
   let breakNext = false;
+  const close = (c: Line & { endX: number; startX: number }) =>
+    lines.push({ page, y: c.y, size: c.size, text: c.text.trim(), x0: c.startX, x1: c.endX });
   for (const it of items) {
     if (typeof it.str !== 'string') continue;
     const x = it.transform[4] ?? 0;
@@ -41,20 +47,21 @@ export function linesFromItems(items: TextItem[], page: number): Line[] {
     const size = Math.hypot(it.transform[0] ?? 0, it.transform[1] ?? 0) || it.height || 0;
     const sameLine = cur !== null && !breakNext && Math.abs(cur.y - y) <= Math.max(2, size * 0.3);
     if (!sameLine) {
-      if (cur && cur.text.trim()) lines.push({ page, y: cur.y, size: cur.size, text: cur.text.trim() });
-      cur = { page, y, size, text: '', endX: x };
+      if (cur && cur.text.trim()) close(cur);
+      cur = { page, y, size, text: '', endX: x, startX: x };
     }
     const c = cur!;
     if (it.str) {
       const gap = x - c.endX;
       const needsSpace = c.text && !c.text.endsWith(' ') && !it.str.startsWith(' ') && gap > size * 0.15;
+      if (!c.text.trim() && it.str.trim()) c.startX = x;
       c.text = needsSpace ? joinWrapped(c.text, it.str) : c.text + it.str;
       if (it.str.trim()) c.size = Math.max(c.size, size);
       c.endX = x + (it.width || 0);
     }
     breakNext = Boolean(it.hasEOL);
   }
-  if (cur && cur.text.trim()) lines.push({ page, y: cur.y, size: cur.size, text: cur.text.trim() });
+  if (cur && cur.text.trim()) close(cur);
   return lines.map((l) => ({ ...l, text: l.text.replace(/\s+/g, ' ') }));
 }
 
@@ -398,10 +405,18 @@ export async function parsePdf(
       );
     }
     const docTitle = docTitleOf(fileName);
+    const cjk = Boolean(o.cjkHeadings) && isCjkText(lines.map((l) => l.text).join(''));
+    if (cjk) lines = cleanCjkLines(lines);
     const marks: Mark[] = [];
     await resolveMarks(doc, (await doc.getOutline()) ?? [], 1, marks);
     let outline: OutlineSource = 'bookmarks';
     let sections = marks.length ? sectionsFromMarks(lines, marks, docTitle) : [];
+    if (!sections.length && cjk) {
+      // Numbered Chinese headings and larger fonts together (cjk.ts), in place of font size alone.
+      const found = cjkMarks(lines);
+      outline = 'headings';
+      sections = found.marks.length ? sectionsFromMarks(found.lines, found.marks, docTitle) : [];
+    }
     if (!sections.length) {
       const guessed = marksFromFontSize(lines);
       outline = 'font-size';

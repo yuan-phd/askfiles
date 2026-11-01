@@ -1,4 +1,5 @@
-import type { Block, ParsedDocument, Section } from './types.js';
+import { cjkSectionsFromBlocks } from './cjk.js';
+import type { Block, ParsedDocument, Section, SplitOptions } from './types.js';
 
 const CJK = /[\u3000-\u303f\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff00-\uffef]/;
 
@@ -40,8 +41,9 @@ export function docTitleOf(fileName: string): string {
 }
 
 /** A document without structure: one section titled by the file name. */
-export function parsePlainText(text: string, fileName: string): ParsedDocument {
+export function parsePlainText(text: string, fileName: string, o: SplitOptions = {}): ParsedDocument {
   const blocks = paragraphs(text);
-  const sections: Section[] = blocks.length ? [{ title: docTitleOf(fileName), level: 0, blocks }] : [];
-  return { sections, outline: 'none', pages: 0, needsOcr: false };
+  let sections: Section[] = blocks.length ? [{ title: docTitleOf(fileName), level: 0, blocks }] : [];
+  if (o.cjkHeadings) sections = cjkSectionsFromBlocks(sections);
+  return { sections, outline: sections.some((s) => s.level > 0) ? 'headings' : 'none', pages: 0, needsOcr: false };
 }

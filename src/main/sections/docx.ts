@@ -1,6 +1,7 @@
 import mammoth from 'mammoth';
 import { isAcceptableHeading } from './headings.js';
 import { docTitleOf, tidy } from './text.js';
+import { cjkSectionsFromBlocks } from './cjk.js';
 import { looksLikeHeader } from './tables.js';
 import type { ParsedDocument, Section, SplitOptions } from './types.js';
 import { readZipEntry } from './zip.js';
@@ -217,7 +218,8 @@ export function sectionsFromHtml(html: string, fileName: string, o: SplitOptions
   }
   push(text);
   if (current.level > 0 || current.blocks.length) sections.push(current);
-  return { sections, outline: sections.some((s) => s.level > 0) ? 'headings' : 'none', pages: 0, needsOcr: false };
+  const out = o.cjkHeadings ? cjkSectionsFromBlocks(sections) : sections;
+  return { sections: out, outline: out.some((s) => s.level > 0) ? 'headings' : 'none', pages: 0, needsOcr: false };
 }
 
 const CAPTION = /^(?:table|tab\.|表|附表)\s*[\d一二三四五六七八九十]/iu;
