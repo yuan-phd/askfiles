@@ -391,6 +391,52 @@ describe('section listing answers', () => {
   });
 });
 
+describe('not-found answers', () => {
+  it('never count as citing the expected section, whatever sources they list', () => {
+    const single = {
+      ...(q({ category: 'single_fact', expected_section: 'A', key_elements: 'a' }) as Question),
+      id: 'x',
+      question: 'q',
+    };
+    const card = {
+      n: 1,
+      file: 'handbook.pdf',
+      relPath: 'handbook.pdf',
+      url: 'u',
+      documentId: 'd',
+      sectionIndex: 1,
+      title: 'A',
+      path: ['A'],
+      pageStart: null,
+      pageEnd: null,
+      pageLabel: null,
+      passage: 'a',
+      rerank: 0.01,
+      trimmed: false,
+    };
+    const result = {
+      text: 'The sources discuss plans [1]. NOT_IN_SOURCES',
+      notFound: false,
+      claims: [],
+      cited: [card],
+      considered: [],
+      nearest: [],
+      checked: [],
+      skippedModel: false,
+      timings: { firstTokenMs: null, modelMs: 0 },
+      stats: { promptTokens: null, completionTokens: null },
+    };
+    // The marker beside a citation: not the not-found state, but no citation either.
+    expect(answerMetrics(single, { result, error: '', totalMs: 10 }).targetHit).toBe(false);
+    expect(answerMetrics(single, { result: { ...result, notFound: true }, error: '', totalMs: 10 }).targetHit).toBe(
+      false,
+    );
+    expect(
+      answerMetrics(single, { result: { ...result, text: 'The plan is a [1].' }, error: '', totalMs: 10 }).targetHit,
+    ).toBe(true);
+  });
+});
+
 describe('score on upstream results', () => {
   it('computes the three metrics with the returned sources as the cited sections', () => {
     const row: Record<string, unknown> = {

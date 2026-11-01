@@ -46,12 +46,14 @@
     "cjkOverlap": true,
     "crossDocument": false,
     "crossDocumentParts": ["quota", "grouped", "verify"],
-    "crossDocQuota": true
+    "crossDocQuota": true,
+    "fileScopedQuota": false,
+    "scopedQuotaV2": true
   },
   "contextTokens": 8192,
   "indexing": {
     "structuredTables": true,
-    "cjkHeadings": false,
+    "cjkHeadings": true,
     "ocrUpscale": false
   }
 }
