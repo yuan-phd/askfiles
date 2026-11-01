@@ -135,6 +135,18 @@ export function cleanCjkLines(input: Line[]): Line[] {
     .map((l) => (l.table ? l : { ...l, text: despace(l.text) }));
 }
 
+/**
+ * A form line set large on a cover, not a title: a label whose colon is followed by nothing or by
+ * a bracketed placeholder (招标人： （盖单位章）, （招标编号： ）), or a date to fill in (年 月 日).
+ */
+export function isFormLine(text: string): boolean {
+  const t = text.replace(/\s+/g, '');
+  if (/^[年月日]+$/u.test(t)) return true;
+  const at = Math.max(t.lastIndexOf('：'), t.lastIndexOf(':'));
+  if (at < 0) return false;
+  return /^(?:[（(][^）)]*[）)])?[）)]?$/u.test(t.slice(at + 1));
+}
+
 interface Candidate {
   line: Line;
   size: number;
@@ -235,7 +247,7 @@ export function cjkMarks(input: Line[]): { marks: Mark[]; lines: Line[] } {
       continue;
     }
     lines.push(l);
-    if (h || (large(l) && isAcceptableHeading(l.text))) {
+    if (h || (large(l) && isAcceptableHeading(l.text) && !isFormLine(l.text))) {
       candidates.push({ line: l, size: Math.round(l.size * 2) / 2, rank: h?.rank ?? 99, title: l.text });
     }
   }

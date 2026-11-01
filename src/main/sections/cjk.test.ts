@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cjkHeading, cjkMarks, cjkSectionsFromBlocks, cleanCjkLines, despace, isCjkText } from './cjk.js';
+import { cjkHeading, cjkMarks, cjkSectionsFromBlocks, cleanCjkLines, despace, isCjkText, isFormLine } from './cjk.js';
 import { sectionsFromHtml } from './docx.js';
 import { sectionsFromMarks, type Line } from './pdf.js';
 import { parsePlainText } from './text.js';
@@ -51,6 +51,16 @@ describe('despace and isCjkText', () => {
   it('tells Chinese documents from English ones', () => {
     expect(isCjkText('第一条 为了确定必须招标的工程项目')).toBe(true);
     expect(isCjkText('Procurement Regulations for IPF Borrowers, 第一条')).toBe(false);
+  });
+});
+
+describe('isFormLine', () => {
+  it('tells cover form lines from titles with a colon', () => {
+    expect(isFormLine('招标人： （盖单位章）')).toBe(true);
+    expect(isFormLine('（招标编号： ）')).toBe(true);
+    expect(isFormLine('年 月 日')).toBe(true);
+    expect(isFormLine('附件：确认通知')).toBe(false);
+    expect(isFormLine('使用说明')).toBe(false);
   });
 });
 

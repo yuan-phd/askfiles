@@ -116,6 +116,18 @@ The v1 presets (docs/plan.md, v1 result) turn on verifyCitations, enumerateWhenA
 | decomposeQuestions | false | split a question on explicit structure only (asks joined by and, as well as or a comma list, each starting with a question word, after a lead-in; or Compare A and B: ask), run the whole pipeline per part, merge the answers under lead-ins with citations renumbered against the union of sources; each part's retrieval is cached by its own question; results column split (how, parts, time per part, parts not found) (round 9b, not kept) |
 | dropUnsupportedHedges | false | after verifyCitations: delete a sentence marked unsupported that only says information is missing (not specified, not stated, not explicitly, not mentioned, not provided, no information and equivalents, also Chinese) when the answer keeps a supported sentence; never a supported sentence, never all; each deletion logged; the text then is the kept sentences; results column hedges_dropped (on in the presets) |
 
+### Indexing switches
+
+Each changes the section records, so a run with a switch on splits, names and embeds the corpus again (the switch and its revision are part of the split key, src/main/sections/types.ts INDEXING_REVISION; bump the revision whenever a change to a switch's code changes its chunks, or a later run reuses the earlier documents and vectors under the same names). Measured in rounds I1 to I3 (docs/plan.md, Indexing rounds).
+
+| Switch | Effect |
+| --- | --- |
+| structuredTables | Tables kept as rows (src/main/sections/tables.ts): PDF tables from text positions (columns from gaps that run through the rows, rows from the column with the most separate cells), Word tables, spreadsheet sheets. With a header row each row is one line Header: value \| Header: value in a section of its own, titled by the caption above the table or the section it stands in, cut only between rows, with the caption and header line repeated in every chunk; text after the table goes on in <title> (continued). A table without a header stays in its section as row lines. Tables that continue over a page break are joined |
+| cjkHeadings | Mainly Chinese documents only (30 percent CJK or more; src/main/sections/cjk.ts): 第X章, 第X节, 第X条, 一、, （一）, 1. 1.1 1.1.1 at line start as headings next to larger fonts, articles split from their first sentence, wrapped titles joined, page numbers and running headers removed, contents pages dropped, letter-spaced titles closed up. Word and plain text without heading styles get the numbered headings too |
+| ocrUpscale | Page images scaled to about 300 dpi and at least 2400 px wide (at most 4 times, gray, bilinear) before the collector's OCR; cached apart from plain OCR. The OCR log line gives the time per image |
+
+When a switch moves or renames sections, the answer key's expected sections have to follow the facts. The rounds remapped them mechanically: for each question, the sections of the same file that hold the literal key elements of the old expected section (a labelled table row counts when all words of the element are on one of its lines), fewest sections first, the old title and the old pages preferred on a tie; a question whose old section still holds them all keeps its key.
+
 Two top-level keys complete the pipeline settings: scope (strict, balanced or broad; which section count and floor a run uses, default balanced) and temperature. contextTokens is the context length (0 means 8192, the presets' value); rerankerDir is where the reranker files are (default .eval-data/models/reranker).
 
 ### Configuration
@@ -143,6 +155,7 @@ Two top-level keys complete the pipeline settings: scope (strict, balanced or br
 | scope | balanced | Answer scope of the pipeline run |
 | answer | the defaults above | Answer parameters (table above) |
 | rerankerDir | .eval-data/models/reranker | Reranker files; fetched here when missing |
+| indexing | all off | Indexing switches, the indexing block of config/presets.json: structuredTables, cjkHeadings, ocrUpscale (below). Set one with --set indexing.structuredTables=true |
 | baseUrl, apiKey, storageDir | empty | External mode: an already running server, its key (created when empty) and its STORAGE_DIR. The server's embedding model must equal embeddingModel and its EMBEDDING_MODEL_MAX_CHUNK_LENGTH must be at least chunkMax, or the run stops before asking anything |
 
 The keys from chatModel to passes also set up the upstream workspace, which only --upstream runs ask through; the pipeline reads chatModel, temperature, contextTokens, chunkMax, scope and answer.

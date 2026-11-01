@@ -41,7 +41,7 @@ export const INDEXING_SWITCHES = ['structuredTables', 'cjkHeadings', 'ocrUpscale
  */
 export const INDEXING_REVISION: Record<(typeof INDEXING_SWITCHES)[number], number> = {
   structuredTables: 2,
-  cjkHeadings: 1,
+  cjkHeadings: 2,
   ocrUpscale: 1,
 };
 
