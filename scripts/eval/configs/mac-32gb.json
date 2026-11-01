@@ -46,7 +46,7 @@
     "cjkOverlap": true,
     "crossDocument": false,
     "crossDocumentParts": ["quota", "grouped", "verify"],
-    "crossDocQuota": false
+    "crossDocQuota": true
   },
   "contextTokens": 8192,
   "indexing": {
