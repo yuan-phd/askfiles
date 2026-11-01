@@ -59,7 +59,7 @@ export function workspaceSettings(preset: Preset): Record<string, string | numbe
 }
 
 export function presetHeader(preset: Preset): string {
-  return `# Preset ${preset.id} (${preset.label}): values measured in phase 2 (docs/plan.md, v1 result).`;
+  return `# Preset ${preset.id} (${preset.label}): values measured in phase 2 (docs/plan.md, Phase 2 result).`;
 }
 
 function formatLine([key, value]: EnvEntry): string {

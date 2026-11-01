@@ -4,7 +4,7 @@ Session E, plan tasks 1.4, 1.5 and 1.6. Code in src/main/presets, src/main/wizar
 
 ## config/presets.json
 
-One entry per RAM tier. The values are the v1 result of phase 2 (docs/plan.md, v1 result), measured on the owner's Mac or fixed by the plan; each tier's comment says where its values come from. The validator (src/main/presets/schema.ts) checks every field.
+One entry per RAM tier. The values are the result of phase 2 (docs/plan.md, Phase 2 result), measured on the owner's Mac or fixed by the plan; each tier's comment says where its values come from. The validator (src/main/presets/schema.ts) checks every field.
 
 chatModel is null on a tier with Ask off (8 GB, owner decision 2026-11-01): the wizard pulls only the embedder, the server .env names no OLLAMA_MODEL_PREF, the Ask page shows one line (Ask needs a Mac with 16 GB of memory or more; on this Mac use Browse and Find to read your documents.) with the question box disabled, the answer pipeline refuses, and Settings offers no Faster model on the tier above. Browse and Find are unchanged.
 
@@ -23,7 +23,8 @@ chatModelFile pins a chat model pulled from Hugging Face: repository, revision, 
 | temperature | 0.1 | 0.1 | 0.1 | Plan phase 2 |
 | reasoningEffort | off | off | off | Plan phase 2, Session C patch 7 |
 | ocrLanguages (TARGET_OCR_LANG) | eng,chi_sim | same | same | Q7, Q14 |
-| indexing | structuredTables on; cjkHeadings, ocrUpscale off | same | same | Indexing rounds I1 to I3 (docs/plan.md, Indexing rounds, 2026-11-01): tables gained on the tuning and Chinese sets; Chinese headings lost cited sections through citation verification on short sections; OCR upscaling misread more on the scanned file |
+| indexing | structuredTables on; cjkHeadings, ocrUpscale off | same | same | Indexing rounds I1 to I3 (docs/plan.md, Indexing rounds, 2026-11-01): tables gained on the tuning and Chinese sets; Chinese headings lost cited sections through citation verification on short sections; OCR upscaling misread more on the scanned file. cjkHeadings again on top of cjkOverlap (answer round A3): verification no longer loses the short sections, but Q01 cites the identical article of the Word copy and cross-document questions fill their sections from one file |
+| answer switches | verifyCitations, enumerateWhenAsked, dropUnsupportedHedges, cjkOverlap on; crossDocument and the other options off | same | same | Rounds 2, 8a, after 9 and answer round A1 (docs/plan.md, Phase 2 result); crossDocument (A2) ended refusals on cross-document questions but lost attribution on one and added 10 to 15 s |
 | systemPrompt | Answer only from the provided context. Cite the source document for what you say. If the context does not contain the answer, say that you do not know. | same | same | Plan phase 2 wording |
 
 Chat model candidates found on 2026-10-29 (download size from registry.ollama.ai manifests): 4B class qwen3:4b 2.50 GB, qwen3.5:4b 3.32 GB; 8B class qwen2.5:7b 4.68 GB, qwen3:8b 5.23 GB, qwen3.5:9b 6.55 GB; 14B class qwen2.5:14b 8.99 GB, qwen3:14b 9.28 GB. bge-m3:567m is 1.16 GB.

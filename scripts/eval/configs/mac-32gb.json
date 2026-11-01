@@ -43,7 +43,7 @@
     "verifyCitations": true,
     "enumerateWhenAsked": true,
     "dropUnsupportedHedges": true,
-    "cjkOverlap": false,
+    "cjkOverlap": true,
     "crossDocument": false,
     "crossDocumentParts": ["quota", "grouped", "verify"]
   },

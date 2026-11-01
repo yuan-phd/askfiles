@@ -88,7 +88,7 @@ The run folder holds results.csv (stage 1 rows, or stage 2 rows with retrieval.c
 
 The answer block of a config file holds the same keys, with the same names, as the answer block of each tier in config/presets.json; a value found here is copied into the preset unchanged. A config may list only the keys it changes. Defaults below are those of src/main/answer/params.ts; the presets set some per tier.
 
-The v1 presets (docs/plan.md, v1 result) turn on verifyCitations, enumerateWhenAsked and dropUnsupportedHedges. paragraphSelection, verdictLine, documentAffinity, enumerateFollowUp, noSummarizing, decomposeQuestions, answerMode quoted and promptVariant strict or complete are unused options: kept in the code for later measurements, off on every tier.
+The presets (docs/plan.md, Phase 2 result) turn on verifyCitations, enumerateWhenAsked, dropUnsupportedHedges and cjkOverlap. crossDocument, paragraphSelection, verdictLine, documentAffinity, enumerateFollowUp, noSummarizing, decomposeQuestions, answerMode quoted and promptVariant strict or complete are unused options: kept in the code for later measurements, off on every tier.
 
 | Parameter | Default | Effect |
 | --- | --- | --- |

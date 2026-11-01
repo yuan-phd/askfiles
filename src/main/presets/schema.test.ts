@@ -21,7 +21,7 @@ function problemsOf(data: unknown): string[] {
 }
 
 describe('config/presets.json', () => {
-  it('validates the v1 result: Ask off on 8 GB, pinned Q3_K_M on 16 GB, q4_K_M on 32 GB, context 8192', () => {
+  it('validates the phase 2 result: Ask off on 8 GB, pinned Q3_K_M on 16 GB, q4_K_M on 32 GB, context 8192', () => {
     const p = loadPresets(PRESETS_FILE);
     expect(p.tiers.map((t) => [t.id, t.minRamGb, t.chatModel])).toEqual([
       ['8gb', 8, null],
@@ -35,14 +35,16 @@ describe('config/presets.json', () => {
       sha256: '9694f1db203d5a18bea6f19a36be01b2d2c79bf9b7f8df553a4cc5cff870b47e',
       sizeBytes: 7321313664,
     });
-    const on = ['verifyCitations', 'enumerateWhenAsked', 'dropUnsupportedHedges'];
+    // cjkOverlap kept in answer round A1; crossDocument (A2) not.
+    const on = ['verifyCitations', 'enumerateWhenAsked', 'dropUnsupportedHedges', 'cjkOverlap'];
     for (const t of p.tiers) {
       expect(t.reasoningEffort).toBe('off');
       expect(t.embeddingModel).toBe('bge-m3:567m');
       expect(t.contextLength).toBe(8192);
       const switches = Object.entries(t.answer).filter(([k, v]) => typeof v === 'boolean' && k !== 'rerankerBypassCjk');
       expect(switches.filter(([, v]) => v).map(([k]) => k)).toEqual(on);
-      // Indexing rounds 2026-11-01: tables kept (I1); Chinese headings (I2) and OCR upscaling (I3) not.
+      expect(t.answer.crossDocumentParts).toEqual(['quota', 'grouped', 'verify']);
+      // Indexing rounds 2026-11-01: tables kept (I1); Chinese headings (I2, A3) and OCR upscaling (I3) not.
       expect(t.indexing).toEqual({ structuredTables: true, cjkHeadings: false, ocrUpscale: false });
     }
   });
