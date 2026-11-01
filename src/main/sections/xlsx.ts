@@ -1,6 +1,7 @@
 import readXlsxFile from 'read-excel-file/node';
 import { docTitleOf } from './text.js';
-import type { ParsedDocument, Section } from './types.js';
+import { looksLikeHeader } from './tables.js';
+import type { ParsedDocument, Section, SplitOptions, TableData } from './types.js';
 
 type Cell = string | number | boolean | Date | null | undefined;
 
@@ -41,12 +42,36 @@ export function sheetToText(rows: Cell[][]): string {
   return lines.join('\n');
 }
 
+/**
+ * One sheet as a table (structuredTables): rows above the header that hold one cell only (a
+ * title set over the table) become its caption; the header is the first row with two or more
+ * cells, all text; without one the rows are written as they are.
+ */
+export function sheetToTable(rows: Cell[][], page: number): TableData | null {
+  const data = rows.map((r) => r.map(cellText)).filter((r) => r.some(Boolean));
+  if (!data.length) return null;
+  const captions: string[] = [];
+  while (data.length > 1 && data[0]!.filter(Boolean).length === 1) captions.push(data.shift()!.find(Boolean)!);
+  const width = Math.max(...data.map((r) => r.length));
+  const pad = (r: string[]) => [...r, ...Array<string>(width - r.length).fill('')];
+  const first = pad(data[0]!);
+  const header = data.length > 1 && looksLikeHeader(first.filter(Boolean)) ? first : [];
+  const body = header.length ? data.slice(1) : data;
+  return { title: captions.join(' '), header, rows: body.map((r) => ({ cells: pad(r), page })) };
+}
+
 type Sheet = { sheet: string; data: Cell[][] };
 
 /** One section per sheet, titled by the sheet name; the page fields carry the sheet number. */
-function sheetsToDocument(sheets: Sheet[]): ParsedDocument {
+function sheetsToDocument(sheets: Sheet[], o: SplitOptions = {}): ParsedDocument {
   const sections: Section[] = [];
   sheets.forEach(({ sheet, data }, i) => {
+    if (o.structuredTables) {
+      const table = sheetToTable(data, i + 1);
+      // The sheet name stays the section title; a caption is written above the header.
+      if (table) sections.push({ title: sheet, level: 1, blocks: [{ text: '', page: i + 1, table }] });
+      return;
+    }
     const text = sheetToText(data);
     if (text) sections.push({ title: sheet, level: 1, blocks: [{ text, page: i + 1 }] });
   });
@@ -54,15 +79,15 @@ function sheetsToDocument(sheets: Sheet[]): ParsedDocument {
 }
 
 /** .xlsx and .xlsm: the same Office Open XML workbook; the macros of an .xlsm are never run. */
-export async function parseXlsx(buffer: Buffer): Promise<ParsedDocument> {
-  return sheetsToDocument((await readXlsxFile(buffer)) as Sheet[]);
+export async function parseXlsx(buffer: Buffer, o: SplitOptions = {}): Promise<ParsedDocument> {
+  return sheetsToDocument((await readXlsxFile(buffer)) as Sheet[], o);
 }
 
 /**
  * Legacy binary .xls (BIFF), which read-excel-file does not read, through SheetJS. Loaded on first
  * use only, as it is a large module. Dates come as Date objects in UTC like read-excel-file's.
  */
-export async function parseXls(buffer: Buffer): Promise<ParsedDocument> {
+export async function parseXls(buffer: Buffer, o: SplitOptions = {}): Promise<ParsedDocument> {
   const XLSX = await import('xlsx');
   const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true, UTC: true });
   return sheetsToDocument(
@@ -70,6 +95,7 @@ export async function parseXls(buffer: Buffer): Promise<ParsedDocument> {
       sheet: name,
       data: XLSX.utils.sheet_to_json<Cell[]>(wb.Sheets[name]!, { header: 1, raw: true, defval: null, UTC: true }),
     })),
+    o,
   );
 }
 
@@ -127,8 +153,8 @@ export function parseCsvRows(text: string): string[][] {
  * A CSV file as one sheet named after the file. A cell that reads back as the same number is a
  * number, so a header row of text is recognized; 0123 or a long ID stays text, keeping every digit.
  */
-export function parseCsv(buffer: Buffer, fileName: string): ParsedDocument {
+export function parseCsv(buffer: Buffer, fileName: string, o: SplitOptions = {}): ParsedDocument {
   const asCell = (v: string): Cell => (v !== '' && String(Number(v)) === v ? Number(v) : v || null);
   const data = parseCsvRows(decodeText(buffer)).map((r) => r.map(asCell));
-  return sheetsToDocument([{ sheet: docTitleOf(fileName), data }]);
+  return sheetsToDocument([{ sheet: docTitleOf(fileName), data }], o);
 }

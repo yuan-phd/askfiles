@@ -2,7 +2,48 @@
 export interface Block {
   text: string;
   page: number;
+  /** A table found by the parser (structuredTables); text is then empty. tableSections in tables.ts makes it a section. */
+  table?: TableData;
 }
+
+/** A table as the parsers find it, before it becomes a section of row lines. */
+export interface TableData {
+  /** Caption above the table (Table 3, 表 1, a short line set apart), or empty: the section title is used. */
+  title: string;
+  /** Column labels, or empty when the first row does not look like a header. */
+  header: string[];
+  rows: { cells: string[]; page: number }[];
+}
+
+/**
+ * Indexing switches (docs/plan.md, Indexing rounds): each one changes the section records, so each
+ * is part of the split key (splitKeyOf). All off gives the split of SPLITTER_VERSION 3.
+ */
+export interface SplitOptions {
+  /** Tables kept as rows, one line per row with the header cells as labels (I1). */
+  structuredTables?: boolean;
+  /** Chinese heading patterns, running headers and contents pages in PDFs (I2). */
+  cjkHeadings?: boolean;
+}
+
+/** The indexing block of a preset: the split switches and the OCR one. */
+export interface IndexingOptions extends SplitOptions {
+  /** Page images scaled to about 300 dpi, at least 2400 px wide, before OCR (I3). */
+  ocrUpscale?: boolean;
+}
+
+export const INDEXING_SWITCHES = ['structuredTables', 'cjkHeadings', 'ocrUpscale'] as const;
+
+/**
+ * Revision of each switch's output, part of the split key next to its name: bumped whenever a
+ * change to that switch's code changes the chunks, like SPLITTER_VERSION for the splitter as a
+ * whole, so documents and cached vectors of an earlier revision are never reused.
+ */
+export const INDEXING_REVISION: Record<(typeof INDEXING_SWITCHES)[number], number> = {
+  structuredTables: 2,
+  cjkHeadings: 2,
+  ocrUpscale: 1,
+};
 
 /** One heading and the text under it, up to the next heading of any level. */
 export interface Section {
@@ -14,6 +55,11 @@ export interface Section {
   lead?: string[];
   /** Titles from the top heading down to this one, from the heading levels (withPaths in chunk.ts). */
   path?: string[];
+  /**
+   * A table section: every block is one row line, cut only between rows, and every chunk repeats
+   * the header line (structuredTables).
+   */
+  table?: { header: string; caption?: string };
 }
 
 /** Where the section boundaries came from. */

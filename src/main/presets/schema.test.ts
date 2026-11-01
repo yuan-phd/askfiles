@@ -42,6 +42,8 @@ describe('config/presets.json', () => {
       expect(t.contextLength).toBe(8192);
       const switches = Object.entries(t.answer).filter(([k, v]) => typeof v === 'boolean' && k !== 'rerankerBypassCjk');
       expect(switches.filter(([, v]) => v).map(([k]) => k)).toEqual(on);
+      // Indexing rounds 2026-11-01: tables kept (I1); Chinese headings (I2) and OCR upscaling (I3) not.
+      expect(t.indexing).toEqual({ structuredTables: true, cjkHeadings: false, ocrUpscale: false });
     }
   });
 });

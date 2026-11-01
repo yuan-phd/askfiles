@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { answerParamProblems, type AnswerParams } from '../answer/params.js';
+import { INDEXING_SWITCHES, type IndexingOptions } from '../sections/types.js';
 
 export interface Preset {
   id: string;
@@ -30,6 +31,11 @@ export interface Preset {
   systemPrompt: string;
   /** Answer pipeline values (src/main/answer/params.ts); the reranker is fetched at first run. */
   answer: AnswerParams;
+  /**
+   * Indexing switches (docs/plan.md, Indexing rounds I1 to I3); each is part of the split key, so
+   * turning one on reindexes every library once. Missing means all off.
+   */
+  indexing?: IndexingOptions;
 }
 
 export interface ChatModelFile {
@@ -106,7 +112,16 @@ const fileProblems = (v: unknown, chatModel: unknown): string | null => {
   return null;
 };
 
-type RequiredField = Exclude<keyof Preset, 'chatModelFile'>;
+type RequiredField = Exclude<keyof Preset, 'chatModelFile' | 'indexing'>;
+
+function indexingProblem(v: unknown): string | null {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return 'must be an object';
+  for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+    if (!(INDEXING_SWITCHES as readonly string[]).includes(k)) return `.${k} is not a known field`;
+    if (typeof x !== 'boolean') return `.${k} must be true or false`;
+  }
+  return null;
+}
 
 const PRESET_FIELDS: Record<RequiredField, Check> = {
   id: (v) => str(v) ?? (/^[a-z0-9-]+$/.test(v as string) ? null : 'must use a-z, 0-9 and -'),
@@ -156,7 +171,12 @@ export function validatePresets(data: unknown): PresetFile {
       if (problem) problems.push(`${at}.${key} ${problem}`);
     }
     for (const key of Object.keys(tier)) {
-      if (!(key in PRESET_FIELDS) && key !== 'chatModelFile') problems.push(`${at}.${key} is not a known field`);
+      if (!(key in PRESET_FIELDS) && key !== 'chatModelFile' && key !== 'indexing')
+        problems.push(`${at}.${key} is not a known field`);
+    }
+    if ('indexing' in tier) {
+      const p = indexingProblem(tier.indexing);
+      if (p) problems.push(`${at}.indexing${p.startsWith('.') ? '' : ' '}${p}`);
     }
     if ('chatModelFile' in tier) {
       const p = fileProblems(tier.chatModelFile, tier.chatModel);

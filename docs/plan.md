@@ -389,6 +389,93 @@ Known limits of v1:
 - OCR quality: scanned pages give poor text for retrieval and for the answer (Q08 not retrieved; Q34 cites its page but gets the agent name partly unsupported).
 - Spreadsheet formulas: the split does not keep a workbook's formulas (see Acceptance and stopping rules), so a question about a formula cannot be answered from the indexed text (Q07, Q41, marked unsupported and outside every metric).
 
+### Indexing rounds, 2026-11-01
+
+Three fixes in the indexing layer, each behind a switch in the preset's indexing block (docs/eval.md, Indexing switches), measured one at a time under the round rules above: kept only if no gating metric falls more than 3 points on any set. Same Mac, models and answer configuration as the v1 result (qwen3:14b-q4_K_M, context 8192, Balanced 5 / 0.55, verifyCitations, enumerateWhenAsked, dropUnsupportedHedges), one pass per question, Ollama restarted before every stage 2 run; branch local/indexing; run folders ~/AskFiles-eval/runs/i0-* to i3-*. Four sets: tuning (questions-v3.csv), check (questions-check-v2.csv), absent (questions-absent.csv) on the owner's first corpus, and a Chinese set (questions-zh.csv, 25 questions: 18 gated answerable, 2 cross_document, 5 absent) on the Chinese benchmark corpus (15 files: 12 PDFs, 1 Word, 1 workbook, 1 text file). Each corpus has its own eval workspace (askfiles-eval-en, askfiles-eval-zh), so indexing one never evicts the other. Every switch changes the section records, so each round reindexed the corpus it affects.
+
+Answer keys follow the sections. A switch that moves or renames sections would otherwise fail questions whose facts did not move, so before each round's stage 2 the expected sections were remapped mechanically from the round's own split (stage 1 first, then the remap): the sections of the same file that hold the literal key elements of the old expected section, fewest first, the old title and pages preferred on a tie; a table row counts when all words of a key element are on one of its lines; a question whose old section still holds them all keeps its key (docs/eval.md, Indexing switches). Remapped in I1: Q05 and Q39 to the table section Bid/Proposal Example (using the 0 to 4 scale example above), Q40 to its table plus Initial Technical Score, Q33 back to the unsplit Market Research and Analysis (the table took enough text out that the section is no longer split by page), Chinese Q16 and Q17 to the specification table (one section for pages 3 to 9). In I2, 16 of the 25 Chinese questions moved, all to the sections the benchmark's own notes name (Q01 第五条, Q02 第二条, Q11 3.2.1 预付款, Q14 3.2.2 进度款, Q20 1. 评标方法 and so on); the old keys pointed at whichever font-size section happened to hold the text. The English keys did not change in I2 or I3. The remapped keys and the remap and gating scripts are in ~/AskFiles-eval/keys-indexing, outside the repository.
+
+A harness hazard found on the way: document names come from the split key, so a second indexing under the same key reused the first one's document JSON and cached vectors although the code had changed, and every section after the first change was off by one. Each switch now carries a revision in the split key (INDEXING_REVISION in src/main/sections/types.ts), bumped whenever its output changes; the same mechanism makes a library reindex when a release changes a switch.
+
+| Round | Change | Set | Right section cited | Attribution | Key element coverage | Median total | False refusals | False answers | Kept |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| I0 | Baseline: the v1 configuration, separate eval workspaces | tuning | 92% (23/25) | 89% (24/27) | 74% | 18.4 s | 4% (1/25) | 0% (0/2) | baseline |
+| I0 | same | check | 90% (9/10) | 79% (11/14) | 53% | 13.7 s | 0% (0/10) | 0% (0/4) | baseline |
+| I0 | same | absent | - | - | - | 12.5 s | - | 0% (0/10) | baseline |
+| I0 | same | Chinese | 78% (14/18) | 83% (19/23) | 90% | 14.0 s | 0% (0/18) | 0% (0/5) | baseline |
+| I1 | structuredTables: tables as rows with header labels, own section, cut by rows, header in every chunk | tuning | 96% (24/25) | 93% (25/27) | 75% | 14.2 s | 4% (1/25) | 0% (0/2) | yes: cited +4, attribution +4 |
+| I1 | same | check | 90% (9/10) | 79% (11/14) | 65% (58 to 65% over the same 9 questions) | 15.7 s | 0% (0/10) | 0% (0/4) | yes |
+| I1 | same | absent | - | - | - | 8.4 s | - | 0% (0/10) | yes |
+| I1 | same | Chinese | 89% (16/18) | 87% (20/23) | 95% | 13.2 s | 0% (0/18) | 0% (0/5) | yes: cited +11, attribution +4, coverage +5 |
+| I2 | cjkHeadings revision 1, on I1 | Chinese | 72% (13/18) | 78% (18/23) | 93% | 6.4 s | 0% (0/18) | 0% (0/5) | no |
+| I2 | cjkHeadings revision 2 (cover form lines are not headings), on I1 | Chinese | 67% (12/18) | 74% (17/23) | 93% | 6.4 s | 0% (0/18) | 0% (0/5) | no: cited -22, attribution -13 |
+| I2 | revision 1, English sets (chunks identical to I1) | tuning | 96% (24/25) | 93% (25/27) | 77% | 14.4 s | 4% (1/25) | 0% (0/2) | unchanged |
+| I2 | same | check | 90% (9/10) | 79% (11/14) | 63% | 15.7 s | 0% (0/10) | 0% (0/4) | unchanged |
+| I2 | same | absent | - | - | - | 8.4 s | - | 0% (0/10) | unchanged |
+| I3 | ocrUpscale: page images to about 300 dpi, at least 2400 px wide, before OCR, on I1 | tuning | 88% (22/25) | 81% (22/27) | 70% | 15.4 s | 4% (1/25) | 0% (0/2) | no: cited -8, attribution -12, coverage -5 |
+| I3 | same | check | 90% (9/10) | 79% (11/14) | 65% | 15.7 s | 0% (0/10) | 0% (0/4) | no |
+| I3 | same | absent | - | - | - | 8.8 s | - | 0% (0/10) | no |
+| I3 | same (the Chinese corpus has no page images to OCR) | Chinese | 89% (16/18) | 87% (20/23) | 95% | 14.0 s | 0% (0/18) | 0% (0/5) | no |
+
+Round I1 detail. Tables found by text positions in the PDFs (columns from gaps that run through every row, rows from the column with the most separate cells, lines of vertically centred cells to the nearest row), Word tables and sheets; only tables with a header row become sections, headerless ones (forms, layout boxes, clause and text side by side) stay in their section as row lines. Rejected as tables: bullet lists, fill-in-the-blank lines of the Chinese templates, gapped prose in boxes (cells starting in lower case), two-column runs with one row. A table over a page break is one table (the Chinese specification table runs from page 3 to page 9 with its header repeated per page). Sections and chunks: 843 sections and 1262 chunks to 899 and 1304 on the English corpus, 306 and 345 to 322 and 367 on the Chinese one. Table questions apart from the rest (gated, Q07 and Q41 left out):
+
+| Set | Table questions | Before (I0) | After (I1) | Other answerable, before | Other answerable, after |
+| --- | --- | --- | --- | --- | --- |
+| tuning | Q05, Q24, Q25 | cited 3/3, attribution 3/3, coverage 61% | cited 3/3, attribution 2/3, coverage 67% | cited 20/22, attribution 19/22, coverage 75% | cited 21/22, attribution 21/22, coverage 76% |
+| check | Q39, Q40 | cited 2/2, attribution 0/2, coverage 20% (2) | cited 1/2, attribution 0/2, coverage 33% (1) | cited 7/8, attribution 7/8, coverage 61% | cited 8/8, attribution 7/8, coverage 69% |
+| Chinese | Q16, Q17, Q18 | cited 1/3, attribution 1/3, coverage 100% | cited 2/3, attribution 1/3, coverage 100% | cited 13/15, attribution 13/15, coverage 88% | cited 14/15, attribution 14/15, coverage 94% |
+
+Q39 was wrong before (weighted scores 100, 50, 30, subtotal 180) and is right now (150, 50, 30, subtotal 230, total 240); the coverage figure cannot show it, because its key elements (weighted scores 150 50 30, Sustainability 10% 1 10) are no longer word for word in the labelled rows, so the harness leaves Q39 out of coverage. Q40 went the other way: it now reads 150 from the Illustrative Scoring Example 2 table instead of 100 from its own, and its key needs both the table and Initial Technical Score. Q05 gives the same right answer but also cites the parent section, which no longer holds the numbers, so attribution fails. Q25 coverage 0.17 to 0.33, Q27 and Q33 now cite their sections (Q33 was a retrieval miss in every round since 6), Q38 lost attribution and coverage (0.67 to 0.17), Chinese Q17 cited, Chinese Q03 and Q05 coverage 0.50 to 1.00. Median total fell on the tuning and absent sets (prompts are shorter: median 2776 to 2608 tokens on the tuning set) and rose 2.0 s on the check set (median prompt 2474 to 2776 tokens), still under 20 s. Kept: structuredTables on.
+
+Round I2 detail. Chinese numbered headings (第X章, 第X节, 第X条, 一、, （一）, 1. 1.1 1.1.1) at line start next to the font-size headings, levels by nesting (font size first, then the numbering kind); articles split from their first sentence; wrapped titles joined; a numbered line as wide as a full line with the paragraph going on below it stays text; page numbers and running headers or footers removed; contents pages dropped; letter-spaced titles closed up; lines in reading order (pdf.js gives them in drawing order, which put each page's footer first and moved every heading of a dense page ahead of its text, a bug in the font-size path too, hidden while headings were sparse). Only for documents with at least 30 percent CJK, so the English chunks are byte for byte those of I1. 322 sections and 367 chunks to 687 and 693 on the Chinese corpus; the regulations went from 2 or 3 sections each to one per article (04: 2 to 7, 05: 2 to 25, 09: 3 to 29), the three standard templates from 94, 86 and 106 sections to 162, 152 and 220. Median total halved (13.2 to 6.4 s): the sections the model reads are short. The losses: Q08, Q11 and Q13 answer correctly with a citation to the expected section, but citation verification marks the sentence unsupported, because a paraphrased Chinese sentence shares under half of its character pairs with a 130 to 550 character section (Q11: 0.44 against 3.2.1 预付款, 0.58 against the old 693 character section that held the same sentence among others); Q01 cites the identical 第五条 of the Word copy of the same regulation (13_必须招标的工程项目规定.docx), which now has article sections with the same titles; Q05 loses one key element. Q19 gains. Both revisions fail the round, so cjkHeadings is off. The fix this points at is in the answer layer (verification threshold or passage for short CJK sources, a rule for identical sections in two files), which is a separate round for the owner to approve.
+
+Round I3 detail. The scanned file (09_Scanned_Historical_Records.pdf, 26 garbled pages OCRed, images about 100 dpi, 1-bit) scaled to at least 2400 px wide before tesseract. Time per page, the 26 pages through the collector four at a time, fresh (cache set aside): 338 ms per page (8.8 s) before, 590 ms per page (15.3 s) after. The text does not get better: on the pages the three OCR questions need, the fields are read the same (page 7 still lacks 44-387 and MURKIN, page 17 still lacks SAC, Albany and the date in the OCR text, page 19 has 6/6/68 and GEORGE A. STRONG both times); the share of clean tokens over the 26 pages fell from 0.80 to 0.77. Q08 now answers (DIRECTOR, FBI (44-38861), SUBJECT MURKY) instead of refusing, Q29 and Q34 are unchanged, and Q03 (now refused) and Q27 lost their sections; neither is about the scanned file, and the cause was not traced. Not kept: ocrUpscale off.
+
+Presets after the rounds: indexing structuredTables on in every tier; cjkHeadings and ocrUpscale built, unit tested and off. The gating figures of the kept configuration (round I1) beside the v1 result (the English rows are round 8a, docs/plan.md v1 result; the Chinese v1 row is run zh1-zh, made at the v1 commit 2693096c on 2026-11-01 before this branch):
+
+| Set | Configuration | Right section cited | Attribution | Key element coverage | Median total | False refusals | False answers |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| tuning | v1 | 92% (23/25) | 89% (24/27) | 74% | 18.4 s | 4% (1/25) | 0% (0/2) |
+| tuning | v1 + structuredTables | 96% (24/25) | 93% (25/27) | 75% | 14.2 s | 4% (1/25) | 0% (0/2) |
+| check | v1 | 90% (9/10) | 79% (11/14) | 53% | 13.9 s | 0% (0/10) | 0% (0/4) |
+| check | v1 + structuredTables | 90% (9/10) | 79% (11/14) | 65% | 15.7 s | 0% (0/10) | 0% (0/4) |
+| absent | v1 | - | - | - | 12.5 s | - | 0% (0/10) |
+| absent | v1 + structuredTables | - | - | - | 8.4 s | - | 0% (0/10) |
+| Chinese | v1 | 78% (14/18) | 83% (19/23) | 90% | 14.2 s | 0% (0/18) | 0% (0/5) |
+| Chinese | v1 + structuredTables | 89% (16/18) | 87% (20/23) | 95% | 13.2 s | 0% (0/18) | 0% (0/5) |
+
+What the Browse outline shows for Chinese documents. With the kept presets the outline of a Chinese PDF is the same as in v1 except for tables: headings come from larger fonts, a table with a header row is an entry of its own under the heading it stands in, and the contents pages and letter-spaced cover titles stay as they were. The first ten entries of 01_标准设备采购招标文件_2017年版.pdf, indented by level:
+
+```
+附件 1
+中 华 人 民 共 和 国
+标 准 设 备 采 购 招 标 文 件
+  使用说明
+    （项目名称）设备采购
+  招标文件
+    招标人： （盖单位章）
+      年 月 日
+        目 录
+          目 录 (page 4)
+```
+
+With cjkHeadings on (not in any preset) the same file reads:
+
+```
+附件 1
+中华人民共和国
+标准设备采购招标文件
+  使用说明
+    （项目名称）设备采购
+  招标文件
+第一卷
+  第一章招标公告（适用于公开招标）
+    （项目名称）设备采购招标公告
+      1. 招标条件
+```
+
+and the regulations list their articles (第一条 to 第六条 for 04_必须招标的工程项目规定.pdf, which v1 showed as two entries). Known limits left by the rounds: a two-by-two diagram in a PDF can still pass for a two-column table (one remains on page 45 of the Procurement Strategy Guidance); a header row whose cells wrap over two lines can lose its second line to the first data row; footnote marks in a header cell stay in the label (一级1指标 on page 2 of the Chinese specification).
+
 ## Phase 3: own search interface and folder watching
 
 Outcome: the window loads our page instead of the upstream frontend. The user sees one folder, one search box, an answer, and the source passages. AnythingLLM runs headless behind the API.

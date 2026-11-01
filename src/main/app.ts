@@ -673,8 +673,10 @@ export class AppController implements BridgeHandlers {
           splitter: sectionSplitter({
             maxChars: preset.chunkMaxChars,
             embeddingModel: preset.embeddingModel,
+            indexing: preset.indexing,
             ocr: collectorOcr({
               api,
+              upscale: Boolean(preset.indexing?.ocrUpscale),
               cacheDir: path.join(this.dataDir, 'ocr-cache'),
               log: (m) => log(`[watcher] ${m}`),
             }),

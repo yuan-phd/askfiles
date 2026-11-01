@@ -9,6 +9,7 @@ import {
   type AnswerParams,
   type AnswerScope,
 } from '../../src/main/answer/params.js';
+import { INDEXING_SWITCHES, type IndexingOptions } from '../../src/main/sections/index.js';
 
 /** Upstream's threshold choices (upstream/frontend/src/pages/WorkspaceSettings/VectorDatabase/DocumentSimilarityThreshold). */
 export const THRESHOLDS: Record<string, number> = { none: 0, low: 0.25, medium: 0.5, high: 0.75 };
@@ -52,6 +53,21 @@ export interface EvalConfig {
   scope: AnswerScope;
   /** Where the reranker files are, or are fetched to; empty means <dataDir>/models/reranker. */
   rerankerDir: string;
+  /** Indexing switches, the indexing block of config/presets.json; all off by default. */
+  indexing: Required<IndexingOptions>;
+}
+
+const INDEXING_OFF: Required<IndexingOptions> = { structuredTables: false, cjkHeadings: false, ocrUpscale: false };
+
+function indexingProblems(v: unknown): string[] {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return ['indexing must be an object'];
+  return Object.entries(v as Record<string, unknown>).flatMap(([k, x]) =>
+    !(INDEXING_SWITCHES as readonly string[]).includes(k)
+      ? [`unknown key indexing.${k}`]
+      : typeof x !== 'boolean'
+        ? [`indexing.${k} must be true or false`]
+        : [],
+  );
 }
 
 const DEFAULTS: Omit<EvalConfig, 'label' | 'chatModel' | 'embeddingModel'> = {
@@ -76,6 +92,7 @@ const DEFAULTS: Omit<EvalConfig, 'label' | 'chatModel' | 'embeddingModel'> = {
   answer: DEFAULT_PARAMS,
   scope: 'balanced',
   rerankerDir: '',
+  indexing: INDEXING_OFF,
 };
 
 /**
@@ -122,6 +139,8 @@ export function resolveConfig(raw: Record<string, unknown>, baseDir: string, rep
     problems.push(...(e as Error).message.split('; '));
   }
   if (typeof c.rerank !== 'boolean') problems.push('rerank must be true or false');
+  problems.push(...indexingProblems(c.indexing));
+  c.indexing = { ...INDEXING_OFF, ...(c.indexing as object) };
   if (typeof c.baseUrl === 'string' && c.baseUrl && !c.storageDir) {
     problems.push('storageDir is required with baseUrl: the harness writes section documents into it');
   }
@@ -145,11 +164,19 @@ export function resolveConfig(raw: Record<string, unknown>, baseDir: string, rep
 export function applySets(config: EvalConfig, sets: string[]): EvalConfig {
   const answerSets: string[] = [];
   const top: Record<string, unknown> = {};
+  const indexing: Record<string, unknown> = {};
   for (const set of sets) {
     const eq = set.indexOf('=');
     const name = eq > 0 ? set.slice(0, eq).trim().split('.')[0]! : '';
     if (name in DEFAULT_PARAMS) {
       answerSets.push(set);
+      continue;
+    }
+    if (name === 'indexing') {
+      // indexing.structuredTables=true
+      const key = set.slice(0, eq).trim().split('.')[1] ?? '';
+      const raw = set.slice(eq + 1).trim();
+      indexing[key] = raw === 'true' ? true : raw === 'false' ? false : raw;
       continue;
     }
     if (eq < 1 || !(name in DEFAULTS || ['label', 'chatModel', 'embeddingModel'].includes(name)) || name === 'answer') {
@@ -163,8 +190,8 @@ export function applySets(config: EvalConfig, sets: string[]): EvalConfig {
     }
   }
   const answer = applyOverrides(config.answer, answerSets);
-  const next = { ...config, ...top, answer };
-  const problems: string[] = [];
+  const next = { ...config, ...top, answer, indexing: { ...config.indexing, ...indexing } };
+  const problems: string[] = [...(Object.keys(indexing).length ? indexingProblems(indexing) : [])];
   if (!isScope(next.scope)) problems.push(`scope must be one of ${SCOPES.join(', ')}`);
   for (const k of Object.keys(top)) {
     if (typeof top[k] !== typeof (config as unknown as Record<string, unknown>)[k]) {

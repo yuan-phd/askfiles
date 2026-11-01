@@ -42,11 +42,13 @@ export function collectorOcr(o: {
   cacheDir: string;
   log?: (msg: string) => void;
   concurrency?: number;
+  /** ocrUpscale: page images scaled to about 300 dpi first (pdfPageImages); cached apart. */
+  upscale?: boolean;
 }): (filePath: string, only?: number[]) => Promise<OcrPage[]> {
   return async (filePath, only) => {
     const hash = await hashFile(filePath);
     const subset = only ? `-${createHash('sha256').update(only.join(',')).digest('hex').slice(0, 12)}` : '';
-    const cached = path.join(o.cacheDir, `${hash}${subset}.pages.json`);
+    const cached = path.join(o.cacheDir, `${hash}${subset}${o.upscale ? '-up' : ''}.pages.json`);
     try {
       const c = JSON.parse(fs.readFileSync(cached, 'utf8')) as { version?: number; pages?: OcrPage[] };
       if (c.version === CACHE_VERSION && Array.isArray(c.pages)) return c.pages;
@@ -71,7 +73,7 @@ export function collectorOcr(o: {
         texts.set(page, list);
       }
     };
-    for await (const p of pdfPageImages(fs.readFileSync(filePath), { pages: only })) {
+    for await (const p of pdfPageImages(fs.readFileSync(filePath), { pages: only, upscale: o.upscale })) {
       if (p.error) o.log?.(`OCR: page ${p.page} of ${filePath} unreadable: ${p.error}`);
       for (const [i, png] of p.images.entries()) {
         imagesSeen++;
@@ -89,7 +91,11 @@ export function collectorOcr(o: {
       .sort(([a], [b]) => a - b)
       .map(([page, list]) => ({ page, text: list.filter(Boolean).join('\n\n') }));
     if (imagesSeen || only) {
-      o.log?.(`OCR: ${filePath}, ${pages.length} pages with text, ${imagesSeen} images in ${Date.now() - t0} ms`);
+      const ms = Date.now() - t0;
+      const per = imagesSeen ? `, ${Math.round(ms / imagesSeen)} ms per image` : '';
+      o.log?.(
+        `OCR: ${filePath}, ${pages.length} pages with text, ${imagesSeen} images in ${ms} ms${per}${o.upscale ? ' (upscaled)' : ''}`,
+      );
     } else {
       o.log?.(`OCR: no page images in ${filePath}, sending the whole file`);
       const { text, locations } = await o.api.uploadForText(filePath);

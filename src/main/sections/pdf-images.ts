@@ -86,7 +86,91 @@ function encodeRows(
   ]);
 }
 
+/** Target resolution of ocrUpscale: tesseract reads best at about 300 dpi. */
+export const OCR_DPI = 300;
+/** Smallest page image width after ocrUpscale, in pixels (a Letter page at 280 dpi). */
+export const OCR_MIN_WIDTH = 2400;
+/** Largest scale factor, so a thumbnail-sized image is not blown up into a huge one. */
+export const OCR_MAX_SCALE = 4;
+
+/** One byte of gray per pixel, 0 black to 255 white. */
+export interface GrayImage {
+  width: number;
+  height: number;
+  data: Uint8Array;
+}
+
+/** A pdf.js image as 8-bit gray: 1-bit rows unpacked, RGB and RGBA by luminance. Null for other kinds. */
+export function toGray(img: RawImage): GrayImage | null {
+  const { width, height, kind, data } = img;
+  if (width <= 0 || height <= 0) return null;
+  const out = new Uint8Array(width * height);
+  if (kind === 1) {
+    const rowBytes = Math.ceil(width / 8);
+    if (data.length < rowBytes * height) return null;
+    for (let y = 0; y < height; y++)
+      for (let x = 0; x < width; x++)
+        out[y * width + x] = (data[y * rowBytes + (x >> 3)]! >> (7 - (x & 7))) & 1 ? 255 : 0;
+    return { width, height, data: out };
+  }
+  const step = kind === 2 ? 3 : kind === 3 ? 4 : 0;
+  if (!step || data.length < width * height * step) return null;
+  for (let p = 0, i = 0; p < width * height; p++, i += step) {
+    out[p] = Math.round(0.299 * data[i]! + 0.587 * data[i + 1]! + 0.114 * data[i + 2]!);
+  }
+  return { width, height, data: out };
+}
+
+/** Bilinear scaling of a gray image by factor (above 1). */
+export function scaleGray(img: GrayImage, factor: number): GrayImage {
+  const width = Math.max(1, Math.round(img.width * factor));
+  const height = Math.max(1, Math.round(img.height * factor));
+  const out = new Uint8Array(width * height);
+  const sx = img.width / width;
+  const sy = img.height / height;
+  for (let y = 0; y < height; y++) {
+    const fy = Math.max(0, (y + 0.5) * sy - 0.5);
+    const y0 = Math.min(img.height - 1, Math.floor(fy));
+    const y1 = Math.min(img.height - 1, y0 + 1);
+    const wy = fy - y0;
+    for (let x = 0; x < width; x++) {
+      const fx = Math.max(0, (x + 0.5) * sx - 0.5);
+      const x0 = Math.min(img.width - 1, Math.floor(fx));
+      const x1 = Math.min(img.width - 1, x0 + 1);
+      const wx = fx - x0;
+      const a = img.data[y0 * img.width + x0]!;
+      const b = img.data[y0 * img.width + x1]!;
+      const c = img.data[y1 * img.width + x0]!;
+      const d = img.data[y1 * img.width + x1]!;
+      out[y * width + x] = Math.round((a * (1 - wx) + b * wx) * (1 - wy) + (c * (1 - wx) + d * wx) * wy);
+    }
+  }
+  return { width, height, data: out };
+}
+
+/**
+ * Scale factor that brings an image drawn across a page pageWidthPt points wide to OCR_DPI and at
+ * least OCR_MIN_WIDTH pixels, at most OCR_MAX_SCALE; 1 when it is there already.
+ */
+export function upscaleFactor(imageWidth: number, pageWidthPt: number): number {
+  if (imageWidth <= 0) return 1;
+  const dpi = pageWidthPt > 0 ? imageWidth / (pageWidthPt / 72) : Infinity;
+  const f = Math.min(OCR_MAX_SCALE, Math.max(OCR_MIN_WIDTH / imageWidth, OCR_DPI / dpi));
+  return f > 1.05 ? f : 1;
+}
+
+/** PNG of an image scaled for OCR (ocrUpscale), or of the image as it is when it needs no scaling. */
+export function encodeForOcr(img: RawImage, pageWidthPt: number): Buffer | null {
+  const f = upscaleFactor(img.width, pageWidthPt);
+  if (f === 1) return encodePng(img);
+  const gray = toGray(img);
+  if (!gray) return encodePng(img);
+  const big = scaleGray(gray, f);
+  return encodeRows(big.width, big.height, big.data, { colorType: 0, depth: 8, rowBytes: big.width });
+}
+
 interface PdfPage {
+  view?: number[];
   getOperatorList(): Promise<{ fnArray: number[]; argsArray: unknown[][] }>;
   objs: { get(id: string, callback: (data: unknown) => void): unknown };
   commonObjs: { get(id: string, callback: (data: unknown) => void): unknown };
@@ -114,11 +198,12 @@ export interface PageImages {
 /**
  * The images a scanned PDF draws on each page, decoded by pdfjs (JPEG, JBIG2, CCITT and the rest
  * in JavaScript, no canvas) and encoded as PNG for the collector's image OCR. Image masks are not
- * taken: their bits mean paint or skip rather than gray values.
+ * taken: their bits mean paint or skip rather than gray values. With upscale (ocrUpscale) an image
+ * below OCR_DPI for the page width, or narrower than OCR_MIN_WIDTH, is scaled up first.
  */
 export async function* pdfPageImages(
   buffer: Buffer,
-  o: { timeoutMs?: number; pages?: number[] } = {},
+  o: { timeoutMs?: number; pages?: number[]; upscale?: boolean } = {},
 ): AsyncGenerator<PageImages> {
   const only = o.pages ? new Set(o.pages) : null;
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
@@ -137,6 +222,8 @@ export async function* pdfPageImages(
       if (only && !only.has(n)) continue;
       try {
         const page = (await doc.getPage(n)) as unknown as PdfPage;
+        const view = page.view ?? [];
+        const pageWidth = view.length === 4 ? Math.abs(view[2]! - view[0]!) : 612;
         const ops = await page.getOperatorList();
         const images: Buffer[] = [];
         for (let i = 0; i < ops.fnArray.length; i++) {
@@ -147,7 +234,7 @@ export async function* pdfPageImages(
           } else if (fn === pdfjs.OPS.paintInlineImageXObject) {
             img = ops.argsArray[i]![0] as RawImage;
           }
-          const png = img ? encodePng(img) : null;
+          const png = img ? (o.upscale ? encodeForOcr(img, pageWidth) : encodePng(img)) : null;
           if (png) images.push(png);
         }
         yield { page: n, images };

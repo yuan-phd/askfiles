@@ -401,6 +401,7 @@ export async function main(argv: string[]): Promise<number> {
       api: createLibraryApi({ baseUrl: stack.baseUrl, apiKey }),
       cacheDir: path.join(stack.storageDir, 'askfiles-eval-cache', 'ocr-pages'),
       log,
+      upscale: config.indexing.ocrUpscale,
     });
     const library: Library = await prepareLibrary({
       client: client as unknown as LibraryClient,

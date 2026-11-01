@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
-import type { Chunk } from './types.js';
+import { INDEXING_REVISION, INDEXING_SWITCHES, type Chunk, type IndexingOptions } from './types.js';
 
 /**
  * The document JSON upstream reads from STORAGE_DIR/documents for update-embeddings (route b2 of
@@ -118,14 +118,27 @@ export function sectionDocuments(
   });
 }
 
-/** Key of the split settings: changing any of them changes every document name. */
+/**
+ * Key of the split settings: changing any of them changes every document name. The indexing
+ * switches that are on are added by name and revision (INDEXING_REVISION); with all of them off
+ * the key is the one from before the switches existed, so a library indexed then is not embedded
+ * again.
+ */
 export function splitKeyOf(settings: {
   splitterVersion: number;
   strategy: string;
   maxChars: number;
   embeddingModel: string;
+  indexing?: IndexingOptions;
 }): string {
+  const on = INDEXING_SWITCHES.filter((k) => settings.indexing?.[k]).map((k) => `${k}:${INDEXING_REVISION[k]}`);
   return sha256(
-    JSON.stringify([settings.splitterVersion, settings.strategy, settings.maxChars, settings.embeddingModel]),
+    JSON.stringify([
+      settings.splitterVersion,
+      settings.strategy,
+      settings.maxChars,
+      settings.embeddingModel,
+      ...(on.length ? [on] : []),
+    ]),
   ).slice(0, 12);
 }
