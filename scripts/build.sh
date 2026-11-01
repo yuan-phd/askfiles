@@ -11,6 +11,8 @@
 #                           (set by npm run package:mac).
 # PACKAGE_TARGET=linux-x64  prune for linux-x64 but keep every Prisma engine: the Linux packaging a
 #                           cloud session measures and boot-checks (docs/bundle-report.md).
+# PACKAGE_TARGET=win-x64    keep only the Windows Prisma engines and prune for win32-x64 (set by
+#                           npm run package:win, on a Windows machine under Git Bash; never cross-built).
 # Unset                     no pruning, so the result still runs on the build machine.
 #
 # The frontend build is skipped when upstream/frontend/dist was built from the same sources: the
@@ -49,7 +51,13 @@ case "$PACKAGE_TARGET" in
     PRUNE_TARGET="darwin-arm64"
     ;;
   linux-x64) PRUNE_TARGET="linux-x64" ;;
-  *) fail "unknown PACKAGE_TARGET '$PACKAGE_TARGET' (expected mac-arm64, linux-x64 or unset)" ;;
+  win-x64)
+    # Native modules and the Prisma engines come from this machine's yarn install and prisma generate.
+    case "$(uname -s)" in MINGW* | MSYS* | CYGWIN*) ;; *) fail "PACKAGE_TARGET=win-x64 builds on Windows only" ;; esac
+    [ -f "$ROOT/resources/ollama/ollama.exe" ] || fail "resources/ollama/ollama.exe is missing; see docs/windows.md, Building"
+    PRUNE_TARGET="win32-x64"
+    ;;
+  *) fail "unknown PACKAGE_TARGET '$PACKAGE_TARGET' (expected mac-arm64, linux-x64, win-x64 or unset)" ;;
 esac
 
 step "1/8 apply patches"
@@ -72,7 +80,10 @@ else
   (cd "$UPSTREAM/frontend" && yarn install --frozen-lockfile --non-interactive --network-timeout 100000)
   # vite.config.js defines process.env as the whole build environment, which ends up in the shipped
   # JavaScript. Build with an empty environment so no token, proxy or home path leaks into the bundle.
+  # Windows processes need SystemRoot to start children (esbuild); it holds no user data.
+  SYSTEM_ROOT="${SYSTEMROOT:-${SystemRoot:-}}"
   (cd "$UPSTREAM/frontend" && env -i PATH=/usr/bin:/bin VITE_API_BASE="$VITE_API_BASE" \
+    ${SYSTEM_ROOT:+SYSTEMROOT="$SYSTEM_ROOT"} \
     "$NODE_BIN" node_modules/vite/bin/vite.js build --logLevel warn)
   (cd "$UPSTREAM/frontend" && "$NODE_BIN" scripts/postbuild.js)
   [ -f "$UPSTREAM/frontend/dist/_index.html" ] || fail "frontend build did not produce dist/_index.html"
@@ -134,8 +145,11 @@ node "$ROOT/scripts/lib/prisma-client.mjs" check "$UPSTREAM/server" || fail "the
 step "5/8 prisma engines"
 if [ "$PACKAGE_TARGET" = "mac-arm64" ]; then
   node "$ROOT/scripts/lib/prisma-engines.mjs" "$UPSTREAM/server/node_modules" --keep darwin-arm64
+elif [ "$PACKAGE_TARGET" = "win-x64" ]; then
+  # query_engine-windows.dll.node and schema-engine-windows.exe.
+  node "$ROOT/scripts/lib/prisma-engines.mjs" "$UPSTREAM/server/node_modules" --keep windows
 else
-  echo "[build] PACKAGE_TARGET is not mac-arm64, keeping all engines"
+  echo "[build] PACKAGE_TARGET is neither mac-arm64 nor win-x64, keeping all engines"
   node "$ROOT/scripts/lib/prisma-engines.mjs" "$UPSTREAM/server/node_modules"
 fi
 

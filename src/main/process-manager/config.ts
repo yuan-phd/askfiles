@@ -13,6 +13,12 @@ export interface CommandSpec {
   env?: Record<string, string>;
 }
 
+export interface TreeKillSpec {
+  command: string;
+  /** `{pid}` stands for the pid of the child being stopped. */
+  args: string[];
+}
+
 export interface ProcessManagerConfig {
   /** Root of the app data, for example ~/Library/Application Support/AskFiles. */
   dataDir: string;
@@ -45,6 +51,12 @@ export interface ProcessManagerConfig {
    * the ollama runner die with their parent. Needs POSIX process groups; the caller decides.
    */
   killProcessGroup?: boolean;
+  /**
+   * Stop each child by running this command instead of sending signals, for platforms without
+   * signals or process groups: on Windows `taskkill /PID {pid} /T /F` ends the child and every
+   * process it started, so no ollama runner outlives ollama.exe. `{pid}` in args is replaced.
+   */
+  treeKill?: TreeKillSpec;
   timeoutsMs?: Partial<Record<StepName, number>>;
   /** Wait after the term signal before the kill signal. Default 5000. */
   stopTimeoutMs?: number;
@@ -75,6 +87,7 @@ export interface ResolvedConfig {
   specs: Record<StepName, CommandSpec>;
   signals: { term: NodeJS.Signals; kill: NodeJS.Signals };
   killProcessGroup: boolean;
+  treeKill: TreeKillSpec | null;
   timeoutsMs: Record<StepName, number>;
   stopTimeoutMs: number;
   restart: { delaysMs: number[]; maxAttempts: number; windowMs: number };
@@ -90,6 +103,8 @@ export function resolveConfig(c: ProcessManagerConfig): ResolvedConfig {
   const storageDir = c.storageDir ?? path.join(c.dataDir, 'storage');
   const externalOllamaPort = c.externalOllamaPort ?? null;
   if (!c.ollama && externalOllamaPort === null) throw new Error('ollama or externalOllamaPort is required');
+  if (c.treeKill && c.killProcessGroup) throw new Error('treeKill and killProcessGroup are alternatives');
+  if (c.treeKill && !c.treeKill.args.includes('{pid}')) throw new Error('treeKill.args must contain {pid}');
   return {
     dataDir: c.dataDir,
     storageDir,
@@ -112,6 +127,7 @@ export function resolveConfig(c: ProcessManagerConfig): ResolvedConfig {
     },
     signals: { term: c.signals?.term ?? 'SIGTERM', kill: c.signals?.kill ?? 'SIGKILL' },
     killProcessGroup: c.killProcessGroup ?? false,
+    treeKill: c.treeKill ?? null,
     timeoutsMs: {
       ollama: 30_000,
       collector: 60_000,

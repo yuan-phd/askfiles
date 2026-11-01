@@ -2,9 +2,9 @@
 // installed them; electron-builder then copies these folders into the app as they are. Never touches
 // tracked files under upstream/. docs/bundle-report.md records what each step saves.
 //
-// Usage: node scripts/prune.mjs <upstreamDir> --target <darwin-arm64|linux-x64> [--steps a,b] [--dry-run]
+// Usage: node scripts/prune.mjs <upstreamDir> --target <darwin-arm64|linux-x64|win32-x64> [--steps a,b] [--dry-run]
 // Steps, in this order by default:
-//   platform  binaries the target cannot load, found by file header (ELF, PE, Mach-O and its CPU type)
+//   platform  binaries the target cannot load, found by file header (ELF, PE and Mach-O, with the CPU type)
 //   dev       source maps, typings, @types packages, readme and changelog files, test and example folders
 //   unused    packages AskFiles never reaches (UNUSED below) and the packages only they depend on
 //   providers vector database clients and model provider SDKs for providers AskFiles never selects
@@ -15,7 +15,7 @@ import { pathToFileURL } from 'node:url';
 import { loadGraph } from './lib/load-graph.mjs';
 
 export const TREES = ['server', 'collector'];
-export const TARGETS = ['darwin-arm64', 'linux-x64'];
+export const TARGETS = ['darwin-arm64', 'linux-x64', 'win32-x64'];
 export const STEPS = ['platform', 'dev', 'unused', 'providers'];
 
 // ---- platform -------------------------------------------------------------------------------
@@ -25,6 +25,11 @@ const CPU_ARM64 = 0x0100000c;
 const CPU_X86_64 = 0x01000007;
 const MH_EXECUTE = 2;
 const EM_X86_64 = 0x3e;
+const PE_AMD64 = 0x8664;
+const PE_I386 = 0x14c;
+const PE_DLL = 0x2000;
+/** Enough of a file for the PE header, which sits at the offset stored at 0x3c (usually below 0x200). */
+export const HEADER_BYTES = 1024;
 
 /** Reads enough of a file header to tell ELF, PE and Mach-O apart. Null for anything else. */
 export function binaryKind(buf) {
@@ -46,7 +51,15 @@ export function binaryKind(buf) {
     const count = buf.readUInt32BE(4);
     return count > 0 && count < 20 ? { format: 'macho-fat' } : null;
   }
-  if (buf[0] === 0x4d && buf[1] === 0x5a) return { format: 'pe' };
+  if (buf[0] === 0x4d && buf[1] === 0x5a) {
+    // Machine and characteristics from the COFF header after the PE signature; without them (a
+    // short read, or a text file that starts with MZ) the file stays a PE of unknown machine.
+    const at = buf.length >= 0x40 ? buf.readUInt32LE(0x3c) : -1;
+    if (at > 0 && at + 24 <= buf.length && buf.subarray(at, at + 4).toString('hex') === '50450000') {
+      return { format: 'pe', machine: buf.readUInt16LE(at + 4), dll: (buf.readUInt16LE(at + 22) & PE_DLL) !== 0 };
+    }
+    return { format: 'pe' };
+  }
   return null;
 }
 
@@ -66,14 +79,21 @@ export function foreignBinary(kind, target) {
     if (kind.format === 'elf') return kind.machine !== EM_X86_64;
     return true;
   }
+  if (target === 'win32-x64') {
+    // Like Rosetta on the Mac, WOW64 runs a 32-bit x86 executable but never loads a 32-bit DLL
+    // (every .node file is a DLL) into the 64-bit process; arm64 builds are of no use either.
+    if (kind.format !== 'pe') return true;
+    if (kind.machine === undefined || kind.machine === PE_AMD64) return false;
+    return !(kind.machine === PE_I386 && !kind.dll);
+  }
   throw new Error(`unknown target ${target}`);
 }
 
 function readHeader(file) {
   const fd = fs.openSync(file, 'r');
   try {
-    const buf = Buffer.alloc(20);
-    const n = fs.readSync(fd, buf, 0, 20, 0);
+    const buf = Buffer.alloc(HEADER_BYTES);
+    const n = fs.readSync(fd, buf, 0, HEADER_BYTES, 0);
     return buf.subarray(0, n);
   } finally {
     fs.closeSync(fd);

@@ -1,6 +1,5 @@
 import { app, dialog, shell, type BrowserWindow } from 'electron';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import util from 'node:util';
 import {
@@ -67,6 +66,7 @@ import {
   type Settings,
   type ShellState,
 } from './shell-state.js';
+import { machineRam } from './platform.js';
 import { seedTesseractData } from './tesseract.js';
 import { chokidarWatch, collectorOcr, createLibraryApi, FolderWatcher, sectionSplitter } from './watcher/index.js';
 import { Wizard } from './wizard/index.js';
@@ -112,6 +112,8 @@ export class AppController implements BridgeHandlers {
   private paragraphs: { key: string; store: ParagraphStore } | null = null;
   private readonly answers: AnswerService;
   private readonly resourcesPath: string;
+  /** The RAM the tier was chosen from (platform.ts machineRam); set at the start of run(). */
+  private ramBytes: number | undefined;
 
   constructor(private readonly d: AppDeps) {
     this.resourcesPath = d.dev?.resourcesPath ?? process.resourcesPath;
@@ -150,7 +152,13 @@ export class AppController implements BridgeHandlers {
     try {
       this.presetsFile = presetsFilePath(this.d.env, app.getAppPath());
       this.presets = loadPresets(this.presetsFile);
-      const tier = chooseTier(this.presets, os.totalmem());
+      const ram = await machineRam(process.platform, { systemRoot: this.d.env.SystemRoot ?? this.d.env.SYSTEMROOT });
+      this.ramBytes = ram.bytes;
+      if (ram.source === 'installed')
+        log(
+          `RAM ${gib(ram.bytes)} GiB installed, ${gib(ram.usableBytes)} GiB usable; the tier follows the installed size`,
+        );
+      const tier = chooseTier(this.presets, ram.bytes);
       this.machinePreset = tier.preset;
       // Without the preset the server would run with thinking on; a broken bundle must show, not limp.
       serverEnv = presetSpawnEnv(tier.preset);
@@ -173,6 +181,8 @@ export class AppController implements BridgeHandlers {
     log(`start page ${start}`);
     this.manager = new ProcessManager(
       bundledBackendConfig({
+        platform: process.platform,
+        systemRoot: this.d.env.SystemRoot ?? this.d.env.SYSTEMROOT,
         resourcesPath: this.resourcesPath,
         dataDir: this.dataDir,
         logDir: app.getPath('logs'),
@@ -717,6 +727,8 @@ export class AppController implements BridgeHandlers {
       restartServer: () => this.restartBackend(),
       fetchReranker: (repo, onProgress) =>
         ensureReranker({ repo, modelsDir: this.rerankerDir, onProgress, log: (m) => log(`[wizard] ${m}`) }),
+      // The same reading as the tier the backend started with, the installed size on Windows.
+      totalMemBytes: this.ramBytes,
       log,
     });
     const run = new FirstRun({
@@ -779,4 +791,8 @@ export class AppController implements BridgeHandlers {
       })();
     });
   }
+}
+
+function gib(bytes: number): string {
+  return (bytes / 1024 ** 3).toFixed(1);
 }

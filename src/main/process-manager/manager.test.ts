@@ -6,7 +6,17 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ProcessManager, StartError, type StateEvent } from './manager.js';
-import { fake, fakeConfig, isAlive, readRecord, tmpDir, waitFor } from './__fixtures__/helpers.js';
+import {
+  fake,
+  fakeConfig,
+  fakeTreeKill,
+  fakeWindowsConfig,
+  isAlive,
+  readRecord,
+  tmpDir,
+  waitFor,
+} from './__fixtures__/helpers.js';
+import { databaseUrl } from './manager.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const managers: ProcessManager[] = [];
@@ -244,6 +254,86 @@ describe('ProcessManager stop', () => {
   });
 });
 
+describe('ProcessManager stop with a tree kill (the Windows configuration)', () => {
+  it('runs the tree kill for each child in stop order, so a grandchild dies too, without a term signal', async () => {
+    const dir = tmpDir();
+    const { m, events } = manager(
+      fakeWindowsConfig(dir, {
+        ollama: fake(dir, 'ollama', '--port-env', 'OLLAMA_HOST', '--grandchild'),
+        server: fake(dir, 'server', '--port-env', 'SERVER_PORT', '--ignore-sigterm'),
+        stopTimeoutMs: 3000,
+      }),
+    );
+    const s = await m.start();
+    const g = readRecord(dir).find((r) => r.event === 'grandchild')!.grandchild!;
+    expect(isAlive(g)).toBe(true);
+    events.length = 0;
+    const t0 = Date.now();
+    await m.stop();
+    // Well under stopTimeoutMs: nothing waited for a signal to be ignored.
+    expect(Date.now() - t0).toBeLessThan(3000);
+    const kills = readRecord(dir).filter((r) => r.event === 'taskkill');
+    expect(kills.map((k) => k.pid)).toEqual([
+      s.processes.server.pid,
+      s.processes.collector.pid,
+      s.processes.ollama.pid,
+    ]);
+    for (const k of kills) expect(k.args).toEqual(['/PID', String(k.pid), '/T', '/F']);
+    expect(kills[2]!.killed).toContain(g);
+    await waitFor(() => !isAlive(g), 2000, 'grandchild to die');
+    for (const p of Object.values(s.processes)) expect(isAlive(p.pid!)).toBe(false);
+    // The server prints only when it gets a SIGTERM, so it never wrote a log.
+    expect(fs.existsSync(path.join(dir, 'logs', 'server.log'))).toBe(false);
+    const mlog = fs.readFileSync(path.join(dir, 'logs', 'manager.log'), 'utf8');
+    expect(mlog).toContain(`ollama tree killed (pid ${s.processes.ollama.pid})`);
+    expect(mlog).not.toContain('sending SIGKILL');
+    expect(events.map((e) => `${e.process}:${e.state}`)).toEqual([
+      'server:stopped',
+      'collector:stopped',
+      'ollama:stopped',
+    ]);
+  });
+
+  it('falls back to the kill signal when the tree kill fails', async () => {
+    const dir = tmpDir();
+    const { m } = manager(fakeWindowsConfig(dir, { treeKill: fakeTreeKill(dir, '--fail'), stopTimeoutMs: 200 }));
+    const s = await m.start();
+    await m.stop();
+    for (const p of Object.values(s.processes)) expect(isAlive(p.pid!)).toBe(false);
+    const mlog = fs.readFileSync(path.join(dir, 'logs', 'manager.log'), 'utf8');
+    expect(mlog).toMatch(/server tree kill: .* exited with code 128: ERROR: The process "\d+" not found\./);
+    expect(mlog).toContain('server still running 200 ms after the tree kill, sending SIGKILL');
+  });
+
+  it('stops a migrate step cut off by its timeout with the tree kill', async () => {
+    const dir = tmpDir();
+    const { m } = manager(fakeWindowsConfig(dir, { migrate: fake(dir, 'migrate'), timeoutsMs: { migrate: 200 } }));
+    await expect(m.start()).rejects.toThrow(/migrate: did not finish within 200 ms/);
+    const migratePid = readRecord(dir).find((r) => r.name === 'migrate' && r.event === 'start')!.pid;
+    expect(readRecord(dir).some((r) => r.event === 'taskkill' && r.pid === migratePid)).toBe(true);
+    expect(isAlive(migratePid)).toBe(false);
+  });
+
+  it('rejects a tree kill without {pid} and one combined with process groups', () => {
+    const dir = tmpDir();
+    expect(
+      () => new ProcessManager(fakeWindowsConfig(dir, { treeKill: { command: 'taskkill', args: ['/T'] } })),
+    ).toThrow(/must contain \{pid\}/);
+    expect(() => new ProcessManager(fakeWindowsConfig(dir, { killProcessGroup: true }))).toThrow(/alternatives/);
+  });
+});
+
+describe('databaseUrl', () => {
+  it('writes a Windows path with forward slashes and leaves a POSIX path alone', () => {
+    expect(databaseUrl('C:\\Users\\u\\AppData\\Local\\AskFiles\\storage\\askfiles.db')).toBe(
+      'file:C:/Users/u/AppData/Local/AskFiles/storage/askfiles.db',
+    );
+    expect(databaseUrl('/Users/u/Library/Application Support/AskFiles/storage/askfiles.db')).toBe(
+      'file:/Users/u/Library/Application Support/AskFiles/storage/askfiles.db',
+    );
+  });
+});
+
 describe('ProcessManager crash handling', () => {
   it('restarts with exponential backoff and gives up after 5 attempts in the window', async () => {
     const dir = tmpDir();
@@ -390,6 +480,35 @@ describe('parent process handling', () => {
       for (const pid of [...pids, ...recorded]) await waitFor(() => !isAlive(pid), 2000, `pid ${pid} to die`);
     });
   }
+});
+
+describe('parent process handling on the Windows stop path', () => {
+  it('runs the tree kill from the exit handler, so no child or grandchild is left', async () => {
+    const dir = tmpDir();
+    const parent = spawn(
+      process.execPath,
+      [
+        '--import',
+        path.join(here, '__fixtures__', 'ts-register.mjs'),
+        path.join(here, '__fixtures__', 'parent.ts'),
+        dir,
+        '--windows',
+        '--exit',
+      ],
+      { stdio: ['ignore', 'pipe', 'pipe'] },
+    );
+    let out = '';
+    let err = '';
+    parent.stdout.on('data', (d) => (out += d));
+    parent.stderr.on('data', (d) => (err += d));
+    const exited = new Promise<number | null>((r) => parent.on('exit', (c) => r(c)));
+    expect(await exited).toBe(0);
+    expect(out, err).toContain('\n');
+    const pids = JSON.parse(out.split('\n')[0]!) as number[];
+    const g = readRecord(dir).find((r) => r.event === 'grandchild')!.grandchild!;
+    for (const pid of [...pids, g]) await waitFor(() => !isAlive(pid), 2000, `pid ${pid} to die`);
+    expect(readRecord(dir).filter((r) => r.event === 'taskkill')).toHaveLength(3);
+  });
 });
 
 describe('platform independence', () => {

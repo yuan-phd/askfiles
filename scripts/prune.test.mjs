@@ -42,6 +42,16 @@ const X86_64 = 0x01000007;
 const fat = Buffer.from('cafebabe00000002' + '00'.repeat(12), 'hex');
 const javaClass = Buffer.from('cafebabe00000034' + '00'.repeat(12), 'hex');
 const pe = Buffer.concat([Buffer.from('4d5a', 'hex'), Buffer.alloc(18)]);
+// A PE file with its COFF header at 0x80, as Windows linkers write it.
+function peFile(machine, dll) {
+  const b = Buffer.alloc(0x200);
+  b.write('4d5a', 'hex');
+  b.writeUInt32LE(0x80, 0x3c);
+  b.write('50450000', 0x80, 'hex');
+  b.writeUInt16LE(machine, 0x84);
+  b.writeUInt16LE(dll ? 0x2022 : 0x0022, 0x80 + 22);
+  return b;
+}
 
 describe('binaryKind and foreignBinary', () => {
   it.each([
@@ -59,6 +69,31 @@ describe('binaryKind and foreignBinary', () => {
     expect(foreignBinary(kind, 'linux-x64')).toBe(onLinux);
   });
 
+  it.each([
+    ['PE x64 DLL (.node)', peFile(0x8664, true), false],
+    ['PE x64 executable', peFile(0x8664, false), false],
+    ['PE arm64 DLL', peFile(0xaa64, true), true],
+    ['PE x86 DLL (cannot load into x64)', peFile(0x14c, true), true],
+    ['PE x86 executable (WOW64 runs it)', peFile(0x14c, false), false],
+    ['MZ without a readable PE header', pe, false],
+    ['ELF x86-64', elf(0x3e), true],
+    ['Mach-O arm64 library', macho(ARM64, 6), true],
+    ['fat Mach-O', fat, true],
+  ])('win32-x64: %s', (_, header, foreign) => {
+    const kind = binaryKind(header);
+    expect(foreignBinary(kind, 'win32-x64')).toBe(foreign);
+    // A readable PE header changes nothing for the other targets: every PE file is foreign there.
+    if (kind.format === 'pe') {
+      expect(foreignBinary(kind, 'darwin-arm64')).toBe(true);
+      expect(foreignBinary(kind, 'linux-x64')).toBe(true);
+    }
+  });
+
+  it('reads the machine of a PE file from its COFF header', () => {
+    expect(binaryKind(peFile(0x8664, true))).toEqual({ format: 'pe', machine: 0x8664, dll: true });
+    expect(binaryKind(pe)).toEqual({ format: 'pe' });
+  });
+
   it('does not take a Java class file or text for a binary', () => {
     expect(binaryKind(javaClass)).toBeNull();
     expect(binaryKind(Buffer.from('module.exports = 1; // twenty bytes+'))).toBeNull();
@@ -66,6 +101,22 @@ describe('binaryKind and foreignBinary', () => {
 });
 
 describe('prunePlatform', () => {
+  it('keeps x64 Windows binaries and drops the rest for win32-x64', () => {
+    write('nm/onnx/bin/napi-v3/win32/x64/onnxruntime_binding.node', peFile(0x8664, true));
+    write('nm/onnx/bin/napi-v3/win32/arm64/onnxruntime_binding.node', peFile(0xaa64, true));
+    write('nm/onnx/bin/napi-v3/linux/x64/libonnxruntime.so', elf(0x3e));
+    write('nm/sharp-win32-ia32/lib/sharp.node', peFile(0x14c, true));
+    write('nm/rg/bin/rg.exe', peFile(0x8664, false));
+    write('nm/a/index.js', 'module.exports = "a long enough javascript file";');
+    const removed = prunePlatform(join(root, 'nm'), 'win32-x64', false);
+    expect(removed.map((r) => r.why).sort()).toEqual(['elf', 'pe', 'pe']);
+    expect(exists('nm/onnx/bin/napi-v3/win32/x64/onnxruntime_binding.node')).toBe(true);
+    expect(exists('nm/rg/bin/rg.exe')).toBe(true);
+    expect(exists('nm/a/index.js')).toBe(true);
+    expect(exists('nm/onnx/bin/napi-v3/win32/arm64/onnxruntime_binding.node')).toBe(false);
+    expect(exists('nm/sharp-win32-ia32/lib/sharp.node')).toBe(false);
+  });
+
   it('removes only what the target cannot load', () => {
     write('nm/a/lib.so', elf(0x3e));
     write('nm/a/lib.dylib', macho(ARM64, 6));

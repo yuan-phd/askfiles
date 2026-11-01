@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -347,6 +347,8 @@ export class ProcessManager extends EventEmitter<{ state: [StateEvent] }> {
         env: this.envFor(name),
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: this.cfg.killProcessGroup,
+        // No console window flashing up for each child on Windows; ignored elsewhere.
+        windowsHide: true,
       });
     } catch (e) {
       const error = (e as Error).message;
@@ -386,6 +388,7 @@ export class ProcessManager extends EventEmitter<{ state: [StateEvent] }> {
 
   private async stopRun(name: StepName, run: Run): Promise<void> {
     run.expected = true;
+    if (this.cfg.treeKill) return this.stopTree(name, run);
     const { term, kill } = this.cfg.signals;
     if (!run.done) {
       this.signal(run, term);
@@ -397,6 +400,42 @@ export class ProcessManager extends EventEmitter<{ state: [StateEvent] }> {
     }
     // The leader is gone; anything left in its group (for example an ollama runner) goes too.
     if (this.cfg.killProcessGroup) this.signal(run, kill);
+  }
+
+  /**
+   * Windows has no term signal to ask first: Node's kill() there is TerminateProcess on the child
+   * alone, which would leave its runners behind. The tree kill ends the child and its descendants
+   * at once; the kill signal is only the fallback when the tree kill itself fails.
+   */
+  private async stopTree(name: StepName, run: Run): Promise<void> {
+    if (run.done || run.pid === null) return;
+    const { command, args } = this.treeKillCommand(run.pid);
+    const r = await new Promise<string>((resolve) => {
+      let out = '';
+      let child: ChildProcess;
+      try {
+        child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+      } catch (e) {
+        resolve(`could not run ${command}: ${(e as Error).message}`);
+        return;
+      }
+      child.stdout?.on('data', (d: Buffer) => (out += d));
+      child.stderr?.on('data', (d: Buffer) => (out += d));
+      child.once('error', (e) => resolve(`could not run ${command}: ${e.message}`));
+      child.once('exit', (code) => resolve(code === 0 ? '' : `${command} exited with code ${code}: ${out.trim()}`));
+    });
+    if (r) this.mlog(`${name} tree kill: ${r}`);
+    else this.mlog(`${name} tree killed (pid ${run.pid})`);
+    if ((await raceTimeout(run.exited, this.cfg.stopTimeoutMs)) !== 'timeout') return;
+    const { kill } = this.cfg.signals;
+    this.mlog(`${name} still running ${this.cfg.stopTimeoutMs} ms after the tree kill, sending ${kill}`);
+    this.signal(run, kill);
+    if ((await raceTimeout(run.exited, 5000)) === 'timeout') this.mlog(`${name} did not exit after ${kill}`);
+  }
+
+  private treeKillCommand(pid: number): { command: string; args: string[] } {
+    const t = this.cfg.treeKill!;
+    return { command: t.command, args: t.args.map((a) => a.replaceAll('{pid}', String(pid))) };
   }
 
   private signal(run: Run, sig: NodeJS.Signals): void {
@@ -432,7 +471,7 @@ export class ProcessManager extends EventEmitter<{ state: [StateEvent] }> {
       CHECKPOINT_DISABLE: '1',
       // Read by the patches in patches/; see docs/process-manager.md.
       ANYTHING_LLM_BIND_HOST: host,
-      DATABASE_URL: `file:${this.cfg.databaseFile}`,
+      DATABASE_URL: databaseUrl(this.cfg.databaseFile),
       ANYTHING_LLM_HOTDIR: this.cfg.hotDir,
       ANYTHING_LLM_COLLECTOR_TMP_DIR: this.cfg.collectorTmpDir,
       ANYTHING_LLM_ENV_PATH: this.cfg.envFile,
@@ -521,7 +560,11 @@ export class ProcessManager extends EventEmitter<{ state: [StateEvent] }> {
     for (const run of runs) {
       if (!run) continue;
       run.expected = true;
-      this.signal(run, this.cfg.signals.kill);
+      if (this.cfg.treeKill && !run.done && run.pid !== null) {
+        // The exit handler cannot wait for a child process, but it can block on one.
+        const { command, args } = this.treeKillCommand(run.pid);
+        spawnSync(command, args, { stdio: 'ignore', timeout: 5000, windowsHide: true });
+      } else this.signal(run, this.cfg.signals.kill);
     }
   }
 }
@@ -529,6 +572,14 @@ export class ProcessManager extends EventEmitter<{ state: [StateEvent] }> {
 function describeExit(ex: ExitInfo): string {
   if (ex.error) return ex.error;
   return ex.signal ? `signal ${ex.signal}` : `code ${ex.code}`;
+}
+
+/**
+ * Prisma reads a SQLite URL; a Windows path goes in with forward slashes (file:C:/Users/...), the
+ * form Prisma documents, since a backslash is not a URL path separator.
+ */
+export function databaseUrl(file: string): string {
+  return `file:${/^[A-Za-z]:\\/.test(file) ? file.replace(/\\/g, '/') : file}`;
 }
 
 function urlHost(host: string): string {

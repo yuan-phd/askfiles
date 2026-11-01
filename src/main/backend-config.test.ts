@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { bundledBackendConfig, presetServerEnv } from './backend-config.js';
-import { fakeConfig, readRecord, tmpDir } from './process-manager/__fixtures__/helpers.js';
+import { fakeConfig, fakeTreeKill, readRecord, tmpDir } from './process-manager/__fixtures__/helpers.js';
 import { ProcessManager } from './process-manager/index.js';
 
 const res = '/Applications/AskFiles.app/Contents/Resources';
@@ -11,6 +11,11 @@ const cfg = bundledBackendConfig({
   dataDir: '/Users/u/Library/Application Support/AskFiles',
   logDir: '/Users/u/Library/Logs/AskFiles',
   nodePath: '/Applications/AskFiles.app/Contents/MacOS/AskFiles',
+});
+
+const winManagers: ProcessManager[] = [];
+afterEach(async () => {
+  await Promise.all(winManagers.splice(0).map((m) => m.stop()));
 });
 
 describe('bundledBackendConfig', () => {
@@ -50,6 +55,59 @@ describe('bundledBackendConfig', () => {
     expect(cfg.dataDir).toBe('/Users/u/Library/Application Support/AskFiles');
     expect(cfg.logDir).toBe('/Users/u/Library/Logs/AskFiles');
     expect(cfg.killProcessGroup).toBe(true);
+  });
+
+  it('runs ollama.exe from resources on Windows, with Windows paths and a tree kill instead of process groups', () => {
+    const wres = 'C:\\Users\\u\\AppData\\Local\\Programs\\AskFiles\\resources';
+    const data = 'C:\\Users\\u\\AppData\\Local\\AskFiles';
+    const w = bundledBackendConfig({
+      platform: 'win32',
+      systemRoot: 'C:\\WINDOWS',
+      resourcesPath: wres,
+      dataDir: data,
+      logDir: `${data}\\logs`,
+      nodePath: 'C:\\Users\\u\\AppData\\Local\\Programs\\AskFiles\\AskFiles.exe',
+    });
+    expect(w.ollama).toEqual({
+      command: `${wres}\\ollama\\ollama.exe`,
+      args: ['serve'],
+      cwd: data,
+      env: { OLLAMA_MODELS: `${data}\\ollama` },
+    });
+    expect(w.server.args).toEqual([`${wres}\\server\\index.js`]);
+    expect(w.server.cwd).toBe(`${wres}\\server`);
+    expect(w.collector.args).toEqual([`${wres}\\collector\\index.js`]);
+    expect(w.migrate.args[0]).toBe(`${wres}\\server\\node_modules\\prisma\\build\\index.js`);
+    expect(w.server.env?.ELECTRON_RUN_AS_NODE).toBe('1');
+    expect(w.killProcessGroup).toBeUndefined();
+    expect(w.treeKill).toEqual({
+      command: 'C:\\WINDOWS\\System32\\taskkill.exe',
+      args: ['/PID', '{pid}', '/T', '/F'],
+    });
+    // Every child binds to loopback only, so Windows Firewall never asks on first launch.
+    expect(w.host).toBeUndefined();
+    expect(cfg.treeKill).toBeUndefined();
+  });
+
+  it('runs the Windows configuration through the manager with fake children and binds them to 127.0.0.1', async () => {
+    const dir = tmpDir();
+    const w = bundledBackendConfig({ platform: 'win32', resourcesPath: dir, dataDir: dir, logDir: dir, nodePath: 'x' });
+    const m = new ProcessManager(
+      fakeConfig(dir, { killProcessGroup: false, treeKill: fakeTreeKill(dir), host: w.host }),
+    );
+    winManagers.push(m);
+    const s = await m.start();
+    const ports = JSON.parse(fs.readFileSync(path.join(dir, 'data', 'ports.json'), 'utf8')) as { host: string };
+    expect(ports.host).toBe('127.0.0.1');
+    for (const r of readRecord(dir).filter((x) => x.event === 'start' && x.name === 'server')) {
+      expect(r.env?.ANYTHING_LLM_BIND_HOST).toBe('127.0.0.1');
+    }
+    await m.stop();
+    expect(
+      readRecord(dir)
+        .filter((r) => r.event === 'taskkill')
+        .map((r) => r.pid),
+    ).toEqual([s.processes.server.pid, s.processes.collector.pid, s.processes.ollama.pid]);
   });
 
   it('matches the folder names electron-builder.yml puts under Resources', () => {

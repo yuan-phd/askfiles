@@ -7,6 +7,7 @@ import { devBackend, developerEnabled, upstreamUiEnabled, WINDOW_TITLE } from '.
 import type { BridgeHandlers } from './bridge/contract.js';
 import { registerBridge } from './bridge/register.js';
 import { createLogger, resolveLogDir, resolvePort, PORT_ENV, CONFIG_ENV } from './config.js';
+import { appDirs } from './platform.js';
 
 // Must run before the app is ready. standard and secure give the pages a real origin and a secure
 // context; supportFetchAPI lets them fetch their own files (the about page reads the notices).
@@ -82,8 +83,14 @@ function externalHandlers(baseUrl: string | null, log: (m: string) => void): Bri
 
 function main(): void {
   const dev = devBackend(process.env, app.getAppPath());
+  // Windows keeps data and logs in %LOCALAPPDATA%\AskFiles (platform.ts); set before anything reads them.
+  const dirs = appDirs(process.platform, process.env, { dev: !!dev });
+  if (dirs) {
+    app.setPath('userData', dirs.userData);
+    app.setPath('logs', dirs.logs);
+  }
   // Its own data directory, so a dev run never touches the installed app's library or models.
-  if (dev) app.setPath('userData', path.join(app.getPath('appData'), 'AskFiles-dev'));
+  else if (dev) app.setPath('userData', path.join(app.getPath('appData'), 'AskFiles-dev'));
   const log = createLogger(resolveLogDir(process.env, app.getPath('logs')), 'main');
   log(`starting version ${app.getVersion()} pid ${process.pid}`);
   if (dev) log(`dev run: backend from ${dev.resourcesPath}, node ${dev.nodePath}, ollama on ${dev.externalOllamaPort}`);
