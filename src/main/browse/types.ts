@@ -108,6 +108,11 @@ export interface SearchHit {
   pageLabelEnd: string | null;
   /** Occurrences of all terms in this section. */
   count: number;
+  /**
+   * 0: the query's terms next to each other in its order; 1: all within one paragraph; 2: the
+   * rest. Results are ranked by it (search.ts matchTier).
+   */
+  tier: 0 | 1 | 2;
   snippet: string;
   /** [start, end) of each term occurrence inside snippet, for highlighting. */
   marks: [number, number][];

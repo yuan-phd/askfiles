@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { countingSplitter, fakeApi, manualWatch } from '../watcher/__fixtures__/fakes.js';
 import { FolderWatcher } from '../watcher/watcher.js';
-import { BrowseIndex, chunkReader, followWatcher, snippetOf, splitHead } from './index.js';
+import { BrowseIndex, chunkReader, followWatcher, matchTier, queryTerms, snippetOf, splitHead } from './index.js';
 
 let tmp: string;
 let root: string;
@@ -228,6 +228,41 @@ describe('BrowseIndex', () => {
     expect(index.search('annual cake').total).toBe(0);
     expect(index.search('illn').groups[0]!.hits[0]!.title).toBe('2.1 Long illness');
     expect(index.search('   ').groups).toEqual([]);
+  });
+
+  it('ranks adjacent words in order first, then words in one paragraph, then the rest; quotes make a phrase', async () => {
+    await put(
+      'a-scattered.md',
+      '# Scattered\n\n## Notes\n\nThe carry rule.\n\nSome annual figures.\n\nLeave is approved by the manager.\n',
+    );
+    await put('b-paragraph.md', '# Paragraph\n\n## Rules\n\nLeave that is annual can be carried over.\n');
+    await put('c-adjacent.md', '# Adjacent\n\n## Annual leave\n\nEvery employee gets annual leave of 27 days.\n');
+    await put('d-reversed.md', '# Reversed\n\n## Booking\n\nBook your leave, annual or special.\n');
+
+    const r = index.search('annual leave');
+    expect(r.groups.map((g) => [g.document.title, g.hits[0]!.tier])).toEqual([
+      ['c-adjacent.md', 0],
+      ['b-paragraph.md', 1],
+      ['d-reversed.md', 1],
+      ['a-scattered.md', 2],
+    ]);
+
+    // Quotes: only the exact phrase, across any whitespace, and both quote styles.
+    expect(queryTerms('"annual leave" days')).toEqual(['annual leave', 'days']);
+    expect(queryTerms('“年假 结转”')).toEqual(['年假 结转']);
+    const phrase = index.search('"annual leave"');
+    expect(phrase.groups.map((g) => g.document.title)).toEqual(['c-adjacent.md']);
+    const hit = phrase.groups[0]!.hits[0]!;
+    expect(hit.marks.map(([a, b]) => hit.snippet.slice(a, b).toLowerCase())).toEqual(['annual leave']);
+    expect(matchTier('x\nannual\nleave', ['annual leave'])).toBe(0);
+  });
+
+  it('shows the passage where the query words are densest', () => {
+    const text = `Leave appears here alone. ${'Filler text. '.repeat(30)}Annual leave requests and annual leave balances.`;
+    const { snippet, marks } = snippetOf(text, ['annual', 'leave']);
+    expect(snippet.startsWith('...')).toBe(true);
+    expect(snippet).toContain('Annual leave requests and annual leave balances.');
+    expect(marks.map(([a, b]) => snippet.slice(a, b))).toEqual(['Annual', 'leave', 'annual', 'leave']);
   });
 
   it('caps the hits and says so', async () => {

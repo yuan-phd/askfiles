@@ -5,7 +5,7 @@ import type { FileRecord } from '../watcher/index.js';
 import { buildDocument, documentId, type StoredChunk } from './build.js';
 import { buildIdentities, type FileIdentity } from './identifiers.js';
 import { rankSections, sectionFrequency, type FoldedSection, type RankedSection } from './rank.js';
-import { fold, markRanges, occurrences, queryTerms, snippetOf } from './search.js';
+import { fold, markRanges, matchesOf, matchTier, queryTerms, snippetOf } from './search.js';
 import type {
   BrowseDocument,
   BrowseSection,
@@ -195,46 +195,68 @@ export class BrowseIndex {
       .sort((a, b) => b.documents - a.documents || a.label.localeCompare(b.label));
   }
 
-  /** Keyword search; see search.ts for the matching rules. */
+  /**
+   * Keyword search; see search.ts for the matching rules. Every matching section is ranked before
+   * the limit applies, so the hits kept are the best ones: documents by their best match tier, then
+   * by how many sections match at that tier, then by occurrences (a term in a title counts 5);
+   * within a document its sections by tier, then in document order.
+   */
   search(query: string, limit = SEARCH_LIMIT): SearchResult {
     const terms = queryTerms(query);
     const result: SearchResult = { query, terms, total: 0, groups: [], truncated: false };
     if (!terms.length) return result;
-    let kept = 0;
-    const scored: { group: SearchGroup; score: number }[] = [];
+    type Found = {
+      s: BrowseDocument['sections'][number];
+      count: number;
+      tier: 0 | 1 | 2;
+      titleMarks: [number, number][];
+    };
+    const docs: { d: BrowseDocument; found: Found[]; score: number }[] = [];
     for (const d of [...this.docs.values()].sort((a, b) => a.relPath.localeCompare(b.relPath))) {
       const hay = this.foldedOf(d);
-      let group: SearchGroup | null = null;
+      const found: Found[] = [];
       let score = 0;
       for (const [i, s] of d.sections.entries()) {
-        const counts = terms.map((t) => occurrences(hay[i]!, t).length);
+        const counts = terms.map((t) => matchesOf(hay[i]!, t).length);
         if (counts.some((c) => c === 0)) continue;
         result.total++;
-        if (kept >= limit) {
-          result.truncated = true;
-          continue;
-        }
-        kept++;
         const count = counts.reduce((a, b) => a + b, 0);
         const titleMarks = markRanges(s.title, terms);
         score += count + (titleMarks.length ? 5 : 0);
-        group ??= { document: summary(d), count: 0, hits: [] };
-        group.count += count;
+        found.push({ s, count, tier: matchTier(hay[i]!, terms), titleMarks });
+      }
+      if (!found.length) continue;
+      found.sort((a, b) => a.tier - b.tier || a.s.index - b.s.index);
+      docs.push({ d, found, score });
+    }
+    const best = (x: (typeof docs)[number]) => x.found[0]!.tier;
+    const atBest = (x: (typeof docs)[number]) => x.found.filter((f) => f.tier === best(x)).length;
+    docs.sort((a, b) => best(a) - best(b) || atBest(b) - atBest(a) || b.score - a.score);
+    let kept = 0;
+    for (const { d, found } of docs) {
+      const group: SearchGroup = { document: summary(d), count: 0, hits: [] };
+      for (const f of found) {
+        if (kept >= limit) {
+          result.truncated = true;
+          break;
+        }
+        kept++;
+        group.count += f.count;
         group.hits.push({
-          sectionIndex: s.index,
-          title: s.title,
-          titleMarks,
-          pageStart: s.pageStart,
-          pageEnd: s.pageEnd,
-          pageLabelStart: s.pageLabelStart,
-          pageLabelEnd: s.pageLabelEnd,
-          count,
-          ...snippetOf(s.text, terms),
+          sectionIndex: f.s.index,
+          title: f.s.title,
+          titleMarks: f.titleMarks,
+          pageStart: f.s.pageStart,
+          pageEnd: f.s.pageEnd,
+          pageLabelStart: f.s.pageLabelStart,
+          pageLabelEnd: f.s.pageLabelEnd,
+          count: f.count,
+          tier: f.tier,
+          ...snippetOf(f.s.text, terms),
         });
       }
-      if (group) scored.push({ group, score });
+      if (group.hits.length) result.groups.push(group);
     }
-    result.groups = scored.sort((a, b) => b.score - a.score).map((x) => x.group);
     return result;
   }
 

@@ -20,12 +20,12 @@
 
     <main class="layout" id="view-search" data-testid="search-view" data-app-view>
       <section class="search" aria-label="Search">
-        <form id="query-form" class="query" autocomplete="off">
+        <form id="query-form" class="query ask-query" autocomplete="off">
           <label class="visually-hidden" for="query">Ask a question about your documents</label>
           <textarea
             id="query"
             data-testid="query"
-            rows="1"
+            rows="3"
             placeholder="Ask a question about your documents"
             spellcheck="false"
           ></textarea>
@@ -41,7 +41,7 @@
             <p class="answer-progress" id="answer-progress" data-testid="answer-progress" hidden></p>
             <div class="answer-text" id="answer-text" data-testid="answer-text"></div>
             <p class="answer-note" id="answer-note" data-testid="answer-note" hidden>
-              <span class="unsupported-mark" aria-hidden="true"></span> marks a sentence that cites no source.
+              * Starred sentences have no supporting passage in the library and may be inaccurate.
             </p>
           </div>
 

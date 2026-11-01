@@ -61,6 +61,13 @@ describe('settings', () => {
     expect(askNoticeFor(tier(16))).toBeNull();
   });
 
+  it('gives the Ask off notice to the 8 GB tier only, whatever the RAM inside a tier', () => {
+    for (const t of presets.tiers) expect(askNoticeFor(t)).toBe(t.chatModel ? null : ASK_OFF_NOTICE);
+    expect(presets.tiers.filter((t) => askNoticeFor(t)).map((t) => t.id)).toEqual(['8gb']);
+    for (const gb of [8, 12, 15]) expect(askNoticeFor(tier(gb))).toBe(ASK_OFF_NOTICE);
+    for (const gb of [16, 24, 32, 64, 128]) expect(askNoticeFor(tier(gb))).toBeNull();
+  });
+
   it('checks a change from a page', () => {
     const models = modelChoices(presets, tier(32));
     expect(checkSettingsChange({ answerScope: 'broad', other: 1 }, models)).toEqual({ answerScope: 'broad' });

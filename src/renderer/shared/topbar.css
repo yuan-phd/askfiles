@@ -26,7 +26,8 @@ body {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-2) var(--space-5);
+  /* The left inset is the Browse sidebar's, so the Ask and Browse switch lines up with its entries. */
+  padding: var(--space-2) var(--space-5) var(--space-2) var(--space-3);
   background: var(--bg);
   border-bottom: 1px solid var(--border);
   font-size: 0.875rem;
@@ -48,7 +49,25 @@ body {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  flex: 1;
+  flex: 0 1 auto;
+  /* Everything from the library on sits at the right; Add keeps a clear gap from it. */
+  margin-left: auto;
+}
+
+.topbar-add {
+  flex: none;
+  margin-left: var(--space-5);
+}
+
+/* An add result shows just left of the library, which then needs no margin of its own. */
+.add-result:not([hidden]) + .topbar-library {
+  margin-left: 0;
+}
+
+/* The library menu opens from the right edge of its button, inside the window. */
+.library-menu {
+  left: auto;
+  right: 0;
 }
 
 .library-switcher {
@@ -145,7 +164,7 @@ body {
 }
 
 .add-result {
-  margin: 0;
+  margin: 0 0 0 auto;
   max-width: 28rem;
   overflow: hidden;
   text-overflow: ellipsis;

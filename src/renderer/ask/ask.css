@@ -182,6 +182,9 @@ h2 {
 /* Layout */
 
 .layout {
+  /* The page body is a flex column; without a width the auto margins shrink the grid to its
+     content and the question column with it. */
+  width: 100%;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 16rem;
   gap: var(--space-7);
@@ -252,6 +255,22 @@ h2 {
 .query button:disabled {
   opacity: 0.55;
   cursor: default;
+}
+
+/* The Ask question box: the full width of its column, three lines tall, the button at its
+   bottom right. Find keeps the one-line form above. */
+.ask-query {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.ask-query textarea {
+  width: 100%;
+  min-height: calc(3 * 1.5em + 2 * var(--space-2));
+}
+
+.ask-query button {
+  align-self: flex-end;
 }
 
 .hint {
@@ -540,13 +559,8 @@ span.cite {
 }
 
 .unsupported-mark {
-  display: inline-block;
-  width: 0.5em;
-  height: 0.5em;
-  margin-left: 0.3em;
-  border: 1px solid var(--text-muted);
-  border-radius: 50%;
-  vertical-align: middle;
+  margin-left: 0.1em;
+  font-weight: 600;
 }
 
 .answer-note {
