@@ -22,9 +22,17 @@ function run(env) {
 
 describe('build.sh preflight', () => {
   it('rejects an unknown PACKAGE_TARGET', () => {
+    const result = run({ PACKAGE_TARGET: 'win-arm64' });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("unknown PACKAGE_TARGET 'win-arm64'");
+    expect(result.stdout).not.toContain('1/8');
+  });
+
+  // CI runs this on Linux and the owner on the Mac; the Windows runner never runs the unit tests.
+  it.skipIf(process.platform === 'win32')('refuses win-x64 anywhere but Windows', () => {
     const result = run({ PACKAGE_TARGET: 'win-x64' });
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("unknown PACKAGE_TARGET 'win-x64'");
+    expect(result.stderr).toContain('PACKAGE_TARGET=win-x64 builds on Windows only');
     expect(result.stdout).not.toContain('1/8');
   });
 

@@ -1,0 +1,208 @@
+# Builds the Windows x64 installer and portable zip on a Windows runner and smoke tests the
+# installer (docs/plan.md phase 5, docs/windows.md). Unsigned; needs no secrets, so forks work the
+# same. The unit tests and lint run in the test job of .github/workflows/mac.yml (Linux).
+name: windows
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # The same Ollama release as the Mac build (mac.yml, docs/packaging.md), published 2026-10-12.
+  # Checksum of ollama-windows-amd64.zip from the release's asset digest; change both together.
+  OLLAMA_VERSION: v0.40.4
+  OLLAMA_WINDOWS_SHA256: 7485a1172f8527db4342a63521b9342fc466185ff0855da378cc864ecf6354cf
+  # GPU runtimes kept from the package (scripts/lib/ollama-runtimes.mjs): CUDA 12 only. ROCm is a
+  # separate download AskFiles never fetches; cuda_v13 and vulkan are removed (docs/windows.md).
+  OLLAMA_WINDOWS_KEEP: cuda_v12
+  SMOKE_CHAT_MODEL: qwen3:0.6b
+  SMOKE_EMBED_MODEL: all-minilm:latest
+
+jobs:
+  package:
+    runs-on: windows-latest
+    # A cold run installs three yarn trees and downloads Ollama (1.4 GB); warm runs reuse caches.
+    timeout-minutes: 75
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # The patches in patches/ are LF unified diffs against LF files; a CRLF checkout breaks them.
+      - name: Check out with LF line endings
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install yarn classic for the upstream packages
+        run: npm install -g yarn@1.22.22
+      # npm runs package scripts with cmd.exe on Windows; package:win uses POSIX syntax.
+      - name: Run npm scripts with Git Bash
+        run: npm config set script-shell "C:\\Program Files\\Git\\bin\\bash.exe"
+
+      - name: Cache root node_modules
+        id: root-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-win32-x64-node22-${{ hashFiles('package-lock.json') }}
+      - name: npm ci
+        if: steps.root-modules.outputs.cache-hit != 'true'
+        run: npm ci
+
+      # As in mac.yml: the build stamps decide whether a restored tree is reused.
+      - name: Cache the frontend build
+        id: frontend-dist
+        uses: actions/cache@v4
+        with:
+          path: upstream/frontend/dist
+          key: frontend-dist-v2-win32-${{ hashFiles('upstream/frontend/**', 'patches/**') }}
+      - name: Cache the pruned server and collector node_modules
+        id: upstream-modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            upstream/server/node_modules
+            upstream/collector/node_modules
+          key: upstream-modules-win32-x64-node22-${{ hashFiles('upstream/server/package.json', 'upstream/server/yarn.lock', 'upstream/server/prisma/**', 'upstream/collector/package.json', 'upstream/collector/yarn.lock', 'patches/**', 'scripts/build.sh', 'scripts/prune.mjs', 'scripts/lib/prisma-engines.mjs', 'scripts/lib/load-graph.mjs') }}
+          restore-keys: upstream-modules-win32-x64-node22-
+      - name: Locate the yarn cache
+        id: yarn-cache
+        if: steps.frontend-dist.outputs.cache-hit != 'true' || steps.upstream-modules.outputs.cache-hit != 'true'
+        run: echo "dir=$(yarn cache dir)" >> "$GITHUB_OUTPUT"
+      - name: Cache yarn downloads for upstream
+        if: steps.frontend-dist.outputs.cache-hit != 'true' || steps.upstream-modules.outputs.cache-hit != 'true'
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.yarn-cache.outputs.dir }}
+          key: yarn-win32-x64-${{ hashFiles('upstream/server/yarn.lock', 'upstream/collector/yarn.lock', 'upstream/frontend/yarn.lock') }}
+      - name: Cache Electron downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/AppData/Local/electron/Cache
+            ~/AppData/Local/electron-builder/Cache
+          key: electron-win32-x64-${{ hashFiles('package-lock.json') }}
+
+      # The trimmed folder is cached, not the 1.4 GB archive; the key names what was kept.
+      - name: Cache the trimmed Ollama package
+        id: ollama-cache
+        uses: actions/cache@v4
+        with:
+          path: resources/ollama
+          key: ollama-windows-${{ env.OLLAMA_VERSION }}-${{ env.OLLAMA_WINDOWS_SHA256 }}-${{ env.OLLAMA_WINDOWS_KEEP }}-${{ hashFiles('scripts/lib/ollama-runtimes.mjs') }}
+      - name: Download, verify and trim Ollama into resources/ollama
+        if: steps.ollama-cache.outputs.cache-hit != 'true'
+        run: |
+          zip="$RUNNER_TEMP/ollama-windows-amd64.zip"
+          curl -fsSL --retry 3 -o "$zip" \
+            "https://github.com/ollama/ollama/releases/download/$OLLAMA_VERSION/ollama-windows-amd64.zip"
+          echo "$OLLAMA_WINDOWS_SHA256  $zip" | sha256sum -c -
+          rm -rf resources/ollama && mkdir -p resources/ollama
+          7z x -y -bd -oresources/ollama "$zip" > /dev/null
+          rm -f "$zip"
+          node scripts/lib/ollama-runtimes.mjs resources/ollama --keep "$OLLAMA_WINDOWS_KEEP"
+      - name: Show the Ollama package
+        run: |
+          resources/ollama/ollama.exe --version || true
+          ls resources/ollama/lib/ollama
+          du -sh resources/ollama resources/ollama/lib/ollama/*/
+
+      # tsc, scripts/build.sh with PACKAGE_TARGET=win-x64, THIRD-PARTY-NOTICES from the pruned win32
+      # trees and its test, then electron-builder for the NSIS installer and the zip (package.json).
+      - name: Build and package
+        run: bash .github/scripts/annotate-run.sh "Build and package" npm run package:win
+        env:
+          # @vscode/ripgrep looks up rg.exe through api.github.com in postinstall; the automatic
+          # read-only job token avoids the anonymous rate limit (as in mac.yml).
+          GITHUB_TOKEN: ${{ github.token }}
+
+      # Native module prebuilds, PE machines and the installed path length (docs/windows.md).
+      - name: Check the unpacked app
+        run: bash .github/scripts/annotate-run.sh "Package check" node scripts/check-windows-package.mjs release/win-unpacked | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Measure the installer, the zip and the app
+        run: |
+          ls -l release/*.exe release/*.zip
+          du -sk release/win-unpacked release/win-unpacked/resources/*
+          {
+            echo '## Sizes'
+            echo
+            echo '| File | Bytes |'
+            echo '| --- | --- |'
+            for f in release/*.exe release/*.zip; do echo "| $(basename "$f") | $(stat -c %s "$f") |"; done
+            echo "| win-unpacked (KB) | $(du -sk release/win-unpacked | cut -f1) |"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the regenerated THIRD-PARTY-NOTICES
+        uses: actions/upload-artifact@v4
+        with:
+          name: third-party-notices-windows-${{ github.sha }}
+          path: THIRD-PARTY-NOTICES
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload the installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: askfiles-windows-installer-${{ github.sha }}
+          path: release/*-setup.exe
+          if-no-files-found: error
+          retention-days: 14
+          # Already compressed.
+          compression-level: 0
+      - name: Upload the portable zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: askfiles-windows-portable-${{ github.sha }}
+          path: release/*-portable.zip
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+  smoke:
+    needs: package
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      # For scripts/smoke-windows.mjs, the handbook PDF and the smoke preset only; nothing is built here.
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: askfiles-windows-installer-${{ github.sha }}
+          path: ${{ runner.temp }}/installer
+      - name: Cache the test models
+        uses: actions/cache@v4
+        with:
+          path: ~/AppData/Local/AskFiles/ollama
+          key: ollama-models-windows-${{ env.SMOKE_CHAT_MODEL }}-${{ env.SMOKE_EMBED_MODEL }}-v1
+      - name: Smoke test (silent install, first run, pipeline answer, quit)
+        shell: bash
+        run: |
+          setup=$(cygpath -w "$(ls "$(cygpath -u "$RUNNER_TEMP")"/installer/*-setup.exe | head -n 1)")
+          bash .github/scripts/annotate-run.sh "Smoke test" node scripts/smoke-windows.mjs "$setup" "$RUNNER_TEMP/smoke"
+      # upload-artifact needs one root for all paths, and the logs are on C: while the temp folder
+      # is on D:, so the logs are copied next to the smoke output first.
+      - name: Collect the app logs
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/smoke"
+          cp -R "$LOCALAPPDATA/AskFiles/logs" "$RUNNER_TEMP/smoke/logs" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: askfiles-windows-smoke-${{ github.sha }}
+          path: ${{ runner.temp }}/smoke
+          if-no-files-found: warn
+          retention-days: 14

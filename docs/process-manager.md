@@ -1,6 +1,6 @@
 # Process manager
 
-src/main/process-manager starts, watches and stops the three local processes: Ollama, the AnythingLLM collector and the AnythingLLM server. It contains no platform branches; the caller builds a config object with every path, signal and directory.
+src/main/process-manager starts, watches and stops the three local processes: Ollama, the AnythingLLM collector and the AnythingLLM server. It contains no platform branches; the caller builds a config object with every path, signal, kill command and directory.
 
 ## Startup and shutdown
 
@@ -18,7 +18,9 @@ Each step has its own timeout. A timeout, a child exiting before it is healthy, 
 
 stop() handles server, collector, Ollama in that order: term signal, wait up to stopTimeoutMs (5 s), then kill signal. With killProcessGroup the signals go to the whole process group, and after the leader exits the kill signal goes to the group once more, so helpers such as the ollama runner do not survive.
 
-When the parent receives SIGINT or SIGTERM (configurable), the manager runs stop() and then re-raises the signal. When the parent exits, an exit handler sends the kill signal to every child; it cannot wait, so it does not try the term signal first. A SIGKILL of the parent cannot be handled; see Open points.
+With treeKill (the Windows configuration) stop() sends no signal. Windows has no term signal to ask first, and Node's kill() there is TerminateProcess on the child alone, which would leave ollama.exe's runners behind. The manager runs the treeKill command instead (taskkill /PID <pid> /T /F: the child and every process it started), waits up to stopTimeoutMs for the exit, and only if the child is still there sends the kill signal as a fallback, logging both. A migrate step cut off by its timeout is stopped the same way.
+
+When the parent receives SIGINT or SIGTERM (configurable), the manager runs stop() and then re-raises the signal. When the parent exits, an exit handler sends the kill signal to every child (with treeKill it runs the tree kill synchronously for each); it cannot wait, so it does not try the term signal first. A SIGKILL of the parent cannot be handled; see Open points.
 
 ## States
 
@@ -92,6 +94,7 @@ One file per process in logDir: ollama.log, collector.log, migrate.log, server.l
 | ollama, collector, migrate, server | required | { command, args, cwd, env? } for each step |
 | signals | { term: SIGTERM, kill: SIGKILL } | Signal names |
 | killProcessGroup | false | Spawn each child as a process group leader and signal the group (POSIX only) |
+| treeKill | none | { command, args } run to stop a child instead of signals, `{pid}` in args replaced by its pid; the Windows app passes taskkill.exe /PID {pid} /T /F. Not combined with killProcessGroup |
 | timeoutsMs | ollama 30 s, collector 60 s, migrate 120 s, server 120 s | Per step |
 | stopTimeoutMs | 5000 | Wait between term and kill signal |
 | restart | delays 1, 2, 4, 8, 16 s; maxAttempts 5; window 10 min | Crash restart policy |
@@ -110,7 +113,18 @@ src/main/backend-config.ts builds it from process.resourcesPath, app.getPath('us
 | migrate | Contents/MacOS/AskFiles Resources/server/node_modules/prisma/build/index.js migrate deploy | Resources/server |
 | server | Contents/MacOS/AskFiles Resources/server/index.js, ELECTRON_RUN_AS_NODE=1 | Resources/server |
 
-Signals SIGTERM and SIGKILL with killProcessGroup. Not verified on a Mac yet: the first run is the CI smoke job (.github/workflows/mac.yml) or a LOCAL package. Windows (phase 5) will need a different kill strategy (taskkill /T /F) instead of signals and process groups; that is a change in the caller's config plus a kill function hook, not a platform branch inside the manager.
+Signals SIGTERM and SIGKILL with killProcessGroup. Not verified on a Mac yet: the first run is the CI smoke job (.github/workflows/mac.yml) or a LOCAL package.
+
+## Building the config in the packaged Windows app
+
+The same function with platform win32 (process.platform, injected so tests build both configurations anywhere). Paths use Windows separators; resources is the folder next to AskFiles.exe; data and logs are %LOCALAPPDATA%\AskFiles and %LOCALAPPDATA%\AskFiles\logs (src/main/platform.ts, set in index.ts before anything reads them):
+
+| Process | Command | cwd |
+| --- | --- | --- |
+| ollama | resources\ollama\ollama.exe serve, OLLAMA_MODELS=%LOCALAPPDATA%\AskFiles\ollama | %LOCALAPPDATA%\AskFiles |
+| collector, migrate, server | AskFiles.exe with ELECTRON_RUN_AS_NODE=1, as on the Mac | resources\collector, resources\server |
+
+No killProcessGroup; treeKill is %SystemRoot%\System32\taskkill.exe /PID {pid} /T /F. The host stays 127.0.0.1, so Windows Firewall never asks on first launch. DATABASE_URL carries the Windows path with forward slashes (file:C:/Users/...). The unit tests cover this path with fake processes and a fake taskkill (__fixtures__/fake-taskkill.mjs, which finds the descendants with ps first, as taskkill /T does); the real taskkill runs in the Windows smoke job (.github/workflows/windows.yml), which checks that no process from the install folder is left after quit.
 
 ## Open points
 

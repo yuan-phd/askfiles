@@ -2,21 +2,23 @@
 // installed them; electron-builder then copies these folders into the app as they are. Never touches
 // tracked files under upstream/. docs/bundle-report.md records what each step saves.
 //
-// Usage: node scripts/prune.mjs <upstreamDir> --target <darwin-arm64|linux-x64> [--steps a,b] [--dry-run]
+// Usage: node scripts/prune.mjs <upstreamDir> --target <darwin-arm64|linux-x64|win32-x64> [--steps a,b] [--dry-run]
 // Steps, in this order by default:
-//   platform  binaries the target cannot load, found by file header (ELF, PE, Mach-O and its CPU type)
+//   platform  binaries the target cannot load, found by file header (ELF, PE and Mach-O, with the CPU type)
 //   dev       source maps, typings, @types packages, readme and changelog files, test and example folders
 //   unused    packages AskFiles never reaches (UNUSED below) and the packages only they depend on
 //   providers vector database clients and model provider SDKs for providers AskFiles never selects
 //             (PROVIDERS below), with the same guards as unused
+//   longpaths win32-x64 only: files whose installed path would pass MAX_PATH, when they are empty
+//             module stubs nothing in their package refers to (see pruneLongPaths)
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { loadGraph } from './lib/load-graph.mjs';
+import { loadGraph, relPosix } from './lib/load-graph.mjs';
 
 export const TREES = ['server', 'collector'];
-export const TARGETS = ['darwin-arm64', 'linux-x64'];
-export const STEPS = ['platform', 'dev', 'unused', 'providers'];
+export const TARGETS = ['darwin-arm64', 'linux-x64', 'win32-x64'];
+export const STEPS = ['platform', 'dev', 'unused', 'providers', 'longpaths'];
 
 // ---- platform -------------------------------------------------------------------------------
 
@@ -25,6 +27,11 @@ const CPU_ARM64 = 0x0100000c;
 const CPU_X86_64 = 0x01000007;
 const MH_EXECUTE = 2;
 const EM_X86_64 = 0x3e;
+const PE_AMD64 = 0x8664;
+const PE_I386 = 0x14c;
+const PE_DLL = 0x2000;
+/** Enough of a file for the PE header, which sits at the offset stored at 0x3c (usually below 0x200). */
+export const HEADER_BYTES = 1024;
 
 /** Reads enough of a file header to tell ELF, PE and Mach-O apart. Null for anything else. */
 export function binaryKind(buf) {
@@ -46,7 +53,15 @@ export function binaryKind(buf) {
     const count = buf.readUInt32BE(4);
     return count > 0 && count < 20 ? { format: 'macho-fat' } : null;
   }
-  if (buf[0] === 0x4d && buf[1] === 0x5a) return { format: 'pe' };
+  if (buf[0] === 0x4d && buf[1] === 0x5a) {
+    // Machine and characteristics from the COFF header after the PE signature; without them (a
+    // short read, or a text file that starts with MZ) the file stays a PE of unknown machine.
+    const at = buf.length >= 0x40 ? buf.readUInt32LE(0x3c) : -1;
+    if (at > 0 && at + 24 <= buf.length && buf.subarray(at, at + 4).toString('hex') === '50450000') {
+      return { format: 'pe', machine: buf.readUInt16LE(at + 4), dll: (buf.readUInt16LE(at + 22) & PE_DLL) !== 0 };
+    }
+    return { format: 'pe' };
+  }
   return null;
 }
 
@@ -66,14 +81,21 @@ export function foreignBinary(kind, target) {
     if (kind.format === 'elf') return kind.machine !== EM_X86_64;
     return true;
   }
+  if (target === 'win32-x64') {
+    // Like Rosetta on the Mac, WOW64 runs a 32-bit x86 executable but never loads a 32-bit DLL
+    // (every .node file is a DLL) into the 64-bit process; arm64 builds are of no use either.
+    if (kind.format !== 'pe') return true;
+    if (kind.machine === undefined || kind.machine === PE_AMD64) return false;
+    return !(kind.machine === PE_I386 && !kind.dll);
+  }
   throw new Error(`unknown target ${target}`);
 }
 
 function readHeader(file) {
   const fd = fs.openSync(file, 'r');
   try {
-    const buf = Buffer.alloc(20);
-    const n = fs.readSync(fd, buf, 0, 20, 0);
+    const buf = Buffer.alloc(HEADER_BYTES);
+    const n = fs.readSync(fd, buf, 0, HEADER_BYTES, 0);
     return buf.subarray(0, n);
   } finally {
     fs.closeSync(fd);
@@ -335,7 +357,7 @@ export function brokenDependencies(treeDir, gone) {
     for (const name of Object.keys(pkg.dependencies ?? {})) {
       const found = resolvePackage(name, dir, treeDir);
       // A dependency already missing before this step (an @types package the dev step removed) is not this step's doing.
-      if (found && gone.has(found)) broken.push(`${path.relative(treeDir, dir)} needs ${name}`);
+      if (found && gone.has(found)) broken.push(`${relPosix(treeDir, dir)} needs ${name}`);
     }
   }
   return broken;
@@ -360,7 +382,7 @@ export function requireSites(treeDir, names) {
       const abs = path.join(dir, entry.name);
       if (entry.isDirectory()) visit(abs);
       else if (/\.(js|mjs|cjs)$/.test(entry.name)) {
-        scanRequires(abs, names, (name) => sites.get(name).push(path.relative(treeDir, abs)));
+        scanRequires(abs, names, (name) => sites.get(name).push(relPosix(treeDir, abs)));
       }
     }
   };
@@ -380,7 +402,7 @@ export function undeclaredUses(treeDir, gone, goneNames) {
       if (file.includes(`${path.sep}node_modules${path.sep}`, dir.length) || !/\.(js|mjs|cjs)$/.test(name)) return;
       scanRequires(file, goneNames, (req) => {
         const found = resolvePackage(req, path.dirname(file), treeDir);
-        if (!found || gone.has(found)) hits.push(`${path.relative(treeDir, file)} requires ${req}`);
+        if (!found || gone.has(found)) hits.push(`${relPosix(treeDir, file)} requires ${req}`);
       });
     });
   }
@@ -462,6 +484,72 @@ function removeDanglingBins(nodeModules) {
   }
 }
 
+// ---- longpaths ------------------------------------------------------------------------------
+
+/**
+ * The deepest install folder the Windows build expects, up to resources\: the per-user NSIS folder
+ * under a 20 character user name, the longest a local account can have.
+ */
+export const WINDOWS_INSTALL_PREFIX = 'C:\\Users\\' + 'u'.repeat(20) + '\\AppData\\Local\\Programs\\AskFiles\\';
+export const WINDOWS_MAX_PATH = 260;
+
+// A compiled TypeScript module with nothing in it but the CommonJS marker and comments.
+const EMPTY_MODULE =
+  /^\s*(?:"use strict";|'use strict';)?\s*(?:\/\*[\s\S]*?\*\/\s*|\/\/[^\n]*\n\s*)*Object\.defineProperty\(exports, "__esModule", \{ value: true \}\);\s*(?:\/\/[^\n]*\s*)*$/;
+
+function packageRootOf(file, nodeModules) {
+  let dir = path.dirname(file);
+  while (dir.startsWith(nodeModules) && dir !== nodeModules) {
+    if (isPackageRoot(dir)) return dir;
+    dir = path.dirname(dir);
+  }
+  return null;
+}
+
+/**
+ * Some generated SDKs (elevenlabs 0.5.0, a text-to-speech client the server loads at start) ship
+ * request type files named after whole API routes, over 270 characters once installed. Installers,
+ * Explorer and tools without long path support fail on them. Such a file is removed only when it
+ * is an empty module (the compiled form of a TypeScript file holding only types) and no other file
+ * of its package names it in a module path, so no require can reach it. Anything else stays and the
+ * package check (scripts/check-windows-package.mjs) reports it.
+ */
+export function pruneLongPaths(treeDir, dryRun) {
+  const nodeModules = path.join(treeDir, 'node_modules');
+  const prefix = WINDOWS_INSTALL_PREFIX + 'resources\\' + path.basename(treeDir) + '\\';
+  const long = [];
+  walkFiles(nodeModules, (file) => {
+    if (prefix.length + path.relative(treeDir, file).length >= WINDOWS_MAX_PATH) long.push(file);
+  });
+  const removed = [];
+  const textOf = new Map();
+  const packageText = (root) => {
+    if (!textOf.has(root)) {
+      const parts = [];
+      walkFiles(root, (f) => {
+        if (/\.(c?js|mjs|json)$/.test(f) && fs.statSync(f).size < 1_000_000)
+          parts.push([f, fs.readFileSync(f, 'utf8')]);
+      });
+      textOf.set(root, parts);
+    }
+    return textOf.get(root);
+  };
+  for (const file of long) {
+    if (!/\.js$/.test(file) || fs.statSync(file).size > 4096) continue;
+    if (!EMPTY_MODULE.test(fs.readFileSync(file, 'utf8'))) continue;
+    const root = packageRootOf(file, nodeModules);
+    if (!root) continue;
+    // A module path ending in the file's name, as require, import or export-from write it; the
+    // name alone also appears in JSDoc type comments (@param {Pkg.Name}), which load nothing.
+    const stem = path.basename(file, '.js').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const asPath = new RegExp(`['"\`][^'"\`\\n]*/${stem}(?:\\.js)?['"\`]`);
+    if (packageText(root).some(([f, text]) => f !== file && asPath.test(text))) continue;
+    removed.push({ path: file, bytes: fs.statSync(file).size, why: 'empty module with a path over MAX_PATH' });
+    if (!dryRun) fs.rmSync(file);
+  }
+  return removed;
+}
+
 // ---- command line ---------------------------------------------------------------------------
 
 const mb = (bytes) => `${(bytes / 1048576).toFixed(1)} MB`;
@@ -474,12 +562,15 @@ export function prune({ upstreamDir, target, steps = STEPS, dryRun = false, log 
     for (const tree of TREES) {
       const treeDir = path.join(upstreamDir, tree);
       const nm = path.join(treeDir, 'node_modules');
+      if (step === 'longpaths' && target !== 'win32-x64') continue;
       const removed =
         step === 'platform'
           ? prunePlatform(nm, target, dryRun)
           : step === 'dev'
             ? pruneDev(nm, dryRun)
-            : pruneUnused(treeDir, (step === 'unused' ? UNUSED : PROVIDERS)[tree], dryRun, log);
+            : step === 'longpaths'
+              ? pruneLongPaths(treeDir, dryRun)
+              : pruneUnused(treeDir, (step === 'unused' ? UNUSED : PROVIDERS)[tree], dryRun, log);
       const bytes = removed.reduce((s, r) => s + r.bytes, 0);
       summary.push({ step, tree, count: removed.length, bytes });
       log(

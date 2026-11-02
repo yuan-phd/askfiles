@@ -62,6 +62,15 @@ export function requiresIn(source) {
   return found;
 }
 
+/**
+ * A path relative to the tree with forward slashes on every platform: the allow lists in
+ * scripts/prune.mjs (UNUSED, OPTIONAL_REQUIRES) name files that way, and on Windows
+ * path.relative gives backslashes.
+ */
+export function relPosix(from, to) {
+  return path.relative(from, to).split(path.sep).join('/');
+}
+
 export const packageOf = (spec) => (spec.startsWith('@') ? spec.split('/').slice(0, 2).join('/') : spec.split('/')[0]);
 
 /**
@@ -94,7 +103,7 @@ export function loadGraph(treeDirIn) {
       if (r.spec.startsWith('.') || r.spec.startsWith('node:')) continue;
       const name = packageOf(r.spec);
       if (!sites.has(name)) sites.set(name, []);
-      sites.get(name).push({ file: path.relative(treeDir, file), lazy: r.lazy, startup: startup.has(file) });
+      sites.get(name).push({ file: relPosix(treeDir, file), lazy: r.lazy, startup: startup.has(file) });
     }
   }
   return { startup, sites };

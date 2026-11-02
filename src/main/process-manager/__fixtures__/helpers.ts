@@ -3,9 +3,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { CommandSpec, ProcessManagerConfig } from '../config.js';
+import type { CommandSpec, ProcessManagerConfig, TreeKillSpec } from '../config.js';
 
 export const FAKE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fake-child.mjs');
+export const FAKE_TASKKILL = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fake-taskkill.mjs');
 
 export function tmpDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'askfiles-pm-'));
@@ -36,12 +37,27 @@ export function fakeConfig(dir: string, over: Partial<ProcessManagerConfig> = {}
   };
 }
 
+/** The Windows stop path with fake-taskkill.mjs in place of taskkill.exe. */
+export function fakeTreeKill(dir: string, ...extra: string[]): TreeKillSpec {
+  return {
+    command: process.execPath,
+    args: [FAKE_TASKKILL, '--record', path.join(dir, 'record.jsonl'), ...extra, '/PID', '{pid}', '/T', '/F'],
+  };
+}
+
+/** fakeConfig the way the Windows app sets it up: no process groups, a tree kill instead. */
+export function fakeWindowsConfig(dir: string, over: Partial<ProcessManagerConfig> = {}): ProcessManagerConfig {
+  return fakeConfig(dir, { killProcessGroup: false, treeKill: fakeTreeKill(dir), ...over });
+}
+
 export interface RecordLine {
   name: string;
   event: string;
   pid: number;
   t: number;
   grandchild?: number;
+  args?: string[];
+  killed?: number[];
   env?: Record<string, string | undefined>;
 }
 

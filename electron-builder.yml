@@ -1,6 +1,8 @@
-# Packaging for macOS arm64. Run only on a Mac: npm run package:mac (see docs/packaging.md).
-# The upstream tree must be prepared first by scripts/build.sh with PACKAGE_TARGET=mac-arm64,
-# which package:mac does.
+# Packaging for macOS arm64 and Windows x64. macOS only on a Mac: npm run package:mac (see
+# docs/packaging.md). Windows only on Windows, the GitHub windows-latest runner: npm run package:win
+# (docs/windows.md); native modules need Windows binaries, so nothing is cross-built. The upstream
+# tree must be prepared first by scripts/build.sh with PACKAGE_TARGET=mac-arm64 or win-x64, which
+# the package scripts do.
 appId: io.askfiles.desktop
 productName: AskFiles
 copyright: Copyright AskFiles contributors
@@ -77,9 +79,10 @@ extraResources:
     to: server/storage/assets
   - from: upstream/LICENSE
     to: licenses/anything-llm-LICENSE
-  # The Ollama macOS release, extracted into resources/ollama by hand (not committed; see
-  # docs/packaging.md). Kept whole: the binary loads its libraries from its own folder and the
-  # license files must ship with it (analysis Q12).
+  # The Ollama release for the platform, extracted into resources/ollama (not committed; see
+  # docs/packaging.md and docs/windows.md). Kept whole on the Mac: the binary loads its libraries
+  # from its own folder and the license files must ship with it (analysis Q12). On Windows
+  # scripts/lib/ollama-runtimes.mjs first removes the GPU runtimes other than CUDA 12.
   - from: resources/ollama
     to: ollama
 
@@ -96,3 +99,29 @@ mac:
 
 dmg:
   artifactName: AskFiles-${version}-arm64.dmg
+
+# Windows x64, unsigned (docs/windows.md, SmartScreen). The shell stays in app.asar, which keeps its
+# paths short under the 260 character limit; server, collector and ollama are plain folders in
+# resources, as on the Mac. The workflow checks the longest installed path.
+win:
+  target:
+    - target: nsis
+      arch: x64
+    - target: zip
+      arch: x64
+  # No certificate: electron-builder skips signing. rcedit still writes the version and name into
+  # AskFiles.exe.
+  signAndEditExecutable: true
+  # The portable zip; nsis.artifactName below names the installer. Unpack anywhere and run
+  # AskFiles.exe; it keeps its data in %LOCALAPPDATA%\AskFiles like the installed app.
+  artifactName: AskFiles-${version}-x64-portable.${ext}
+
+# One-click per-user install into %LOCALAPPDATA%\Programs\AskFiles: no administrator prompt and
+# no UAC. /S installs silently (the smoke job). Data stays in %LOCALAPPDATA%\AskFiles and survives
+# an uninstall unless the user removes it (docs/windows.md).
+nsis:
+  oneClick: true
+  perMachine: false
+  deleteAppDataOnUninstall: false
+  artifactName: AskFiles-${version}-x64-setup.${ext}
+  shortcutName: AskFiles
