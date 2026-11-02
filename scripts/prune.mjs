@@ -12,7 +12,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { loadGraph } from './lib/load-graph.mjs';
+import { loadGraph, relPosix } from './lib/load-graph.mjs';
 
 export const TREES = ['server', 'collector'];
 export const TARGETS = ['darwin-arm64', 'linux-x64', 'win32-x64'];
@@ -355,7 +355,7 @@ export function brokenDependencies(treeDir, gone) {
     for (const name of Object.keys(pkg.dependencies ?? {})) {
       const found = resolvePackage(name, dir, treeDir);
       // A dependency already missing before this step (an @types package the dev step removed) is not this step's doing.
-      if (found && gone.has(found)) broken.push(`${path.relative(treeDir, dir)} needs ${name}`);
+      if (found && gone.has(found)) broken.push(`${relPosix(treeDir, dir)} needs ${name}`);
     }
   }
   return broken;
@@ -380,7 +380,7 @@ export function requireSites(treeDir, names) {
       const abs = path.join(dir, entry.name);
       if (entry.isDirectory()) visit(abs);
       else if (/\.(js|mjs|cjs)$/.test(entry.name)) {
-        scanRequires(abs, names, (name) => sites.get(name).push(path.relative(treeDir, abs)));
+        scanRequires(abs, names, (name) => sites.get(name).push(relPosix(treeDir, abs)));
       }
     }
   };
@@ -400,7 +400,7 @@ export function undeclaredUses(treeDir, gone, goneNames) {
       if (file.includes(`${path.sep}node_modules${path.sep}`, dir.length) || !/\.(js|mjs|cjs)$/.test(name)) return;
       scanRequires(file, goneNames, (req) => {
         const found = resolvePackage(req, path.dirname(file), treeDir);
-        if (!found || gone.has(found)) hits.push(`${path.relative(treeDir, file)} requires ${req}`);
+        if (!found || gone.has(found)) hits.push(`${relPosix(treeDir, file)} requires ${req}`);
       });
     });
   }
