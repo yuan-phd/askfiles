@@ -9,6 +9,8 @@
 //   unused    packages AskFiles never reaches (UNUSED below) and the packages only they depend on
 //   providers vector database clients and model provider SDKs for providers AskFiles never selects
 //             (PROVIDERS below), with the same guards as unused
+//   longpaths win32-x64 only: files whose installed path would pass MAX_PATH, when they are empty
+//             module stubs nothing in their package refers to (see pruneLongPaths)
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -16,7 +18,7 @@ import { loadGraph, relPosix } from './lib/load-graph.mjs';
 
 export const TREES = ['server', 'collector'];
 export const TARGETS = ['darwin-arm64', 'linux-x64', 'win32-x64'];
-export const STEPS = ['platform', 'dev', 'unused', 'providers'];
+export const STEPS = ['platform', 'dev', 'unused', 'providers', 'longpaths'];
 
 // ---- platform -------------------------------------------------------------------------------
 
@@ -482,6 +484,69 @@ function removeDanglingBins(nodeModules) {
   }
 }
 
+// ---- longpaths ------------------------------------------------------------------------------
+
+/**
+ * The deepest install folder the Windows build expects, up to resources\: the per-user NSIS folder
+ * under a 20 character user name, the longest a local account can have.
+ */
+export const WINDOWS_INSTALL_PREFIX = 'C:\\Users\\' + 'u'.repeat(20) + '\\AppData\\Local\\Programs\\AskFiles\\';
+export const WINDOWS_MAX_PATH = 260;
+
+// A compiled TypeScript module with nothing in it but the CommonJS marker and comments.
+const EMPTY_MODULE =
+  /^\s*(?:"use strict";|'use strict';)?\s*(?:\/\*[\s\S]*?\*\/\s*|\/\/[^\n]*\n\s*)*Object\.defineProperty\(exports, "__esModule", \{ value: true \}\);\s*(?:\/\/[^\n]*\s*)*$/;
+
+function packageRootOf(file, nodeModules) {
+  let dir = path.dirname(file);
+  while (dir.startsWith(nodeModules) && dir !== nodeModules) {
+    if (isPackageRoot(dir)) return dir;
+    dir = path.dirname(dir);
+  }
+  return null;
+}
+
+/**
+ * Some generated SDKs (elevenlabs 0.5.0, a text-to-speech client the server loads at start) ship
+ * request type files named after whole API routes, over 270 characters once installed. Installers,
+ * Explorer and tools without long path support fail on them. Such a file is removed only when it
+ * is an empty module (the compiled form of a TypeScript file holding only types) and no other file
+ * of its package mentions its name, so no require can reach it. Anything else stays and the
+ * package check (scripts/check-windows-package.mjs) reports it.
+ */
+export function pruneLongPaths(treeDir, dryRun) {
+  const nodeModules = path.join(treeDir, 'node_modules');
+  const prefix = WINDOWS_INSTALL_PREFIX + 'resources\\' + path.basename(treeDir) + '\\';
+  const long = [];
+  walkFiles(nodeModules, (file) => {
+    if (prefix.length + path.relative(treeDir, file).length >= WINDOWS_MAX_PATH) long.push(file);
+  });
+  const removed = [];
+  const textOf = new Map();
+  const packageText = (root) => {
+    if (!textOf.has(root)) {
+      const parts = [];
+      walkFiles(root, (f) => {
+        if (/\.(c?js|mjs|json)$/.test(f) && fs.statSync(f).size < 1_000_000)
+          parts.push([f, fs.readFileSync(f, 'utf8')]);
+      });
+      textOf.set(root, parts);
+    }
+    return textOf.get(root);
+  };
+  for (const file of long) {
+    if (!/\.js$/.test(file) || fs.statSync(file).size > 4096) continue;
+    if (!EMPTY_MODULE.test(fs.readFileSync(file, 'utf8'))) continue;
+    const root = packageRootOf(file, nodeModules);
+    if (!root) continue;
+    const stem = path.basename(file, '.js');
+    if (packageText(root).some(([f, text]) => f !== file && text.includes(stem))) continue;
+    removed.push({ path: file, bytes: fs.statSync(file).size, why: 'empty module with a path over MAX_PATH' });
+    if (!dryRun) fs.rmSync(file);
+  }
+  return removed;
+}
+
 // ---- command line ---------------------------------------------------------------------------
 
 const mb = (bytes) => `${(bytes / 1048576).toFixed(1)} MB`;
@@ -494,12 +559,15 @@ export function prune({ upstreamDir, target, steps = STEPS, dryRun = false, log 
     for (const tree of TREES) {
       const treeDir = path.join(upstreamDir, tree);
       const nm = path.join(treeDir, 'node_modules');
+      if (step === 'longpaths' && target !== 'win32-x64') continue;
       const removed =
         step === 'platform'
           ? prunePlatform(nm, target, dryRun)
           : step === 'dev'
             ? pruneDev(nm, dryRun)
-            : pruneUnused(treeDir, (step === 'unused' ? UNUSED : PROVIDERS)[tree], dryRun, log);
+            : step === 'longpaths'
+              ? pruneLongPaths(treeDir, dryRun)
+              : pruneUnused(treeDir, (step === 'unused' ? UNUSED : PROVIDERS)[tree], dryRun, log);
       const bytes = removed.reduce((s, r) => s + r.bytes, 0);
       summary.push({ step, tree, count: removed.length, bytes });
       log(

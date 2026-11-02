@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { binaryKind, HEADER_BYTES } from './prune.mjs';
+import { binaryKind, HEADER_BYTES, WINDOWS_INSTALL_PREFIX, WINDOWS_MAX_PATH } from './prune.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -97,9 +97,9 @@ export const NATIVE_MODULES = [
   },
 ];
 
-/** A user name of 20 characters, the longest Windows lets a local account have. */
-export const INSTALL_PREFIX = 'C:\\Users\\' + 'u'.repeat(20) + '\\AppData\\Local\\Programs\\AskFiles\\';
-export const MAX_PATH = 260;
+/** A user name of 20 characters, the longest Windows lets a local account have (prune.mjs). */
+export const INSTALL_PREFIX = WINDOWS_INSTALL_PREFIX;
+export const MAX_PATH = WINDOWS_MAX_PATH;
 
 function readHeader(file) {
   const fd = fs.openSync(file, 'r');
