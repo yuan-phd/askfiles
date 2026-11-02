@@ -191,12 +191,18 @@ jobs:
         run: |
           setup=$(cygpath -w "$(ls "$(cygpath -u "$RUNNER_TEMP")"/installer/*-setup.exe | head -n 1)")
           bash .github/scripts/annotate-run.sh "Smoke test" node scripts/smoke-windows.mjs "$setup" "$RUNNER_TEMP/smoke"
+      # upload-artifact needs one root for all paths, and the logs are on C: while the temp folder
+      # is on D:, so the logs are copied next to the smoke output first.
+      - name: Collect the app logs
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/smoke"
+          cp -R "$LOCALAPPDATA/AskFiles/logs" "$RUNNER_TEMP/smoke/logs" || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: askfiles-windows-smoke-${{ github.sha }}
-          path: |
-            ${{ runner.temp }}/smoke
-            ~/AppData/Local/AskFiles/logs
+          path: ${{ runner.temp }}/smoke
           if-no-files-found: warn
           retention-days: 14
