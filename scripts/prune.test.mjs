@@ -291,6 +291,11 @@ describe('pruneLongPaths', () => {
       'server/node_modules/elevenlabs/index.js',
       `require("./api/resources/pronunciationDictionary/client/requests/${longName.replace('Body', 'Used')}");`,
     );
+    // Fern's client names the type in JSDoc, which loads nothing.
+    write(
+      'server/node_modules/elevenlabs/api/resources/pronunciationDictionary/client/Client.js',
+      `/** @param {ElevenLabs.${longName}} request */\nmodule.exports = require("./requests");`,
+    );
     const installed = (rel) => WINDOWS_INSTALL_PREFIX.length + 'resources\\'.length + rel.length;
     expect(installed(`${reqDir}/${longName}.js`)).toBeGreaterThan(260);
     const removed = pruneLongPaths(join(root, 'server'), false);

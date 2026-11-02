@@ -511,7 +511,7 @@ function packageRootOf(file, nodeModules) {
  * request type files named after whole API routes, over 270 characters once installed. Installers,
  * Explorer and tools without long path support fail on them. Such a file is removed only when it
  * is an empty module (the compiled form of a TypeScript file holding only types) and no other file
- * of its package mentions its name, so no require can reach it. Anything else stays and the
+ * of its package names it in a module path, so no require can reach it. Anything else stays and the
  * package check (scripts/check-windows-package.mjs) reports it.
  */
 export function pruneLongPaths(treeDir, dryRun) {
@@ -539,8 +539,11 @@ export function pruneLongPaths(treeDir, dryRun) {
     if (!EMPTY_MODULE.test(fs.readFileSync(file, 'utf8'))) continue;
     const root = packageRootOf(file, nodeModules);
     if (!root) continue;
-    const stem = path.basename(file, '.js');
-    if (packageText(root).some(([f, text]) => f !== file && text.includes(stem))) continue;
+    // A module path ending in the file's name, as require, import or export-from write it; the
+    // name alone also appears in JSDoc type comments (@param {Pkg.Name}), which load nothing.
+    const stem = path.basename(file, '.js').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const asPath = new RegExp(`['"\`][^'"\`\\n]*/${stem}(?:\\.js)?['"\`]`);
+    if (packageText(root).some(([f, text]) => f !== file && asPath.test(text))) continue;
     removed.push({ path: file, bytes: fs.statSync(file).size, why: 'empty module with a path over MAX_PATH' });
     if (!dryRun) fs.rmSync(file);
   }
