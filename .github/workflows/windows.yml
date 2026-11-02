@@ -120,7 +120,7 @@ jobs:
       # tsc, scripts/build.sh with PACKAGE_TARGET=win-x64, THIRD-PARTY-NOTICES from the pruned win32
       # trees and its test, then electron-builder for the NSIS installer and the zip (package.json).
       - name: Build and package
-        run: npm run package:win
+        run: bash .github/scripts/annotate-run.sh "Build and package" npm run package:win
         env:
           # @vscode/ripgrep looks up rg.exe through api.github.com in postinstall; the automatic
           # read-only job token avoids the anonymous rate limit (as in mac.yml).
@@ -128,7 +128,7 @@ jobs:
 
       # Native module prebuilds, PE machines and the installed path length (docs/windows.md).
       - name: Check the unpacked app
-        run: node scripts/check-windows-package.mjs release/win-unpacked | tee -a "$GITHUB_STEP_SUMMARY"
+        run: bash .github/scripts/annotate-run.sh "Package check" node scripts/check-windows-package.mjs release/win-unpacked | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Measure the installer, the zip and the app
         run: |
           ls -l release/*.exe release/*.zip
@@ -187,10 +187,10 @@ jobs:
           path: ~/AppData/Local/AskFiles/ollama
           key: ollama-models-windows-${{ env.SMOKE_CHAT_MODEL }}-${{ env.SMOKE_EMBED_MODEL }}-v1
       - name: Smoke test (silent install, first run, pipeline answer, quit)
-        shell: pwsh
+        shell: bash
         run: |
-          $setup = Get-ChildItem "$env:RUNNER_TEMP\installer\*-setup.exe" | Select-Object -First 1
-          node scripts/smoke-windows.mjs $setup.FullName "$env:RUNNER_TEMP\smoke"
+          setup=$(cygpath -w "$(ls "$(cygpath -u "$RUNNER_TEMP")"/installer/*-setup.exe | head -n 1)")
+          bash .github/scripts/annotate-run.sh "Smoke test" node scripts/smoke-windows.mjs "$setup" "$RUNNER_TEMP/smoke"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
