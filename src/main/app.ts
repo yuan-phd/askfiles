@@ -596,16 +596,18 @@ export class AppController implements BridgeHandlers {
   }
 
   /**
-   * Summaries use the Faster tier's model when this Mac has one installed: a one-sentence summary
-   * needs less than an answer, and the smaller model makes it sooner (owner request 2026-11-04).
-   * Never pulled for this; a pinned file that does not match is not used.
+   * With the tier's summariesFasterModel on, summaries use the Faster tier's model when this Mac has
+   * it installed (owner request 2026-11-04). Off on every tier (owner decision 2026-11-04): on the
+   * owner's Mac it was slower than the Ask model. Never pulled for this; a pinned file that does not
+   * match is not used.
    */
   async refreshSummaryModel(): Promise<void> {
     const before = this.fasterForSummaries;
     let next: string | null = null;
     try {
       const machine = this.machinePreset;
-      if (machine?.chatModel && this.presets && this.manager?.status().ports?.ollama) {
+      // Off unless the tier's preset turns it on (summariesFasterModel; off on every tier).
+      if (machine?.chatModel && machine.summariesFasterModel && this.presets && this.manager?.status().ports?.ollama) {
         const tag = modelChoices(this.presets, machine).faster?.model ?? null;
         if (tag && (await this.ollamaClient().has(tag))) {
           const file = this.presets.tiers.find((t) => t.chatModel === tag)?.chatModelFile;

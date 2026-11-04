@@ -62,6 +62,7 @@
         "scopedQuotaV2": true,
         "keywordStemming": false
       },
+      "summariesFasterModel": false,
       "indexing": {
         "structuredTables": true,
         "cjkHeadings": true,
@@ -135,6 +136,7 @@
         "scopedQuotaV2": true,
         "keywordStemming": false
       },
+      "summariesFasterModel": false,
       "indexing": {
         "structuredTables": true,
         "cjkHeadings": true,
@@ -201,6 +203,7 @@
         "scopedQuotaV2": true,
         "keywordStemming": false
       },
+      "summariesFasterModel": false,
       "indexing": {
         "structuredTables": true,
         "cjkHeadings": true,

@@ -79,10 +79,10 @@ export interface DocumentSummaryView {
 
 /**
  * Until a few sections were timed: per section, batched up to 5 to a call. Measured on 2026-11-04
- * on the owner's M1 Max over 20 sections of the Procurement Regulations: 4.1 s with qwen3 14B
- * Q3_K_M (the Faster model summaries use there), 3.6 s with q4_K_M (docs/summaries.md, Batches).
+ * on the owner's M1 Max over 20 sections of the Procurement Regulations: 3.6 s with the Ask model
+ * qwen3 14B q4_K_M, which summaries use (docs/summaries.md, Batches).
  */
-export const DEFAULT_MS_PER_SECTION = 4100;
+export const DEFAULT_MS_PER_SECTION = 3600;
 
 export class SummaryService {
   readonly store: SummaryStore;
