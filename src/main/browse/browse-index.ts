@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FileRecord } from '../watcher/index.js';
+import { detectKind } from '../graph/kinds.js';
 import { buildDocument, documentId, type StoredChunk } from './build.js';
 import { buildIdentities, type FileIdentity } from './identifiers.js';
 import { rankSections, sectionFrequency, type FoldedSection, type RankedSection } from './rank.js';
@@ -30,6 +31,13 @@ export interface BrowseIndexOptions {
 /** Matching sections returned at most per search; more are counted in total only. */
 const SEARCH_LIMIT = 200;
 
+/**
+ * A change to the index: a document built again (sections true when its text was read again, not
+ * only its size or time), a document dropped, or the end of a sync or load.
+ */
+export type BrowseChange =
+  { type: 'update'; id: string; sections: boolean } | { type: 'remove'; id: string } | { type: 'sync' };
+
 /** The file identities (identifiers.ts), beside the document files; load() skips it. */
 const IDENTITIES_FILE = 'identifiers.json';
 
@@ -47,6 +55,7 @@ export class BrowseIndex {
   private identityList: FileIdentity[] | null = null;
   private readonly root: string | undefined;
   private readonly log: (msg: string) => void;
+  private readonly listeners = new Set<(c: BrowseChange) => void>();
 
   constructor(private readonly o: BrowseIndexOptions) {
     this.log = o.log ?? ((msg) => console.log(`[browse] ${msg}`));
@@ -59,6 +68,22 @@ export class BrowseIndex {
         // A folder that is gone still lists what was indexed from it.
       }
       this.root = root;
+    }
+  }
+
+  /** Calls listener after every change; returns the unsubscribe function. A throwing listener is logged. */
+  onChange(listener: (c: BrowseChange) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  private emit(c: BrowseChange): void {
+    for (const l of this.listeners) {
+      try {
+        l(c);
+      } catch (e) {
+        this.log(`change listener failed: ${(e as Error).message}`);
+      }
     }
   }
 
@@ -77,12 +102,17 @@ export class BrowseIndex {
       try {
         const doc = JSON.parse(fs.readFileSync(path.join(this.o.dir, name), 'utf8')) as BrowseDocument;
         // Older versions lack paths, labels or sub-chunks; skipped here, the next sync rebuilds them.
-        if (doc?.version === 3 && typeof doc.id === 'string' && Array.isArray(doc.sections)) this.docs.set(doc.id, doc);
+        if (doc?.version === 3 && typeof doc.id === 'string' && Array.isArray(doc.sections)) {
+          // Stored before kinds existed: detected now and written back, so it happens once.
+          if (!doc.kind) this.store({ ...doc, kind: detectKind(doc) }, { notify: false });
+          else this.docs.set(doc.id, doc);
+        }
       } catch (e) {
         this.log(`skipped ${name}: ${(e as Error).message}`);
       }
     }
     this.log(`loaded ${this.docs.size} documents`);
+    this.emit({ type: 'sync' });
   }
 
   /** Makes the index match the watcher's records: builds what is new or changed, drops the rest. */
@@ -102,6 +132,7 @@ export class BrowseIndex {
     }
     this.log(`sync: ${records.length} files, ${built} built, ${dropped} dropped`);
     this.identities();
+    this.emit({ type: 'sync' });
   }
 
   /**
@@ -120,17 +151,22 @@ export class BrowseIndex {
       old.relPath === relPath
     ) {
       if (old.size !== rec.size || old.mtimeMs !== rec.mtimeMs) {
-        this.store({ ...old, size: rec.size, mtimeMs: rec.mtimeMs });
+        this.store({ ...old, size: rec.size, mtimeMs: rec.mtimeMs }, { sections: false });
       }
       return false;
     }
-    this.store(buildDocument(rec, { root: this.root, readChunk: this.o.readChunk }));
+    this.store(buildDocument(rec, { root: this.root, readChunk: this.o.readChunk }), { sections: true });
     return true;
   }
 
   /** Drops a file the watcher removed. */
   remove(filePath: string): void {
     this.drop(documentId(filePath));
+  }
+
+  /** Every document with its sections, sorted by shown path; for the graph and the summaries. */
+  allDocuments(): BrowseDocument[] {
+    return [...this.docs.values()].sort((a, b) => a.relPath.localeCompare(b.relPath));
   }
 
   listDocuments(): DocumentSummary[] {
@@ -324,7 +360,7 @@ export class BrowseIndex {
     return f;
   }
 
-  private store(doc: BrowseDocument): void {
+  private store(doc: BrowseDocument, o: { sections?: boolean; notify?: boolean } = {}): void {
     this.docs.set(doc.id, doc);
     this.folded.delete(doc.id);
     this.identityList = null;
@@ -334,13 +370,15 @@ export class BrowseIndex {
     const tmp = `${file}.tmp-${process.pid}`;
     fs.writeFileSync(tmp, JSON.stringify(doc));
     fs.renameSync(tmp, file);
+    if (o.notify !== false) this.emit({ type: 'update', id: doc.id, sections: o.sections ?? true });
   }
 
   private drop(id: string): void {
-    this.docs.delete(id);
+    const had = this.docs.delete(id);
     this.folded.delete(id);
     this.identityList = null;
     fs.rmSync(path.join(this.o.dir, `${id}.json`), { force: true });
+    if (had) this.emit({ type: 'remove', id });
   }
 }
 
@@ -356,6 +394,7 @@ function summary(d: BrowseDocument): DocumentSummary {
     indexedAt: d.indexedAt,
     outline: d.outline,
     sectionCount: d.sections.length,
+    ...(d.kind ? { kind: d.kind } : {}),
   };
 }
 

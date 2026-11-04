@@ -19,6 +19,14 @@ export function pageUrl(page: PageName): string {
 /** Path served for the third-party notices file, which lives at the app root, not in src/renderer. */
 export const NOTICES_PATH = '/THIRD-PARTY-NOTICES';
 
+/**
+ * Third-party scripts the pages load, served from the app's own node_modules: never from a CDN.
+ * d3 7.9.0 for the overview graph (docs/graph.md), its prebuilt single-file bundle.
+ */
+export const VENDOR_FILES: Record<string, string[]> = {
+  '/vendor/d3.min.js': ['node_modules', 'd3', 'dist', 'd3.min.js'],
+};
+
 const TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -38,7 +46,10 @@ export function contentType(file: string): string {
  * Maps a request URL to a file under rendererDir, or to the notices file. Anything else, another
  * host, or a path that leaves rendererDir after decoding, is null.
  */
-export function resolveAppFile(url: string, o: { rendererDir: string; noticesFile: string }): string | null {
+export function resolveAppFile(
+  url: string,
+  o: { rendererDir: string; noticesFile: string; appDir?: string },
+): string | null {
   let u: URL;
   try {
     u = new URL(url);
@@ -53,6 +64,8 @@ export function resolveAppFile(url: string, o: { rendererDir: string; noticesFil
     return null;
   }
   if (rel === NOTICES_PATH) return o.noticesFile;
+  const vendor = VENDOR_FILES[rel];
+  if (vendor) return path.join(o.appDir ?? path.resolve(o.rendererDir, '..', '..'), ...vendor);
   if (rel.includes('\0')) return null;
   const root = path.resolve(o.rendererDir);
   const file = path.resolve(root, '.' + (rel.endsWith('/') ? `${rel}index.html` : rel));
@@ -63,6 +76,7 @@ export function resolveAppFile(url: string, o: { rendererDir: string; noticesFil
 export function appProtocolHandler(o: {
   rendererDir: string;
   noticesFile: string;
+  appDir?: string;
 }): (request: { url: string }) => Promise<Response> {
   return async (request) => {
     const file = resolveAppFile(request.url, o);

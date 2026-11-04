@@ -573,3 +573,364 @@ h6.doc-heading {
   color: var(--text);
   border-radius: 2px;
 }
+
+/* Library page: type and summary per document, family questions (Session N) */
+
+.doc-type {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+}
+
+.doc-type::before {
+  content: '';
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--type-color, var(--text-muted));
+}
+
+.doc-type select {
+  font: inherit;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-small);
+  padding: 1px var(--space-1);
+}
+
+.doc-type select:hover,
+.doc-type select:focus {
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.doc-type[data-overridden='true'] select {
+  color: var(--text);
+}
+
+.doc-item-summary,
+.doc-summary {
+  margin: var(--space-1) 0 0;
+  max-width: var(--measure);
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+}
+
+.doc-item-summary.pending,
+.doc-summary.pending {
+  font-style: italic;
+  opacity: 0.8;
+}
+
+.family-questions {
+  margin: 0 0 var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.family-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.family-list {
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.family-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+}
+
+.family-pair {
+  flex: 1 1 20rem;
+  overflow-wrap: anywhere;
+}
+
+/* Document page: summary, section summaries and the button */
+
+.doc-summary .cite {
+  padding: 0 var(--space-1);
+  border: 0;
+  border-radius: var(--radius-small);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.doc-summary-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.doc-section-summary {
+  margin: 0 0 var(--space-2);
+  padding-left: var(--space-3);
+  border-left: 3px solid var(--accent-soft);
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+}
+
+/* Hover tooltip of the summary controls; also shown on keyboard focus. */
+.has-tip {
+  position: relative;
+}
+
+.has-tip .tip {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+  width: 18rem;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  line-height: 1.4;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  pointer-events: none;
+}
+
+.has-tip:hover .tip,
+.has-tip:focus-within .tip {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Overview page: the graph fills the content area, which then does not scroll */
+
+.browse-content.overview-on {
+  padding: 0;
+  overflow: hidden;
+}
+
+.browse-content > .browse-page.overview-page {
+  max-width: none;
+  height: 100%;
+}
+
+.overview {
+  position: relative;
+  height: 100%;
+  min-height: 320px;
+  background: var(--bg);
+}
+
+.overview-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.overview-tools {
+  position: absolute;
+  top: var(--space-4);
+  left: var(--space-4);
+  right: var(--space-4);
+  z-index: 10;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  pointer-events: none;
+}
+
+.overview-tools > * {
+  pointer-events: auto;
+}
+
+.overview-tools input {
+  width: 220px;
+  padding: 8px 14px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  outline: none;
+}
+
+.overview-tools input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus);
+}
+
+.overview-layout {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.overview-layout button {
+  padding: 6px 12px;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.overview-layout button[aria-pressed='true'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.overview .link {
+  stroke: var(--text-muted);
+  fill: none;
+}
+
+/* Edge style by kind: solid shared headings, dashed references, dotted version chains. */
+.overview .link.kind-headings {
+  stroke-dasharray: none;
+}
+
+.overview .link.kind-reference {
+  stroke-dasharray: 6 4;
+}
+
+.overview .link.kind-version {
+  stroke-dasharray: 1 4;
+  stroke-linecap: round;
+  stroke-width: 2.5px;
+}
+
+.overview .link.kind-related,
+.overview .link.kind-project {
+  stroke: var(--quote-rule);
+}
+
+.overview .link.kind-ticket {
+  stroke-dasharray: 10 3;
+}
+
+.overview .link.kind-date {
+  stroke-dasharray: 2 6;
+  stroke-linecap: round;
+}
+
+.overview .link-hit {
+  stroke: transparent;
+  stroke-width: 10px;
+  cursor: pointer;
+}
+
+.overview .node {
+  stroke: var(--surface);
+  stroke-width: 1.5px;
+  cursor: pointer;
+}
+
+.overview .label,
+.overview .legend {
+  pointer-events: none;
+}
+
+/* A document whose summary is still being made. */
+.overview .node.pending {
+  stroke: var(--text-muted);
+  stroke-dasharray: 2 2;
+}
+
+.overview .node.match {
+  stroke: var(--text);
+  stroke-width: 2px;
+}
+
+.overview .label {
+  fill: var(--text);
+}
+
+.overview .legend-box {
+  fill: var(--surface);
+  stroke: var(--border);
+  opacity: 0.9;
+}
+
+.overview .legend-label {
+  fill: var(--text);
+}
+
+.overview-tooltip,
+.overview-chooser {
+  position: absolute;
+  z-index: 20;
+  max-width: 300px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.overview-tooltip {
+  pointer-events: none;
+}
+
+.overview-tooltip span,
+.overview-tooltip strong {
+  display: block;
+}
+
+.overview-tooltip .tip-title {
+  overflow-wrap: anywhere;
+}
+
+.overview-tooltip .tip-meta {
+  color: var(--text-muted);
+}
+
+.overview-tooltip .tip-summary {
+  margin-top: var(--space-1);
+}
+
+.overview-tooltip .tip-summary.pending {
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+.chooser-title {
+  margin: 0 0 var(--space-1);
+  font-weight: 600;
+}
+
+.chooser-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.overview-empty {
+  position: absolute;
+  top: 40%;
+  left: 0;
+  right: 0;
+  text-align: center;
+}

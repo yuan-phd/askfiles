@@ -296,6 +296,32 @@ describe('BrowseIndex', () => {
     expect(index.search('30 days').total).toBe(0);
   });
 
+  it('records the kind when a document is built, adds it to older files once, and reports changes', async () => {
+    const changes: string[] = [];
+    index.onChange((c) =>
+      changes.push(c.type === 'sync' ? 'sync' : `${c.type}:${c.type === 'update' ? c.sections : ''}`),
+    );
+    await put('handbook.md', HANDBOOK);
+    const id = index.listDocuments()[0]!.id;
+    expect(index.getDocument({ id })!.kind).toMatchObject({ kind: expect.any(String), scores: expect.any(Object) });
+    expect(index.listDocuments()[0]!.kind).toBeDefined();
+    expect(changes).toContain('update:true');
+    // A file written before kinds existed gets one at load, and keeps it on disk.
+    const file = path.join(dataDir, 'browse', `${id}.json`);
+    const stored = JSON.parse(fs.readFileSync(file, 'utf8'));
+    delete stored.kind;
+    fs.writeFileSync(file, JSON.stringify(stored));
+    const again = new BrowseIndex({ dir: path.join(dataDir, 'browse'), root, readChunk: () => null, log: () => {} });
+    const seen: string[] = [];
+    again.onChange((c) => seen.push(c.type));
+    again.load();
+    expect(again.getDocument({ id })!.kind).toBeDefined();
+    expect(JSON.parse(fs.readFileSync(file, 'utf8')).kind).toBeDefined();
+    expect(seen).toEqual(['sync']);
+    await del(watcher.files()[0]!.path);
+    expect(changes).toContain('remove:');
+  });
+
   it('sync builds what is missing and drops what the watcher no longer has', async () => {
     await put('handbook.md', HANDBOOK);
     const stale = new BrowseIndex({

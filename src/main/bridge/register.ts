@@ -42,6 +42,18 @@ const INVOKE: Record<string, keyof BridgeHandlers> = {
   [CHANNELS.answerSetOverrides]: 'answerSetOverrides',
   [CHANNELS.answerSaveCase]: 'answerSaveCase',
   [CHANNELS.appInfo]: 'appInfo',
+  [CHANNELS.graphData]: 'graphData',
+  [CHANNELS.graphProfiles]: 'graphProfiles',
+  [CHANNELS.graphSetType]: 'graphSetType',
+  [CHANNELS.graphAnswerFamily]: 'graphAnswerFamily',
+  [CHANNELS.librariesSetProfile]: 'librariesSetProfile',
+  [CHANNELS.summariesStatus]: 'summariesStatus',
+  [CHANNELS.summariesPause]: 'summariesPause',
+  [CHANNELS.summariesResume]: 'summariesResume',
+  [CHANNELS.summariesDocument]: 'summariesDocument',
+  [CHANNELS.summariesRequestSections]: 'summariesRequestSections',
+  [CHANNELS.summariesSetLibrary]: 'summariesSetLibrary',
+  [CHANNELS.summariesOpenExport]: 'summariesOpenExport',
 };
 
 /** Every channel the main process listens on, for the contract test. */
@@ -74,6 +86,14 @@ export function registerBridge(ipc: IpcMainLike, h: BridgeHandlers): void {
   };
   const idArg = (v: unknown): string => {
     if (typeof v !== 'string' || v === '' || v.length > 200) throw new Error('a library or source id is required');
+    return v;
+  };
+  const docArg = (v: unknown): string => {
+    if (typeof v !== 'string' || !/^[0-9a-f]{16}$/.test(v)) throw new Error('a document id is required');
+    return v;
+  };
+  const nameArg = (v: unknown, what: string): string => {
+    if (typeof v !== 'string' || !/^[a-z0-9-]{1,40}$/.test(v)) throw new Error(`${what} is required`);
     return v;
   };
   for (const [channel, name] of Object.entries(INVOKE)) {
@@ -124,7 +144,20 @@ export function registerBridge(ipc: IpcMainLike, h: BridgeHandlers): void {
         case 'librariesRemoveSource':
           return h[name](idArg(args[0]));
         case 'librariesCreate':
-          return h.librariesCreate(str(args[0], 200) ?? '');
+          return h.librariesCreate(str(args[0], 200) ?? '', args[1] == null ? null : nameArg(args[1], 'a profile'));
+        case 'librariesSetProfile':
+          return h.librariesSetProfile(nameArg(args[0], 'a profile'));
+        case 'graphSetType':
+          return h.graphSetType(docArg(args[0]), args[1] == null ? null : nameArg(args[1], 'a type'));
+        case 'graphAnswerFamily': {
+          const same = typeof args[2] === 'boolean' ? args[2] : null;
+          return h.graphAnswerFamily(docArg(args[0]), docArg(args[1]), same);
+        }
+        case 'summariesDocument':
+        case 'summariesRequestSections':
+          return h[name](docArg(args[0]));
+        case 'summariesSetLibrary':
+          return h.summariesSetLibrary(args[0] === true);
         case 'librariesRename':
           return h.librariesRename(idArg(args[0]), str(args[1], 200) ?? '');
         case 'librariesAddPaths': {

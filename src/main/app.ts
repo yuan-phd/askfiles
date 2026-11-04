@@ -30,7 +30,23 @@ import {
 } from './app-mode.js';
 import { bundledBackendConfig } from './backend-config.js';
 import { BrowseIndex, chunkReader, followWatcher, type DocumentRef } from './browse/index.js';
-import { CHANNELS, type BridgeHandlers, type DeveloperInfo, type WatcherView } from './bridge/contract.js';
+import {
+  CHANNELS,
+  type BridgeHandlers,
+  type DeveloperInfo,
+  type OverviewView,
+  type WatcherView,
+} from './bridge/contract.js';
+import {
+  DEFAULT_PROFILE_ID,
+  GraphService,
+  loadProfiles,
+  pairKey,
+  profileFor,
+  profileInfo,
+  type Profile,
+} from './graph/index.js';
+import { SummaryService, type SummaryModel } from './summaries/index.js';
 import type { Env, Logger } from './config.js';
 import { FirstRun } from './first-run.js';
 import { LibraryManager, libraryDir, moveLegacyLibraryFiles, type AddResult } from './libraries.js';
@@ -114,6 +130,11 @@ export class AppController implements BridgeHandlers {
   private readonly resourcesPath: string;
   /** The RAM the tier was chosen from (platform.ts machineRam); set at the start of run(). */
   private ramBytes: number | undefined;
+  /** config/profiles (docs/profiles.md); empty when the bundle's files could not be read. */
+  private readonly profiles: Profile[];
+  /** The current library's overview graph and summaries, made with its browse index. */
+  private overview: { libraryId: string; browse: BrowseIndex; graph: GraphService; summaries: SummaryService } | null =
+    null;
 
   constructor(private readonly d: AppDeps) {
     this.resourcesPath = d.dev?.resourcesPath ?? process.resourcesPath;
@@ -126,6 +147,13 @@ export class AppController implements BridgeHandlers {
       saveShellState(this.dataDir, this.state);
       d.log('shell.json moved to version 2 (libraries)');
     }
+    let profiles: Profile[] = [];
+    try {
+      profiles = loadProfiles(path.join(app.getAppPath(), 'config', 'profiles'));
+    } catch (e) {
+      d.log(`[graph] profiles not loaded: ${(e as Error).message}`);
+    }
+    this.profiles = profiles;
     this.libraries = this.createLibraries();
     this.answers = new AnswerService({
       pipeline: () => this.pipelineDeps(),
@@ -133,6 +161,8 @@ export class AppController implements BridgeHandlers {
       developer: d.env.ASKFILES_DEVELOPER === '1',
       evalQuestionsFile: d.env.ASKFILES_EVAL_QUESTIONS || path.join(this.dataDir, 'eval-questions.csv'),
       log: d.log,
+      // The summary queue gives way to every question (docs/summaries.md, Queue).
+      onBusy: (busy) => this.overview?.summaries.setAnswering(busy),
     });
   }
 
@@ -299,8 +329,8 @@ export class AppController implements BridgeHandlers {
     return v;
   }
 
-  async librariesCreate(name: string) {
-    const v = await this.libraries.create(name);
+  async librariesCreate(name: string, profile?: string | null) {
+    const v = await this.libraries.create(name, profile);
     this.reloadMain();
     return v;
   }
@@ -373,6 +403,8 @@ export class AppController implements BridgeHandlers {
       writeServerEnv(this.envFile(), settingsEnv(after));
       this.d.log(`[settings] chat model ${after.chatModel}, context ${after.contextLength}; restarting the server`);
       await this.restartBackend();
+      // A new model tag makes every summary stale (docs/summaries.md, Version key).
+      this.overview?.summaries.modelChanged();
     }
     this.d.log(`[settings] saved ${JSON.stringify(next)}`);
     return settingsView(presets, machine, next);
@@ -437,6 +469,96 @@ export class AppController implements BridgeHandlers {
     return { name: 'AskFiles', version: app.getVersion() };
   }
 
+  // --- overview and summaries ------------------------------------------------------------------
+
+  graphData(): OverviewView | null {
+    const o = this.overview;
+    if (!o || o.libraryId !== this.state.currentLibrary) return null;
+    return { ...o.graph.data(), libraryId: o.libraryId, summaries: o.summaries.documentViews() };
+  }
+
+  graphProfiles() {
+    return this.profiles.map(profileInfo);
+  }
+
+  async graphSetType(documentId: string, type: string | null) {
+    const lib = currentLibraryOf(this.state);
+    const profile = profileFor(this.profiles, this.libraries.profileOf(lib));
+    if (type !== null && !profile.types.some((t) => t.name === type))
+      throw new Error('That type is not in this library.');
+    await this.libraries.updateRecord(lib.id, (l) => {
+      const all = { ...(l.typeOverrides ?? {}) };
+      const mine = { ...(all[profile.id] ?? {}) };
+      if (type === null) delete mine[documentId];
+      else mine[documentId] = type;
+      all[profile.id] = mine;
+      return { ...l, typeOverrides: all };
+    });
+    this.overviewChanged();
+    return this.graphData();
+  }
+
+  async graphAnswerFamily(a: string, b: string, same: boolean | null) {
+    if (a === b) throw new Error('two different documents are required');
+    const lib = currentLibraryOf(this.state);
+    await this.libraries.updateRecord(lib.id, (l) => {
+      const decisions = { ...(l.familyDecisions ?? {}) };
+      if (same === null) delete decisions[pairKey(a, b)];
+      else decisions[pairKey(a, b)] = same;
+      return { ...l, familyDecisions: decisions };
+    });
+    this.overviewChanged();
+    return this.graphData();
+  }
+
+  async librariesSetProfile(profile: string) {
+    if (!this.profiles.some((p) => p.id === profile)) throw new Error('That kind of library is not available.');
+    const lib = currentLibraryOf(this.state);
+    const v = await this.libraries.updateRecord(lib.id, (l) => ({ ...l, profile }));
+    this.d.log(`[graph] library ${lib.id} profile ${profile}`);
+    this.overviewChanged();
+    return v;
+  }
+
+  summariesStatus() {
+    return this.overview?.summaries.status() ?? null;
+  }
+
+  summariesPause() {
+    return this.overview?.summaries.pause() ?? null;
+  }
+
+  summariesResume() {
+    return this.overview?.summaries.resume() ?? null;
+  }
+
+  summariesDocument(documentId: string) {
+    return this.overview?.summaries.view(documentId) ?? null;
+  }
+
+  summariesRequestSections(documentId: string) {
+    return this.overview?.summaries.requestSections(documentId) ?? null;
+  }
+
+  async summariesSetLibrary(on: boolean) {
+    const lib = currentLibraryOf(this.state);
+    const v = await this.libraries.updateRecord(lib.id, (l) => ({ ...l, sectionSummaries: on }));
+    this.d.log(`[summaries] library ${lib.id} section summaries ${on ? 'on' : 'off'}`);
+    this.overview?.summaries.librarySectionsChanged();
+    return v;
+  }
+
+  async summariesOpenExport() {
+    const o = this.overview;
+    if (!o) return false;
+    o.summaries.exportNow();
+    const dir = path.join(libraryDir(this.dataDir, o.libraryId), 'export');
+    if (!fs.existsSync(dir)) return false;
+    const err = await shell.openPath(dir);
+    if (err) this.d.log(`[summaries] export folder not opened: ${err}`);
+    return !err;
+  }
+
   appPageReady(info: { page: string; connected?: boolean; documents?: number | null }) {
     // The smoke test waits for this line to know the Ask page reached the library.
     this.d.log(`page ready ${info.page} connected=${info.connected ?? '-'} documents=${info.documents ?? '-'}`);
@@ -445,6 +567,60 @@ export class AppController implements BridgeHandlers {
   }
 
   // --- internals -------------------------------------------------------------------------------
+
+  /** The library record changed what the graph shows: rebuild it and refresh the export. */
+  private overviewChanged(): void {
+    this.overview?.graph.invalidate();
+    this.overview?.summaries.scheduleExport();
+  }
+
+  /** The model and context summaries use: Ask's own, so the model is loaded once; null with Ask off. */
+  private summaryModel(): SummaryModel | null {
+    const machine = this.machinePreset;
+    if (!machine?.chatModel || !this.presets) return null;
+    const model = this.chatModel();
+    if (!model) return null;
+    const preset = effectivePreset(this.presets, machine, this.state.settings);
+    return { model, contextLength: preset.contextLength, temperature: preset.temperature };
+  }
+
+  /** Graph and summaries for a library's browse index, attached before the index loads. */
+  private attachOverview(browse: BrowseIndex, libraryId: string): void {
+    const { log } = this.d;
+    this.overview?.graph.stop();
+    this.overview?.summaries.stop();
+    const dir = libraryDir(this.dataDir, libraryId);
+    const record = () => this.state.libraries.find((l) => l.id === libraryId);
+    const graph = new GraphService({
+      browse,
+      file: path.join(dir, 'graph.json'),
+      options: () => {
+        const r = record();
+        const profile = profileFor(this.profiles, r ? this.libraries.profileOf(r) : DEFAULT_PROFILE_ID);
+        return {
+          profile,
+          overrides: r?.typeOverrides?.[profile.id] ?? {},
+          familyDecisions: r?.familyDecisions ?? {},
+        };
+      },
+      onChange: () => this.d.broadcast(CHANNELS.graphEvent, { libraryId }),
+      log: (m) => log(`[graph] ${m}`),
+    });
+    const summaries = new SummaryService({
+      browse,
+      dir: path.join(dir, 'summaries'),
+      exportDir: path.join(dir, 'export'),
+      chat: ollamaChat(() => `http://127.0.0.1:${this.manager?.status().ports?.ollama ?? 0}`),
+      model: () => this.summaryModel(),
+      librarySections: () => record()?.sectionSummaries === true,
+      graph: () => graph.data(),
+      onStatus: (status) => this.d.broadcast(CHANNELS.summariesEvent, { type: 'status', status }),
+      onChange: (ids) => this.d.broadcast(CHANNELS.summariesEvent, { type: 'changed', ids }),
+      log,
+    });
+    summaries.setAnswering(this.answers?.busy() ?? false);
+    this.overview = { libraryId, browse, graph, summaries };
+  }
 
   private requirePresets(): PresetFile {
     if (!this.presets) throw new Error('the presets are not loaded');
@@ -697,11 +873,27 @@ export class AppController implements BridgeHandlers {
         });
         return watcher;
       },
-      createBrowse: (o) =>
-        new BrowseIndex({ dir: o.dir, readChunk: chunkReader(this.storageDir), log: (m) => log(`[browse] ${m}`) }),
+      createBrowse: (o) => {
+        const browse = new BrowseIndex({
+          dir: o.dir,
+          readChunk: chunkReader(this.storageDir),
+          log: (m) => log(`[browse] ${m}`),
+        });
+        this.attachOverview(browse, o.libraryId);
+        return browse;
+      },
       followWatcher: (browse, watcher) => followWatcher(browse, watcher, (m) => log(`[browse] ${m}`)),
       onChange: (v) => this.d.broadcast(CHANNELS.librariesEvent, v),
-      onStatus: (s) => this.d.broadcast(CHANNELS.watcherStatusEvent, s),
+      onStatus: (s) => {
+        // The summary queue waits while the library indexes (docs/summaries.md, Queue).
+        if (this.overview?.libraryId === s.libraryId)
+          this.overview.summaries.setIndexing(s.state === 'working' || s.state === 'starting' || s.pending > 0);
+        this.d.broadcast(CHANNELS.watcherStatusEvent, s);
+      },
+      profiles: {
+        defaultId: DEFAULT_PROFILE_ID,
+        ids: this.profiles.map((p) => p.id),
+      },
       log,
     });
   }
@@ -782,6 +974,8 @@ export class AppController implements BridgeHandlers {
       void (async () => {
         try {
           this.reranker?.instance.stop();
+          this.overview?.summaries.stop();
+          this.overview?.graph.stop();
           await this.libraries.stop();
           await this.manager?.stop();
         } finally {

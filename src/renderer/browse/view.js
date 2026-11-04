@@ -18,6 +18,7 @@ const MARKUP = `
   <button type="button" class="browse-tab" data-tab="library" data-testid="browse-tab-library">Library</button>
   <button type="button" class="browse-tab" data-tab="headings" data-testid="browse-tab-headings">Headings</button>
   <button type="button" class="browse-tab" data-tab="find" data-testid="browse-tab-find">Find</button>
+  <button type="button" class="browse-tab" data-tab="overview" data-testid="browse-tab-overview">Overview</button>
   <div class="sidebar-doc" data-testid="sidebar-doc" hidden>
     <button type="button" class="browse-tab doc-tab" data-tab="document" data-testid="browse-tab-document"></button>
     <ol class="outline" data-testid="doc-outline"></ol>
@@ -37,6 +38,11 @@ const MARKUP = `
       </select>
     </label>
   </div>
+  <section class="family-questions" data-testid="family-questions" hidden aria-label="Possible copies of one document">
+    <h2 class="family-title">Are these the same document?</h2>
+    <p class="hint">AskFiles groups copies and issues of one document (a PDF and its Word file, the 2024 and 2025 editions). It is not sure about these.</p>
+    <ul class="family-list" data-testid="family-list"></ul>
+  </section>
   <ul class="library-list" data-testid="library-list"></ul>
   <p class="browse-empty" data-testid="library-empty" hidden>No documents yet. Files in your documents folder appear here once they are indexed.</p>
 </section>
@@ -47,6 +53,14 @@ const MARKUP = `
       <h1 class="doc-title" data-testid="doc-title"></h1>
       <p class="doc-path" data-testid="doc-path"></p>
       <button type="button" class="open" data-testid="doc-open">Open original</button>
+      <p class="doc-summary" data-testid="doc-summary" hidden></p>
+      <div class="doc-summary-actions" data-testid="doc-summary-actions" hidden>
+        <span class="has-tip">
+          <button type="button" class="link" data-testid="doc-summarize-sections" aria-describedby="tip-doc-sections"></button>
+          <span class="tip" id="tip-doc-sections" role="tooltip" data-testid="doc-summarize-tip">Uses the model on this computer. Ask is slower while it runs. You can pause it in the top bar.</span>
+        </span>
+        <span class="doc-summary-state" data-testid="doc-summary-state"></span>
+      </div>
     </header>
     <p class="error" data-testid="doc-error" role="alert" hidden></p>
     <div class="doc-sections" data-testid="doc-sections"></div>
@@ -66,6 +80,10 @@ const MARKUP = `
   </div>
 </section>
 
+<section class="browse-page overview-page" data-page="overview" data-testid="overview" aria-label="Overview" hidden>
+  <div class="overview-root" data-testid="overview-root"></div>
+</section>
+
 <section class="browse-page" data-page="find" data-testid="find" aria-label="Find" hidden>
   <form class="query find-form" autocomplete="off">
     <label class="visually-hidden" for="find-query">Find words in your documents</label>
@@ -80,9 +98,12 @@ const MARKUP = `
 `;
 
 import { createHistory, isBackKey } from '../shared/history.js';
+import { createOverview } from './overview.js';
 
 const bridge = window.askfiles?.browse;
 const watcher = window.askfiles?.watcher;
+const graphBridge = window.askfiles?.graph;
+const summariesBridge = window.askfiles?.summaries;
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -182,6 +203,9 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     headingKey: null,
     status: null,
     loaded: false,
+    // The overview graph (types, summaries, family questions); null without the bridge.
+    graph: null,
+    docSummary: null,
   };
 
   const content = q('browse-content');
@@ -224,6 +248,9 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     if (tab === 'library' && !state.loaded) void loadLibrary();
     if (tab === 'headings') void loadHeadings();
     showPage(tab);
+    content.classList.toggle('overview-on', tab === 'overview');
+    if (tab === 'overview') void overview.show();
+    else overview.hide();
     if (tab === 'find') q('find-query').focus();
   }
 
@@ -323,7 +350,11 @@ export function createBrowseView(root, { history: shared = null } = {}) {
           if (part) meta.append(el('span', '', part));
         }
         row.append(open, meta);
+        const node = state.graph?.nodes.find((n) => n.id === d.id);
+        if (node) row.append(typeControl(node));
         li.append(row);
+        const sum = summaryLine(d.id);
+        if (sum) li.append(sum);
         if (d.outline.length) {
           const expanded = state.expanded.has(d.id);
           const toggle = button('link outline-toggle', expanded ? 'Hide outline' : 'Show outline', 'library-toggle');
@@ -347,15 +378,94 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     );
   }
 
+  /** The type of a document: a dropdown of the profile's types; Automatic goes back to detection. */
+  function typeControl(node) {
+    const wrap = el('label', 'doc-type');
+    wrap.append(el('span', 'visually-hidden', `Type of ${node.title}`));
+    const select = el('select');
+    select.dataset.testid = 'library-type';
+    const types = state.graph.profile.types;
+    const label = (name) => types.find((t) => t.name === name)?.label || name;
+    const auto = el('option', '', `Automatic (${label(node.detectedType)})`);
+    auto.value = '';
+    select.append(auto, ...types.map((t) => Object.assign(el('option', '', t.label), { value: t.name })));
+    select.value = node.overridden ? node.type : '';
+    const color = types.find((t) => t.name === node.type)?.color;
+    if (color) wrap.style.setProperty('--type-color', color);
+    wrap.dataset.overridden = String(node.overridden);
+    select.addEventListener('change', async () => {
+      try {
+        state.graph = (await graphBridge.setType(node.id, select.value || null)) || state.graph;
+        renderLibrary();
+      } catch (e) {
+        console.warn('[browse] type not saved', e.message);
+      }
+    });
+    wrap.append(select);
+    return wrap;
+  }
+
+  /** The document summary line, Summary pending while it is being made; nothing on a tier without them. */
+  function summaryLine(id) {
+    const s = state.graph?.summaries?.[id];
+    if (!s || s.state === 'off' || s.state === 'none') return null;
+    const p = el(
+      'p',
+      `doc-item-summary${s.state === 'pending' ? ' pending' : ''}`,
+      s.state === 'ok' ? s.text : 'Summary pending',
+    );
+    p.dataset.testid = 'library-summary';
+    return p;
+  }
+
+  function renderFamilies() {
+    const questions = state.graph?.questions || [];
+    const box = q('family-questions');
+    box.hidden = questions.length === 0;
+    const title = (id) => state.graph.nodes.find((n) => n.id === id)?.title || id;
+    q('family-list').replaceChildren(
+      ...questions.map((f) => {
+        const li = el('li', 'family-item');
+        li.dataset.testid = 'family-item';
+        li.append(el('span', 'family-pair', `${title(f.a)} and ${title(f.b)}`));
+        const yes = button('open', 'Same document', 'family-same');
+        const no = button('link', 'Different', 'family-different');
+        const answer = async (same) => {
+          try {
+            state.graph = (await graphBridge.answerFamily(f.a, f.b, same)) || state.graph;
+            renderFamilies();
+          } catch (e) {
+            console.warn('[browse] family answer not saved', e.message);
+          }
+        };
+        yes.addEventListener('click', () => answer(true));
+        no.addEventListener('click', () => answer(false));
+        li.append(yes, no);
+        return li;
+      }),
+    );
+  }
+
+  async function loadGraph() {
+    if (!graphBridge) return;
+    try {
+      state.graph = await graphBridge.data();
+    } catch (e) {
+      console.warn('[browse] overview data failed', e.message);
+    }
+  }
+
   async function loadLibrary() {
     if (!bridge) {
       q('library-count').textContent = 'Browsing is available in the AskFiles app.';
       return;
     }
     try {
-      state.documents = await bridge.documents();
+      const [documents] = await Promise.all([bridge.documents(), loadGraph()]);
+      state.documents = documents;
       state.loaded = true;
       renderLibrary();
+      renderFamilies();
     } catch (e) {
       q('library-count').textContent = `The library could not be read: ${e.message}`;
     }
@@ -408,11 +518,89 @@ export function createBrowseView(root, { history: shared = null } = {}) {
           p.dataset.testid = 'doc-section-page';
           sec.append(p);
         }
-        sec.append(...paragraphs(s.text));
+        const summary = el('p', 'doc-section-summary');
+        summary.dataset.testid = 'doc-section-summary';
+        summary.hidden = true;
+        sec.append(summary, ...paragraphs(s.text));
         return sec;
       }),
     );
+    void loadDocSummary(doc.id);
   }
+
+  /** The summary, the section summaries and the button of the open document. */
+  function renderDocSummary() {
+    const v = state.docSummary;
+    const doc = state.doc;
+    const line = q('doc-summary');
+    const actions = q('doc-summary-actions');
+    if (!v || !doc || v.documentId !== doc.id || v.state === 'off') {
+      line.hidden = true;
+      actions.hidden = true;
+      for (const n of root.querySelectorAll('.doc-section-summary')) n.hidden = true;
+      return;
+    }
+    line.hidden = v.state === 'none';
+    line.classList.toggle('pending', v.state === 'pending');
+    line.replaceChildren();
+    if (v.state === 'ok') {
+      line.append(document.createTextNode(`${v.text} `));
+      // Cited to the section it was made from, like an Ask sentence.
+      if (v.sectionIndex) {
+        const cite = button('cite', 'source', 'doc-summary-cite');
+        cite.title = 'The section this summary was made from';
+        cite.addEventListener('click', () => scrollToSection({ sectionIndex: v.sectionIndex }));
+        line.append(cite);
+      }
+    } else if (v.state === 'pending') line.textContent = 'Summary pending';
+    for (const n of root.querySelectorAll('.doc-section')) {
+      const sum = n.querySelector('.doc-section-summary');
+      const text = v.sections?.[n.dataset.section];
+      sum.hidden = !text;
+      sum.textContent = text || '';
+    }
+    actions.hidden = false;
+    const b = q('doc-summarize-sections');
+    const stateText = q('doc-summary-state');
+    if (v.sectionsMissing === 0) {
+      b.hidden = true;
+      stateText.textContent = Object.keys(v.sections || {}).length ? 'Every section is summarized.' : '';
+    } else if (v.sectionsWanted && v.sectionsPending > 0) {
+      b.hidden = true;
+      stateText.textContent = `Summarizing sections, ${v.sectionsPending} left`;
+    } else {
+      b.hidden = false;
+      const mins = v.estimateMinutes || 1;
+      b.textContent = `Summarize each section (about ${mins} ${mins === 1 ? 'minute' : 'minutes'})`;
+      stateText.textContent = '';
+    }
+  }
+
+  async function loadDocSummary(id) {
+    if (!summariesBridge) return;
+    try {
+      const v = await summariesBridge.document(id);
+      if (state.doc?.id !== id) return;
+      state.docSummary = v;
+      renderDocSummary();
+    } catch (e) {
+      console.warn('[browse] summary failed', e.message);
+    }
+  }
+
+  q('doc-summarize-sections').addEventListener('click', async () => {
+    const doc = state.doc;
+    if (!doc || !summariesBridge) return;
+    try {
+      const v = await summariesBridge.requestSections(doc.id);
+      if (v && state.doc?.id === doc.id) {
+        state.docSummary = v;
+        renderDocSummary();
+      }
+    } catch (e) {
+      console.warn('[browse] section summaries not started', e.message);
+    }
+  });
 
   function scrollToSection(target) {
     const doc = state.doc;
@@ -650,6 +838,48 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     }
   }
 
+  // --- overview --------------------------------------------------------------------------------
+
+  const overview = createOverview(q('overview-root'), {
+    getData: async () => {
+      if (!graphBridge) return null;
+      state.graph = await graphBridge.data();
+      return state.graph;
+    },
+    onOpenDocument: (id, target) => openDocument({ id }, target || {}),
+    onOpenHeading: (key) =>
+      history.navigate(() => {
+        show('headings');
+        void showHeading(key);
+        return { view: 'browse', page: 'headings', headingKey: key };
+      }),
+  });
+
+  if (graphBridge) {
+    graphBridge.onChange(async () => {
+      await loadGraph();
+      if (state.loaded) {
+        renderLibrary();
+        renderFamilies();
+      }
+      void overview.refresh();
+    });
+  }
+  if (summariesBridge) {
+    let summaryTimer = null;
+    summariesBridge.onEvent((e) => {
+      if (e.type !== 'changed') return;
+      // Summaries arrive one by one; the pages refresh once a burst has passed.
+      clearTimeout(summaryTimer);
+      summaryTimer = setTimeout(async () => {
+        await loadGraph();
+        if (state.loaded) renderLibrary();
+        if (state.graph) overview.updateSummaries(state.graph.summaries);
+        if (state.doc && e.ids.includes(state.doc.id)) void loadDocSummary(state.doc.id);
+      }, 250);
+    });
+  }
+
   if (watcher) {
     watcher.onStatus(applyStatus);
     watcher
@@ -661,5 +891,13 @@ export function createBrowseView(root, { history: shared = null } = {}) {
   renderState();
   show('library');
   renderBack();
-  return { show, openDocument, current, restore, scrollTop: () => content.scrollTop, ready: () => state.loaded };
+  return {
+    show,
+    openDocument,
+    current,
+    restore,
+    scrollTop: () => content.scrollTop,
+    ready: () => state.loaded,
+    overview,
+  };
 }

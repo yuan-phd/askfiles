@@ -4,6 +4,8 @@ import type { SourceRef } from '../open-original.js';
 import type { ModelEntry } from '../models/index.js';
 import type { PullProgress } from '../ollama/client.js';
 import type { SetupEvent, SetupSnapshot } from '../first-run.js';
+import type { GraphData, ProfileInfo } from '../graph/index.js';
+import type { DocumentSummaryView, SummaryStatusView } from '../summaries/index.js';
 import type { AddResult, LibrariesView, LibraryStatus } from '../libraries.js';
 import type { Preset } from '../presets/index.js';
 import type { SettingsView } from '../settings.js';
@@ -57,6 +59,20 @@ export const CHANNELS = {
   answerSaveCase: 'askfiles:answer:save-case',
   appInfo: 'askfiles:app:info',
   appPageReady: 'askfiles:app:page-ready',
+  graphData: 'askfiles:graph:data',
+  graphEvent: 'askfiles:graph:event',
+  graphProfiles: 'askfiles:graph:profiles',
+  graphSetType: 'askfiles:graph:set-type',
+  graphAnswerFamily: 'askfiles:graph:answer-family',
+  librariesSetProfile: 'askfiles:libraries:set-profile',
+  summariesStatus: 'askfiles:summaries:status',
+  summariesEvent: 'askfiles:summaries:event',
+  summariesPause: 'askfiles:summaries:pause',
+  summariesResume: 'askfiles:summaries:resume',
+  summariesDocument: 'askfiles:summaries:document',
+  summariesRequestSections: 'askfiles:summaries:request-sections',
+  summariesSetLibrary: 'askfiles:summaries:set-library',
+  summariesOpenExport: 'askfiles:summaries:open-export',
 } as const;
 
 /** Channels the main process pushes events on; every other channel is a request from a page. */
@@ -66,7 +82,18 @@ export const EVENT_CHANNELS: readonly string[] = [
   CHANNELS.watcherStatusEvent,
   CHANNELS.librariesEvent,
   CHANNELS.answerEvent,
+  CHANNELS.graphEvent,
+  CHANNELS.summariesEvent,
 ];
+
+/** The overview graph with each document's summary state, for the Overview and Library pages. */
+export type OverviewView = GraphData & {
+  libraryId: string;
+  summaries: Record<string, { state: DocumentSummaryView['state']; text: string | null }>;
+};
+
+/** A summary event: the queue's status, or documents whose summaries changed. */
+export type SummariesEvent = { type: 'status'; status: SummaryStatusView } | { type: 'changed'; ids: string[] };
 
 /**
  * Read once per page load: the Ask page needs it before its first request. workspace is the
@@ -122,7 +149,7 @@ export interface BridgeHandlers {
   /** Switches the window to another library; the main window reloads. */
   librariesSelect(id: string): Promise<LibrariesView>;
   /** Creates a library and switches to it. */
-  librariesCreate(name: string): Promise<LibrariesView>;
+  librariesCreate(name: string, profile?: string | null): Promise<LibrariesView>;
   librariesRename(id: string, name: string): Promise<LibrariesView>;
   /** Deletes a library's workspace and records; never the original files. */
   librariesRemove(id: string): Promise<LibrariesView>;
@@ -161,6 +188,25 @@ export interface BridgeHandlers {
   answerSaveCase(c: EvalCase): { id: string; file: string };
   appInfo(): { name: string; version: string };
   appPageReady(info: PageReadyInfo): void;
+  /** The current library's overview graph; null before the library runs. */
+  graphData(): OverviewView | null;
+  graphProfiles(): ProfileInfo[];
+  /** Sets a document's type in the current profile; null type goes back to the detected one. */
+  graphSetType(documentId: string, type: string | null): Promise<OverviewView | null>;
+  /** Answers a family question: same document or not; null forgets the answer. */
+  graphAnswerFamily(a: string, b: string, same: boolean | null): Promise<OverviewView | null>;
+  /** Changes the current library's profile: types and edges are worked out again, the index is kept. */
+  librariesSetProfile(profile: string): Promise<LibrariesView>;
+  summariesStatus(): SummaryStatusView | null;
+  summariesPause(): SummaryStatusView | null;
+  summariesResume(): SummaryStatusView | null;
+  summariesDocument(documentId: string): DocumentSummaryView | null;
+  /** The Document page button: this document's section summaries. */
+  summariesRequestSections(documentId: string): DocumentSummaryView | null;
+  /** The library menu switch: section summaries for every document of the current library. */
+  summariesSetLibrary(on: boolean): Promise<LibrariesView>;
+  /** Shows the current library's Markdown export folder in Finder; false when there is none yet. */
+  summariesOpenExport(): Promise<boolean>;
 }
 
 /** Payloads of the event channels. */
@@ -170,6 +216,8 @@ export interface BridgeEvents {
   [CHANNELS.watcherStatusEvent]: WatcherView;
   [CHANNELS.librariesEvent]: LibrariesView;
   [CHANNELS.answerEvent]: ServiceEvent;
+  [CHANNELS.graphEvent]: { libraryId: string };
+  [CHANNELS.summariesEvent]: SummariesEvent;
 }
 
 /**
@@ -201,7 +249,8 @@ export interface AskfilesBridge {
     list(): Promise<LibrariesView>;
     onChange(callback: (v: LibrariesView) => void): () => void;
     select(id: string): Promise<LibrariesView>;
-    create(name: string): Promise<LibrariesView>;
+    create(name: string, profile?: string | null): Promise<LibrariesView>;
+    setProfile(profile: string): Promise<LibrariesView>;
     rename(id: string, name: string): Promise<LibrariesView>;
     remove(id: string): Promise<LibrariesView>;
     addFiles(): Promise<AddResult | null>;
@@ -237,6 +286,23 @@ export interface AskfilesBridge {
   app: {
     info(): Promise<{ name: string; version: string }>;
     pageReady(info: PageReadyInfo): void;
+  };
+  graph: {
+    data(): Promise<OverviewView | null>;
+    onChange(callback: (e: { libraryId: string }) => void): () => void;
+    profiles(): Promise<ProfileInfo[]>;
+    setType(documentId: string, type: string | null): Promise<OverviewView | null>;
+    answerFamily(a: string, b: string, same: boolean | null): Promise<OverviewView | null>;
+  };
+  summaries: {
+    status(): Promise<SummaryStatusView | null>;
+    onEvent(callback: (e: SummariesEvent) => void): () => void;
+    pause(): Promise<SummaryStatusView | null>;
+    resume(): Promise<SummaryStatusView | null>;
+    document(documentId: string): Promise<DocumentSummaryView | null>;
+    requestSections(documentId: string): Promise<DocumentSummaryView | null>;
+    setLibrary(on: boolean): Promise<LibrariesView>;
+    openExport(): Promise<boolean>;
   };
 }
 

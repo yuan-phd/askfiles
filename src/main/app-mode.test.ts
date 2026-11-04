@@ -66,6 +66,29 @@ describe('shell.json', () => {
     expect(logs).toHaveLength(2);
     fs.rmSync(dir, { recursive: true, force: true });
   });
+
+  it('keeps a library profile, type overrides, family answers and the section summary switch', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'askfiles-state-'));
+    const lib = {
+      ...complete.libraries[0]!,
+      profile: 'team-work',
+      typeOverrides: {
+        'team-work': { '0123456789abcdef': 'meeting', bad: 'x' },
+        'Bad Id': { '0123456789abcdef': 'x' },
+      },
+      familyDecisions: { '0123456789abcdef|fedcba9876543210': false, nonsense: true },
+      sectionSummaries: true,
+    };
+    saveShellState(dir, { ...complete, libraries: [lib] } as typeof complete);
+    expect(loadShellState(dir).libraries[0]).toEqual({
+      ...complete.libraries[0],
+      profile: 'team-work',
+      typeOverrides: { 'team-work': { '0123456789abcdef': 'meeting' } },
+      familyDecisions: { '0123456789abcdef|fedcba9876543210': false },
+      sectionSummaries: true,
+    });
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
 });
 
 describe('shell.json version 2', () => {

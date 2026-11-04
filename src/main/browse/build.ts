@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import type { FileRecord } from '../watcher/index.js';
+import { detectKind } from '../graph/kinds.js';
 import { normalizeHeading } from './normalize.js';
 import type { BrowseDocument, BrowseSection, OutlineEntry } from './types.js';
 
@@ -123,13 +124,14 @@ export function buildDocument(
         parts: bodies,
       };
     });
+  const title = path.basename(rec.path);
   return {
     version: 3,
     id: documentId(rec.path),
     path: rec.path,
     url: rec.url,
     relPath: rec.relPath || (o.root ? path.relative(o.root, rec.path) : '') || path.basename(rec.path),
-    title: path.basename(rec.path),
+    title,
     size: rec.size,
     mtimeMs: rec.mtimeMs,
     hash: rec.hash,
@@ -137,5 +139,6 @@ export function buildDocument(
     indexedAt: rec.indexedAt,
     outline: buildOutline(sections),
     sections,
+    kind: detectKind({ title, sections }),
   };
 }

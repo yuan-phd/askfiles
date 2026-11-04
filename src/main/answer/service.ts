@@ -37,14 +37,31 @@ export interface ServiceDeps {
   /** Where Save as eval case appends. */
   evalQuestionsFile: string;
   log(msg: string): void;
+  /** True when a question starts, false when the last one ends; the summary queue pauses meanwhile. */
+  onBusy?(busy: boolean): void;
 }
 
 export class AnswerService {
   private current: { id: string; controller: AbortController } | null = null;
   private overrides: DeveloperOverrides = {};
   private lastTrace: Trace | null = null;
+  private running = 0;
 
   constructor(private readonly d: ServiceDeps) {}
+
+  /** True while a question is being answered. */
+  busy(): boolean {
+    return this.running > 0;
+  }
+
+  private async tracked<T>(work: Promise<T>): Promise<T> {
+    if (this.running++ === 0) this.d.onBusy?.(true);
+    try {
+      return await work;
+    } finally {
+      if (--this.running === 0) this.d.onBusy?.(false);
+    }
+  }
 
   /** Starts a run and returns its id at once; events follow through emit. */
   ask(question: string, emit: (e: ServiceEvent) => void): { id: string } {
@@ -52,7 +69,7 @@ export class AnswerService {
     const id = randomUUID();
     const controller = new AbortController();
     this.current = { id, controller };
-    void this.run(id, question, controller.signal, emit).finally(() => {
+    void this.tracked(this.run(id, question, controller.signal, emit)).finally(() => {
       if (this.current?.id === id) this.current = null;
     });
     return { id };
@@ -69,10 +86,12 @@ export class AnswerService {
   async askOnce(question: string): Promise<AnswerResult> {
     let result: AnswerResult | null = null;
     let error: string | null = null;
-    await this.run(randomUUID(), question, undefined, (e) => {
-      if (e.type === 'done') result = e.result;
-      if (e.type === 'error') error = e.message;
-    });
+    await this.tracked(
+      this.run(randomUUID(), question, undefined, (e) => {
+        if (e.type === 'done') result = e.result;
+        if (e.type === 'error') error = e.message;
+      }),
+    );
     if (!result) throw new Error(error ?? 'no answer');
     return result;
   }

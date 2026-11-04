@@ -1,0 +1,544 @@
+Everything below is copied verbatim from web/index.html and docs/graph-layout-custom.txt. My own comments are marked as such. Some things you asked for
+  don't exist in this repo, and I've said so where that applies rather than writing new code.
+
+  1. renderGraph(data): web/index.html:900–1063
+
+  function renderGraph(data) {
+    const svg = d3.select('#graphSvg');
+    svg.selectAll('*').remove();
+
+    const width = document.getElementById('panel-graph').clientWidth;
+    const height = document.getElementById('panel-graph').clientHeight;
+
+    svg.attr('viewBox', [0, 0, width, height]);
+
+    const g = svg.append('g');
+
+    // Zoom
+    svg.call(d3.zoom().scaleExtent([0.2, 5]).on('zoom', (event) => {
+      g.attr('transform', event.transform);
+    }));
+
+    // Calculate node sizes based on connection count
+    const linkCount = {};
+    data.edges.forEach(e => {
+      linkCount[e.source] = (linkCount[e.source] || 0) + 1;
+      linkCount[e.target] = (linkCount[e.target] || 0) + 1;
+    });
+
+    function peopleSpreadForce() {
+      let nodes;
+      function force(alpha) {
+        const people = nodes.filter(n => n.group === 'people');
+        if (people.length < 2) return;
+        const cx = width / 2;
+        const cy = height / 2;
+        // Push people apart from each other along the circumference
+        for (let i = 0; i < people.length; i++) {
+          for (let j = i + 1; j < people.length; j++) {
+            const a = people[i];
+            const b = people[j];
+            const dx = a.x - b.x;
+            const dy = a.y - b.y;
+            const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+            if (dist < 200) {
+              const strength = alpha * 1.2 * (200 - dist) / dist;
+              a.vx += dx * strength;
+              a.vy += dy * strength;
+              b.vx -= dx * strength;
+              b.vy -= dy * strength;
+            }
+          }
+        }
+      }
+      force.initialize = function(n) { nodes = n; };
+      return force;
+    }
+
+    const simulation = d3.forceSimulation(data.nodes)
+      .force('link', d3.forceLink(data.edges).id(d => d.id).distance(100))
+      .force('charge', d3.forceManyBody().strength(-300))
+      .force('center', d3.forceCenter(width / 2, height / 2))
+      .force('collision', d3.forceCollide().radius(30))
+      .force('radial', d3.forceRadial(d => {
+        if (d.group === 'people') return Math.min(width, height) * 0.35;
+        return 0;
+      }, width / 2, height / 2).strength(d => d.group === 'people' ? 0.6 : 0))
+      .force('peoplespread', peopleSpreadForce());
+
+    graphSimulation = simulation;
+
+    // Draw edges
+    const link = g.append('g')
+      .selectAll('line')
+      .data(data.edges)
+      .join('line')
+      .attr('stroke', '#2a2d3a')
+      .attr('stroke-width', 1)
+      .attr('stroke-opacity', 0.6);
+
+    // Draw nodes
+    const node = g.append('g')
+      .selectAll('circle')
+      .data(data.nodes)
+      .join('circle')
+      .attr('r', d => Math.max(5, Math.min(14, (linkCount[d.id] || 0) * 1.2 + 4)))
+      .attr('fill', d => GROUP_COLORS[d.group] || GROUP_COLORS.other)
+      .attr('stroke', '#0f1117')
+      .attr('stroke-width', 1.5)
+      .style('cursor', 'pointer')
+      .call(d3.drag()
+        .on('start', (event, d) => { if (!event.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+        .on('drag', (event, d) => { d.fx = event.x; d.fy = event.y; })
+        .on('end', (event, d) => { if (!event.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; })
+      );
+
+    // Draw labels
+    const label = g.append('g')
+      .selectAll('text')
+      .data(data.nodes)
+      .join('text')
+      .text(d => d.title)
+      .attr('font-size', 11)
+      .attr('fill', '#e1e3eb')
+      .attr('dx', d => Math.max(6, Math.min(20, (linkCount[d.id] || 0) * 2 + 4)) + 4)
+      .attr('dy', 4)
+      .style('pointer-events', 'none');
+
+    // Hover: highlight connected nodes
+    node.on('mouseover', function(event, d) {
+      const connected = new Set();
+      connected.add(d.id);
+      data.edges.forEach(e => {
+        const sid = typeof e.source === 'object' ? e.source.id : e.source;
+        const tid = typeof e.target === 'object' ? e.target.id : e.target;
+        if (sid === d.id) connected.add(tid);
+        if (tid === d.id) connected.add(sid);
+      });
+      node.attr('opacity', n => connected.has(n.id) ? 1 : 0.1);
+      link.attr('stroke-opacity', e => {
+        const sid = typeof e.source === 'object' ? e.source.id : e.source;
+        const tid = typeof e.target === 'object' ? e.target.id : e.target;
+        return (sid === d.id || tid === d.id) ? 0.8 : 0.05;
+      });
+      label.attr('opacity', n => connected.has(n.id) ? 1 : 0.1);
+    });
+
+    node.on('mouseout', function() {
+      node.attr('opacity', 1);
+      link.attr('stroke-opacity', 0.6);
+      label.attr('opacity', 1);
+    });
+
+    // Click: open wiki page
+    node.on('click', function(event, d) { showPanel('wiki'); setTimeout(() => openTreePage(d.id + '.md'), 200); });
+
+    const legendGroups = [...new Set(data.nodes.map(n => n.group))].sort();
+    const legend = svg.append('g')
+      .attr('transform', 'translate(20,' + (height - legendGroups.length * 22 - 30) + ')')
+      .attr('style', 'pointer-events: none;');
+
+    legend.append('rect')
+      .attr('x', -10).attr('y', -10)
+      .attr('width', 160)
+      .attr('height', legendGroups.length * 22 + 12)
+      .attr('fill', 'var(--bg-card)')
+      .attr('stroke', 'var(--border)')
+      .attr('rx', 6)
+      .attr('opacity', 0.9);
+
+    legendGroups.forEach((group, i) => {
+      legend.append('circle')
+        .attr('cx', 8).attr('cy', i * 22 + 8)
+        .attr('r', 5)
+        .attr('fill', GROUP_COLORS[group] || GROUP_COLORS.other);
+      legend.append('text')
+        .attr('x', 20).attr('y', i * 22 + 12)
+        .text(group.charAt(0).toUpperCase() + group.slice(1))
+        .attr('font-size', 12)
+        .attr('fill', '#e1e3eb');
+    });
+
+    // Tick
+    simulation.on('tick', () => {
+      link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+          .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+      node.attr('cx', d => d.x).attr('cy', d => d.y);
+      label.attr('x', d => d.x).attr('y', d => d.y);
+    });
+  }
+
+  It depends on two other pieces. loadGraph() (index.html:882–898):
+
+  let graphData = null;
+  let graphSimulation = null;
+
+  async function loadGraph() {
+    if (!graphData) {
+      try {
+        const res = await fetch('/api/wiki/graph');
+        graphData = await res.json();
+      } catch(e) { console.error(e); return; }
+    }
+    // Deep copy to prevent d3 mutation issues
+    const data = {
+      nodes: graphData.nodes.map(n => ({...n})),
+      edges: graphData.edges.map(e => ({...e}))
+    };
+    renderGraph(data);
+  }
+
+  showPanel (index.html:329) calls if (name === 'graph') loadGraph();.
+
+  2. GROUP_COLORS, CSS and HTML
+
+  There are no CSS rules written for the graph: no classes for nodes, links, labels, highlighted/faded states or the legend. All of that styling is set
+  as SVG attributes in the JS above. Highlighting and fading are done only through opacity and stroke-opacity. The app is dark-only: there's no light
+  theme, no prefers-color-scheme rule and no theme toggle. The pieces that do exist are below.
+
+  GROUP_COLORS (index.html:305):
+  const GROUP_COLORS = {
+    people: '#4a7cff',
+    meetings: '#34d399',
+    projects: '#ef4444',
+    systems: '#f87171',
+    process: '#fb923c',
+    ccc: '#a78bfa',
+    slack: '#38bdf8',
+    queries: '#14b8a6',
+    other: '#7a7f93'
+  };
+
+  CSS variables, which the legend and search box use (index.html:10–20):
+    :root {
+      --bg: #0f1117; --bg-card: #181a23; --bg-hover: #1e2130; --bg-input: #12141c;
+      --border: #2a2d3a; --border-focus: #4a7cff;
+      --text: #e1e3eb; --text-dim: #7a7f93; --text-faint: #4e5264;
+      --accent: #4a7cff; --accent-glow: rgba(74, 124, 255, 0.15);
+      --green: #34d399; --green-dim: rgba(52, 211, 153, 0.12);
+      --amber: #fbbf24; --amber-dim: rgba(251, 191, 36, 0.12);
+      --red: #f87171; --red-dim: rgba(248, 113, 113, 0.12);
+      --radius: 10px; --radius-sm: 6px;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'IBM Plex Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; -webkit-font-smoothing: antialiased; }
+
+  The panel's show/hide rule (index.html:42):
+    .panel { display: none; } .panel.active { display: block; }
+
+  The container, search box and SVG (index.html:217–225). Their styles are inline:
+      <!-- GRAPH -->
+      <div class="panel" id="panel-graph">
+        <div style="width:100%; height:100vh; position:relative;">
+          <div id="graphSearch" style="position:absolute; top:16px; left:16px; z-index:10;">
+            <input type="text" id="graphSearchInput" placeholder="Search nodes..." style="padding:8px 14px; font-size:13px; background:var(--bg-card);
+  border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); outline:none; width:220px;" oninput="filterGraph(this.value)">
+          </div>
+          <svg id="graphSvg" style="width:100%; height:100%;"></svg>
+        </div>
+      </div>
+
+  D3 is loaded at index.html:8:
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+
+  3. filterGraph(query): index.html:1065–1102
+
+  function filterGraph(query) {
+    if (!graphData) return;
+    const svg = d3.select('#graphSvg');
+    query = query.toLowerCase().trim();
+
+    if (!query) {
+      // Reset all
+      svg.selectAll('circle').attr('opacity', 1);
+      svg.selectAll('line').attr('stroke-opacity', 0.6);
+      svg.selectAll('text').attr('opacity', 1);
+      return;
+    }
+
+    // Find matching nodes
+    const matched = new Set();
+    graphData.nodes.forEach(n => {
+      if (n.title.toLowerCase().includes(query) || n.id.toLowerCase().includes(query)) {
+        matched.add(n.id);
+      }
+    });
+
+    // Also include directly connected nodes
+    const connected = new Set(matched);
+    graphData.edges.forEach(e => {
+      const sid = typeof e.source === 'object' ? e.source.id : e.source;
+      const tid = typeof e.target === 'object' ? e.target.id : e.target;
+      if (matched.has(sid)) connected.add(tid);
+      if (matched.has(tid)) connected.add(sid);
+    });
+
+    svg.selectAll('circle').attr('opacity', d => connected.has(d.id) ? 1 : 0.05);
+    svg.selectAll('text').attr('opacity', d => connected.has(d.id) ? 1 : 0.05);
+    svg.selectAll('line').attr('stroke-opacity', e => {
+      const sid = typeof e.source === 'object' ? e.source.id : e.source;
+      const tid = typeof e.target === 'object' ? e.target.id : e.target;
+      return (connected.has(sid) && connected.has(tid)) ? 0.8 : 0.02;
+    });
+  }
+
+  There's a bug here, found by reading the code; I haven't reproduced it in a browser. svg.selectAll('circle') and svg.selectAll('text') also pick up the
+  legend's circles and text, which have no data bound. As soon as you type a search, d.id runs on undefined and throws a TypeError. The node circles get
+  updated first, so the search looks like it half-works, but the labels and edges are never dimmed. If you port this, select only the node, label and
+  link groups (for example, give each group a class), or skip elements that have no data.
+
+  4. peopleSpreadForce() and the alternative layout
+
+  peopleSpreadForce() is defined inside renderGraph and is already included verbatim in section 1, at the line function peopleSpreadForce() {. It's an
+  O(p²) pairwise push between people nodes only. Pairs closer than 200px are pushed apart with strength alpha * 1.2 * (200 - dist) / dist. The cx and cy
+  variables are computed but never used.
+
+  docs/graph-layout-custom.txt, in full:
+
+  function renderGraph(data) {
+    const svg = d3.select('#graphSvg');
+    svg.selectAll('*').remove();
+
+    const width = document.getElementById('panel-graph').clientWidth;
+    const height = document.getElementById('panel-graph').clientHeight;
+
+    svg.attr('viewBox', [0, 0, width, height]);
+
+    const g = svg.append('g');
+
+    // Zoom
+    svg.call(d3.zoom().scaleExtent([0.2, 5]).on('zoom', (event) => {
+      g.attr('transform', event.transform);
+    }));
+
+    // Calculate node sizes based on connection count
+    const linkCount = {};
+    data.edges.forEach(e => {
+      linkCount[e.source] = (linkCount[e.source] || 0) + 1;
+      linkCount[e.target] = (linkCount[e.target] || 0) + 1;
+    });
+
+    const groupRadius = {
+      meetings: 0.15,
+      ccc: 0.3,
+      projects: 0.35,
+      systems: 0.4,
+      process: 0.5,
+      slack: 0.55,
+      queries: 0.6,
+      other: 0.65,
+      people: 0.85
+    };
+
+    // Initial positions by group
+    const topArea = 100;
+    const centerY = height / 2;
+    const bottomArea = height - 120;
+
+    data.nodes.forEach((n, i) => {
+      if (n.group === 'people') {
+        const peopleNodes = data.nodes.filter(d => d.group === 'people');
+        const idx = peopleNodes.indexOf(n);
+        const spacing = (width - 200) / (peopleNodes.length + 1);
+        n.x = 100 + spacing * (idx + 1) + (Math.random() - 0.5) * 40;
+        n.y = topArea + (Math.random() - 0.5) * 50;
+      } else if (n.group === 'meetings') {
+        n.x = width / 2 + (Math.random() - 0.5) * width * 0.3;
+        n.y = centerY + (Math.random() - 0.5) * 80;
+      } else if (n.group === 'process') {
+        n.x = width / 2 + (Math.random() - 0.5) * width * 0.4;
+        n.y = bottomArea + (Math.random() - 0.5) * 60;
+      } else {
+        n.x = width / 2 + (Math.random() - 0.5) * width * 0.4;
+        n.y = centerY + (Math.random() - 0.5) * height * 0.3;
+      }
+    });
+
+    const simulation = d3.forceSimulation(data.nodes)
+      .force('link', d3.forceLink(data.edges).id(d => d.id).distance(100))
+      .force('charge', d3.forceManyBody().strength(-300))
+      .force('centerX', d3.forceX(width / 2).strength(0.03))
+      .force('collision', d3.forceCollide().radius(30))
+      .force('groupY', d3.forceY(d => {
+        if (d.group === 'people') return topArea;
+        if (d.group === 'meetings') return centerY;
+        if (d.group === 'process') return bottomArea;
+        return centerY + 50;
+      }).strength(d => {
+        if (d.group === 'people') return 0.4;
+        if (d.group === 'meetings') return 0.3;
+        if (d.group === 'process') return 0.3;
+        return 0.05;
+      }));
+
+    graphSimulation = simulation;
+
+    // Draw edges
+    const link = g.append('g')
+      .selectAll('line')
+      .data(data.edges)
+      .join('line')
+      .attr('stroke', '#2a2d3a')
+      .attr('stroke-width', 1)
+      .attr('stroke-opacity', 0.6);
+
+    // Draw nodes
+    const node = g.append('g')
+      .selectAll('circle')
+      .data(data.nodes)
+      .join('circle')
+      .attr('r', d => Math.max(5, Math.min(14, (linkCount[d.id] || 0) * 1.2 + 4)))
+      .attr('fill', d => GROUP_COLORS[d.group] || GROUP_COLORS.other)
+      .attr('stroke', '#0f1117')
+      .attr('stroke-width', 1.5)
+      .style('cursor', 'pointer')
+      .call(d3.drag()
+        .on('start', (event, d) => { if (!event.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+        .on('drag', (event, d) => { d.fx = event.x; d.fy = event.y; })
+        .on('end', (event, d) => { if (!event.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; })
+      );
+
+    // Draw labels
+    const label = g.append('g')
+      .selectAll('text')
+      .data(data.nodes)
+      .join('text')
+      .text(d => d.title)
+      .attr('font-size', 11)
+      .attr('fill', '#e1e3eb')
+      .attr('dx', d => Math.max(6, Math.min(20, (linkCount[d.id] || 0) * 2 + 4)) + 4)
+      .attr('dy', 4)
+      .style('pointer-events', 'none');
+
+    // Hover: highlight connected nodes
+    node.on('mouseover', function(event, d) {
+      const connected = new Set();
+      connected.add(d.id);
+      data.edges.forEach(e => {
+        const sid = typeof e.source === 'object' ? e.source.id : e.source;
+        const tid = typeof e.target === 'object' ? e.target.id : e.target;
+        if (sid === d.id) connected.add(tid);
+        if (tid === d.id) connected.add(sid);
+      });
+      node.attr('opacity', n => connected.has(n.id) ? 1 : 0.1);
+      link.attr('stroke-opacity', e => {
+        const sid = typeof e.source === 'object' ? e.source.id : e.source;
+        const tid = typeof e.target === 'object' ? e.target.id : e.target;
+        return (sid === d.id || tid === d.id) ? 0.8 : 0.05;
+      });
+      label.attr('opacity', n => connected.has(n.id) ? 1 : 0.1);
+    });
+
+    node.on('mouseout', function() {
+      node.attr('opacity', 1);
+      link.attr('stroke-opacity', 0.6);
+      label.attr('opacity', 1);
+    });
+
+    // Click: open wiki page
+    node.on('click', function(event, d) { showPanel('wiki'); setTimeout(() => openTreePage(d.id + '.md'), 200); });
+
+    const legendGroups = [...new Set(data.nodes.map(n => n.group))].sort();
+    const legend = svg.append('g')
+      .attr('transform', 'translate(20,' + (height - legendGroups.length * 22 - 30) + ')')
+      .attr('style', 'pointer-events: none;');
+
+    legend.append('rect')
+      .attr('x', -10).attr('y', -10)
+      .attr('width', 160)
+      .attr('height', legendGroups.length * 22 + 12)
+      .attr('fill', 'var(--bg-card)')
+      .attr('stroke', 'var(--border)')
+      .attr('rx', 6)
+      .attr('opacity', 0.9);
+
+    legendGroups.forEach((group, i) => {
+      legend.append('circle')
+        .attr('cx', 8).attr('cy', i * 22 + 8)
+        .attr('r', 5)
+        .attr('fill', GROUP_COLORS[group] || GROUP_COLORS.other);
+      legend.append('text')
+        .attr('x', 20).attr('y', i * 22 + 12)
+        .text(group.charAt(0).toUpperCase() + group.slice(1))
+        .attr('font-size', 12)
+        .attr('fill', '#e1e3eb');
+    });
+
+    // Tick
+    simulation.on('tick', () => {
+      link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+          .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+      node.attr('cx', d => d.x).attr('cy', d => d.y);
+      label.attr('x', d => d.x).attr('y', d => d.y);
+    });
+  }
+
+  Note on the two layouts. I didn't write either one or choose between them; this is my reading of the code. The two files differ only in initial
+  positions and forces. Drawing, hover, click and legend are identical.
+
+  - What the alternative does better:
+    - It sets initial positions, so the layout settles faster and lands in roughly the same place each time.
+    - It puts people, meetings and process into separate top, middle and bottom bands, which reads more like a structure than a hairball.
+    - It drops the O(p²) custom force.
+  - What it does worse:
+    - groupRadius is declared but never used, so it's dead code.
+    - It calls data.nodes.filter(...) inside the per-node loop, which is O(n²) at init.
+    - Using Math.random() means the layout still isn't fully repeatable.
+    - Bands at fixed pixel positions (topArea = 100, height - 120) don't adapt well to short panels.
+    - It looks less like Obsidian's organic graph than the live radial version does.
+  - The live version (radial): people on an outer ring (35% of the shorter side) with everything else in a central cluster. This is closer to Obsidian's
+    look. Without initial positions, though, each load starts from D3's default placement.
+
+  5. Data shape
+
+  GET /api/wiki/graph returns this. The shape comes from server.py:347–398; the values are illustrative:
+
+  {
+    "nodes": [
+      { "id": "people/jane-doe", "title": "Jane Doe", "group": "people" },
+      { "id": "projects/billing-migration", "title": "Billing Migration", "group": "projects" }
+    ],
+    "edges": [
+      { "source": "people/jane-doe", "target": "projects/billing-migration" }
+    ]
+  }
+
+  - id: the page path relative to wiki/, without .md. forceLink().id(d => d.id) uses it to match edges, and clicking opens id + '.md'.
+  - title: comes from the page's frontmatter title: line. If there isn't one, it's the filename with hyphens turned into spaces, in title case. It's used
+    as the label text and for search matching (along with id).
+  - group: the top-level folder name, or "other" for files at the root of wiki/. It picks the color from GROUP_COLORS, drives the people-specific forces,
+    and defines the legend entries.
+  - Edges: come from [[target|Display]] links. They're directed, from the page that contains the link to the page it links to, but they're drawn without
+    arrows. Edges pointing to pages that don't exist are dropped, and exact duplicates are removed. A↔B links in both directions still produce two edges,
+    and both count toward node size.
+  - Edges start out as string ids. D3 replaces them with node objects after the simulation starts, which is why the hover and filter code checks typeof
+    e.source === 'object'. linkCount is computed before that happens, while the ids are still strings.
+
+  6. Behaviour notes
+
+  - Window resize: nothing handles it. There's no resize listener and no ResizeObserver. Width and height are read once, from #panel-graph's
+    clientWidth/clientHeight, each time renderGraph runs. The graph is fully rebuilt every time you open the Graph panel, but it doesn't change size if
+    the window is resized while it's open. The container height is 100vh.
+  - Re-rendering: the server data is cached in graphData after the first fetch, so newly compiled pages don't appear until the page is reloaded. The
+    previous simulation isn't stopped before a new one starts; it's just replaced, and the old SVG elements are removed.
+  - How many nodes it stays smooth with: never measured. The wiki currently has 41 pages: process 14, people 10, meetings 7, queries 3, and ccc, projects
+    and systems 2 each, slack 1. It's SVG with one <circle> and one <text> per node, and every element is updated on every tick. I'd expect it to handle
+    a few hundred nodes, but that's an estimate, not something I've tested.
+  - Labels: always shown for every node, with no zoom-level or hover-only rules. They fade to 0.1 opacity on hover and 0.05 in search, the same as nodes.
+    The label offset uses count*2+4 (clamped 6–20) +4, while the node radius uses count*1.2+4 (clamped 5–14), so the gap between circle and label grows
+    with the link count.
+  - Legend: appended to svg, not to the zoomable g, so it stays fixed while you zoom or pan. It's a fixed 160px wide and is placed using the height
+    captured at render time.
+  - Interaction quirks:
+    - mouseout resets everything to full opacity, which clears any active search dimming. The search isn't reapplied after a re-render, even if the input
+      still contains text.
+    - Clicking a node waits 200ms (setTimeout) before opening the page, presumably so the Wiki panel can mount first.
+    - Drag uses alphaTarget(0.3) while dragging and releases the node when you let go (fx/fy = null), so nodes don't stay pinned.
+  - Hand-tuned values: I didn't write this code, and there are no comments or notes in the repo explaining any of the constants. The magic numbers are:
+    - link distance 100, charge −300, collide 30
+    - people ring at 0.35 × the shorter side, strength 0.6
+    - spread threshold 200 with factor 1.2
+    - opacities 0.6 / 0.8 / 0.1 / 0.05 / 0.02
+    - zoom range 0.2–5
+
+    I can't tell you which of these were tuned on purpose.

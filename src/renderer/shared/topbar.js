@@ -20,11 +20,17 @@ const MARKUP = `
     </span>
   </button>
   <span class="status-failed" data-testid="status-failed" hidden></span>
+  <span class="summaries-status" data-testid="summaries-status" role="status" hidden>
+    <span class="summaries-text" data-testid="summaries-text"></span>
+    <button type="button" class="link" data-testid="summaries-pause">Pause</button>
+  </span>
   <div class="topbar-menu library-menu" data-testid="library-menu" role="menu" hidden>
     <ul class="library-options" data-testid="library-options"></ul>
     <form class="menu-form" data-testid="library-new-form" autocomplete="off">
       <label class="visually-hidden" for="library-new-name">New library name</label>
       <input id="library-new-name" data-testid="library-new-name" placeholder="New library" maxlength="60" />
+      <label class="visually-hidden" for="library-new-profile">Kind of documents</label>
+      <select id="library-new-profile" data-testid="library-new-profile" hidden></select>
       <button type="submit" data-testid="library-create">Create</button>
     </form>
     <section class="menu-section" data-testid="library-current">
@@ -36,6 +42,17 @@ const MARKUP = `
         <input id="library-rename-name" data-testid="library-rename-name" maxlength="60" />
         <button type="submit" data-testid="library-rename-save">Rename</button>
       </form>
+      <div class="menu-overview" data-testid="library-overview-settings" hidden>
+        <label class="menu-row">Kind of documents
+          <select data-testid="library-profile"></select>
+        </label>
+        <label class="menu-row has-tip">
+          <input type="checkbox" data-testid="library-section-summaries" aria-describedby="tip-library-sections" />
+          Summarize every section
+          <span class="tip" id="tip-library-sections" role="tooltip" data-testid="library-section-summaries-tip">Uses the model on this computer. Ask is slower while it runs. You can pause it in the top bar.</span>
+        </label>
+        <button type="button" class="link" data-testid="library-export">Open Markdown export</button>
+      </div>
       <div class="menu-actions">
         <button type="button" class="link" data-testid="library-reindex">Reindex</button>
         <button type="button" class="link danger" data-testid="library-delete">Delete library</button>
@@ -89,6 +106,17 @@ export function statusOf(s) {
 }
 
 /**
+ * The Ask page's line while the current library is indexing, or null (docs/summaries.md, Ask during
+ * indexing): the question box is off meanwhile, because an answer would miss the files still being
+ * read, and comes back when indexing finishes.
+ */
+export function lockLine(status) {
+  if (statusOf(status)?.kind !== 'indexing') return null;
+  const n = Number(status.pending) || 0;
+  return n > 0 ? `Reading new files, ${n} left.` : 'Reading new files.';
+}
+
+/**
  * Mounts the bar into header. views maps a view name (search, browse) to its container, which the
  * empty state hides. onView(name) is called when the user switches; onLibraryChange(id) when the
  * current library changes without a reload of the window. Returns an object the page
@@ -102,6 +130,8 @@ export function mountTopBar(header, { views = {}, onView = () => {}, onLibraryCh
   const q = (id) => header.querySelector(`[data-testid="${id}"]`);
   const bridge = window.askfiles?.libraries;
   const watcher = window.askfiles?.watcher;
+  const graphBridge = window.askfiles?.graph;
+  const summariesBridge = window.askfiles?.summaries;
   const shellValues = window.shellConfig || {};
 
   const empty = document.createElement('section');
@@ -119,6 +149,8 @@ export function mountTopBar(header, { views = {}, onView = () => {}, onLibraryCh
     status: null,
     connection: null,
     fallbackCount: null,
+    profiles: [],
+    summaries: null,
   };
 
   // --- status ---------------------------------------------------------------------------------
@@ -213,12 +245,73 @@ export function mountTopBar(header, { views = {}, onView = () => {}, onLibraryCh
         return li;
       }),
     );
+    renderOverviewSettings(lib);
     const fixed = !lib || lib.isDefault;
     q('library-delete').hidden = fixed;
     q('library-rename-form').hidden = fixed;
     if (!fixed && document.activeElement !== q('library-rename-name')) q('library-rename-name').value = lib.name;
     renderEmpty();
   }
+
+  function profileOptions(select, selected) {
+    select.replaceChildren(
+      ...state.profiles.map((p) => {
+        const o = document.createElement('option');
+        o.value = p.id;
+        o.textContent = p.name;
+        o.title = p.description;
+        return o;
+      }),
+    );
+    if (selected) select.value = selected;
+  }
+
+  function renderOverviewSettings(lib) {
+    const box = q('library-overview-settings');
+    box.hidden = !lib || !state.profiles.length;
+    const newProfile = q('library-new-profile');
+    newProfile.hidden = !state.profiles.length;
+    if (newProfile.options.length !== state.profiles.length) profileOptions(newProfile, 'legal-finance');
+    if (!lib || !state.profiles.length) return;
+    profileOptions(q('library-profile'), lib.profile);
+    q('library-section-summaries').checked = !!lib.sectionSummaries;
+    // No model on this tier: nothing to summarize with.
+    q('library-section-summaries').closest('label').hidden = state.summaries ? !state.summaries.enabled : false;
+  }
+
+  // --- summaries ------------------------------------------------------------------------------
+
+  /** One line for the summary queue: Summaries 3 of 10, and why it waits. Null when there is nothing to show. */
+  function summariesText(s) {
+    if (!s || !s.enabled || s.state === 'idle' || !s.total) return null;
+    const base = `Summaries ${Math.min(s.done + 1, s.total)} of ${s.total}`;
+    if (s.state === 'paused') {
+      const why = { user: 'paused', indexing: 'waiting for indexing', answering: 'waiting for the answer' }[s.reason];
+      return why ? `${base}, ${why}` : base;
+    }
+    return base;
+  }
+
+  function renderSummaries() {
+    const s = state.summaries;
+    const text = summariesText(s);
+    const node = q('summaries-status');
+    node.hidden = !text;
+    if (!text) return;
+    q('summaries-text').textContent = text;
+    q('summaries-pause').textContent = s.userPaused ? 'Resume' : 'Pause';
+    node.dataset.state = s.state;
+  }
+
+  q('summaries-pause').addEventListener('click', async () => {
+    if (!summariesBridge) return;
+    try {
+      state.summaries = state.summaries?.userPaused ? await summariesBridge.resume() : await summariesBridge.pause();
+      renderSummaries();
+    } catch (e) {
+      console.warn('[topbar] summaries pause failed', e.message);
+    }
+  });
 
   function isEmpty() {
     const lib = current();
@@ -299,7 +392,29 @@ export function mountTopBar(header, { views = {}, onView = () => {}, onLibraryCh
     e.preventDefault();
     const name = q('library-new-name').value;
     if (!name.trim() || !bridge) return;
-    if (await run(() => bridge.create(name))) q('library-new-name').value = '';
+    const profile = state.profiles.length ? q('library-new-profile').value : null;
+    if (await run(() => bridge.create(name, profile))) q('library-new-name').value = '';
+  });
+
+  q('library-profile').addEventListener('change', async (e) => {
+    if (!bridge?.setProfile) return;
+    await run(() => bridge.setProfile(e.target.value));
+  });
+
+  q('library-section-summaries').addEventListener('change', async (e) => {
+    if (!summariesBridge) return;
+    await run(() => summariesBridge.setLibrary(e.target.checked));
+  });
+
+  q('library-export').addEventListener('click', async () => {
+    if (!summariesBridge) return;
+    closeMenus();
+    try {
+      if (!(await summariesBridge.openExport()))
+        showResult({ added: 0, skipped: [] }, 'The export folder is made once the library has documents.');
+    } catch (err) {
+      showResult({ added: 0, skipped: [] }, err.message);
+    }
   });
 
   q('library-rename-form').addEventListener('submit', async (e) => {
@@ -326,10 +441,10 @@ export function mountTopBar(header, { views = {}, onView = () => {}, onLibraryCh
   // --- adding ---------------------------------------------------------------------------------
 
   let resultTimer = null;
-  function showResult(r) {
+  function showResult(r, text) {
     const node = q('add-result');
     clearTimeout(resultTimer);
-    node.textContent = addResultText(r);
+    node.textContent = text || addResultText(r);
     node.hidden = false;
     resultTimer = setTimeout(() => (node.hidden = true), 8000);
   }
@@ -414,6 +529,31 @@ export function mountTopBar(header, { views = {}, onView = () => {}, onLibraryCh
       .status()
       .then(applyStatus)
       .catch((e) => console.warn('[topbar] watcher status failed', e.message));
+  }
+  if (graphBridge) {
+    graphBridge
+      .profiles()
+      .then((p) => {
+        state.profiles = Array.isArray(p) ? p : [];
+        renderLibraries();
+      })
+      .catch((e) => console.warn('[topbar] profiles failed', e.message));
+  }
+  if (summariesBridge) {
+    summariesBridge.onEvent((e) => {
+      if (e.type !== 'status') return;
+      state.summaries = e.status;
+      renderSummaries();
+      renderOverviewSettings(current());
+    });
+    summariesBridge
+      .status()
+      .then((s) => {
+        state.summaries = s;
+        renderSummaries();
+        renderOverviewSettings(current());
+      })
+      .catch((e) => console.warn('[topbar] summaries status failed', e.message));
   }
   renderLibraries();
   renderStatus();

@@ -7,7 +7,7 @@
 import { createBrowseView } from '../browse/view.js';
 import { createClient, generateApiKey } from '../api/client.js';
 import { createHistory, isBackKey } from '../shared/history.js';
-import { mountTopBar } from '../shared/topbar.js';
+import { lockLine, mountTopBar } from '../shared/topbar.js';
 
 const RECENT_LIMIT = 12;
 const RECENT_KEY = 'askfiles.recentQuestions';
@@ -62,6 +62,7 @@ function readConfig() {
     workspace: pick('workspace'),
     folder: pick('folder'),
     askNotice: shell.askNotice ?? null,
+    libraryId: shell.libraryId ?? null,
   };
 }
 
@@ -79,6 +80,8 @@ const state = {
   developer: false,
   trace: null,
   expected: null,
+  // The current library's watcher status, for the lockout during indexing.
+  watcher: null,
 };
 
 // One page history over Ask and Browse; Back on the Document page and Cmd+[ go through it.
@@ -402,8 +405,20 @@ function handleEvent(e) {
 
 function endRun() {
   els.answer.setAttribute('aria-busy', 'false');
-  els.submit.disabled = false;
   state.run = null;
+  updateAskBox();
+}
+
+/** The question box follows the lockout line (shared/topbar.js lockLine) and a running question. */
+function updateAskBox() {
+  const line = config.askNotice ? null : lockLine(state.watcher);
+  const locked = config.askNotice || line;
+  const node = $('ask-locked');
+  node.hidden = !line;
+  node.textContent = line || '';
+  els.query.disabled = !!locked;
+  els.submit.disabled = !!locked || !!state.run;
+  document.body.dataset.askLocked = String(!!line);
 }
 
 function finish(result) {
@@ -421,7 +436,7 @@ function finish(result) {
 
 async function ask(question) {
   question = question.trim();
-  if (!question || config.askNotice) return;
+  if (!question || config.askNotice || lockLine(state.watcher)) return;
   els.result.hidden = false;
   resetResult();
   if (!answers) {
@@ -458,7 +473,7 @@ function clearAll() {
   resetResult();
   els.result.hidden = true;
   els.answer.setAttribute('aria-busy', 'false');
-  els.submit.disabled = false;
+  updateAskBox();
   els.query.focus();
 }
 
@@ -618,6 +633,20 @@ document.addEventListener('keydown', (e) => {
 els.query.addEventListener('input', autoGrow);
 
 if (answers) answers.onEvent(handleEvent);
+
+const watcherBridge = window.askfiles?.watcher;
+if (watcherBridge) {
+  const apply = (s) => {
+    if (!s || (config.libraryId && s.libraryId && s.libraryId !== config.libraryId)) return;
+    state.watcher = s;
+    updateAskBox();
+  };
+  watcherBridge.onStatus(apply);
+  watcherBridge
+    .status()
+    .then(apply)
+    .catch((e) => console.warn('[ask] watcher status failed', e.message));
+}
 
 // A tier with Ask off (8 GB): one line instead of the question box; Browse and Find stay.
 if (config.askNotice) {

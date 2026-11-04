@@ -1,0 +1,84 @@
+{
+  "id": "legal-finance",
+  "name": "Legal and finance",
+  "description": "Regulations, guidance, templates, contracts, records and data. Links documents that share headings, cite each other or are versions of one document.",
+  "types": [
+    { "name": "regulation", "label": "Regulation", "color": "#4a7cff" },
+    { "name": "guidance", "label": "Guidance", "color": "#2fae7d" },
+    { "name": "template", "label": "Template", "color": "#e8893a" },
+    { "name": "contract", "label": "Contract", "color": "#9a6ff0" },
+    { "name": "record", "label": "Record", "color": "#d9a520" },
+    { "name": "data", "label": "Data", "color": "#1fa3a3" },
+    { "name": "other", "label": "Other", "color": "#8a8f9e" }
+  ],
+  "kinds": {
+    "normative": "regulation",
+    "explanatory": "guidance",
+    "template": "template",
+    "record": "record",
+    "data": "data",
+    "other": "other"
+  },
+  "cues": {
+    "regulation": [
+      "regulation",
+      "policy",
+      "directive",
+      "procedure",
+      "rule",
+      "law",
+      "act",
+      "standard",
+      "code of conduct",
+      "规定",
+      "办法",
+      "条例",
+      "制度",
+      "规则",
+      "标准",
+      "准则",
+      "细则",
+      "法规"
+    ],
+    "guidance": [
+      "guidance",
+      "guideline",
+      "guide",
+      "handbook",
+      "manual",
+      "explanatory note",
+      "指南",
+      "指引",
+      "手册",
+      "说明",
+      "解读"
+    ],
+    "template": [
+      "template",
+      "form",
+      "request for bids",
+      "request for proposals",
+      "sample",
+      "范本",
+      "模板",
+      "示范文本",
+      "招标文件",
+      "表格",
+      "格式"
+    ],
+    "contract": ["contract", "agreement", "合同", "协议"],
+    "record": ["minutes", "record", "log", "register", "记录", "纪要", "台账"],
+    "data": ["data", "dataset", "数据"]
+  },
+  "bands": ["regulation", "guidance", "contract", "template", "record", "data", "other"],
+  "edges": {
+    "headings": true,
+    "references": true,
+    "clauseReferences": true,
+    "versions": true,
+    "related": false,
+    "projects": false,
+    "tickets": false,
+    "dates": false
+  }
+}

@@ -71,6 +71,9 @@ src/main/libraries.ts (LibraryManager). A library is one upstream workspace plus
 | index.json | The watcher's records: per file its hash, shown path, source id and section records (title, index, level, full heading path, pages, printed page labels, document location) |
 | browse/ | The browse index, one JSON file per document |
 | files/ | Copies of files added with Add files or by dropping files; the library's own, deleted with it |
+| graph.json | The overview graph (docs/graph.md), rebuilt after browse changes |
+| summaries/ | Document and section summaries, one JSON file per document (docs/summaries.md) |
+| export/ | The Markdown export of the summaries, an Obsidian-compatible folder |
 
 Section documents go to `STORAGE_DIR/documents/askfiles/<id>/`. The default library, All files (id all-files, workspace askfiles-library as before Session K), exists from the first launch and cannot be renamed or deleted. Others get an id lib-xxxxxx and a workspace askfiles-<id>.
 
@@ -92,7 +95,9 @@ Section documents go to `STORAGE_DIR/documents/askfiles/<id>/`. The default libr
   "setupCompletedAt": "2026-10-30T10:00:00.000Z",
   "libraries": [
     { "id": "all-files", "name": "All files", "workspaceSlug": "askfiles-library",
-      "folders": [{ "id": "folder-1", "path": "/Users/anna/Documents", "addedAt": "..." }], "createdAt": "..." }
+      "folders": [{ "id": "folder-1", "path": "/Users/anna/Documents", "addedAt": "..." }], "createdAt": "...",
+      "profile": "legal-finance", "typeOverrides": { "legal-finance": { "<document id>": "contract" } },
+      "familyDecisions": { "<id>|<id>": true }, "sectionSummaries": false }
   ],
   "currentLibrary": "all-files",
   "settings": { "answerScope": "balanced", "answerModel": "better", "contextLength": null }
@@ -142,6 +147,11 @@ One preload script, src/main/preload.ts, for every window. Windows run with cont
 | `askfiles.answer.onEvent(cb)` | Events of the asking page's runs, each with the run `id`: `stage` (retrieving, answering), `sources` (the numbered sections the model reads), `delta` (text and citation parts), `trace` (developer mode only), `done` (`result`: text, notFound, claims, cited, considered, nearest, timings), `error` |
 | `askfiles.answer.cancel(id)` | Stops the run |
 | `askfiles.answer.developer()`, `.setOverrides(o)`, `.saveCase(c)` | Developer panel, only with ASKFILES_DEVELOPER=1: last trace and live section count and rerank floor for the next question; Save as eval case appends to `<dataDir>/eval-questions.csv` (ASKFILES_EVAL_QUESTIONS overrides) |
+| `askfiles.graph.data()`, `.onChange(cb)` | The current library's overview graph (docs/graph.md) with each document's summary state; onChange after a rebuild |
+| `askfiles.graph.profiles()`, `.setType(id, type)`, `.answerFamily(a, b, same)` | The profiles (docs/profiles.md); a document's type override (null for Automatic); a family answer (null forgets it) |
+| `askfiles.libraries.create(name, profile)`, `.setProfile(profile)` | A new library's profile; the current library's profile, which rebuilds types and edges, not the index |
+| `askfiles.summaries.status()`, `.onEvent(cb)`, `.pause()`, `.resume()` | The summary queue (docs/summaries.md): Summaries n of m and why it waits; events `status` and `changed` (document ids) |
+| `askfiles.summaries.document(id)`, `.requestSections(id)`, `.setLibrary(on)`, `.openExport()` | A document's summary, section summaries and estimate; its section summaries on request; the library switch; the export folder in Finder |
 | `askfiles.app.info()` | `{ name, version }` for the About page |
 | `askfiles.app.pageReady(info)` | Logs `[main] page ready ask connected=true documents=N`; the smoke test waits for it |
 | `window.shellConfig` | `{ baseUrl, apiKey, workspace, libraryId, libraryName, folder (always null), resolveSources, openSource }`, read once per page load; workspace is the current library's |
@@ -154,7 +164,7 @@ src/renderer/shared/topbar.js and topbar.css, mounted by the Ask page into `<hea
 
 ## Browse view
 
-The Ask and Browse switch in the top bar shows either view in the same page (src/renderer/ask/index.html); both stay in the page, so each keeps its state and nothing reloads. Browse (src/renderer/browse/view.js, also standalone at browse/index.html) has a fixed sidebar with Library, Headings, Find and, once a document is open, Document (labelled with the file name, its nested outline below it); only the content area scrolls, and each page keeps its scroll position. Library: every document, outline collapsed, sort by name or last change, indexing state. Headings: headings found in two or more documents; a heading shows that section from every document side by side. Find: keyword search, hits grouped by document and section (src/main/browse/search.ts): every word must occur in the section, and words in quotes ("annual leave", “年假 结转”) are one phrase that must occur as written. Sections where the words stand next to each other in the query's order come first, then sections with all words in one paragraph, then the rest; documents are ordered by their best section, and the ranking is done before the 200-hit limit cuts. The snippet is the stretch of the section where the words are densest. Document: sections in order, an anchor per section, the page and the printed page label when the PDF has one, Open original. Opening a document from any page, or Read section on the Ask page, always lands on Document and never changes the state of Library, Headings or Find.
+The Ask and Browse switch in the top bar shows either view in the same page (src/renderer/ask/index.html); both stay in the page, so each keeps its state and nothing reloads. Browse (src/renderer/browse/view.js, also standalone at browse/index.html) has a fixed sidebar with Library, Headings, Find, Overview (Session N, docs/graph.md) and, once a document is open, Document (labelled with the file name, its nested outline below it); only the content area scrolls, and each page keeps its scroll position. Library: every document, outline collapsed, sort by name or last change, indexing state. Headings: headings found in two or more documents; a heading shows that section from every document side by side. Find: keyword search, hits grouped by document and section (src/main/browse/search.ts): every word must occur in the section, and words in quotes ("annual leave", “年假 结转”) are one phrase that must occur as written. Sections where the words stand next to each other in the query's order come first, then sections with all words in one paragraph, then the rest; documents are ordered by their best section, and the ranking is done before the 200-hit limit cuts. The snippet is the stretch of the section where the words are densest. Document: sections in order, an anchor per section, the page and the printed page label when the PDF has one, Open original. Opening a document from any page, or Read section on the Ask page, always lands on Document and never changes the state of Library, Headings or Find.
 
 Page history (src/renderer/shared/history.js): every move between Ask, the Browse pages and documents is an entry, with what it needs to come back as it was left: the scroll position, the heading selected, the words found, the document and section. Back at the top of the Browse sidebar, above Library (always shown, disabled when there is nothing to go back to), and Cmd+[ anywhere return to the entry before; the Ask results stay as they were. Changing the library clears the history. The standalone browse page keeps a history of its own. Find results carry no label for their rank; the order is the ranking. No model and no server call: everything comes from the browse index.
 
@@ -174,6 +184,8 @@ The Headings page asks for headings found in two or more documents only (BrowseI
 Heading normalization (src/main/browse/normalize.ts, numbering prefixes from src/main/sections/headings.ts): NFKC, which turns full-width letters, digits and punctuation into half-width; lower case; numbering prefixes removed, repeatedly (1, 1., 1.2.3, 1), 1、, (1), (a), a), I., IV), Chapter 3, Section 2.1, Part II, Article 5, Appendix A, § 4, 第一章, 第12节, 第三条, 第二部分, 一、, (一)); then punctuation and symbols removed and whitespace collapsed. Number parts have at most three digits, so 2026 Budget keeps its year. A heading that is only numbering (第一章 alone) keeps it.
 
 Keyword search (src/main/browse/search.ts): the query is split at whitespace; each term, folded the same way (NFKC, lower case), must occur as a substring of the section title or text. No word boundaries, so Chinese matches inside a sentence. Documents with the most matches come first, sections in document order; at most 200 sections are returned, the total is always counted.
+
+While the current library is indexing, the Ask page's question box is off with one line, Reading new files, n left (Session N, docs/summaries.md). The Library page shows each document's type (a dropdown: Automatic or a type of the library's profile) and its summary, and asks about possible copies of one document; the Document page shows the summary, the section summaries and the Summarize each section button. The top bar shows Summaries n of m with Pause while the summary queue works, and the library menu holds Kind of documents, Summarize every section and Open Markdown export.
 
 ## Answer pipeline
 
