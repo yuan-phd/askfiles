@@ -1,5 +1,5 @@
 /**
- * Edges of the overview graph (docs/graph.md, Edges), each with a kind and a weight, from the
+ * Edges of the library graph (docs/graph.md, Edges), each with a kind and a weight, from the
  * browse index only: no model. Which rules run is the profile's choice (profiles.ts edges). A pair
  * linked twice by the same rule, once in each direction, becomes one edge with the weights summed.
  */

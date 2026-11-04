@@ -1,6 +1,6 @@
 // The summary layer (src/main/summaries, docs/summaries.md) against the real backend: the English
 // files of corpus S indexed by the real FolderWatcher through upstream, the browse index and the
-// overview graph built from it, and summaries made by the test chat model through Ollama. Checks
+// library graph built from it, and summaries made by the test chat model through Ollama. Checks
 // that every document summary kept is within its cap and supported by its source, that one
 // document's section summaries are made on demand, and that the export folder is Obsidian Markdown
 // (front matter and [[links]] parsed). Needs RUN_INTEGRATION=1, Ollama with the test models

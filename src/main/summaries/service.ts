@@ -445,7 +445,7 @@ export class SummaryService {
     };
   }
 
-  /** The document summary of every document, for the Library page and the overview's tooltips. */
+  /** The document summary of every document, for the Library page and the Graph page's tooltips. */
   documentViews(): Record<string, { state: DocumentSummaryView['state']; text: string | null }> {
     const out: Record<string, { state: DocumentSummaryView['state']; text: string | null }> = {};
     const model = this.d.model();

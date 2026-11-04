@@ -10,7 +10,7 @@ Session N. Code in src/main/summaries. Each summary is one sentence written by t
 | Made from | The title, the top-level outline (up to 30 entries) and the first section with text (up to 3000 characters). For a Chinese document: the outline down to three levels (up to 30 titles, so articles and numbered clauses count) and the text of the first sections in order, 3000 characters in all | The document title, the section path and the section text (up to 4000 characters) |
 | Cited to | That first section | The section |
 | When | Automatically, after the document is indexed | Off by default. Two ways to turn it on: Summarize each section on the Document page (that document only, with an estimate in minutes), or Summarize every section in the library menu (every document, and every document added later) |
-| Shown on | The Library page (under the name), the Document page (under the title, with a link to the section it cites) and the overview node's tooltip | The Document page, above each section's text |
+| Shown on | The Library page (under the name), the Document page (under the title, with a link to the section it cites) and the graph node's tooltip | The Document page, above each section's text |
 
 Both section controls have the same tooltip: Uses the model on this computer. Ask is slower while it runs. You can pause it in the top bar.
 
@@ -45,7 +45,7 @@ It pauses while any of these holds:
 
 A pause that starts while a job runs aborts the job, which goes back to the front of the queue, so Ask never waits for a summary. Work starts again only after the gates have been open for 5 s (IDLE_MS). Between jobs there is no wait.
 
-The top bar shows Summaries n of m, with Pause and Resume, while there is work. n and m count the current batch, which ends when the queue empties. A pause shows its reason: paused, waiting for the answer. While the library indexes it reads Summaries paused until indexing finishes (n of m done): the queue waits for the whole batch of files, not per file, and so does the Markdown export (writing it reads the overview graph, which would otherwise be rebuilt after every file).
+The top bar shows Summaries n of m, with Pause and Resume, while there is work. n and m count the current batch, which ends when the queue empties. A pause shows its reason: paused, waiting for the answer. While the library indexes it reads Summaries paused until indexing finishes (n of m done): the queue waits for the whole batch of files, not per file, and so does the Markdown export (writing it reads the library graph, which would otherwise be rebuilt after every file).
 
 Summaries use the Ask model in server/.env (OLLAMA_MODEL_PREF) and the Settings context length, so Ollama keeps one chat model loaded. A tier's preset can turn on summariesFasterModel: summaries then use the Faster tier's model (Settings, Answer model: the model of the tier below) when this Mac has it installed. It is never pulled for summaries, a pinned file whose sha256 does not match is not used, and it is looked up when the library opens and after a model is pulled or removed or the answer model changes; a change of model marks every summary stale. It is off on every tier (owner decision 2026-11-04): on the owner's Mac (M1 Max, 32 GB tier) the Faster model, qwen3 14B Q3_K_M, was slower than the Ask model's q4_K_M (Batches below) and kept a second chat model in memory.
 

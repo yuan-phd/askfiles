@@ -747,32 +747,32 @@ h6.doc-heading {
   opacity: 1;
 }
 
-/* Overview page: the graph fills the content area, which then does not scroll */
+/* Graph page: the graph fills the content area, which then does not scroll */
 
-.browse-content.overview-on {
+.browse-content.graph-on {
   padding: 0;
   overflow: hidden;
 }
 
-.browse-content > .browse-page.overview-page {
+.browse-content > .browse-page.graph-page {
   max-width: none;
   height: 100%;
 }
 
-.overview {
+.graph {
   position: relative;
   height: 100%;
   min-height: 320px;
   background: var(--bg);
 }
 
-.overview-svg {
+.graph-svg {
   display: block;
   width: 100%;
   height: 100%;
 }
 
-.overview-tools {
+.graph-tools {
   position: absolute;
   top: var(--space-4);
   left: var(--space-4);
@@ -784,11 +784,11 @@ h6.doc-heading {
   pointer-events: none;
 }
 
-.overview-tools > * {
+.graph-tools > * {
   pointer-events: auto;
 }
 
-.overview-tools input {
+.graph-tools input {
   width: 220px;
   padding: 8px 14px;
   font: inherit;
@@ -800,12 +800,12 @@ h6.doc-heading {
   outline: none;
 }
 
-.overview-tools input:focus {
+.graph-tools input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--focus);
 }
 
-.overview-layout {
+.graph-layout {
   display: inline-flex;
   border: 1px solid var(--border);
   border-radius: var(--radius-small);
@@ -813,7 +813,7 @@ h6.doc-heading {
   background: var(--surface);
 }
 
-.overview-layout button {
+.graph-layout button {
   padding: 6px 12px;
   border: 0;
   background: none;
@@ -823,89 +823,89 @@ h6.doc-heading {
   cursor: pointer;
 }
 
-.overview-layout button[aria-pressed='true'] {
+.graph-layout button[aria-pressed='true'] {
   background: var(--accent-soft);
   color: var(--accent);
 }
 
-.overview .link {
+.graph .link {
   stroke: var(--text-muted);
   fill: none;
 }
 
 /* Edge style by kind: solid shared headings, dashed references, dotted version chains. */
-.overview .link.kind-headings {
+.graph .link.kind-headings {
   stroke-dasharray: none;
 }
 
-.overview .link.kind-reference {
+.graph .link.kind-reference {
   stroke-dasharray: 6 4;
 }
 
-.overview .link.kind-version {
+.graph .link.kind-version {
   stroke-dasharray: 1 4;
   stroke-linecap: round;
   stroke-width: 2.5px;
 }
 
-.overview .link.kind-related,
-.overview .link.kind-project {
+.graph .link.kind-related,
+.graph .link.kind-project {
   stroke: var(--quote-rule);
 }
 
-.overview .link.kind-ticket {
+.graph .link.kind-ticket {
   stroke-dasharray: 10 3;
 }
 
-.overview .link.kind-date {
+.graph .link.kind-date {
   stroke-dasharray: 2 6;
   stroke-linecap: round;
 }
 
-.overview .link-hit {
+.graph .link-hit {
   stroke: transparent;
   stroke-width: 10px;
   cursor: pointer;
 }
 
-.overview .node {
+.graph .node {
   stroke: var(--surface);
   stroke-width: 1.5px;
   cursor: pointer;
 }
 
-.overview .label,
-.overview .legend {
+.graph .label,
+.graph .legend {
   pointer-events: none;
 }
 
 /* A document whose summary is still being made. */
-.overview .node.pending {
+.graph .node.pending {
   stroke: var(--text-muted);
   stroke-dasharray: 2 2;
 }
 
-.overview .node.match {
+.graph .node.match {
   stroke: var(--text);
   stroke-width: 2px;
 }
 
-.overview .label {
+.graph .label {
   fill: var(--text);
 }
 
-.overview .legend-box {
+.graph .legend-box {
   fill: var(--surface);
   stroke: var(--border);
   opacity: 0.9;
 }
 
-.overview .legend-label {
+.graph .legend-label {
   fill: var(--text);
 }
 
-.overview-tooltip,
-.overview-chooser {
+.graph-tooltip,
+.graph-chooser {
   position: absolute;
   z-index: 20;
   max-width: 300px;
@@ -918,28 +918,28 @@ h6.doc-heading {
   line-height: 1.4;
 }
 
-.overview-tooltip {
+.graph-tooltip {
   pointer-events: none;
 }
 
-.overview-tooltip span,
-.overview-tooltip strong {
+.graph-tooltip span,
+.graph-tooltip strong {
   display: block;
 }
 
-.overview-tooltip .tip-title {
+.graph-tooltip .tip-title {
   overflow-wrap: anywhere;
 }
 
-.overview-tooltip .tip-meta {
+.graph-tooltip .tip-meta {
   color: var(--text-muted);
 }
 
-.overview-tooltip .tip-summary {
+.graph-tooltip .tip-summary {
   margin-top: var(--space-1);
 }
 
-.overview-tooltip .tip-summary.pending {
+.graph-tooltip .tip-summary.pending {
   font-style: italic;
   color: var(--text-muted);
 }
@@ -955,7 +955,7 @@ h6.doc-heading {
   list-style: none;
 }
 
-.overview-empty {
+.graph-empty {
   position: absolute;
   top: 40%;
   left: 0;

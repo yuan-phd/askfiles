@@ -21,7 +21,7 @@ A library is a set of documents you ask about together. All files is always ther
 - **Team work**: meetings, reports, tickets, specs.
 - **General**: books, articles, notes, reference works.
 
-The kind only changes how documents are grouped and linked on the Overview page. You can change it later in the library menu, under Kind of documents. Nothing is read again.
+The kind only changes how documents are grouped and linked on the Graph page. You can change it later in the library menu, under Kind of documents. Nothing is read again.
 
 ## Asking
 
@@ -36,10 +36,10 @@ Click Browse at the top left to read your documents without asking anything:
 - **Library**: every document, with its outline, its type and a one-sentence summary.
 - **Compare**: the same heading across several files, shown side by side. A section that runs over several pages shows once, with all its text.
 - **Find**: words and phrases in your documents.
-- **Overview**: a map of the library (below).
+- **Graph**: a map of the library (below).
 - **Document**: the document you opened, with its outline on the left.
 
-## Overview
+## Graph
 
 Each dot is a document. Its colour shows its type, as the legend says, and bigger dots have more links. The lines show what documents have in common:
 
@@ -59,7 +59,7 @@ When AskFiles is not sure whether two files are copies or versions of one docume
 
 ## Summaries
 
-On a computer with 16 GB of memory or more, AskFiles writes a one-sentence summary of each document after reading it. The summary appears under the document's name, on its page and on the Overview. Until it is ready, it says Summary pending.
+On a computer with 16 GB of memory or more, AskFiles writes a one-sentence summary of each document after reading it. The summary appears under the document's name, on its page and on the Graph page. Until it is ready, it says Summary pending.
 
 Each summary is checked against the document. A sentence the document does not back up is thrown away and never shown, so some documents may have no summary.
 
@@ -72,7 +72,7 @@ Summaries use the model on this computer, so asking is slower while they are bei
 
 The Markdown export is the folder Open Markdown export in the library menu shows in Finder: <your home folder>/Library/Application Support/AskFiles/libraries/<library>/export, for the first library .../libraries/all-files/export. Open it in Obsidian as a vault.
 
-A computer with 8 GB of memory makes no summaries, and its Ask page is off. Browse, Find and Overview work there.
+A computer with 8 GB of memory makes no summaries, and its Ask page is off. Browse, Find and Graph work there.
 
 ## Markdown export
 

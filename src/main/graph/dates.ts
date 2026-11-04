@@ -1,5 +1,5 @@
 /**
- * Dates of a document for the overview (docs/graph.md, Dates): from its file name or title, from
+ * Dates of a document for the graph (docs/graph.md, Dates): from its file name or title, from
  * Markdown front matter (date:, created:, updated:), else none. Families also fall back to the
  * file's modification time to order their members.
  */

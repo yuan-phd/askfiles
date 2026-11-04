@@ -1,6 +1,6 @@
 # Library profiles
 
-Session N. A profile says what kinds of document a library holds: the type names, a colour per type, keyword cues per type, the band order of the layered overview and the edge rules it draws (docs/graph.md). Files in config/profiles, one JSON per profile, read at launch (src/main/graph/profiles.ts, loadProfiles, which refuses a broken file with the reason). Shipped in app.asar.
+Session N. A profile says what kinds of document a library holds: the type names, a colour per type, keyword cues per type, the band order of the layered graph and the edge rules it draws (docs/graph.md). Files in config/profiles, one JSON per profile, read at launch (src/main/graph/profiles.ts, loadProfiles, which refuses a broken file with the reason). Shipped in app.asar.
 
 | Profile | Types | Edges |
 | --- | --- | --- |

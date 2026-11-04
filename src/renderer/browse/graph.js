@@ -1,4 +1,4 @@
-// Overview page of the Browse view (docs/graph.md): the library's documents as a graph, ported from
+// Graph page of the Browse view (docs/graph.md; called Overview before 2026-11-04): the library's documents as a graph, ported from
 // the owner's earlier wiki graph (docs/reference/old-graph-code.txt, renderGraph and filterGraph)
 // with its feel kept: link distance 100, charge -300, collide 30, node radius from the link count
 // clamped 5 to 14, labels always shown, hover lights the node and its neighbours and fades the rest
@@ -86,29 +86,29 @@ function el(tag, className, text) {
 }
 
 /**
- * Mounts the overview into root. getData() resolves to the bridge's overview (nodes, edges,
+ * Mounts the graph page into root. getData() resolves to the bridge's graph data (nodes, edges,
  * profile, summaries) or null; onOpenDocument(id, target) and onOpenHeading(key) open the other
  * Browse pages. Returns { show(), hide(), reload(), setLayout(name), search(query), state }.
  */
-export function createOverview(root, { getData, onOpenDocument, onOpenHeading }) {
-  root.classList.add('overview');
+export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading }) {
+  root.classList.add('graph');
   root.innerHTML = `
-    <div class="overview-tools">
-      <label class="visually-hidden" for="overview-search">Search documents</label>
-      <input id="overview-search" type="search" data-testid="overview-search" placeholder="Search documents..." spellcheck="false" />
-      <div class="overview-layout" role="group" aria-label="Layout">
-        <button type="button" data-layout="organic" data-testid="overview-organic" aria-pressed="true">Organic</button>
-        <button type="button" data-layout="layered" data-testid="overview-layered" aria-pressed="false">Layered</button>
+    <div class="graph-tools">
+      <label class="visually-hidden" for="graph-search">Search documents</label>
+      <input id="graph-search" type="search" data-testid="graph-search" placeholder="Search documents..." spellcheck="false" />
+      <div class="graph-layout" role="group" aria-label="Layout">
+        <button type="button" data-layout="organic" data-testid="graph-organic" aria-pressed="true">Organic</button>
+        <button type="button" data-layout="layered" data-testid="graph-layered" aria-pressed="false">Layered</button>
       </div>
     </div>
-    <svg class="overview-svg" data-testid="overview-svg" role="img" aria-label="Documents and how they connect"></svg>
-    <div class="overview-tooltip" data-testid="overview-tooltip" role="tooltip" hidden></div>
-    <div class="overview-chooser" data-testid="overview-chooser" hidden></div>
-    <p class="browse-empty overview-empty" data-testid="overview-empty" hidden></p>`;
+    <svg class="graph-svg" data-testid="graph-svg" role="img" aria-label="Documents and how they connect"></svg>
+    <div class="graph-tooltip" data-testid="graph-tooltip" role="tooltip" hidden></div>
+    <div class="graph-chooser" data-testid="graph-chooser" hidden></div>
+    <p class="browse-empty graph-empty" data-testid="graph-empty" hidden></p>`;
   const q = (id) => root.querySelector(`[data-testid="${id}"]`);
-  const svgEl = q('overview-svg');
-  const tooltip = q('overview-tooltip');
-  const chooser = q('overview-chooser');
+  const svgEl = q('graph-svg');
+  const tooltip = q('graph-tooltip');
+  const chooser = q('graph-chooser');
   const state = {
     data: null,
     layout: 'organic',
@@ -138,8 +138,8 @@ export function createOverview(root, { getData, onOpenDocument, onOpenHeading })
   }
 
   function showEmpty(text) {
-    q('overview-empty').textContent = text;
-    q('overview-empty').hidden = !text;
+    q('graph-empty').textContent = text;
+    q('graph-empty').hidden = !text;
   }
 
   function hideTooltip() {
@@ -172,7 +172,7 @@ export function createOverview(root, { getData, onOpenDocument, onOpenHeading })
     const s = summaryLine(d);
     if (s) {
       const p = el('span', `tip-summary${s.pending ? ' pending' : ''}`, s.text);
-      p.dataset.testid = 'overview-tooltip-summary';
+      p.dataset.testid = 'graph-tooltip-summary';
       tooltip.append(p);
     }
     tooltip.hidden = false;
@@ -215,7 +215,7 @@ export function createOverview(root, { getData, onOpenDocument, onOpenHeading })
         const li = el('li');
         const b = el('button', 'link', h.label);
         b.type = 'button';
-        b.dataset.testid = 'overview-chooser-heading';
+        b.dataset.testid = 'graph-chooser-heading';
         b.addEventListener('click', () => {
           closeChooser();
           onOpenHeading(h.key);
@@ -278,7 +278,7 @@ export function createOverview(root, { getData, onOpenDocument, onOpenHeading })
     try {
       d3 = await loadD3();
     } catch (e) {
-      showEmpty(`The overview could not be drawn: ${e.message}`);
+      showEmpty(`The graph could not be drawn: ${e.message}`);
       return;
     }
     // The page may have been left while d3 loaded.
@@ -290,7 +290,7 @@ export function createOverview(root, { getData, onOpenDocument, onOpenHeading })
       showEmpty(
         data
           ? 'No documents yet. They appear here once they are indexed.'
-          : 'The overview is available in the AskFiles app.',
+          : 'The graph is available in the AskFiles app.',
       );
       return;
     }
@@ -371,7 +371,7 @@ export function createOverview(root, { getData, onOpenDocument, onOpenHeading })
       .data(edges)
       .join('line')
       .attr('class', 'link-hit')
-      .attr('data-testid', 'overview-edge')
+      .attr('data-testid', 'graph-edge')
       .attr('data-kind', (e) => e.kind)
       .attr('data-source', (e) => idOf(e.source))
       .attr('data-target', (e) => idOf(e.target))
@@ -389,7 +389,7 @@ export function createOverview(root, { getData, onOpenDocument, onOpenHeading })
       .data(nodes)
       .join('circle')
       .attr('class', (d) => `node${summaryLine(d)?.pending ? ' pending' : ''}`)
-      .attr('data-testid', 'overview-node')
+      .attr('data-testid', 'graph-node')
       .attr('data-id', (d) => d.id)
       .attr('data-type', (d) => d.type)
       .attr('r', (d) => nodeRadius(linkCount[d.id] || 0))
@@ -462,7 +462,7 @@ export function createOverview(root, { getData, onOpenDocument, onOpenHeading })
     const legend = svg
       .append('g')
       .attr('class', 'legend')
-      .attr('data-testid', 'overview-legend')
+      .attr('data-testid', 'graph-legend')
       // pointer-events none comes from the stylesheet: the page's CSP refuses style attributes.
       .attr('transform', `translate(20,${height - legendTypes.length * 22 - 30})`);
     legend
@@ -543,7 +543,7 @@ export function createOverview(root, { getData, onOpenDocument, onOpenHeading })
       state.data = await getData();
     } catch (e) {
       state.data = null;
-      showEmpty(`The overview could not be read: ${e.message}`);
+      showEmpty(`The graph could not be read: ${e.message}`);
       return;
     }
     await render();
@@ -551,14 +551,14 @@ export function createOverview(root, { getData, onOpenDocument, onOpenHeading })
 
   function setLayout(name) {
     state.layout = name === 'layered' ? 'layered' : 'organic';
-    for (const b of root.querySelectorAll('.overview-layout button'))
+    for (const b of root.querySelectorAll('.graph-layout button'))
       b.setAttribute('aria-pressed', String(b.dataset.layout === state.layout));
     void render();
   }
 
-  for (const b of root.querySelectorAll('.overview-layout button'))
+  for (const b of root.querySelectorAll('.graph-layout button'))
     b.addEventListener('click', () => setLayout(b.dataset.layout));
-  q('overview-search').addEventListener('input', (e) => {
+  q('graph-search').addEventListener('input', (e) => {
     state.query = e.target.value;
     applySearch();
   });
@@ -593,7 +593,7 @@ export function createOverview(root, { getData, onOpenDocument, onOpenHeading })
     reload,
     setLayout,
     search(query) {
-      q('overview-search').value = query;
+      q('graph-search').value = query;
       state.query = query;
       applySearch();
     },

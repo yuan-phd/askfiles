@@ -42,7 +42,7 @@ const MARKUP = `
         <input id="library-rename-name" data-testid="library-rename-name" maxlength="60" />
         <button type="submit" data-testid="library-rename-save">Rename</button>
       </form>
-      <div class="menu-overview" data-testid="library-overview-settings" hidden>
+      <div class="menu-graph" data-testid="library-graph-settings" hidden>
         <label class="menu-row">Kind of documents
           <select data-testid="library-profile"></select>
         </label>
@@ -245,7 +245,7 @@ export function mountTopBar(header, { views = {}, onView = () => {}, onLibraryCh
         return li;
       }),
     );
-    renderOverviewSettings(lib);
+    renderGraphSettings(lib);
     const fixed = !lib || lib.isDefault;
     q('library-delete').hidden = fixed;
     q('library-rename-form').hidden = fixed;
@@ -266,8 +266,8 @@ export function mountTopBar(header, { views = {}, onView = () => {}, onLibraryCh
     if (selected) select.value = selected;
   }
 
-  function renderOverviewSettings(lib) {
-    const box = q('library-overview-settings');
+  function renderGraphSettings(lib) {
+    const box = q('library-graph-settings');
     box.hidden = !lib || !state.profiles.length;
     const newProfile = q('library-new-profile');
     newProfile.hidden = !state.profiles.length;
@@ -547,14 +547,14 @@ export function mountTopBar(header, { views = {}, onView = () => {}, onLibraryCh
       if (e.type !== 'status') return;
       state.summaries = e.status;
       renderSummaries();
-      renderOverviewSettings(current());
+      renderGraphSettings(current());
     });
     summariesBridge
       .status()
       .then((s) => {
         state.summaries = s;
         renderSummaries();
-        renderOverviewSettings(current());
+        renderGraphSettings(current());
       })
       .catch((e) => console.warn('[topbar] summaries status failed', e.message));
   }

@@ -34,7 +34,7 @@ import {
   CHANNELS,
   type BridgeHandlers,
   type DeveloperInfo,
-  type OverviewView,
+  type GraphView,
   type WatcherView,
 } from './bridge/contract.js';
 import {
@@ -133,9 +133,13 @@ export class AppController implements BridgeHandlers {
   private ramBytes: number | undefined;
   /** config/profiles (docs/profiles.md); empty when the bundle's files could not be read. */
   private readonly profiles: Profile[];
-  /** The current library's overview graph and summaries, made with its browse index. */
-  private overview: { libraryId: string; browse: BrowseIndex; graph: GraphService; summaries: SummaryService } | null =
-    null;
+  /** The current library's library graph and summaries, made with its browse index. */
+  private libraryViews: {
+    libraryId: string;
+    browse: BrowseIndex;
+    graph: GraphService;
+    summaries: SummaryService;
+  } | null = null;
 
   constructor(private readonly d: AppDeps) {
     this.resourcesPath = d.dev?.resourcesPath ?? process.resourcesPath;
@@ -163,7 +167,7 @@ export class AppController implements BridgeHandlers {
       evalQuestionsFile: d.env.ASKFILES_EVAL_QUESTIONS || path.join(this.dataDir, 'eval-questions.csv'),
       log: d.log,
       // The summary queue gives way to every question (docs/summaries.md, Queue).
-      onBusy: (busy) => this.overview?.summaries.setAnswering(busy),
+      onBusy: (busy) => this.libraryViews?.summaries.setAnswering(busy),
     });
   }
 
@@ -408,7 +412,7 @@ export class AppController implements BridgeHandlers {
       this.d.log(`[settings] chat model ${after.chatModel}, context ${after.contextLength}; restarting the server`);
       await this.restartBackend();
       // A new model tag makes every summary stale (docs/summaries.md, Version key).
-      this.overview?.summaries.modelChanged();
+      this.libraryViews?.summaries.modelChanged();
       void this.refreshSummaryModel();
     }
     this.d.log(`[settings] saved ${JSON.stringify(next)}`);
@@ -474,10 +478,10 @@ export class AppController implements BridgeHandlers {
     return { name: 'AskFiles', version: app.getVersion() };
   }
 
-  // --- overview and summaries ------------------------------------------------------------------
+  // --- graph and summaries ------------------------------------------------------------------
 
-  graphData(): OverviewView | null {
-    const o = this.overview;
+  graphData(): GraphView | null {
+    const o = this.libraryViews;
     if (!o || o.libraryId !== this.state.currentLibrary) return null;
     return { ...o.graph.data(), libraryId: o.libraryId, summaries: o.summaries.documentViews() };
   }
@@ -499,7 +503,7 @@ export class AppController implements BridgeHandlers {
       all[profile.id] = mine;
       return { ...l, typeOverrides: all };
     });
-    this.overviewChanged();
+    this.graphChanged();
     return this.graphData();
   }
 
@@ -512,7 +516,7 @@ export class AppController implements BridgeHandlers {
       else decisions[pairKey(a, b)] = same;
       return { ...l, familyDecisions: decisions };
     });
-    this.overviewChanged();
+    this.graphChanged();
     return this.graphData();
   }
 
@@ -521,40 +525,40 @@ export class AppController implements BridgeHandlers {
     const lib = currentLibraryOf(this.state);
     const v = await this.libraries.updateRecord(lib.id, (l) => ({ ...l, profile }));
     this.d.log(`[graph] library ${lib.id} profile ${profile}`);
-    this.overviewChanged();
+    this.graphChanged();
     return v;
   }
 
   summariesStatus() {
-    return this.overview?.summaries.status() ?? null;
+    return this.libraryViews?.summaries.status() ?? null;
   }
 
   summariesPause() {
-    return this.overview?.summaries.pause() ?? null;
+    return this.libraryViews?.summaries.pause() ?? null;
   }
 
   summariesResume() {
-    return this.overview?.summaries.resume() ?? null;
+    return this.libraryViews?.summaries.resume() ?? null;
   }
 
   summariesDocument(documentId: string) {
-    return this.overview?.summaries.view(documentId) ?? null;
+    return this.libraryViews?.summaries.view(documentId) ?? null;
   }
 
   summariesRequestSections(documentId: string) {
-    return this.overview?.summaries.requestSections(documentId) ?? null;
+    return this.libraryViews?.summaries.requestSections(documentId) ?? null;
   }
 
   async summariesSetLibrary(on: boolean) {
     const lib = currentLibraryOf(this.state);
     const v = await this.libraries.updateRecord(lib.id, (l) => ({ ...l, sectionSummaries: on }));
     this.d.log(`[summaries] library ${lib.id} section summaries ${on ? 'on' : 'off'}`);
-    this.overview?.summaries.librarySectionsChanged();
+    this.libraryViews?.summaries.librarySectionsChanged();
     return v;
   }
 
   async summariesOpenExport() {
-    const o = this.overview;
+    const o = this.libraryViews;
     if (!o) return false;
     o.summaries.exportNow();
     const dir = path.join(libraryDir(this.dataDir, o.libraryId), 'export');
@@ -574,9 +578,9 @@ export class AppController implements BridgeHandlers {
   // --- internals -------------------------------------------------------------------------------
 
   /** The library record changed what the graph shows: rebuild it and refresh the export. */
-  private overviewChanged(): void {
-    this.overview?.graph.invalidate();
-    this.overview?.summaries.scheduleExport();
+  private graphChanged(): void {
+    this.libraryViews?.graph.invalidate();
+    this.libraryViews?.summaries.scheduleExport();
   }
 
   /** The model and context summaries use: Ask's own, so the model is loaded once; null with Ask off. */
@@ -621,15 +625,15 @@ export class AppController implements BridgeHandlers {
     this.fasterForSummaries = next;
     if (next !== before) {
       this.d.log(`[summaries] model ${next ?? this.chatModel() ?? 'none'}`);
-      this.overview?.summaries.modelChanged();
+      this.libraryViews?.summaries.modelChanged();
     }
   }
 
   /** Graph and summaries for a library's browse index, attached before the index loads. */
-  private attachOverview(browse: BrowseIndex, libraryId: string): void {
+  private attachGraph(browse: BrowseIndex, libraryId: string): void {
     const { log } = this.d;
-    this.overview?.graph.stop();
-    this.overview?.summaries.stop();
+    this.libraryViews?.graph.stop();
+    this.libraryViews?.summaries.stop();
     const dir = libraryDir(this.dataDir, libraryId);
     const record = () => this.state.libraries.find((l) => l.id === libraryId);
     const graph = new GraphService({
@@ -660,7 +664,7 @@ export class AppController implements BridgeHandlers {
       log,
     });
     summaries.setAnswering(this.answers?.busy() ?? false);
-    this.overview = { libraryId, browse, graph, summaries };
+    this.libraryViews = { libraryId, browse, graph, summaries };
     void this.refreshSummaryModel();
   }
 
@@ -921,17 +925,17 @@ export class AppController implements BridgeHandlers {
           readChunk: chunkReader(this.storageDir),
           log: (m) => log(`[browse] ${m}`),
         });
-        this.attachOverview(browse, o.libraryId);
+        this.attachGraph(browse, o.libraryId);
         return browse;
       },
       followWatcher: (browse, watcher) => followWatcher(browse, watcher, (m) => log(`[browse] ${m}`)),
       onChange: (v) => this.d.broadcast(CHANNELS.librariesEvent, v),
       onStatus: (s) => {
         // The summary queue waits while the library indexes (docs/summaries.md, Queue).
-        if (this.overview?.libraryId === s.libraryId) {
+        if (this.libraryViews?.libraryId === s.libraryId) {
           const indexing = s.state === 'working' || s.state === 'starting' || s.pending > 0;
-          this.overview.summaries.setIndexing(indexing);
-          this.overview.graph.setIndexing(indexing);
+          this.libraryViews.summaries.setIndexing(indexing);
+          this.libraryViews.graph.setIndexing(indexing);
         }
         this.d.broadcast(CHANNELS.watcherStatusEvent, s);
       },
@@ -1019,8 +1023,8 @@ export class AppController implements BridgeHandlers {
       void (async () => {
         try {
           this.reranker?.instance.stop();
-          this.overview?.summaries.stop();
-          this.overview?.graph.stop();
+          this.libraryViews?.summaries.stop();
+          this.libraryViews?.graph.stop();
           await this.libraries.stop();
           await this.manager?.stop();
         } finally {

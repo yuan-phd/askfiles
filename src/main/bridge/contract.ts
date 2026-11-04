@@ -86,8 +86,8 @@ export const EVENT_CHANNELS: readonly string[] = [
   CHANNELS.summariesEvent,
 ];
 
-/** The overview graph with each document's summary state, for the Overview and Library pages. */
-export type OverviewView = GraphData & {
+/** The library graph with each document's summary state, for the Graph and Library pages. */
+export type GraphView = GraphData & {
   libraryId: string;
   summaries: Record<string, { state: DocumentSummaryView['state']; text: string | null }>;
 };
@@ -188,13 +188,13 @@ export interface BridgeHandlers {
   answerSaveCase(c: EvalCase): { id: string; file: string };
   appInfo(): { name: string; version: string };
   appPageReady(info: PageReadyInfo): void;
-  /** The current library's overview graph; null before the library runs. */
-  graphData(): OverviewView | null;
+  /** The current library's library graph; null before the library runs. */
+  graphData(): GraphView | null;
   graphProfiles(): ProfileInfo[];
   /** Sets a document's type in the current profile; null type goes back to the detected one. */
-  graphSetType(documentId: string, type: string | null): Promise<OverviewView | null>;
+  graphSetType(documentId: string, type: string | null): Promise<GraphView | null>;
   /** Answers a family question: same document or not; null forgets the answer. */
-  graphAnswerFamily(a: string, b: string, same: boolean | null): Promise<OverviewView | null>;
+  graphAnswerFamily(a: string, b: string, same: boolean | null): Promise<GraphView | null>;
   /** Changes the current library's profile: types and edges are worked out again, the index is kept. */
   librariesSetProfile(profile: string): Promise<LibrariesView>;
   summariesStatus(): SummaryStatusView | null;
@@ -288,11 +288,11 @@ export interface AskfilesBridge {
     pageReady(info: PageReadyInfo): void;
   };
   graph: {
-    data(): Promise<OverviewView | null>;
+    data(): Promise<GraphView | null>;
     onChange(callback: (e: { libraryId: string }) => void): () => void;
     profiles(): Promise<ProfileInfo[]>;
-    setType(documentId: string, type: string | null): Promise<OverviewView | null>;
-    answerFamily(a: string, b: string, same: boolean | null): Promise<OverviewView | null>;
+    setType(documentId: string, type: string | null): Promise<GraphView | null>;
+    answerFamily(a: string, b: string, same: boolean | null): Promise<GraphView | null>;
   };
   summaries: {
     status(): Promise<SummaryStatusView | null>;

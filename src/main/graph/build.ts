@@ -1,5 +1,5 @@
 /**
- * The overview graph of one library (docs/graph.md): documents as nodes, typed by the library's
+ * The library graph of one library (docs/graph.md): documents as nodes, typed by the library's
  * profile, linked by the profile's edge rules, with families and the questions about them, and
  * seeded initial positions. Built from the browse index alone, no model, in well under a second
  * for a few hundred documents.

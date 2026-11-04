@@ -21,7 +21,7 @@ export const NOTICES_PATH = '/THIRD-PARTY-NOTICES';
 
 /**
  * Third-party scripts the pages load, served from the app's own node_modules: never from a CDN.
- * d3 7.9.0 for the overview graph (docs/graph.md), its prebuilt single-file bundle.
+ * d3 7.9.0 for the library graph (docs/graph.md), its prebuilt single-file bundle.
  */
 export const VENDOR_FILES: Record<string, string[]> = {
   '/vendor/d3.min.js': ['node_modules', 'd3', 'dist', 'd3.min.js'],

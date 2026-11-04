@@ -1,5 +1,5 @@
-// Overview page, summaries and the Ask lockout (Session N, docs/graph.md, docs/summaries.md): the
-// overview graph built by the real graph code (dist/main/graph) from the browse index seeded with
+// Graph page (called Overview before 2026-11-04), summaries and the Ask lockout (Session N, docs/graph.md, docs/summaries.md): the
+// graph built by the real graph code (dist/main/graph) from the browse index seeded with
 // corpus S and L, served through a stub of the preload bridge; the summary controls and the Ask
 // page's lockout against stubbed events.
 import path from 'node:path';
@@ -11,7 +11,7 @@ import { mockLibrary, pageUrl, watcherStatus } from './mocks.js';
 
 const PROFILES = path.resolve(import.meta.dirname, '../../config/profiles');
 let seed;
-let overview;
+let graphData;
 
 test.beforeAll(async () => {
   seed = await seedBrowse();
@@ -37,20 +37,20 @@ test.beforeAll(async () => {
         : { state: 'pending', text: null },
     ]),
   );
-  overview = { ...graph, libraryId: 'all-files', summaries };
+  graphData = { ...graph, libraryId: 'all-files', summaries };
 });
 
 test.afterAll(() => seed?.cleanup());
 
 const browseUrl = () => `${process.env.ASKFILES_PAGE_URL}/browse/index.html`;
-const idOf = (title) => overview.nodes.find((n) => n.title === title).id;
+const idOf = (title) => graphData.nodes.find((n) => n.title === title).id;
 
-/** window.askfiles.graph and .summaries over the overview built above; calls in window.__overviewCalls. */
-async function stubOverview(page, { summaryView = null, status = null } = {}) {
+/** window.askfiles.graph and .summaries over the graph built above; calls in window.__graphCalls. */
+async function stubGraph(page, { summaryView = null, status = null } = {}) {
   await page.addInitScript(
     ({ data, summaryView, status }) => {
       const calls = [];
-      window.__overviewCalls = calls;
+      window.__graphCalls = calls;
       const listeners = [];
       window.__summariesEvent = (e) => listeners.forEach((l) => l(e));
       window.askfiles = {
@@ -99,89 +99,89 @@ async function stubOverview(page, { summaryView = null, status = null } = {}) {
         },
       };
     },
-    { data: overview, summaryView, status },
+    { data: graphData, summaryView, status },
   );
 }
 
-async function openOverview(page, opts) {
+async function openGraphPage(page, opts) {
   await stubBrowseBridge(page, seed.index);
-  await stubOverview(page, opts);
+  await stubGraph(page, opts);
   await page.goto(browseUrl());
   await expect(page.getByTestId('library-item')).toHaveCount(6);
-  await page.getByTestId('browse-tab-overview').click();
-  await expect(page.getByTestId('overview-node')).toHaveCount(6);
-  await expect(page.getByTestId('overview-root')).toHaveAttribute('data-settled', 'true', { timeout: 20_000 });
+  await page.getByTestId('browse-tab-graph').click();
+  await expect(page.getByTestId('graph-node')).toHaveCount(6);
+  await expect(page.getByTestId('graph-root')).toHaveAttribute('data-settled', 'true', { timeout: 20_000 });
 }
 
-const node = (page, title) => page.locator(`[data-testid="overview-node"][data-id="${idOf(title)}"]`);
+const node = (page, title) => page.locator(`[data-testid="graph-node"][data-id="${idOf(title)}"]`);
 const opacity = (loc) => loc.getAttribute('opacity');
 
-test.describe('overview page', () => {
+test.describe('graph page', () => {
   test('draws both layouts with the profile colours, bands from the height, the legend outside the zoom', async ({
     page,
   }) => {
-    await openOverview(page);
-    await expect(page.getByTestId('overview-root')).toHaveAttribute('data-layout', 'organic');
+    await openGraphPage(page);
+    await expect(page.getByTestId('graph-root')).toHaveAttribute('data-layout', 'organic');
     // d3 came from the app's own files.
     expect(await page.evaluate(() => [...document.scripts].map((s) => s.src).find((s) => s.includes('d3')))).toMatch(
       /\/vendor\/d3\.min\.js$/,
     );
-    const colors = Object.fromEntries(overview.profile.types.map((t) => [t.name, t.color]));
+    const colors = Object.fromEntries(graphData.profile.types.map((t) => [t.name, t.color]));
     const budget = node(page, 'budget-2026.xlsx');
     await expect(budget).toHaveAttribute('data-type', 'data');
     await expect(budget).toHaveAttribute('fill', colors.data);
     // The legend hangs off the svg, not the zoom group.
     expect(await page.locator('.legend').evaluate((g) => g.closest('.zoom-layer') === null)).toBe(true);
     // One entry per type in use, in the profile's band order.
-    const used = overview.profile.bands.filter((b) => overview.nodes.some((n) => n.type === b));
+    const used = graphData.profile.bands.filter((b) => graphData.nodes.some((n) => n.type === b));
     await expect(page.locator('.legend .legend-label')).toHaveText(
-      used.map((b) => overview.profile.types.find((t) => t.name === b).label),
+      used.map((b) => graphData.profile.types.find((t) => t.name === b).label),
     );
 
-    await page.getByTestId('overview-layered').click();
-    await expect(page.getByTestId('overview-root')).toHaveAttribute('data-layout', 'layered');
-    await expect(page.getByTestId('overview-root')).toHaveAttribute('data-settled', 'true', { timeout: 20_000 });
+    await page.getByTestId('graph-layered').click();
+    await expect(page.getByTestId('graph-root')).toHaveAttribute('data-layout', 'layered');
+    await expect(page.getByTestId('graph-root')).toHaveAttribute('data-settled', 'true', { timeout: 20_000 });
     const meanY = (type) =>
       page.$$eval(
-        `[data-testid="overview-node"][data-type="${type}"]`,
+        `[data-testid="graph-node"][data-type="${type}"]`,
         (els) => els.reduce((s, e) => s + Number(e.getAttribute('cy')), 0) / els.length,
       );
     // Bands in the profile's order: regulation above data.
     expect(await meanY('regulation')).toBeLessThan(await meanY('data'));
     // A shorter window moves the bands: they follow the current height.
     const before = await meanY('data');
-    const draws = Number(await page.getByTestId('overview-root').getAttribute('data-rendered'));
+    const draws = Number(await page.getByTestId('graph-root').getAttribute('data-rendered'));
     await page.setViewportSize({ width: 1200, height: 560 });
-    await expect(page.getByTestId('overview-root')).toHaveAttribute('data-rendered', String(draws + 1), {
+    await expect(page.getByTestId('graph-root')).toHaveAttribute('data-rendered', String(draws + 1), {
       timeout: 5000,
     });
-    await expect(page.getByTestId('overview-root')).toHaveAttribute('data-settled', 'true', { timeout: 20_000 });
+    await expect(page.getByTestId('graph-root')).toHaveAttribute('data-settled', 'true', { timeout: 20_000 });
     expect(await meanY('data')).toBeLessThan(before);
   });
 
   test('hover lights a node and its neighbours; search lights matches and neighbours and outlasts hover and redraws', async ({
     page,
   }) => {
-    await openOverview(page);
+    await openGraphPage(page);
     const v1 = node(page, 'leave-policy-v1.md');
     const v2 = node(page, 'leave-policy-v2.md');
     const budget = node(page, 'budget-2026.xlsx');
     await v1.hover({ force: true });
-    await expect(page.getByTestId('overview-tooltip')).toBeVisible();
-    await expect(page.getByTestId('overview-tooltip')).toContainText('leave-policy-v1.md');
-    await expect(page.getByTestId('overview-tooltip-summary')).toHaveText('Summary pending');
+    await expect(page.getByTestId('graph-tooltip')).toBeVisible();
+    await expect(page.getByTestId('graph-tooltip')).toContainText('leave-policy-v1.md');
+    await expect(page.getByTestId('graph-tooltip-summary')).toHaveText('Summary pending');
     expect(await opacity(v1)).toBe('1');
     expect(await opacity(v2)).toBe('1');
     expect(await opacity(budget)).toBe('0.1');
     await page.mouse.move(5, 5);
     expect(await opacity(budget)).toBe('1');
     await v2.hover({ force: true });
-    await expect(page.getByTestId('overview-tooltip-summary')).toHaveText(
+    await expect(page.getByTestId('graph-tooltip-summary')).toHaveText(
       'Version 2 of the Northwind leave policy for permanent employees.',
     );
     await page.mouse.move(5, 5);
 
-    await page.getByTestId('overview-search').fill('leave-policy-v1');
+    await page.getByTestId('graph-search').fill('leave-policy-v1');
     expect(await opacity(v1)).toBe('1');
     expect(await opacity(v2)).toBe('1');
     expect(await opacity(budget)).toBe('0.05');
@@ -190,51 +190,51 @@ test.describe('overview page', () => {
     await budget.hover({ force: true });
     await page.mouse.move(5, 5);
     expect(await opacity(budget)).toBe('0.05');
-    await page.getByTestId('overview-layered').click();
-    await expect(page.getByTestId('overview-root')).toHaveAttribute('data-layout', 'layered');
+    await page.getByTestId('graph-layered').click();
+    await expect(page.getByTestId('graph-root')).toHaveAttribute('data-layout', 'layered');
     expect(await opacity(node(page, 'budget-2026.xlsx'))).toBe('0.05');
     expect(await opacity(node(page, 'leave-policy-v2.md'))).toBe('1');
-    await page.getByTestId('overview-search').fill('');
+    await page.getByTestId('graph-search').fill('');
     expect(await opacity(node(page, 'budget-2026.xlsx'))).toBe('1');
   });
 
   test('a node opens its Document page; edges open Compare or the referencing passage', async ({ page }) => {
-    await openOverview(page);
-    const headings = overview.edges.find((e) => e.kind === 'headings');
+    await openGraphPage(page);
+    const headings = graphData.edges.find((e) => e.kind === 'headings');
     expect(headings, 'the two leave policies share headings').toBeTruthy();
     await page
-      .locator(`[data-testid="overview-edge"][data-kind="headings"][data-source="${headings.source}"]`)
+      .locator(`[data-testid="graph-edge"][data-kind="headings"][data-source="${headings.source}"]`)
       .dispatchEvent('click');
     if (headings.headings.length > 1) {
-      await expect(page.getByTestId('overview-chooser')).toBeVisible();
-      await page.getByTestId('overview-chooser-heading').first().click();
+      await expect(page.getByTestId('graph-chooser')).toBeVisible();
+      await page.getByTestId('graph-chooser-heading').first().click();
     }
     await expect(page.getByTestId('compare')).toBeVisible();
     await expect(page.getByTestId('compare-title')).toHaveText(headings.headings[0].label);
     await expect(page.getByTestId('compare-card')).toHaveCount(2);
 
-    await page.getByTestId('browse-tab-overview').click();
-    await expect(page.getByTestId('overview-root')).toHaveAttribute('data-settled', 'true', { timeout: 20_000 });
-    await page.locator('[data-testid="overview-edge"][data-kind="reference"]').dispatchEvent('click');
+    await page.getByTestId('browse-tab-graph').click();
+    await expect(page.getByTestId('graph-root')).toHaveAttribute('data-settled', 'true', { timeout: 20_000 });
+    await page.locator('[data-testid="graph-edge"][data-kind="reference"]').dispatchEvent('click');
     await expect(page.getByTestId('document')).toBeVisible();
     await expect(page.getByTestId('doc-title')).toHaveText('it-handbook.pdf');
     await expect(page.locator('.doc-section.target')).toHaveAttribute('data-section', '3');
 
-    await page.getByTestId('browse-tab-overview').click();
-    await expect(page.getByTestId('overview-root')).toHaveAttribute('data-settled', 'true', { timeout: 20_000 });
+    await page.getByTestId('browse-tab-graph').click();
+    await expect(page.getByTestId('graph-root')).toHaveAttribute('data-settled', 'true', { timeout: 20_000 });
     await node(page, 'budget-2026.xlsx').click({ force: true });
     await expect(page.getByTestId('doc-title')).toHaveText('budget-2026.xlsx');
   });
 
-  test('a document opened from the Overview scrolls, and the graph leaves no zoom listeners behind', async ({
+  test('a document opened from the Graph page scrolls, and the graph leaves no zoom listeners behind', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1200, height: 520 });
-    await openOverview(page);
+    await openGraphPage(page);
     await node(page, 'it-handbook.pdf').click({ force: true });
     await expect(page.getByTestId('doc-title')).toHaveText('it-handbook.pdf');
     const content = page.getByTestId('browse-content');
-    await expect(content).not.toHaveClass(/overview-on/);
+    await expect(content).not.toHaveClass(/graph-on/);
     expect(await content.evaluate((c) => window.getComputedStyle(c).overflowY)).toBe('auto');
     const { scrollHeight, clientHeight } = await content.evaluate((c) => ({
       scrollHeight: c.scrollHeight,
@@ -245,18 +245,18 @@ test.describe('overview page', () => {
     await content.hover();
     await page.mouse.wheel(0, 400);
     await expect.poll(() => content.evaluate((c) => c.scrollTop)).toBeGreaterThan(0);
-    expect(await page.locator('.overview-svg *').count()).toBe(0);
-    expect(await page.locator('.overview-svg').evaluate((s) => '__zoom' in s && s.__on?.length > 0)).toBe(false);
+    expect(await page.locator('.graph-svg *').count()).toBe(0);
+    expect(await page.locator('.graph-svg').evaluate((s) => '__zoom' in s && s.__on?.length > 0)).toBe(false);
   });
 
   test('a document without links settles at the edge of the cluster, inside the panel, without zooming out', async ({
     page,
   }) => {
-    const isolated = overview.nodes.find((n) => !overview.edges.some((e) => e.source === n.id || e.target === n.id));
+    const isolated = graphData.nodes.find((n) => !graphData.edges.some((e) => e.source === n.id || e.target === n.id));
     expect(isolated, 'corpus S and L have a document without links').toBeTruthy();
-    await openOverview(page);
-    const box = await page.getByTestId('overview-svg').evaluate((s) => ({ w: s.clientWidth, h: s.clientHeight }));
-    const pos = await page.$$eval('[data-testid="overview-node"]', (els) =>
+    await openGraphPage(page);
+    const box = await page.getByTestId('graph-svg').evaluate((s) => ({ w: s.clientWidth, h: s.clientHeight }));
+    const pos = await page.$$eval('[data-testid="graph-node"]', (els) =>
       els.map((e) => ({ id: e.dataset.id, x: Number(e.getAttribute('cx')), y: Number(e.getAttribute('cy')) })),
     );
     for (const p of pos) {
@@ -291,7 +291,7 @@ test.describe('summaries and types on the browse pages', () => {
   test('the Library page shows types and summaries; the Document page its summary and the section button with its tooltip', async ({
     page,
   }) => {
-    await openOverview(page, { summaryView: view });
+    await openGraphPage(page, { summaryView: view });
     await page.getByTestId('browse-tab-library').click();
     const v2 = page.getByTestId('library-item').filter({ hasText: 'leave-policy-v2.md' });
     await expect(v2.getByTestId('library-summary')).toHaveText(
@@ -313,7 +313,7 @@ test.describe('summaries and types on the browse pages', () => {
       }),
     ).toBe('library-type');
     await type.selectOption('template');
-    expect(await page.evaluate(() => window.__overviewCalls)).toContainEqual([
+    expect(await page.evaluate(() => window.__graphCalls)).toContainEqual([
       'setType',
       idOf('budget-2026.xlsx'),
       'template',
@@ -338,26 +338,23 @@ test.describe('summaries and types on the browse pages', () => {
     );
     await b.click();
     await expect(page.getByTestId('doc-summary-state')).toHaveText('Summarizing sections, 3 left');
-    expect(await page.evaluate(() => window.__overviewCalls)).toContainEqual([
-      'requestSections',
-      idOf('it-handbook.pdf'),
-    ]);
+    expect(await page.evaluate(() => window.__graphCalls)).toContainEqual(['requestSections', idOf('it-handbook.pdf')]);
   });
 
   test('family questions on the Library page are answered with one click', async ({ page }) => {
     const v1 = idOf('leave-policy-v1.md');
     const v2 = idOf('budget-2026.xlsx');
-    const saved = overview.questions;
-    overview.questions = [{ a: v1, b: v2 }];
+    const saved = graphData.questions;
+    graphData.questions = [{ a: v1, b: v2 }];
     try {
-      await openOverview(page);
+      await openGraphPage(page);
       await page.getByTestId('browse-tab-library').click();
       await expect(page.getByTestId('family-questions')).toBeVisible();
       await expect(page.getByTestId('family-item')).toContainText('leave-policy-v1.md and budget-2026.xlsx');
       await page.getByTestId('family-different').click();
-      expect(await page.evaluate(() => window.__overviewCalls)).toContainEqual(['answerFamily', v1, v2, false]);
+      expect(await page.evaluate(() => window.__graphCalls)).toContainEqual(['answerFamily', v1, v2, false]);
     } finally {
-      overview.questions = saved;
+      graphData.questions = saved;
     }
   });
 });
@@ -378,7 +375,7 @@ test.describe('Ask page: lockout and the summary controls in the top bar', () =>
 
   test('the question box is off while the library indexes and comes back when it is done', async ({ page }) => {
     await mockLibrary(page);
-    await stubOverview(page, { status });
+    await stubGraph(page, { status });
     await stubLibraries(page, { libraries: libs, status: watcherStatus({ state: 'working', pending: 3, indexed: 6 }) });
     await page.goto(pageUrl());
     await expect(page.getByTestId('ask-locked')).toHaveText('Reading new files, 3 left.');
@@ -396,7 +393,7 @@ test.describe('Ask page: lockout and the summary controls in the top bar', () =>
     page,
   }) => {
     await mockLibrary(page);
-    await stubOverview(page, { status });
+    await stubGraph(page, { status });
     await stubLibraries(page, { libraries: libs, status: watcherStatus({ state: 'idle', indexed: 6 }) });
     await page.goto(pageUrl());
     await expect(page.getByTestId('summaries-text')).toHaveText('Summaries 3 of 9');
@@ -432,6 +429,6 @@ test.describe('Ask page: lockout and the summary controls in the top bar', () =>
       'Uses the model on this computer. Ask is slower while it runs. You can pause it in the top bar.',
     );
     await page.getByTestId('library-section-summaries').check();
-    expect(await page.evaluate(() => window.__overviewCalls)).toContainEqual(['setLibrary', true]);
+    expect(await page.evaluate(() => window.__graphCalls)).toContainEqual(['setLibrary', true]);
   });
 });

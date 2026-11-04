@@ -420,7 +420,7 @@ body[data-dropping='true']::after {
   cursor: pointer;
 }
 
-.menu-overview {
+.menu-graph {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -441,7 +441,7 @@ body[data-dropping='true']::after {
   font-size: 0.875rem;
 }
 
-.menu-overview button.link {
+.menu-graph button.link {
   align-self: flex-start;
 }
 

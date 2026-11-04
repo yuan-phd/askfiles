@@ -1,5 +1,5 @@
 /**
- * Initial node positions for the overview (docs/graph.md, Layout): computed from the node ids and
+ * Initial node positions for the graph (docs/graph.md, Layout): computed from the node ids and
  * types only, so a graph opens in the same place every time and the force layout on the page
  * (d3-force, deterministic from given positions) settles the same way. Coordinates are in -1 to 1
  * on both axes; the page scales them to its width and height.

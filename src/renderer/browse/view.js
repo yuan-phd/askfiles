@@ -18,7 +18,7 @@ const MARKUP = `
   <button type="button" class="browse-tab" data-tab="library" data-testid="browse-tab-library">Library</button>
   <button type="button" class="browse-tab" data-tab="compare" data-testid="browse-tab-compare">Compare</button>
   <button type="button" class="browse-tab" data-tab="find" data-testid="browse-tab-find">Find</button>
-  <button type="button" class="browse-tab" data-tab="overview" data-testid="browse-tab-overview">Overview</button>
+  <button type="button" class="browse-tab" data-tab="graph" data-testid="browse-tab-graph">Graph</button>
   <div class="sidebar-doc" data-testid="sidebar-doc" hidden>
     <button type="button" class="browse-tab doc-tab" data-tab="document" data-testid="browse-tab-document"></button>
     <ol class="outline" data-testid="doc-outline"></ol>
@@ -83,8 +83,8 @@ const MARKUP = `
   </div>
 </section>
 
-<section class="browse-page overview-page" data-page="overview" data-testid="overview" aria-label="Overview" hidden>
-  <div class="overview-root" data-testid="overview-root"></div>
+<section class="browse-page graph-page" data-page="graph" data-testid="graph" aria-label="Graph" hidden>
+  <div class="graph-root" data-testid="graph-root"></div>
 </section>
 
 <section class="browse-page" data-page="find" data-testid="find" aria-label="Find" hidden>
@@ -101,7 +101,7 @@ const MARKUP = `
 `;
 
 import { createHistory, isBackKey } from '../shared/history.js';
-import { createOverview } from './overview.js';
+import { createGraphPage } from './graph.js';
 
 const bridge = window.askfiles?.browse;
 const watcher = window.askfiles?.watcher;
@@ -209,7 +209,7 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     headingKey: null,
     status: null,
     loaded: false,
-    // The overview graph (types, summaries, family questions); null without the bridge.
+    // The library graph (types, summaries, family questions); null without the bridge.
     graph: null,
     docSummary: null,
   };
@@ -246,10 +246,10 @@ export function createBrowseView(root, { history: shared = null } = {}) {
       if (on) t.setAttribute('aria-current', 'page');
       else t.removeAttribute('aria-current');
     }
-    // Every way off the Overview (a tab, a node, an edge, Back) passes here, so the graph's zoom
+    // Every way off the Graph page (a tab, a node, an edge, Back) passes here, so the graph's zoom
     // listeners go and the content area scrolls again.
-    content.classList.toggle('overview-on', name === 'overview');
-    if (name !== 'overview') overview.hide();
+    content.classList.toggle('graph-on', name === 'graph');
+    if (name !== 'graph') graphPage.hide();
     if (changed) content.scrollTop = scrolls[name] ?? 0;
   }
 
@@ -258,7 +258,7 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     if (tab === 'library' && !state.loaded) void loadLibrary();
     if (tab === 'compare') void loadHeadings();
     showPage(tab);
-    if (tab === 'overview') void overview.show();
+    if (tab === 'graph') void graphPage.show();
     if (tab === 'find') q('find-query').focus();
   }
 
@@ -473,7 +473,7 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     try {
       state.graph = await graphBridge.data();
     } catch (e) {
-      console.warn('[browse] overview data failed', e.message);
+      console.warn('[browse] graph data failed', e.message);
     }
   }
 
@@ -870,9 +870,9 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     }
   }
 
-  // --- overview --------------------------------------------------------------------------------
+  // --- graph -----------------------------------------------------------------------------------
 
-  const overview = createOverview(q('overview-root'), {
+  const graphPage = createGraphPage(q('graph-root'), {
     getData: async () => {
       if (!graphBridge) return null;
       state.graph = await graphBridge.data();
@@ -894,7 +894,7 @@ export function createBrowseView(root, { history: shared = null } = {}) {
         renderLibrary();
         renderFamilies();
       }
-      void overview.refresh();
+      void graphPage.refresh();
     });
   }
   if (summariesBridge) {
@@ -906,7 +906,7 @@ export function createBrowseView(root, { history: shared = null } = {}) {
       summaryTimer = setTimeout(async () => {
         await loadGraph();
         if (state.loaded) renderLibrary();
-        if (state.graph) overview.updateSummaries(state.graph.summaries);
+        if (state.graph) graphPage.updateSummaries(state.graph.summaries);
         if (state.doc && e.ids.includes(state.doc.id)) void loadDocSummary(state.doc.id);
       }, 250);
     });
@@ -930,6 +930,6 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     restore,
     scrollTop: () => content.scrollTop,
     ready: () => state.loaded,
-    overview,
+    graphPage,
   };
 }

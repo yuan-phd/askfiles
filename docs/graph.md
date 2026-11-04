@@ -1,12 +1,12 @@
-# The overview graph
+# The library graph
 
-Session N. Code in src/main/graph (no model anywhere) and src/renderer/browse/overview.js. The Overview page is an entry of the Browse sidebar, after Find. It shows a library's documents as a graph: one node per document, coloured by type, linked by what the documents share. Types, colours and the links drawn depend on the library's profile (docs/profiles.md).
+Session N. Code in src/main/graph (no model anywhere) and src/renderer/browse/graph.js. The Graph page (named Overview until 2026-11-04) is an entry of the Browse sidebar, after Find. It shows a library's documents as a graph: one node per document, coloured by type, linked by what the documents share. Types, colours and the links drawn depend on the library's profile (docs/profiles.md).
 
 ## Where it comes from
 
 src/main/graph/service.ts (GraphService) builds the graph from the current library's browse index (src/main/browse) when a page asks for it. The browse index reports every change through BrowseIndex.onChange: a document built again, a document dropped, and the end of a load or sync. Those changes come from the watcher's file events. After one, the graph is marked stale. 400 ms later it is rebuilt and the pages are told on the graphEvent channel. Changing the profile, a document's type or a family answer rebuilds it too. Nothing is indexed again.
 
-The graph is stored as `<dataDir>/libraries/<id>/graph.json`, beside browse/. The smoke tests read it to check that the overview lists the test documents (scripts/smoke-mac.sh, scripts/smoke-windows.mjs).
+The graph is stored as `<dataDir>/libraries/<id>/graph.json`, beside browse/. The smoke tests read it to check that the graph lists the test documents (scripts/smoke-mac.sh, scripts/smoke-windows.mjs).
 
 Build time, measured on the owner's corpora on an M1 Max: 270 ms for the 12 English documents, 50 ms for the 15 Chinese ones. Most of the time goes to the reference search.
 
@@ -101,7 +101,7 @@ The page scales them to its size and runs d3-force from there. d3-force is deter
 
 ## The page
 
-src/renderer/browse/overview.js is a port of the owner's earlier wiki graph (docs/reference/old-graph-code.txt, renderGraph and filterGraph), with its constants:
+src/renderer/browse/graph.js is a port of the owner's earlier wiki graph (docs/reference/old-graph-code.txt, renderGraph and filterGraph), with its constants:
 
 - link distance 100, charge -300, collide 30;
 - node radius count * 1.2 + 4, clamped 5 to 14; label offset as before;
@@ -119,7 +119,7 @@ Changes:
 - **Search** selects only the node, label and link groups by class, so the legend's circles are never touched. The old code threw on them. The active search is applied again after a redraw and after a hover, instead of being cleared.
 - **Colours and styles.** Colours come from the profile. The page uses the app's light and dark tokens (ask.css). Edge style by kind: solid for shared headings, dashed for references, dotted for versions.
 - **Clicks.** A node opens its Document page. A shared-headings edge opens that heading on the Compare page; with several shared headings, a small list asks which. A reference edge opens the Document page at the referencing passage. Wide invisible lines over the edges make thin edges clickable.
-- **Centering pull.** Every node is pulled weakly toward the middle (forceX and forceY, strength 0.04, CENTERING in overview.js; in the layered layout the x pull only, the bands keep y). forceCenter alone moves only the centre of mass, so with the original charge a document without links was pushed off screen; with the pull it rests at the outer edge of the cluster. Linked documents keep the original shape.
+- **Centering pull.** Every node is pulled weakly toward the middle (forceX and forceY, strength 0.04, CENTERING in graph.js; in the layered layout the x pull only, the bands keep y). forceCenter alone moves only the centre of mass, so with the original charge a document without links was pushed off screen; with the pull it rests at the outer edge of the cluster. Linked documents keep the original shape.
 - **Fit to view**, the fallback. When the layout comes to rest and a node or label still lies outside the view (a small window, long labels), the view zooms out just enough to show them all. It never zooms in and never overrides a zoom the user made.
-- **Leaving the page.** Every way off the Overview (a tab, a node, an edge, Back) stops the simulation, removes the drawing and the zoom's wheel, touch and pointer listeners, and takes the overview-on class off the content area, so the page that follows scrolls again (it did not when a document was opened from the Overview).
+- **Leaving the page.** Every way off the Graph page (a tab, a node, an edge, Back) stops the simulation, removes the drawing and the zoom's wheel, touch and pointer listeners, and takes the graph-on class off the content area, so the page that follows scrolls again (it did not when a document was opened from the Graph page).
 - **Tooltip.** Hovering a node shows a tooltip with the title, type, section count, date and the document summary, or Summary pending (docs/summaries.md). A node whose summary is pending has a dashed outline.

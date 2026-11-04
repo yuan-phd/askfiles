@@ -22,7 +22,7 @@ files:
   - dist/main/**
   # Read at every launch for the server spawn environment (src/main/app.ts).
   - config/presets.json
-  # Library profiles for the overview graph (docs/profiles.md).
+  # Library profiles for the library graph (docs/profiles.md).
   - config/profiles/**
   # The pages, served to the window as askfiles://app/... (src/main/app-protocol.ts).
   - src/renderer/**
@@ -35,7 +35,7 @@ files:
   # dist/ and the ES module copy add 6.8 MB and are never loaded.
   - '!node_modules/xlsx/dist/**'
   - '!node_modules/xlsx/xlsx.mjs'
-  # The overview page loads only d3's prebuilt dist/d3.min.js (src/main/app-protocol.ts VENDOR_FILES),
+  # The Graph page loads only d3's prebuilt dist/d3.min.js (src/main/app-protocol.ts VENDOR_FILES),
   # which holds every d3 module; the separate modules, their sources and the unminified copy are
   # never loaded. Their licenses stay listed in THIRD-PARTY-NOTICES, as their code is in the bundle.
   - '!node_modules/d3/src/**'

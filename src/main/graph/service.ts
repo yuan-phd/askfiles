@@ -1,5 +1,5 @@
 /**
- * Keeps the current library's overview graph: built on the first request, rebuilt after the browse
+ * Keeps the current library's library graph: built on the first request, rebuilt after the browse
  * index changes (the watcher's file events reach it through BrowseIndex.onChange) and after the
  * library's profile, type overrides or family answers change. Stored as <libraryDir>/graph.json, so
  * the smoke test can see it and the next launch has it before the first rebuild.

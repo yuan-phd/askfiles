@@ -1,6 +1,6 @@
 /**
  * Profiles (docs/profiles.md): how a library names and colours its document types, which edges the
- * overview draws and in which order the layered layout stacks the types. One JSON file per profile
+ * Graph page draws and in which order the layered layout stacks the types. One JSON file per profile
  * in config/profiles; a library picks one when it is created (legal-finance by default) and can
  * change it in the library menu, which recomputes types and edges but never the index.
  */
