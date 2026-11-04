@@ -89,7 +89,7 @@ src/main/summaries/export.ts writes `<dataDir>/libraries/<id>/export/`, a folder
   - the section summaries;
   - [[links]] under References and Referenced by to the documents it references and that reference it;
   - [[Headings/...]] links to its shared headings.
-- Headings/: one note per heading found in two or more documents, with front matter (heading, documents) and a [[link]] and the section summary per document (No section summary yet. when there is none).
+- Headings/: one note per heading found in two or more documents, with front matter (heading, documents) and a [[link]] per document with its section title. No summaries, as on the Compare page (owner decision 2026-11-04; the Session N brief had the section summary per document).
 
 The export is rewritten 2 s after summaries or files change, and only files whose content changed are written. A manifest (.askfiles-export.json) lists what the export wrote, so stale notes are removed and the user's own notes in the folder are never touched.
 

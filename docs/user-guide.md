@@ -34,7 +34,7 @@ While AskFiles is reading new files, the question box is switched off and says R
 Click Browse at the top left to read your documents without asking anything:
 
 - **Library**: every document, with its outline, its type and a one-sentence summary.
-- **Headings**: headings that appear in two or more documents, shown side by side.
+- **Compare**: the same heading across several files, shown side by side. A section that runs over several pages shows once, with all its text.
 - **Find**: words and phrases in your documents.
 - **Overview**: a map of the library (below).
 - **Document**: the document you opened, with its outline on the left.

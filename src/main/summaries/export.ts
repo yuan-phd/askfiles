@@ -2,8 +2,8 @@
  * The Markdown export of a library (docs/summaries.md, Export): an Obsidian-compatible folder at
  * <libraryDir>/export with one note per document (front matter with title, type, source path and
  * summary; its section summaries; [[links]] to the documents it references and to its shared
- * headings) and one note per shared heading under Headings/ listing each document's section
- * summary. Rewritten as summaries and files change; files it did not write are never touched.
+ * headings) and one note per shared heading under Headings/ linking each document that has it
+ * (no summaries, as on the Compare page). Rewritten as summaries and files change; files it did not write are never touched.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -165,15 +165,11 @@ export function exportFiles(input: ExportInput): Map<string, string> {
 
   for (const h of shared) {
     const lines = ['---', `heading: ${yaml(h.label)}`, `documents: ${h.entries.length}`, '---', '', `# ${h.label}`, ''];
+    // Like the Compare page, the heading note shows no summaries: one link per document.
     for (const e of [...h.entries].sort((a, b) => names.get(a.docId)!.localeCompare(names.get(b.docId)!))) {
-      const ss = input.summaries(e.docId).sections[String(e.sectionIndex)];
-      lines.push(
-        `## [[${names.get(e.docId)}]]`,
-        '',
-        ss?.status === 'ok' && ss.text ? ss.text : 'No section summary yet.',
-        '',
-      );
+      lines.push(`- [[${names.get(e.docId)}]] (${e.title.replace(/\s+/g, ' ')})`);
     }
+    lines.push('');
     files.set(`${HEADINGS_FOLDER}/${headingNames.get(h.key)}.md`, lines.join('\n'));
   }
   return files;

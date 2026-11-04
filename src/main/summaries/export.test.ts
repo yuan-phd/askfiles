@@ -84,8 +84,9 @@ describe('markdown export', () => {
     const scope = files.get('Headings/Scope.md')!;
     expect(frontMatter(scope)).toEqual({ heading: 'Scope', documents: 2 });
     expect(links(scope)).toEqual(['Procurement Regulations 2025', 'Value for Money Guidance']);
-    expect(scope).toContain('The rules apply to all procurement.');
-    expect(scope).toContain('No section summary yet.');
+    // No summaries on a heading note, as on the Compare page.
+    expect(scope).not.toContain('The rules apply to all procurement.');
+    expect(scope).not.toContain('No section summary yet.');
   });
 
   it('names notes safely and tells two formats of one stem apart', () => {

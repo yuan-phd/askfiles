@@ -387,22 +387,30 @@ h6.doc-heading {
   overflow-wrap: anywhere;
 }
 
-/* Headings page */
+/* Compare page */
 
-.headings-layout {
+.compare-header {
+  margin-bottom: var(--space-4);
+}
+
+.compare-header .hint {
+  margin: var(--space-1) 0 0;
+}
+
+.compare-layout {
   display: grid;
   grid-template-columns: 18rem minmax(0, 1fr);
   gap: var(--space-6);
   align-items: start;
 }
 
-.headings-list {
+.compare-list {
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-.heading-item {
+.compare-item {
   display: flex;
   width: 100%;
   justify-content: space-between;
@@ -415,26 +423,26 @@ h6.doc-heading {
   cursor: pointer;
 }
 
-.heading-item:hover .heading-label,
-.heading-item.active .heading-label {
+.compare-item:hover .compare-label,
+.compare-item.active .compare-label {
   color: var(--accent);
 }
 
-.heading-item.active .heading-label {
+.compare-item.active .compare-label {
   font-weight: 600;
 }
 
-.heading-label {
+.compare-label {
   overflow-wrap: anywhere;
 }
 
-.heading-count {
+.compare-count {
   flex: none;
   font-size: 0.8rem;
   color: var(--text-muted);
 }
 
-.headings-title {
+.compare-title {
   font-size: 1.2rem;
   font-weight: 600;
   letter-spacing: 0;
@@ -480,7 +488,7 @@ h6.doc-heading {
 }
 
 @media (max-width: 900px) {
-  .headings-layout {
+  .compare-layout {
     grid-template-columns: minmax(0, 1fr);
   }
 }

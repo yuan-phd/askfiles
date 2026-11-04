@@ -198,9 +198,7 @@ test.describe('overview page', () => {
     expect(await opacity(node(page, 'budget-2026.xlsx'))).toBe('1');
   });
 
-  test('a node opens its Document page; edges open the Headings comparison or the referencing passage', async ({
-    page,
-  }) => {
+  test('a node opens its Document page; edges open Compare or the referencing passage', async ({ page }) => {
     await openOverview(page);
     const headings = overview.edges.find((e) => e.kind === 'headings');
     expect(headings, 'the two leave policies share headings').toBeTruthy();
@@ -211,8 +209,8 @@ test.describe('overview page', () => {
       await expect(page.getByTestId('overview-chooser')).toBeVisible();
       await page.getByTestId('overview-chooser-heading').first().click();
     }
-    await expect(page.getByTestId('headings')).toBeVisible();
-    await expect(page.getByTestId('headings-title')).toHaveText(headings.headings[0].label);
+    await expect(page.getByTestId('compare')).toBeVisible();
+    await expect(page.getByTestId('compare-title')).toHaveText(headings.headings[0].label);
     await expect(page.getByTestId('compare-card')).toHaveCount(2);
 
     await page.getByTestId('browse-tab-overview').click();

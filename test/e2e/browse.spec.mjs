@@ -1,4 +1,4 @@
-// Browse view (plan phase 4): library, document, headings and find pages against a browse index
+// Browse view (plan phase 4): library, document, compare and find pages against a browse index
 // seeded from corpus S with the real splitter, through a stub of the preload bridge; and the
 // Ask and Browse switch on the Ask page.
 import { test, expect } from '@playwright/test';
@@ -128,7 +128,7 @@ test.describe('browse view', () => {
     await expect(page.getByTestId('doc-title')).toHaveText('operations-manual.docx');
   });
 
-  test('opening a document never changes the state of Library, Headings or Find', async ({ page }) => {
+  test('opening a document never changes the state of Library, Compare or Find', async ({ page }) => {
     await openBrowse(page);
     await page.getByTestId('library-sort').selectOption('date');
     const pdf = page.getByTestId('library-item').filter({ hasText: 'it-handbook.pdf' });
@@ -175,18 +175,18 @@ test.describe('browse view', () => {
     await expect(page.locator('.doc-section[data-section="1"]').getByTestId('doc-section-page')).toHaveText('Page 1');
   });
 
-  test('headings index lines up near-duplicate files side by side', async ({ page }) => {
+  test('Compare lines up near-duplicate files side by side', async ({ page }) => {
     await openBrowse(page);
-    await page.getByTestId('browse-tab-headings').click();
-    const items = page.getByTestId('heading-item');
+    await page.getByTestId('browse-tab-compare').click();
+    const items = page.getByTestId('compare-item');
     // Only headings found in two or more documents, and no switch to show the others.
     await expect(items).toHaveCount(4);
-    await expect(page.getByTestId('headings-all')).toHaveCount(0);
+    await expect(page.getByTestId('compare-all')).toHaveCount(0);
     await expect(items.first()).toContainText('2 documents');
     await expect(items.filter({ hasText: '适用范围' })).toHaveCount(0);
 
     await items.filter({ hasText: 'Annual leave' }).click();
-    await expect(page.getByTestId('headings-title')).toHaveText('Annual leave');
+    await expect(page.getByTestId('compare-title')).toHaveText('Annual leave');
     const cards = page.getByTestId('compare-card');
     await expect(cards).toHaveCount(2);
     await expect(cards.getByTestId('compare-file')).toHaveText(['leave-policy-v1.md', 'leave-policy-v2.md']);
@@ -202,8 +202,8 @@ test.describe('browse view', () => {
     await cards.nth(0).getByTestId('compare-read').click();
     await expect(page.getByTestId('doc-title')).toHaveText('leave-policy-v1.md');
     await expect(page.locator('.doc-section[data-section="2"]')).toHaveClass(/target/);
-    await page.getByTestId('browse-tab-headings').click();
-    await expect(page.getByTestId('headings')).toBeVisible();
+    await page.getByTestId('browse-tab-compare').click();
+    await expect(page.getByTestId('compare')).toBeVisible();
     await expect(page.getByTestId('compare-card')).toHaveCount(2);
   });
 
@@ -374,10 +374,10 @@ for (const scheme of ['light', 'dark']) {
     await page.waitForTimeout(1700);
     await page.screenshot({ path: `${shots}/document-${scheme}.png` });
 
-    await page.getByTestId('browse-tab-headings').click();
-    await page.getByTestId('heading-item').filter({ hasText: 'Sick leave' }).click();
+    await page.getByTestId('browse-tab-compare').click();
+    await page.getByTestId('compare-item').filter({ hasText: 'Sick leave' }).click();
     await page.getByTestId('compare-card').nth(1).waitFor();
-    await page.screenshot({ path: `${shots}/headings-${scheme}.png`, fullPage: true });
+    await page.screenshot({ path: `${shots}/compare-${scheme}.png`, fullPage: true });
 
     await page.getByTestId('browse-tab-find').click();
     await page.getByTestId('find-query').fill('leave');

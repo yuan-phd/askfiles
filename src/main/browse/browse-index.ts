@@ -3,7 +3,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FileRecord } from '../watcher/index.js';
 import { detectKind } from '../graph/kinds.js';
-import { buildDocument, buildOutline, documentId, type StoredChunk } from './build.js';
+import { buildDocument, buildOutline, documentId, PAGE_PART, type StoredChunk } from './build.js';
+import { normalizeHeading } from './normalize.js';
 import { buildIdentities, type FileIdentity } from './identifiers.js';
 import { rankSections, sectionFrequency, type FoldedSection, type KeywordOptions, type RankedSection } from './rank.js';
 import { stemFolded } from './stem.js';
@@ -214,22 +215,42 @@ export class BrowseIndex {
   headings(o: { key?: string | null; minDocuments?: number } = {}): HeadingGroup[] {
     const groups = new Map<string, HeadingEntry[]>();
     for (const d of this.docs.values()) {
+      // Parts the splitter cut from one section (T (page N), T (continued)) merge into the entry of
+      // T, so a heading appears once per section and its card holds every part's text in order.
+      const open = new Map<string, HeadingEntry>();
       for (const s of d.sections) {
-        if (!s.heading || (o.key && s.heading !== o.key)) continue;
+        const part = PAGE_PART.test(s.title);
+        const title = part ? s.title.replace(PAGE_PART, '').trim() : s.title;
+        const key = part ? normalizeHeading(title) : s.heading;
+        if (!key || (o.key && key !== o.key)) continue;
+        const owner = part ? open.get(key) : undefined;
+        if (owner) {
+          if (s.pageStart !== null && owner.pageStart === null) {
+            owner.pageStart = s.pageStart;
+            owner.pageLabelStart = s.pageLabelStart;
+          }
+          if (s.pageEnd !== null || s.pageStart !== null) {
+            owner.pageEnd = s.pageEnd ?? s.pageStart;
+            owner.pageLabelEnd = s.pageLabelEnd ?? s.pageLabelStart;
+          }
+          if (o.key) owner.text = [owner.text, s.text].filter(Boolean).join('\n\n');
+          continue;
+        }
         const entry: HeadingEntry = {
           documentId: d.id,
           documentTitle: d.title,
           relPath: d.relPath,
           url: d.url,
           sectionIndex: s.index,
-          title: s.title,
+          title,
           pageStart: s.pageStart,
           pageEnd: s.pageEnd,
           pageLabelStart: s.pageLabelStart,
           pageLabelEnd: s.pageLabelEnd,
           ...(o.key ? { text: s.text } : {}),
         };
-        groups.set(s.heading, [...(groups.get(s.heading) ?? []), entry]);
+        open.set(key, entry);
+        groups.set(key, [...(groups.get(key) ?? []), entry]);
       }
     }
     return [...groups.entries()]

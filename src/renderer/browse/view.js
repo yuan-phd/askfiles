@@ -1,11 +1,11 @@
-// Browse view: read the library without asking anything. Library, headings, find and document
+// Browse view: read the library without asking anything. Library, compare, find and document
 // pages, all drawn from the shell's browse index through window.askfiles.browse; no model and no
 // server call. Mounted by the Ask page next to Ask, and by browse/index.html on its own.
 //
 // A fixed sidebar holds the four entries; only the content area scrolls. Document appears once a
 // document is open, labelled with its file name and with its outline below it. Opening a document
 // (from any page, or Read section on the Ask page) always lands on Document and never changes what
-// Library, Headings or Find show.
+// Library, Compare or Find show.
 //
 // Every move between pages and documents goes into the page history (shared/history.js): the
 // Ask page passes its own, which spans Ask and Browse; on its own the view keeps one. Back at the
@@ -16,7 +16,7 @@ const MARKUP = `
 <nav class="browse-sidebar" aria-label="Browse" data-testid="browse-sidebar">
   <button type="button" class="sidebar-back" data-testid="browse-back" aria-keyshortcuts="Meta+BracketLeft" title="Back (Cmd+[)" disabled>Back</button>
   <button type="button" class="browse-tab" data-tab="library" data-testid="browse-tab-library">Library</button>
-  <button type="button" class="browse-tab" data-tab="headings" data-testid="browse-tab-headings">Headings</button>
+  <button type="button" class="browse-tab" data-tab="compare" data-testid="browse-tab-compare">Compare</button>
   <button type="button" class="browse-tab" data-tab="find" data-testid="browse-tab-find">Find</button>
   <button type="button" class="browse-tab" data-tab="overview" data-testid="browse-tab-overview">Overview</button>
   <div class="sidebar-doc" data-testid="sidebar-doc" hidden>
@@ -67,14 +67,17 @@ const MARKUP = `
   </article>
 </section>
 
-<section class="browse-page" data-page="headings" data-testid="headings" aria-label="Headings" hidden>
-  <div class="headings-layout">
-    <div class="headings-index">
-      <p class="hint">Headings found in two or more documents.</p>
-      <ul class="headings-list" data-testid="headings-list"></ul>
-      <p class="browse-empty" data-testid="headings-empty" hidden></p>
+<section class="browse-page" data-page="compare" data-testid="compare" aria-label="Compare" hidden>
+  <header class="compare-header">
+    <h1>Compare</h1>
+    <p class="hint" data-testid="compare-subtitle">The same heading across several files, shown side by side.</p>
+  </header>
+  <div class="compare-layout">
+    <div class="compare-index">
+      <ul class="compare-list" data-testid="compare-list"></ul>
+      <p class="browse-empty" data-testid="compare-empty" hidden></p>
     </div>
-    <div class="headings-detail" data-testid="headings-detail" aria-live="polite">
+    <div class="compare-detail" data-testid="compare-detail" aria-live="polite">
       <p class="browse-empty">Choose a heading to see that section from every document side by side.</p>
     </div>
   </div>
@@ -104,6 +107,9 @@ const bridge = window.askfiles?.browse;
 const watcher = window.askfiles?.watcher;
 const graphBridge = window.askfiles?.graph;
 const summariesBridge = window.askfiles?.summaries;
+
+/** The splitter's suffix for the pages of a long section and the text after a table (src/main/browse/build.ts). */
+const PAGE_PART = /\s*\((?:page \d+|continued)\)\s*$/i;
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -250,7 +256,7 @@ export function createBrowseView(root, { history: shared = null } = {}) {
   function show(tab) {
     if (tab === 'document' && !state.doc && !state.docRef) return;
     if (tab === 'library' && !state.loaded) void loadLibrary();
-    if (tab === 'headings') void loadHeadings();
+    if (tab === 'compare') void loadHeadings();
     showPage(tab);
     if (tab === 'overview') void overview.show();
     if (tab === 'find') q('find-query').focus();
@@ -259,7 +265,7 @@ export function createBrowseView(root, { history: shared = null } = {}) {
   /** The page shown, as a history entry. */
   function current() {
     const entry = { view: 'browse', page: state.page };
-    if (state.page === 'headings') entry.headingKey = state.headingKey;
+    if (state.page === 'compare') entry.headingKey = state.headingKey;
     if (state.page === 'find') entry.query = state.findQuery ?? '';
     if (state.page === 'document') Object.assign(entry, { ref: state.docRef, target: state.docTarget ?? {} });
     return entry;
@@ -270,7 +276,7 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     if (entry.page === 'document') await openDocument(entry.ref, entry.target, { record: false });
     else {
       show(entry.page);
-      if (entry.page === 'headings' && entry.headingKey && entry.headingKey !== state.headingKey)
+      if (entry.page === 'compare' && entry.headingKey && entry.headingKey !== state.headingKey)
         await showHeading(entry.headingKey);
       if (entry.page === 'find' && (entry.query ?? '') !== (state.findQuery ?? '')) {
         q('find-query').value = entry.query ?? '';
@@ -513,6 +519,9 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     q('doc-error').hidden = true;
     q('doc-outline').replaceChildren(...outlineList(doc.outline, doc, 'doc-outline-entry').children);
     q('doc-outline-empty').hidden = doc.outline.length > 0;
+    // Titles shown so far, so a part the splitter cut by page or after a table (T (page 4),
+    // T (continued)) does not repeat its parent's title: it shows its page marker only.
+    const shown = new Set();
     q('doc-sections').replaceChildren(
       ...doc.sections.map((s) => {
         const sec = el('section', 'doc-section');
@@ -522,12 +531,18 @@ export function createBrowseView(root, { history: shared = null } = {}) {
         for (const t of s.lead) {
           const lead = el(headingTag(Math.max(1, s.level - 1)), 'doc-heading doc-lead', t);
           sec.append(lead);
+          shown.add(t.trim());
         }
-        if (s.level > 0) {
-          const h = el(headingTag(s.level), 'doc-heading', s.title);
+        const part = PAGE_PART.test(s.title);
+        const base = part ? s.title.replace(PAGE_PART, '').trim() : s.title;
+        if (part) sec.dataset.part = 'true';
+        if (s.level > 0 && !(part && shown.has(base))) {
+          // A part whose parent title was not shown yet gets the parent title once, without the suffix.
+          const h = el(headingTag(part ? Math.max(1, s.level - 1) : s.level), 'doc-heading', base);
           h.dataset.testid = 'doc-section-title';
           sec.append(h);
         }
+        shown.add(base.trim());
         const place = placeLabel(s.pageStart, s.pageEnd, doc.title, s.pageLabelStart, s.pageLabelEnd);
         if (place) {
           const p = el('p', 'doc-page', place);
@@ -693,25 +708,25 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     }
   });
 
-  // --- headings ------------------------------------------------------------------------------
+  // --- compare -------------------------------------------------------------------------------
 
   let headingGroups = [];
 
   function renderHeadings() {
     // The shell lists only headings found in two or more documents; the filter keeps that true here too.
     const groups = headingGroups.filter((g) => g.documents > 1);
-    const empty = q('headings-empty');
+    const empty = q('compare-empty');
     empty.hidden = groups.length > 0;
     empty.textContent = 'No heading appears in more than one document yet.';
-    q('headings-list').replaceChildren(
+    q('compare-list').replaceChildren(
       ...groups.map((g) => {
         const li = el('li');
-        const b = button('heading-item', '', 'heading-item');
+        const b = button('compare-item', '', 'compare-item');
         b.dataset.key = g.key;
         b.classList.toggle('active', g.key === state.headingKey);
         b.append(
-          el('span', 'heading-label', g.label),
-          el('span', 'heading-count', g.documents === 1 ? '1 document' : `${g.documents} documents`),
+          el('span', 'compare-label', g.label),
+          el('span', 'compare-count', g.documents === 1 ? '1 document' : `${g.documents} documents`),
         );
         b.addEventListener('click', () => showHeading(g.key));
         li.append(b);
@@ -726,16 +741,16 @@ export function createBrowseView(root, { history: shared = null } = {}) {
       headingGroups = await bridge.headings(null);
       renderHeadings();
     } catch (e) {
-      q('headings-empty').textContent = `The headings could not be read: ${e.message}`;
-      q('headings-empty').hidden = false;
+      q('compare-empty').textContent = `The headings could not be read: ${e.message}`;
+      q('compare-empty').hidden = false;
     }
   }
 
   async function showHeading(key) {
     state.headingKey = key;
-    if (state.page === 'headings') history.replace({ headingKey: key });
-    for (const b of root.querySelectorAll('.heading-item')) b.classList.toggle('active', b.dataset.key === key);
-    const detail = q('headings-detail');
+    if (state.page === 'compare') history.replace({ headingKey: key });
+    for (const b of root.querySelectorAll('.compare-item')) b.classList.toggle('active', b.dataset.key === key);
+    const detail = q('compare-detail');
     let group = null;
     try {
       [group] = await bridge.headings(key);
@@ -747,8 +762,8 @@ export function createBrowseView(root, { history: shared = null } = {}) {
       detail.replaceChildren(el('p', 'browse-empty', 'This heading is no longer in your documents.'));
       return;
     }
-    const title = el('h2', 'headings-title', group.label);
-    title.dataset.testid = 'headings-title';
+    const title = el('h2', 'compare-title', group.label);
+    title.dataset.testid = 'compare-title';
     const columns = el('div', 'compare');
     for (const e of group.entries) {
       const card = el('article', 'compare-card');
@@ -866,9 +881,9 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     onOpenDocument: (id, target) => openDocument({ id }, target || {}),
     onOpenHeading: (key) =>
       history.navigate(() => {
-        show('headings');
+        show('compare');
         void showHeading(key);
-        return { view: 'browse', page: 'headings', headingKey: key };
+        return { view: 'browse', page: 'compare', headingKey: key };
       }),
   });
 

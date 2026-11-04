@@ -8,7 +8,7 @@
 // ring, resize handling, the previous simulation stopped before a new one, search selecting only
 // the node, label and link groups (the old code also picked up the legend's circles and threw),
 // the active search applied again after a re-render and after hover, colours from the profile,
-// edge styles by kind, and edge clicks that open the shared headings or the referencing passage.
+// edge styles by kind, and edge clicks that open a shared heading on Compare or the referencing passage.
 
 const D3_URL = new URL('../vendor/d3.min.js', import.meta.url).href;
 let d3Loading = null;
@@ -204,7 +204,7 @@ export function createOverview(root, { getData, onOpenDocument, onOpenHeading })
     chooser.replaceChildren();
   }
 
-  /** A shared-headings edge opens the Headings comparison; with several headings, the user picks one. */
+  /** A shared-headings edge opens that heading on the Compare page; with several headings, the user picks one. */
   function openEdge(event, e) {
     hideTooltip();
     if (e.kind === 'headings' && e.headings?.length) {
