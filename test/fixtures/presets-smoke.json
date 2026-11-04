@@ -62,7 +62,9 @@
         "fileScopedQuota": false,
         "scopedQuotaV2": false,
         "keywordStemming": false,
-        "perFileSubquery": false
+        "perFileSubquery": false,
+        "headingPathBonus": false,
+        "namedFileQuota8": false
       }
     }
   ]

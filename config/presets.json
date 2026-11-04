@@ -61,7 +61,9 @@
         "fileScopedQuota": false,
         "scopedQuotaV2": true,
         "keywordStemming": false,
-        "perFileSubquery": false
+        "perFileSubquery": false,
+        "headingPathBonus": false,
+        "namedFileQuota8": false
       },
       "summariesFasterModel": false,
       "indexing": {
@@ -136,7 +138,9 @@
         "fileScopedQuota": false,
         "scopedQuotaV2": true,
         "keywordStemming": false,
-        "perFileSubquery": false
+        "perFileSubquery": false,
+        "headingPathBonus": false,
+        "namedFileQuota8": false
       },
       "summariesFasterModel": false,
       "indexing": {
@@ -204,7 +208,9 @@
         "fileScopedQuota": false,
         "scopedQuotaV2": true,
         "keywordStemming": false,
-        "perFileSubquery": false
+        "perFileSubquery": false,
+        "headingPathBonus": false,
+        "namedFileQuota8": false
       },
       "summariesFasterModel": false,
       "indexing": {

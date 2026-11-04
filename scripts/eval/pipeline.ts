@@ -105,6 +105,8 @@ export function indexHash(config: EvalConfig, library: Pick<Library, 'records'>)
       ...(crossDocumentPartsOf(p).has('quota') && (p.fileScopedQuota || p.scopedQuotaV2) && p.perFileSubquery
         ? ['perFileSubquery']
         : []),
+      ...(p.headingPathBonus ? ['headingPathBonus'] : []),
+      ...(crossDocumentPartsOf(p).has('quota') && p.scopedQuotaV2 && p.namedFileQuota8 ? ['namedFileQuota8'] : []),
     ],
   };
   return createHash('sha256').update(JSON.stringify(key)).digest('hex').slice(0, 16);

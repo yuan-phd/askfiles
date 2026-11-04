@@ -39,6 +39,7 @@ import type { Reranker } from './reranker.js';
 import { toAnswerSection, type AnswerSection } from './sections.js';
 import { selectSections, type Ranked, type Selection } from './select.js';
 import { fileSubqueries, type FileSubquery } from './subquery.js';
+import { headingBonus, headingMatcher } from './heading-bonus.js';
 import { extractTerms, isMainlyCjk, type Term } from './terms.js';
 import { verifyClaims, type VerifyStats } from './verify.js';
 
@@ -145,6 +146,33 @@ export const FILE_SCOPED_VECTOR_POOL = 2000;
 /** scopedQuotaV2: sections per named file, and the most sections a question naming several files gets. */
 export const SCOPED_V2_QUOTA = 5;
 export const SCOPED_V2_MAX_SECTIONS = 8;
+/** namedFileQuota8: the same two numbers for a question naming two or more files (round X3). */
+export const NAMED_FILE_QUOTA = 8;
+export const NAMED_FILE_MAX_SECTIONS = 10;
+
+/**
+ * headingPathBonus: the bonus per section key for these terms (heading-bonus.ts), or undefined
+ * when the switch is off, so fuse() scores as before.
+ */
+export function pathBonus(
+  terms: Term[],
+  p: Pick<AnswerParams, 'headingPathBonus' | 'rrfK'>,
+  index: Pick<SectionIndex, 'section'>,
+): ((key: string) => number) | undefined {
+  if (!p.headingPathBonus || !terms.length) return undefined;
+  const matches = headingMatcher(terms);
+  const bonus = headingBonus(p.rrfK);
+  const seen = new Map<string, number>();
+  return (key) => {
+    let v = seen.get(key);
+    if (v === undefined) {
+      const found = index.section(key.slice(0, key.lastIndexOf('#')), Number(key.slice(key.lastIndexOf('#') + 1)));
+      v = found && matches(found.section.path) ? bonus : 0;
+      seen.set(key, v);
+    }
+    return v;
+  };
+}
 
 type VectorHit = VectorCandidate & { file: string | null; documentId: string | null };
 
@@ -198,7 +226,10 @@ export async function fileScopedSections(
   const stem = { stem: p.keywordStemming };
   // perFileSubquery: a file searched with its own clause; one wide vector search and one keyword
   // ranking per distinct query text, the whole question's shared by every file without a clause.
-  const searches = new Map<string, Promise<{ hits: VectorHit[]; ranking: RankedSection[] }>>();
+  const searches = new Map<
+    string,
+    Promise<{ hits: VectorHit[]; ranking: RankedSection[]; bonus: ((key: string) => number) | undefined }>
+  >();
   const search = (query: string) => {
     let s = searches.get(query);
     if (!s) {
@@ -218,7 +249,7 @@ export async function fileScopedSections(
               stem,
             )
           : [];
-        return { hits, ranking };
+        return { hits, ranking, bonus: pathBonus(qTerms, p, deps.index) };
       })();
       searches.set(query, s);
     }
@@ -241,7 +272,7 @@ export async function fileScopedSections(
   const out: FusedSection[] = [];
   for (const id of new Set(documentIds)) {
     // Sequential: the searches of one question share Ollama's embedding model anyway.
-    const { hits, ranking } = await search(o.queries?.get(id) ?? question);
+    const { hits, ranking, bonus } = await search(o.queries?.get(id) ?? question);
     const vector = hits
       .filter((h) => h.documentId === id)
       .filter((h) => !h.section || !isContents(id, Number(h.section.slice(h.section.lastIndexOf('#') + 1))))
@@ -250,7 +281,7 @@ export async function fileScopedSections(
       .filter((r) => r.documentId === id && !isContents(id, r.sectionIndex))
       .slice(0, p.keywordTopK)
       .map((r) => ({ section: sectionKey(r.documentId, r.sectionIndex), score: r.score, terms: r.terms }));
-    out.push(...fuse(vector, keyword, p.rrfK).slice(0, per));
+    out.push(...fuse(vector, keyword, p.rrfK, bonus).slice(0, per));
   }
   return out;
 }
@@ -312,7 +343,7 @@ export async function retrieve(
     : [];
   const t2 = performance.now();
 
-  let fused = fuse(vector, keyword, p.rrfK);
+  let fused = fuse(vector, keyword, p.rrfK, pathBonus(terms, p, deps.index));
   let affinity: Retrieval['affinity'];
   if (p.documentAffinity) {
     const named = mentionedDocuments(question, deps.index.identities?.() ?? []);
@@ -342,7 +373,9 @@ export async function retrieve(
           subqueries = subs;
         }
         const scoped = await fileScopedSections(question, terms, documentIds, p, deps, signal, {
-          ...(p.scopedQuotaV2 ? { per: SCOPED_V2_QUOTA, skipContents: true } : {}),
+          ...(p.scopedQuotaV2
+            ? { per: p.namedFileQuota8 ? NAMED_FILE_QUOTA : SCOPED_V2_QUOTA, skipContents: true }
+            : {}),
           ...(queries ? { queries } : {}),
         });
         quota = scoped.map((f) => f.key);
@@ -460,7 +493,7 @@ export function choose(r: Retrieval, s: ChoiceSettings): Selection {
       // Each file's best quota section first, then each file's second and so on, so the cap of
       // SCOPED_V2_MAX_SECTIONS takes the same number from every file before an overall section.
       own = takeInTurn(r.crossDocument?.quota ?? [], own);
-      count = Math.min(count, SCOPED_V2_MAX_SECTIONS);
+      count = Math.min(count, s.params.namedFileQuota8 ? NAMED_FILE_MAX_SECTIONS : SCOPED_V2_MAX_SECTIONS);
     }
     return selectSections([...own, ...extra], {
       count,

@@ -156,6 +156,17 @@ export interface AnswerParams {
    * when there is none; selection, the prompt and verification unchanged (docs/plan.md, round X1).
    */
   perFileSubquery: boolean;
+  /**
+   * In fusion, a fixed bonus of 0.5/(rrfK+1) for a section whose heading path holds a question
+   * term (English by stem, Chinese n-grams), once per section; never enough to pass a section both
+   * lists rank in their top 16 (heading-bonus.ts, docs/plan.md round X2). Every question.
+   */
+  headingPathBonus: boolean;
+  /**
+   * With scopedQuotaV2, for a question naming two or more files: quota NAMED_FILE_QUOTA (8) per
+   * file and at most NAMED_FILE_MAX_SECTIONS (10) sections (docs/plan.md, round X3).
+   */
+  namedFileQuota8: boolean;
 }
 
 /** The crossDocument parts in effect: crossDocument's own, or the quota alone with crossDocQuota. */
@@ -198,6 +209,8 @@ export const DEFAULT_PARAMS: AnswerParams = {
   scopedQuotaV2: false,
   keywordStemming: false,
   perFileSubquery: false,
+  headingPathBonus: false,
+  namedFileQuota8: false,
 };
 
 /** Tokens kept free for the answer itself and for the instructions and the question. */
@@ -301,6 +314,8 @@ const CHECKS: Record<keyof AnswerParams, (v: unknown) => Problem> = {
   scopedQuotaV2: bool,
   keywordStemming: bool,
   perFileSubquery: bool,
+  headingPathBonus: bool,
+  namedFileQuota8: bool,
 };
 
 /** Problems with an answer block, each prefixed with at; every key is required. */

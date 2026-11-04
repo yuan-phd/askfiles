@@ -12,6 +12,8 @@ import {
   FILE_SCOPED_VECTOR_POOL,
   SCOPED_V2_MAX_SECTIONS,
   SCOPED_V2_QUOTA,
+  NAMED_FILE_QUOTA,
+  NAMED_FILE_MAX_SECTIONS,
   takeInTurn,
   NO_RERANKER,
   parseCitations,
@@ -334,6 +336,47 @@ describe('scopedQuotaV2', () => {
     // Four of each file, alternating.
     const docOf = (k: string) => k.slice(0, k.lastIndexOf('#'));
     expect(picked.map(docOf)).toEqual([0, 1, 0, 1, 0, 1, 0, 1].map((i) => ids[i]));
+  });
+
+  it('namedFileQuota8 takes 8 per file and selects at most 10, the files in turn', async () => {
+    const lib = fixtureLibrary(
+      ['Procurement_Regulations.pdf', 'Contract_Management_Guidance.pdf'].map((name, f) => ({
+        name,
+        sections: Array.from({ length: 12 }, (_, i) => ({
+          title: `Part ${i}`,
+          parts: [`Approval and signing rule ${f} ${i}.`],
+        })),
+      })),
+    );
+    cleanups.push(lib.cleanup);
+    const resolver = createSourceResolver({ files: () => lib.records, readText: (l) => lib.chunkText.get(l) ?? null });
+    const order = lib.records.flatMap((r, f) => r.sections.map((x) => [f, x.location] as const));
+    const deps: PipelineDeps = {
+      vectorSearch: async (_q, topK) =>
+        order.slice(0, topK).map(([f, loc], i) => ({
+          id: loc,
+          text: lib.chunkText.get(loc)!,
+          metadata: { url: lib.records[f]!.url, title: lib.records[f]!.name },
+          score: 0.9 - i * 0.001,
+        })),
+      resolveSources: (x) => resolver(x),
+      index: lib.index,
+      reranker: null,
+      chat: async () => ({ promptTokens: 1, completionTokens: 1 }),
+    };
+    const id = (n: number) => lib.index.getDocument({ url: lib.records[n]!.url, title: lib.records[n]!.name })!.id;
+    const s = settingsWith({ crossDocQuota: true, scopedQuotaV2: true, namedFileQuota8: true });
+    const r = await retrieve(q, s, deps);
+    expect(r.crossDocument!.quota).toHaveLength(2 * NAMED_FILE_QUOTA);
+    const picked = choose(r, s).selected.map((x) => x.section.key);
+    expect(picked).toHaveLength(NAMED_FILE_MAX_SECTIONS);
+    const docOf = (k: string) => k.slice(0, k.lastIndexOf('#'));
+    expect(picked.map(docOf)).toEqual([0, 1, 0, 1, 0, 1, 0, 1, 0, 1].map((i) => id(i)));
+    // Without it the scopedQuotaV2 numbers hold.
+    const v2 = settingsWith({ crossDocQuota: true, scopedQuotaV2: true });
+    const r2 = await retrieve(q, v2, deps);
+    expect(r2.crossDocument!.quota).toHaveLength(2 * SCOPED_V2_QUOTA);
+    expect(choose(r2, v2).selected).toHaveLength(SCOPED_V2_MAX_SECTIONS);
   });
 
   it('takes the quota sections of several files in turn', () => {
