@@ -15,9 +15,11 @@ export const SUMMARY_PROMPT_VERSION = 1;
 /**
  * The prompt version of a mainly Chinese document's summaries: 2 since the Chinese caps went to
  * 100 characters in up to two sentences and 60 for a section (owner request 2026-11-04). Apart from
- * the English one, so the change remakes only Chinese summaries.
+ * the English one, so the change remakes only Chinese summaries. 3: the Chinese document prompt
+ * asks for two sentences (what the document is; three to five main topics), 60 to 100 characters,
+ * and the section prompts for the concrete rule or content in 30 to 60 characters.
  */
-export const SUMMARY_PROMPT_VERSION_CJK = 2;
+export const SUMMARY_PROMPT_VERSION_CJK = 3;
 
 /** The prompt version for a document: the Chinese one when its summary source is mainly Chinese. */
 export function promptVersionOf(doc: BrowseDocument): number {
@@ -101,9 +103,14 @@ function capLine(level: SummaryLevel, chinese: boolean): string {
   const cap = CAPS[level];
   if (!chinese) return `Write the sentence in English, at most ${cap.words} words.`;
   return cap.cjkSentences > 1
-    ? `Write one or two sentences in Chinese, at most ${cap.cjkChars} Chinese characters in all.`
-    : `Write the sentence in Chinese, at most ${cap.cjkChars} Chinese characters.`;
+    ? `Write two sentences in Chinese, 60 to 100 Chinese characters in all, never more than ${cap.cjkChars}.`
+    : `Write the sentence in Chinese, 30 to 60 Chinese characters, never more than ${cap.cjkChars}.`;
 }
+
+/** What a Chinese section summary must say: the rule or content itself, not the topic's name. */
+const CJK_SECTION_RULE =
+  'State the concrete rule or content of the section (who must do what, amounts, time limits, conditions), ' +
+  'not the name of its topic: not 本节介绍投标保证金 but 投标保证金不得超过招标项目估算价的2%。';
 
 const RULES =
   'Use only facts stated in the text you are given; do not add anything from elsewhere. ' +
@@ -124,7 +131,40 @@ export function documentSource(doc: BrowseDocument): { section: BrowseSection | 
   ]
     .filter(Boolean)
     .join('\n');
-  return { section, text };
+  if (!mainlyCjk(text)) return { section, text };
+  // A Chinese summary names three to five main topics in its second sentence, so it needs them in
+  // its source: the outline down to three levels (articles, numbered clauses) and the text of the
+  // first sections in order within the same budget. English sources stay as they were.
+  const deep = outlineTitles(doc.outline, 3).slice(0, OUTLINE_ENTRIES);
+  let budget = DOCUMENT_TEXT_CHARS;
+  const parts: string[] = [];
+  for (const s of doc.sections) {
+    if (budget <= 0) break;
+    if (!s.text.trim()) continue;
+    const body = s.text.slice(0, budget);
+    budget -= body.length;
+    parts.push(`${s.title}:\n${body}`);
+  }
+  return {
+    section,
+    text: [
+      `Title: ${doc.title}`,
+      deep.length ? `Outline: ${deep.join('; ')}` : '',
+      parts.length ? `Text:\n${parts.join('\n')}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n'),
+  };
+}
+
+/** Outline titles to a depth, in document order, each title once. */
+function outlineTitles(entries: BrowseDocument['outline'], depth: number, out: string[] = []): string[] {
+  for (const e of entries) {
+    const t = e.title.replace(/\s+/g, ' ').trim();
+    if (t && !out.includes(t)) out.push(t);
+    if (depth > 1) outlineTitles(e.children, depth - 1, out);
+  }
+  return out;
 }
 
 export function sectionSource(doc: BrowseDocument, section: BrowseSection): string {
@@ -139,8 +179,9 @@ export function documentPrompt(doc: BrowseDocument, opts: { shorter?: boolean } 
     {
       role: 'system',
       content: chinese
-        ? 'You write short summaries of documents in a personal file library, in one or two sentences. ' +
-          'They say what the document is and what it covers. ' +
+        ? 'You write short summaries of documents in a personal file library, in exactly two sentences. ' +
+          'The first sentence says what the document is, with its issuer and date when the text gives them. ' +
+          'The second sentence names three to five of its main topics or sections, taken from the outline. ' +
           'Use only facts stated in the text you are given; do not add anything from elsewhere. ' +
           'Reply with the summary alone: no preamble, no label, no quotes, no list, no citation marks. ' +
           `${capLine('document', true)}${opts.shorter ? ' Keep it well under that length.' : ''}`
@@ -164,7 +205,7 @@ export function sectionPrompt(
       role: 'system',
       content:
         'You write one-sentence summaries of sections of a document. The sentence says what this section states. ' +
-        `${RULES} ${capLine('section', chinese)}${opts.shorter ? ' Keep it well under that length.' : ''}`,
+        `${chinese ? `${CJK_SECTION_RULE} ` : ''}${RULES} ${capLine('section', chinese)}${opts.shorter ? ' Keep it well under that length.' : ''}`,
     },
     { role: 'user', content: text },
   ];
@@ -203,6 +244,7 @@ export function sectionBatchPrompt(doc: BrowseDocument, sections: BrowseSection[
         'For each one write one sentence that says what that section states, using only facts stated in that section. ' +
         `Reply with exactly ${n} lines and nothing else, in order; each line starts with the section number and a period, ` +
         'like "1. The section ...". No preamble, no quotes, no citation marks. ' +
+        (chinese ? `${CJK_SECTION_RULE} ` : '') +
         capLine('section', chinese).replace('the sentence', 'each sentence'),
     },
     { role: 'user', content: `Document: ${doc.title}\n\n${body}` },

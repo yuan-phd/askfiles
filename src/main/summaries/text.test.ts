@@ -76,7 +76,9 @@ describe('summary text', () => {
     expect(src.section!.index).toBe(1);
     expect(src.text).toContain('Outline: 适用范围; 提交期限');
     const [system, user] = documentPrompt(d);
-    expect(system!.content).toContain('Write one or two sentences in Chinese, at most 100 Chinese characters in all.');
+    expect(system!.content).toContain(
+      'Write two sentences in Chinese, 60 to 100 Chinese characters in all, never more than 100.',
+    );
     expect(user!.content).toBe(src.text);
     expect(documentPrompt(doc('a.md', [['A', 'An English text about leave.']]))[0]!.content).toContain(
       'in English, at most 40 words',
@@ -151,5 +153,33 @@ describe('summary text', () => {
       SUMMARY_PROMPT_VERSION,
     );
     expect(SUMMARY_PROMPT_VERSION_CJK).not.toBe(SUMMARY_PROMPT_VERSION);
+  });
+
+  it('gives a Chinese document summary the outline to three levels and the text of the first sections', () => {
+    const d = doc('必须招标的工程项目规定.pdf', [
+      ['必须招标的工程项目规定', '国家发展改革委令第16号，2018年3月27日公布，自2018年6月1日起施行。'],
+      ['第一条', '为了确定必须招标的工程项目，规范招标投标活动，制定本规定。'],
+      ['第二条', '全部或者部分使用国有资金投资的项目必须招标。'],
+    ]);
+    d.outline = [
+      {
+        title: '必须招标的工程项目规定',
+        level: 1,
+        sectionIndex: 1,
+        page: null,
+        pageLabel: null,
+        children: [
+          { title: '第一条', level: 2, sectionIndex: 2, page: null, pageLabel: null, children: [] },
+          { title: '第二条', level: 2, sectionIndex: 3, page: null, pageLabel: null, children: [] },
+        ],
+      },
+    ];
+    const src = documentSource(d);
+    expect(src.section!.index).toBe(1);
+    expect(src.text).toContain('Outline: 必须招标的工程项目规定; 第一条; 第二条');
+    expect(src.text).toContain('第二条:\n全部或者部分使用国有资金投资的项目必须招标。');
+    const [system] = documentPrompt(d);
+    expect(system!.content).toContain('exactly two sentences');
+    expect(system!.content).toContain('three to five of its main topics');
   });
 });

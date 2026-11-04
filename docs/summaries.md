@@ -7,7 +7,7 @@ Session N. Code in src/main/summaries. Each summary is one sentence written by t
 | | Document summary | Section summary |
 | --- | --- | --- |
 | Length | One sentence of at most 40 English words; for a Chinese document up to two sentences and 100 Chinese characters in all | One sentence of at most 25 English words or 60 Chinese characters |
-| Made from | The title, the top-level outline (up to 30 entries) and the first section with text (up to 3000 characters) | The document title, the section path and the section text (up to 4000 characters) |
+| Made from | The title, the top-level outline (up to 30 entries) and the first section with text (up to 3000 characters). For a Chinese document: the outline down to three levels (up to 30 titles, so articles and numbered clauses count) and the text of the first sections in order, 3000 characters in all | The document title, the section path and the section text (up to 4000 characters) |
 | Cited to | That first section | The section |
 | When | Automatically, after the document is indexed | Off by default. Two ways to turn it on: Summarize each section on the Document page (that document only, with an estimate in minutes), or Summarize every section in the library menu (every document, and every document added later) |
 | Shown on | The Library page (under the name), the Document page (under the title, with a link to the section it cites) and the overview node's tooltip | The Document page, above each section's text |
@@ -16,7 +16,7 @@ Both section controls have the same tooltip: Uses the model on this computer. As
 
 ## Prompt and checks
 
-src/main/summaries/text.ts. The system prompt asks for one sentence that says what the document (or section) is and covers. It must use only facts in the given text, with no preamble, label, quotes, list or citation marks. The sentence is in Chinese with the Chinese cap when the source is mainly Chinese, otherwise in English with the word cap.
+src/main/summaries/text.ts. The system prompt asks for one sentence that says what the document (or section) is and covers. It must use only facts in the given text, with no preamble, label, quotes, list or citation marks. The sentence is in Chinese with the Chinese cap when the source is mainly Chinese, otherwise in English with the word cap. A Chinese document summary is asked for in exactly two sentences, 60 to 100 characters: the first says what the document is, with its issuer and date when the text gives them; the second names three to five of its main topics or sections. A Chinese section summary is asked for in 30 to 60 characters and must state the concrete rule or content (who must do what, amounts, time limits, conditions), not the name of its topic. The lower bounds are asked for, not enforced; the caps are. Prompt version 3 for Chinese documents (SUMMARY_PROMPT_VERSION_CJK).
 
 The reply is cleaned: thinking, citation marks, a leading label (Summary:, 摘要：), list marks and quotes are taken off, and only the first sentence is kept. Then it is checked in two ways:
 
@@ -52,7 +52,7 @@ Summaries use the Ask model in server/.env (OLLAMA_MODEL_PREF) and the Settings 
 - **The 8 GB tier** (Ask off, chatModel null) makes no summaries. The pages show no summary and no pending state, and the library switch is hidden.
 - **A changed file** gets its document summary made again, and its section summaries only for sections whose text changed. Summaries of sections the file no longer has are removed.
 - **A removed file** loses its summaries, its export note and its node.
-- **Version key.** Every stored summary carries `<model tag>|p<prompt version>`: SUMMARY_PROMPT_VERSION (1) for English documents, SUMMARY_PROMPT_VERSION_CJK (2) for documents whose summary source is mainly Chinese. A new chat model (Settings, Answer model) or a prompt change marks the summaries stale, and they are queued again. The Chinese version moved to 2 with the Chinese caps of 2026-11-04 (owner request: 100 characters in up to two sentences for a document, 60 for a section), so only Chinese summaries were made again. On the dev library both Chinese documents got one sentence of 35 and 38 characters.
+- **Version key.** Every stored summary carries `<model tag>|p<prompt version>`: SUMMARY_PROMPT_VERSION (1) for English documents, SUMMARY_PROMPT_VERSION_CJK (2) for documents whose summary source is mainly Chinese. A new chat model (Settings, Answer model) or a prompt change marks the summaries stale, and they are queued again. The Chinese version moved to 2 with the Chinese caps of 2026-11-04 (owner request: 100 characters in up to two sentences for a document, 60 for a section), so only Chinese summaries were made again. With version 3 (two sentences asked for, the deeper source) the dev library's two Chinese documents got two verified sentences each, 61 and 59 Chinese characters; with version 2 they had one sentence of 35 and 38, and with the version 3 prompt on the old source 04's second sentence was dropped as unsupported, since that source held only the decree line.
 
 ### Batches
 
