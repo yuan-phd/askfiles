@@ -35,7 +35,7 @@ describe('config/presets.json', () => {
       sha256: '9694f1db203d5a18bea6f19a36be01b2d2c79bf9b7f8df553a4cc5cff870b47e',
       sizeBytes: 7321313664,
     });
-    // cjkOverlap kept in answer round A1, crossDocQuota in A2a, scopedQuotaV2 in C3; crossDocument (A2) and
+    // cjkOverlap kept in answer round A1, crossDocQuota in A2a, scopedQuotaV2 in C3, headingPathBonus in X2; crossDocument (A2) and
     // fileScopedQuota (C1) not.
     const on = [
       'verifyCitations',
@@ -44,6 +44,7 @@ describe('config/presets.json', () => {
       'cjkOverlap',
       'crossDocQuota',
       'scopedQuotaV2',
+      'headingPathBonus',
     ];
     for (const t of p.tiers) {
       // Summaries use the Ask model on every tier (owner decision 2026-11-04).

@@ -51,7 +51,7 @@
     "scopedQuotaV2": true,
     "keywordStemming": false,
     "perFileSubquery": false,
-    "headingPathBonus": false,
+    "headingPathBonus": true,
     "namedFileQuota8": false
   },
   "contextTokens": 8192,
