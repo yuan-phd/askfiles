@@ -4,8 +4,29 @@ import type { Chunk } from '../sections/index.js';
 export interface Splitter {
   /** Key of the split settings (splitKeyOf); part of every document name, so a change re-embeds. */
   readonly splitKey: string;
-  /** Chunks of the file at an absolute path, in document order, each within the chunk maximum. */
-  split(filePath: string): Promise<Chunk[]>;
+  /**
+   * Chunks of the file at an absolute path, in document order, each within the chunk maximum.
+   * stats, when given, receives the time spent in OCR, so the watcher can log it apart.
+   */
+  split(filePath: string, stats?: SplitStats): Promise<Chunk[]>;
+}
+
+/** What one split spent on OCR (pages sent, milliseconds; a cached result counts as 0 pages). */
+export interface SplitStats {
+  ocrMs: number;
+  ocrPages: number;
+}
+
+/** Milliseconds per indexing stage of one file, logged per file (docs/app.md, Indexing time). */
+export interface StageTimes {
+  /** Parsing and chunking, OCR excluded. */
+  split: number;
+  ocr: number;
+  /** Writing the section documents to the server's document store (the shell's upload). */
+  write: number;
+  /** update-embeddings and the workspace reads around it. */
+  embed: number;
+  total: number;
 }
 
 /** The library calls the watcher needs, so tests can run against a fake. */
@@ -117,4 +138,6 @@ export interface FileEvent {
   sections?: number;
   attempt?: number;
   error?: string;
+  /** Set for an indexed file. */
+  times?: StageTimes;
 }

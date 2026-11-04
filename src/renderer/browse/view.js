@@ -240,6 +240,10 @@ export function createBrowseView(root, { history: shared = null } = {}) {
       if (on) t.setAttribute('aria-current', 'page');
       else t.removeAttribute('aria-current');
     }
+    // Every way off the Overview (a tab, a node, an edge, Back) passes here, so the graph's zoom
+    // listeners go and the content area scrolls again.
+    content.classList.toggle('overview-on', name === 'overview');
+    if (name !== 'overview') overview.hide();
     if (changed) content.scrollTop = scrolls[name] ?? 0;
   }
 
@@ -248,9 +252,7 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     if (tab === 'library' && !state.loaded) void loadLibrary();
     if (tab === 'headings') void loadHeadings();
     showPage(tab);
-    content.classList.toggle('overview-on', tab === 'overview');
     if (tab === 'overview') void overview.show();
-    else overview.hide();
     if (tab === 'find') q('find-query').focus();
   }
 
@@ -316,6 +318,12 @@ export function createBrowseView(root, { history: shared = null } = {}) {
       const b = button('outline-link', e.title, testid);
       b.dataset.section = String(e.sectionIndex);
       b.dataset.level = String(e.level);
+      // One entry for the parts the splitter cut by page: its page range, and it lights for any part.
+      if (e.parts?.length > 1) {
+        b.dataset.parts = e.parts.join(' ');
+        const range = placeLabel(e.page, e.pageEnd, doc.title, e.pageLabel, e.pageLabelEnd);
+        if (range) b.append(el('span', 'outline-pages', range));
+      }
       b.addEventListener('click', () => openDocument({ id: doc.id }, { sectionIndex: e.sectionIndex }));
       li.append(b);
       if (e.children?.length) li.append(outlineList(e.children, doc, testid));
@@ -610,7 +618,8 @@ export function createBrowseView(root, { history: shared = null } = {}) {
       index = doc.sections.find((s) => s.title === target.sectionTitle)?.index;
     }
     for (const b of root.querySelectorAll('.sidebar-doc .outline-link')) {
-      b.classList.toggle('active', Number(b.dataset.section) === index);
+      const parts = b.dataset.parts ? b.dataset.parts.split(' ').map(Number) : [Number(b.dataset.section)];
+      b.classList.toggle('active', parts.includes(index));
     }
     const sec = root.querySelector(`.doc-section[data-section="${index}"]`);
     for (const s of root.querySelectorAll('.doc-section.target')) s.classList.remove('target');

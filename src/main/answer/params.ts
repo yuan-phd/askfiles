@@ -144,6 +144,12 @@ export interface AnswerParams {
    * SCOPED_V2_MAX_SECTIONS sections in all, the files' quota sections taken in turn.
    */
   scopedQuotaV2: boolean;
+  /**
+   * The keyword index and the question's keyword terms match English words by their Porter stem
+   * (planning and Plan both procur plan), as whole words; Chinese terms unchanged (browse/stem.ts,
+   * docs/plan.md round S1).
+   */
+  keywordStemming: boolean;
 }
 
 /** The crossDocument parts in effect: crossDocument's own, or the quota alone with crossDocQuota. */
@@ -184,6 +190,7 @@ export const DEFAULT_PARAMS: AnswerParams = {
   crossDocQuota: false,
   fileScopedQuota: false,
   scopedQuotaV2: false,
+  keywordStemming: false,
 };
 
 /** Tokens kept free for the answer itself and for the instructions and the question. */
@@ -285,6 +292,7 @@ const CHECKS: Record<keyof AnswerParams, (v: unknown) => Problem> = {
   crossDocQuota: bool,
   fileScopedQuota: bool,
   scopedQuotaV2: bool,
+  keywordStemming: bool,
 };
 
 /** Problems with an answer block, each prefixed with at; every key is required. */

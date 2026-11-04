@@ -16,7 +16,9 @@ import type {
   JobKind,
   LibraryApi,
   SectionRecord,
+  SplitStats,
   Splitter,
+  StageTimes,
   WatchFactory,
   WatchHandle,
   WatcherStatus,
@@ -62,7 +64,7 @@ interface Job {
   attempt: number;
 }
 
-type Outcome = { outcome: 'indexed' | 'unchanged' | 'removed'; sections?: number };
+type Outcome = { outcome: 'indexed' | 'unchanged' | 'removed'; sections?: number; times?: StageTimes };
 
 export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file: [FileEvent]; watchError: [Error] }> {
   private readonly o: Required<Omit<FolderWatcherOptions, 'log' | 'now' | 'root' | 'roots' | 'docsFolder'>> & {
@@ -305,6 +307,13 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
     try {
       const r = job.kind === 'upsert' ? await this.upsert(job.path) : await this.remove(job.path);
       this.o.log(`${r.outcome} ${job.path}${r.sections !== undefined ? ` (${r.sections} sections)` : ''}`);
+      if (r.times) {
+        const t = r.times;
+        // One line per file with a stable prefix, for the indexing-time table (docs/app.md).
+        this.o.log(
+          `timing ${path.basename(job.path)}: split ${t.split} ms, ocr ${t.ocr} ms, write ${t.write} ms, embed ${t.embed} ms, total ${t.total} ms, ${r.sections} sections`,
+        );
+      }
       this.emit('file', { path: job.path, kind: job.kind, ...r });
     } catch (e) {
       const error = (e as Error).message;
@@ -360,7 +369,10 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
       return { outcome: 'unchanged', sections: old.sections.length };
     }
 
-    const chunks = (await this.o.splitter.split(p)).filter((c) => c.text.trim() !== '');
+    const t0 = Date.now();
+    const stats: SplitStats = { ocrMs: 0, ocrPages: 0 };
+    const chunks = (await this.o.splitter.split(p, stats)).filter((c) => c.text.trim() !== '');
+    const t1 = Date.now();
     // Names depend on path, bytes, split key and chunk position only: a changed file gets all new
     // names and is embedded afresh; an unchanged one keeps them (src/main/sections/documents.ts).
     const rel = path.relative(root.path, p);
@@ -393,6 +405,7 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
       });
     }
 
+    const t2 = Date.now();
     const slug = this.o.workspaceSlug;
     // Asking first makes a retry safe: upstream embeds a path again if it is posted twice.
     let embedded = await this.o.api.workspaceDocuments(slug);
@@ -423,7 +436,15 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
       sections: records,
     };
     this.save();
-    return { outcome: 'indexed', sections: records.length };
+    const t3 = Date.now();
+    const times: StageTimes = {
+      split: t1 - t0 - stats.ocrMs,
+      ocr: stats.ocrMs,
+      write: t2 - t1,
+      embed: t3 - t2,
+      total: t3 - t0,
+    };
+    return { outcome: 'indexed', sections: records.length, times };
   }
 
   private async remove(p: string): Promise<Outcome> {

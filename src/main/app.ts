@@ -70,6 +70,7 @@ import {
   askNoticeFor,
   checkSettingsChange,
   effectivePreset,
+  modelChoices,
   runSettingsFor,
   settingsEnv,
   settingsView,
@@ -287,12 +288,15 @@ export class AppController implements BridgeHandlers {
     return this.modelManager().list();
   }
 
-  modelsPull(tag: string) {
-    return this.modelManager().pull(tag, (p) => this.d.broadcast(CHANNELS.modelsProgress, p));
+  async modelsPull(tag: string) {
+    await this.modelManager().pull(tag, (p) => this.d.broadcast(CHANNELS.modelsProgress, p));
+    // The Faster model may have just arrived: summaries move to it.
+    void this.refreshSummaryModel();
   }
 
-  modelsRemove(tag: string) {
-    return this.modelManager().remove(tag);
+  async modelsRemove(tag: string) {
+    await this.modelManager().remove(tag);
+    void this.refreshSummaryModel();
   }
 
   modelsSwitchChat(tag: string) {
@@ -405,6 +409,7 @@ export class AppController implements BridgeHandlers {
       await this.restartBackend();
       // A new model tag makes every summary stale (docs/summaries.md, Version key).
       this.overview?.summaries.modelChanged();
+      void this.refreshSummaryModel();
     }
     this.d.log(`[settings] saved ${JSON.stringify(next)}`);
     return settingsView(presets, machine, next);
@@ -575,13 +580,47 @@ export class AppController implements BridgeHandlers {
   }
 
   /** The model and context summaries use: Ask's own, so the model is loaded once; null with Ask off. */
+  /**
+   * The Faster tier's model when Ollama has it (and, when pinned, its tested file), else null;
+   * found by refreshSummaryModel, since asking Ollama is async and summaryModel is not.
+   */
+  private fasterForSummaries: string | null = null;
+
   private summaryModel(): SummaryModel | null {
     const machine = this.machinePreset;
     if (!machine?.chatModel || !this.presets) return null;
-    const model = this.chatModel();
+    const model = this.fasterForSummaries ?? this.chatModel();
     if (!model) return null;
     const preset = effectivePreset(this.presets, machine, this.state.settings);
     return { model, contextLength: preset.contextLength, temperature: preset.temperature };
+  }
+
+  /**
+   * Summaries use the Faster tier's model when this Mac has one installed: a one-sentence summary
+   * needs less than an answer, and the smaller model makes it sooner (owner request 2026-11-04).
+   * Never pulled for this; a pinned file that does not match is not used.
+   */
+  async refreshSummaryModel(): Promise<void> {
+    const before = this.fasterForSummaries;
+    let next: string | null = null;
+    try {
+      const machine = this.machinePreset;
+      if (machine?.chatModel && this.presets && this.manager?.status().ports?.ollama) {
+        const tag = modelChoices(this.presets, machine).faster?.model ?? null;
+        if (tag && (await this.ollamaClient().has(tag))) {
+          const file = this.presets.tiers.find((t) => t.chatModel === tag)?.chatModelFile;
+          if (file) await verifyPinnedModel(this.ollamaClient(), tag, file, this.d.log);
+          next = tag;
+        }
+      }
+    } catch (e) {
+      this.d.log(`[summaries] faster model not used: ${(e as Error).message}`);
+    }
+    this.fasterForSummaries = next;
+    if (next !== before) {
+      this.d.log(`[summaries] model ${next ?? this.chatModel() ?? 'none'}`);
+      this.overview?.summaries.modelChanged();
+    }
   }
 
   /** Graph and summaries for a library's browse index, attached before the index loads. */
@@ -620,6 +659,7 @@ export class AppController implements BridgeHandlers {
     });
     summaries.setAnswering(this.answers?.busy() ?? false);
     this.overview = { libraryId, browse, graph, summaries };
+    void this.refreshSummaryModel();
   }
 
   private requirePresets(): PresetFile {
@@ -886,8 +926,11 @@ export class AppController implements BridgeHandlers {
       onChange: (v) => this.d.broadcast(CHANNELS.librariesEvent, v),
       onStatus: (s) => {
         // The summary queue waits while the library indexes (docs/summaries.md, Queue).
-        if (this.overview?.libraryId === s.libraryId)
-          this.overview.summaries.setIndexing(s.state === 'working' || s.state === 'starting' || s.pending > 0);
+        if (this.overview?.libraryId === s.libraryId) {
+          const indexing = s.state === 'working' || s.state === 'starting' || s.pending > 0;
+          this.overview.summaries.setIndexing(indexing);
+          this.overview.graph.setIndexing(indexing);
+        }
         this.d.broadcast(CHANNELS.watcherStatusEvent, s);
       },
       profiles: {

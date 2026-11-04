@@ -3,6 +3,10 @@
  * while any gate is closed (the library is indexing, a question is being answered, the user paused
  * it, or summaries are off on this tier) and starts again only after the gates have been open for
  * idleMs. A gate that closes while a job runs aborts it; the job goes back to the front.
+ *
+ * A run may take several jobs at once: the batch hook picks, from the jobs queued behind the first,
+ * those that go into the same model call (the sections of one document). They count, requeue and
+ * abort together, so the progress line still counts sections.
  */
 
 export type SummaryJob =
@@ -24,7 +28,10 @@ export interface QueueStatus {
 }
 
 export interface QueueDeps {
-  run(job: SummaryJob, signal: AbortSignal): Promise<void>;
+  /** jobs[0] is the job whose turn it is; the rest are what batch picked to go with it. */
+  run(jobs: SummaryJob[], signal: AbortSignal): Promise<void>;
+  /** Of the jobs queued behind first, in run order, those to run with it; none by default. */
+  batch?(first: SummaryJob, queued: SummaryJob[]): SummaryJob[];
   onStatus?(s: QueueStatus): void;
   /** Seconds the gates must stay open before work starts again. */
   idleMs?: number;
@@ -50,7 +57,7 @@ export class SummaryQueue {
   private readonly jobs = new Map<string, { job: SummaryJob; seq: number }>();
   private seq = 0;
   private readonly closed = new Set<Gate>();
-  private running: { job: SummaryJob; controller: AbortController } | null = null;
+  private running: { jobs: SummaryJob[]; controller: AbortController } | null = null;
   private timer: unknown = null;
   private waiting = false;
   private done = 0;
@@ -70,21 +77,25 @@ export class SummaryQueue {
     this.clearTimer = d.clearTimer ?? ((t) => clearTimeout(t as ReturnType<typeof setTimeout>));
   }
 
+  private isRunning(key: string): boolean {
+    return !!this.running && this.running.jobs.some((j) => jobKey(j) === key);
+  }
+
   add(job: SummaryJob): void {
     const key = jobKey(job);
-    if (this.jobs.has(key) || (this.running && jobKey(this.running.job) === key)) return;
+    if (this.jobs.has(key) || this.isRunning(key)) return;
     this.jobs.set(key, { job, seq: this.seq++ });
     this.kick();
   }
 
   has(job: SummaryJob): boolean {
-    return this.jobs.has(jobKey(job)) || (!!this.running && jobKey(this.running.job) === jobKey(job));
+    return this.jobs.has(jobKey(job)) || this.isRunning(jobKey(job));
   }
 
   /** Drops a document's queued jobs and aborts its running one (file removed or changed again). */
   removeDocument(docId: string): void {
     for (const [k, v] of this.jobs) if (v.job.docId === docId) this.jobs.delete(k);
-    if (this.running?.job.docId === docId) {
+    if (this.running?.jobs.some((j) => j.docId === docId)) {
       this.running.controller.abort();
     }
     this.emit();
@@ -107,9 +118,10 @@ export class SummaryQueue {
       this.closed.add(gate);
       this.cancelWait();
       if (this.running) {
-        // Requeued at the front by its seq; the run's own rejection is ignored.
-        const { job } = this.running;
-        this.jobs.set(jobKey(job), { job, seq: -1 - this.seq++ });
+        // Requeued at the front, in their order; the run's own rejection is ignored.
+        const front = -1 - this.seq - this.running.jobs.length;
+        this.running.jobs.forEach((job, i) => this.jobs.set(jobKey(job), { job, seq: front + i }));
+        this.seq += this.running.jobs.length;
         this.running.controller.abort();
         this.running = null;
       }
@@ -130,9 +142,9 @@ export class SummaryQueue {
 
   status(): QueueStatus {
     const reason = GATE_ORDER.find((g) => this.closed.has(g)) ?? null;
-    const left = this.jobs.size + (this.running ? 1 : 0);
+    const left = this.jobs.size + (this.running?.jobs.length ?? 0);
     const state: QueueStatus['state'] = this.running ? 'running' : left === 0 ? 'idle' : reason ? 'paused' : 'waiting';
-    return { state, reason, done: this.done, total: this.done + left, current: this.running?.job ?? null };
+    return { state, reason, done: this.done, total: this.done + left, current: this.running?.jobs[0] ?? null };
   }
 
   private emit(): void {
@@ -163,22 +175,24 @@ export class SummaryQueue {
 
   private next(): void {
     if (this.running || this.closed.size) return this.emit();
-    const [first] = this.queued();
+    const [first, ...rest] = this.queued();
     if (!first) return this.emit();
-    this.jobs.delete(jobKey(first));
+    const mates = this.d.batch?.(first, rest) ?? [];
+    const jobs = [first, ...mates.filter((j) => this.jobs.has(jobKey(j)))];
+    for (const j of jobs) this.jobs.delete(jobKey(j));
     const controller = new AbortController();
-    const mine = { job: first, controller };
+    const mine = { jobs, controller };
     this.running = mine;
     this.emit();
     void this.d
-      .run(first, controller.signal)
+      .run(jobs, controller.signal)
       .catch((e: Error) => {
         if (!controller.signal.aborted) this.d.log?.(`job ${jobKey(first)} failed: ${e.message}`);
       })
       .finally(() => {
         if (this.running !== mine) return;
         this.running = null;
-        if (!controller.signal.aborted) this.done++;
+        if (!controller.signal.aborted) this.done += jobs.length;
         // Between jobs no idle wait: the gates are still open.
         if (!this.closed.size && this.jobs.size) this.setTimer(() => this.next(), 0);
         this.emit();

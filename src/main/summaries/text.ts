@@ -132,6 +132,58 @@ export function sectionPrompt(
   ];
 }
 
+/**
+ * Sections per model call (docs/summaries.md, Batches). One call for several short sections costs
+ * little more than one for a single section: the prompt is read once and the replies are short.
+ */
+export const BATCH_MAX_SECTIONS = 5;
+/** Estimated input tokens of one batch, so it fits the 8192 context with room for the replies. */
+export const BATCH_MAX_TOKENS = 4000;
+
+/** A rough token count: one per Chinese character, one per four other characters. */
+export function estimateTokens(text: string): number {
+  const cjk = text.match(CJK_RUN)?.length ?? 0;
+  return cjk + Math.ceil((text.length - cjk) / 4);
+}
+
+/**
+ * One prompt for several sections of a document. Each section is numbered; the reply is one line
+ * per section, starting with its number. Every sentence is then checked against its own section
+ * alone, exactly as a single summary is (checkSummary with sectionSource).
+ */
+export function sectionBatchPrompt(doc: BrowseDocument, sections: BrowseSection[]): ChatMessage[] {
+  const chinese = mainlyCjk(sections.map((s) => s.text || s.title).join('\n'));
+  const n = sections.length;
+  const body = sections
+    .map((s, i) => `[${i + 1}] ${sectionSource(doc, s).split('\n').slice(1).join('\n')}`)
+    .join('\n\n');
+  return [
+    {
+      role: 'system',
+      content:
+        `You write one-sentence summaries of sections of a document. You are given ${n} numbered sections. ` +
+        'For each one write one sentence that says what that section states, using only facts stated in that section. ' +
+        `Reply with exactly ${n} lines and nothing else, in order; each line starts with the section number and a period, ` +
+        'like "1. The section ...". No preamble, no quotes, no citation marks. ' +
+        capLine('section', chinese).replace('the sentence', 'each sentence'),
+    },
+    { role: 'user', content: `Document: ${doc.title}\n\n${body}` },
+  ];
+}
+
+/** The reply's sentence per section number (1-based); a number the model skipped is missing. */
+export function parseBatchReply(raw: string, n: number): Map<number, string> {
+  const out = new Map<number, string>();
+  const text = raw.replace(/<think>[\s\S]*?<\/think>/g, '');
+  for (const line of text.split(/\n+/)) {
+    const m = /^\s*(?:\*\*)?(?:\[(\d{1,2})\]|(\d{1,2})[.):：、])(?:\*\*)?\s*(.+)$/.exec(line);
+    if (!m) continue;
+    const i = Number(m[1] ?? m[2]);
+    if (i >= 1 && i <= n && !out.has(i) && m[3]!.trim()) out.set(i, m[3]!.trim());
+  }
+  return out;
+}
+
 export type CheckOutcome = { ok: true; text: string } | { ok: false; reason: 'empty' | 'too-long' | 'unsupported' };
 
 /**

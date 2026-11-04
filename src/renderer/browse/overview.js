@@ -33,6 +33,12 @@ export function loadD3() {
 
 /** The original's forces and opacities, kept as they were. */
 export const FORCES = { linkDistance: 100, charge: -300, collide: 30 };
+/**
+ * A weak pull of every node toward the middle. forceCenter only moves the whole graph's centre of
+ * mass, so a document without links was pushed off screen by the charge; with this pull it rests at
+ * the outer edge of the cluster. Weak enough that linked documents keep the original shape.
+ */
+export const CENTERING = 0.04;
 const OPACITY = { link: 0.6, linkLit: 0.8, linkFaded: 0.05, faded: 0.1, searchFaded: 0.05, searchLinkFaded: 0.02 };
 
 /** Node radius from its link count, as in the original: count * 1.2 + 4, clamped 5 to 14. */
@@ -118,6 +124,17 @@ export function createOverview(root, { getData, onOpenDocument, onOpenHeading })
   function stopSimulation() {
     state.simulation?.stop();
     state.simulation = null;
+  }
+
+  /**
+   * Leaving the page: the zoom's wheel, touch and pointer listeners and the drawing go, so nothing
+   * of the graph is left catching events on the page that replaces it.
+   */
+  function teardown() {
+    stopSimulation();
+    if (window.d3) window.d3.select(svgEl).on('.zoom', null).selectAll('*').remove();
+    selections = null;
+    delete root.dataset.settled;
   }
 
   function showEmpty(text) {
@@ -264,6 +281,8 @@ export function createOverview(root, { getData, onOpenDocument, onOpenHeading })
       showEmpty(`The overview could not be drawn: ${e.message}`);
       return;
     }
+    // The page may have been left while d3 loaded.
+    if (!state.visible) return;
     const svg = d3.select(svgEl);
     svg.selectAll('*').remove();
     selections = null;
@@ -325,10 +344,13 @@ export function createOverview(root, { getData, onOpenDocument, onOpenHeading })
       .force('collision', d3.forceCollide().radius(FORCES.collide));
     if (layered) {
       simulation
-        .force('centerX', d3.forceX(width / 2).strength(0.03))
+        .force('centerX', d3.forceX(width / 2).strength(CENTERING))
         .force('band', d3.forceY((d) => bandY(bands.get(d.type), bands.size, height)).strength(0.4));
     } else {
-      simulation.force('center', d3.forceCenter(width / 2, height / 2));
+      simulation
+        .force('center', d3.forceCenter(width / 2, height / 2))
+        .force('pullX', d3.forceX(width / 2).strength(CENTERING))
+        .force('pullY', d3.forceY(height / 2).strength(CENTERING));
     }
     state.simulation = simulation;
 
@@ -484,9 +506,9 @@ export function createOverview(root, { getData, onOpenDocument, onOpenHeading })
     });
 
     /**
-     * The original forces let a document without links drift past the edge of the panel. Once the
-     * layout rests, the view zooms out just enough to show every node and its label; it never zooms
-     * in and never overrides a zoom the user made.
+     * Fallback for the centering pull: should a node still rest past the edge of the panel (a
+     * small window, long labels), the view zooms out just enough to show every node and its label
+     * once the layout rests; it never zooms in and never overrides a zoom the user made.
      */
     function fitIfOutside() {
       if (userZoomed || !nodes.length) return;
@@ -561,8 +583,10 @@ export function createOverview(root, { getData, onOpenDocument, onOpenHeading })
       await reload();
     },
     hide() {
+      if (!state.visible) return;
       state.visible = false;
-      stopSimulation();
+      clearTimeout(resizeTimer);
+      teardown();
       hideTooltip();
       closeChooser();
     },

@@ -7,7 +7,7 @@ import { BrowseIndex } from '../browse/browse-index.js';
 import type { FileRecord } from '../watcher/index.js';
 import { buildGraph } from '../graph/build.js';
 import { loadProfiles, profileFor } from '../graph/profiles.js';
-import { SummaryService, type SummaryModel } from './service.js';
+import { DEFAULT_MS_PER_SECTION, SummaryService, type SummaryModel } from './service.js';
 
 const profile = profileFor(
   loadProfiles(path.resolve(import.meta.dirname, '../../../config/profiles')),
@@ -66,6 +66,12 @@ function echoChat() {
   const chat: ChatFn = async (o, onText) => {
     const user = o.messages.find((m) => m.role === 'user')!.content;
     calls.push({ model: o.model, content: user, num: o.contextLength });
+    // A batch: one numbered line per section, its first sentence.
+    const parts = [...user.matchAll(/^\[(\d+)\] Section: [^\n]*\n([^\n]*)/gm)];
+    if (parts.length) {
+      onText(parts.map((m) => `${m[1]}. ${m[2]!.split(/(?<=\.)\s/)[0]}`).join('\n'));
+      return { promptTokens: null, completionTokens: null };
+    }
     const body = user
       .split('\n')
       .filter((l) => !/^(Title|Outline|First section|Document|Section):?/.test(l))
@@ -132,7 +138,9 @@ describe('summary service', () => {
     s.requestSections(id);
     await vi.advanceTimersByTimeAsync(1000);
     await vi.advanceTimersByTimeAsync(50);
-    expect(calls).toHaveLength(3);
+    // The document summary, then both sections in one call.
+    expect(calls).toHaveLength(2);
+    expect(calls[1]!.content).toMatch(/^Document: leave\.md\n\n\[1\] Section: Annual leave\n/);
     expect(Object.keys(s.view(id)!.sections)).toEqual(['1', '2']);
     // The file changes in its second section only.
     index.update(
@@ -144,7 +152,7 @@ describe('summary service', () => {
     );
     await vi.advanceTimersByTimeAsync(1000);
     await vi.advanceTimersByTimeAsync(50);
-    const again = calls.slice(3).map((c) => c.content.split('\n')[1]);
+    const again = calls.slice(2).map((c) => c.content.split('\n')[1]);
     // The document summary (its source holds the outline) and the changed section; not section 1.
     expect(again.sort()).toEqual(['Outline: Annual leave; Sick leave', 'Section: Sick leave'].sort());
     expect(s.view(id)!.sections['2']).toBe('Employees who are ill call their manager on the first day.');
@@ -201,8 +209,8 @@ describe('summary service', () => {
     s.librarySectionsChanged();
     index.update(record('/d/b.md', LEAVE));
     await vi.advanceTimersByTimeAsync(1300);
-    // a: 2 sections; b: its summary and 2 sections.
-    expect(calls).toHaveLength(6);
+    // a: its 2 sections in one call; b: its summary, then its 2 sections in one call.
+    expect(calls).toHaveLength(4);
     s.stop();
   });
 
@@ -222,6 +230,72 @@ describe('summary service', () => {
     s.reconcile();
     await vi.advanceTimersByTimeAsync(2000);
     expect(calls).toHaveLength(1);
+    s.stop();
+  });
+
+  it('batches up to five sections per call; a section the reply skips or runs long on is asked alone', async () => {
+    const { index, record } = library();
+    const sections: [string, string][] = Array.from({ length: 7 }, (_, i) => [
+      `Rule ${i + 1}`,
+      `Rule ${i + 1} says employees file form ${i + 1} within ${i + 2} days of the event.`,
+    ]);
+    const calls: string[] = [];
+    const chat: ChatFn = async (o, onText) => {
+      const user = o.messages.find((m) => m.role === 'user')!.content;
+      calls.push(user);
+      const parts = [...user.matchAll(/^\[(\d+)\] Section: [^\n]*\n([^\n]*)/gm)];
+      if (parts.length) {
+        // Skips section 2 and runs over the cap on section 3.
+        const lines = parts
+          .filter((m) => m[1] !== '2')
+          .map((m) => `${m[1]}. ${m[1] === '3' ? `${'very '.repeat(30)}long.` : m[2]}`);
+        onText(lines.join('\n'));
+      } else {
+        onText(user.split('\n').slice(-1)[0]!);
+      }
+      return { promptTokens: null, completionTokens: null };
+    };
+    const { s } = service(index, chat);
+    index.update(record('/d/rules.md', sections));
+    const id = index.allDocuments()[0]!.id;
+    s.requestSections(id);
+    expect(s.view(id)!.estimateMinutes).toBe(1);
+    await vi.advanceTimersByTimeAsync(1000);
+    for (let i = 0; i < 20; i++) await vi.advanceTimersByTimeAsync(10);
+    const batches = calls.filter((c) => c.includes('[1] Section:'));
+    expect(batches.map((c) => (c.match(/^\[\d+\] /gm) ?? []).length)).toEqual([5, 2]);
+    // Sections 2 and 3 of the first batch alone, and 7 (the second batch's 2) alone.
+    const alone = calls.filter((c) => c.startsWith('Document:') && !c.includes('[1]')).map((c) => c.split('\n')[1]);
+    expect(alone).toEqual(['Section: Rule 2', 'Section: Rule 3', 'Section: Rule 7']);
+    expect(Object.keys(s.view(id)!.sections).sort()).toEqual(['1', '2', '3', '4', '5', '6', '7']);
+    expect(s.view(id)!.sections['6']).toBe('Rule 6 says employees file form 6 within 7 days of the event.');
+    s.stop();
+  });
+
+  it('estimates the button time from the batched pace per section', async () => {
+    const { index, record } = library();
+    const { s } = service(index, echoChat().chat);
+    const many: [string, string][] = Array.from({ length: 254 }, (_, i) => [`S${i}`, `Text of section ${i}.`]);
+    index.update(record('/d/big.md', many));
+    const id = index.allDocuments()[0]!.id;
+    // 254 sections at the default pace per section of a batch.
+    expect(s.view(id)!.estimateMinutes).toBe(Math.ceil((254 * DEFAULT_MS_PER_SECTION) / 60_000));
+    s.stop();
+  });
+
+  it('writes the export once a batch of files is indexed, not after each file', async () => {
+    const { index, record } = library();
+    const { s } = service(index, echoChat().chat);
+    s.setIndexing(true);
+    index.update(record('/d/a.md', LEAVE));
+    await vi.advanceTimersByTimeAsync(500);
+    index.update(record('/d/b.md', LEAVE));
+    await vi.advanceTimersByTimeAsync(500);
+    expect(fs.existsSync(path.join(tmp, 'export', 'a.md'))).toBe(false);
+    s.setIndexing(false);
+    await vi.advanceTimersByTimeAsync(150);
+    expect(fs.existsSync(path.join(tmp, 'export', 'a.md'))).toBe(true);
+    expect(fs.existsSync(path.join(tmp, 'export', 'b.md'))).toBe(true);
     s.stop();
   });
 });

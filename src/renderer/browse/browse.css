@@ -299,6 +299,14 @@ button.link:hover {
   font-weight: 600;
 }
 
+/* The page range of an entry that stands for a section cut by page. */
+.outline-pages {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
 /* Document page */
 
 .doc-body {

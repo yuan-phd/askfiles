@@ -6,6 +6,9 @@ import {
   cleanSentence,
   documentPrompt,
   documentSource,
+  estimateTokens,
+  parseBatchReply,
+  sectionBatchPrompt,
   withinCap,
   wordCount,
 } from './text.js';
@@ -74,5 +77,31 @@ describe('summary text', () => {
     expect(documentPrompt(doc('a.md', [['A', 'An English text about leave.']]))[0]!.content).toContain(
       'in English, at most 40 words',
     );
+  });
+
+  it('builds one numbered prompt for several sections and reads the numbered reply back', () => {
+    const d = doc('Leave policy.md', [
+      ['Annual leave', 'Employees receive 27 days.'],
+      ['Sick leave', 'Call the manager on the first day.'],
+    ]);
+    const [system, user] = sectionBatchPrompt(d, d.sections);
+    expect(system!.content).toContain('Reply with exactly 2 lines');
+    expect(system!.content).toContain('Write each sentence in English, at most 25 words.');
+    expect(user!.content).toBe(
+      'Document: Leave policy.md\n\n[1] Section: Annual leave\nEmployees receive 27 days.\n\n[2] Section: Sick leave\nCall the manager on the first day.',
+    );
+    const r = parseBatchReply(
+      '<think>x</think>Here you go:\n1. Employees get 27 days.\n**2.** Staff call in sick.\n2. A repeat.\n9. Out of range.',
+      2,
+    );
+    expect([...r]).toEqual([
+      [1, 'Employees get 27 days.'],
+      [2, 'Staff call in sick.'],
+    ]);
+    expect([...parseBatchReply('1、员工享有年假。\n[2] 病假须报告。', 2).values()]).toEqual([
+      '员工享有年假。',
+      '病假须报告。',
+    ]);
+    expect(estimateTokens('abcd员工')).toBe(3);
   });
 });

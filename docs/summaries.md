@@ -44,16 +44,29 @@ It pauses while any of these holds:
 
 A pause that starts while a job runs aborts the job, which goes back to the front of the queue, so Ask never waits for a summary. Work starts again only after the gates have been open for 5 s (IDLE_MS). Between jobs there is no wait.
 
-The top bar shows Summaries n of m, with Pause and Resume, while there is work. n and m count the current batch, which ends when the queue empties. A pause shows its reason: paused, waiting for indexing, waiting for the answer.
+The top bar shows Summaries n of m, with Pause and Resume, while there is work. n and m count the current batch, which ends when the queue empties. A pause shows its reason: paused, waiting for the answer. While the library indexes it reads Summaries paused until indexing finishes (n of m done): the queue waits for the whole batch of files, not per file, and so does the Markdown export (writing it reads the overview graph, which would otherwise be rebuilt after every file).
 
-Summaries use the same model and context length as Ask: the chat model in server/.env (OLLAMA_MODEL_PREF) and the Settings context length. That way Ollama keeps one model loaded and never loads a second one for summaries.
+Summaries use the Faster tier's model when this Mac has it installed (Settings, Answer model: the model of the tier below; owner request 2026-11-04), else the Ask model in server/.env (OLLAMA_MODEL_PREF), with the Settings context length either way. It is never pulled for summaries, and a pinned file whose sha256 does not match is not used (the same check as Settings). It is looked up when the library opens and after a model is pulled or removed or the answer model changes; a change of model marks every summary stale. On the owner's Mac (M1 Max, 32 GB tier) the Faster model is qwen3 14B Q3_K_M, and it was not faster than the Ask model's q4_K_M (Batches below): it only adds a second chat model in memory while summaries run.
 
 - **The 8 GB tier** (Ask off, chatModel null) makes no summaries. The pages show no summary and no pending state, and the library switch is hidden.
 - **A changed file** gets its document summary made again, and its section summaries only for sections whose text changed. Summaries of sections the file no longer has are removed.
 - **A removed file** loses its summaries, its export note and its node.
 - **Version key.** Every stored summary carries `<model tag>|p<SUMMARY_PROMPT_VERSION>`. A new chat model (Settings, Answer model) or a prompt change marks every summary stale, and they are queued again.
 
-The Document page's estimate is the number of sections without a current summary, times the average time of the last 20 summaries (8 s until there are any), rounded up to whole minutes.
+### Batches
+
+Section summaries of one document go to the model up to 5 at a time (BATCH_MAX_SECTIONS), as long as their text stays under about 4000 tokens (BATCH_MAX_TOKENS; one token per Chinese character, one per four other characters). The prompt numbers the sections and asks for one line per section starting with its number (sectionBatchPrompt); the reply is read back by number (parseBatchReply). Verification is unchanged: each sentence is cleaned, capped and checked against its own section alone, exactly as a single summary. A section the reply skips or runs over the cap for is asked again on its own, with the shorter retry, so a batch never keeps less than single calls would. In the queue each section stays its own job, so Summaries n of m still counts sections, and a pause puts the whole batch back at the front.
+
+Measured on 2026-11-04 on the owner's Mac over 20 sections of the Procurement Regulations (with more than 200 characters of text):
+
+| Model | One section per call | Batched | Kept, one per call | Kept, batched |
+| --- | --- | --- | --- | --- |
+| qwen3 14B Q3_K_M (Faster) | 4.0 s per section | 4.1 s per section | 12 of 20 | 15 of 20 |
+| qwen3 14B q4_K_M (Ask) | 3.9 s per section | 3.6 s per section | 13 of 20 | 16 of 20 |
+
+Batching does not make a section much cheaper on this Mac: the time goes into reading each section's text and writing its sentence, which a batch does not reduce. It keeps more sentences (fewer run over the cap). No reply skipped a number.
+
+The Document page's estimate is the number of sections without a current summary, times the average time per section of the last 20 section summaries (a batch counts its time divided by its size; 4.1 s until there are any, DEFAULT_MS_PER_SECTION, from the table), rounded up to whole minutes. The document with 254 sections that was estimated at 34 minutes at the old 8 s default now shows about 18 minutes.
 
 ## Storage
 

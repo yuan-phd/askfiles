@@ -1,0 +1,80 @@
+Remove many documents from a LanceDB workspace in a few deletes instead of one per document.
+
+Why: Document.removeDocuments (server/models/documents.js) deletes each document's vectors with
+its own LanceDB table.delete, and every delete writes a new table version. Removing a library's
+1311 section documents (Reindex in AskFiles, which unembeds every section first) took 289 s on
+the owner's Mac, 68 percent of the whole reindex (docs/app.md, Indexing time). The LanceDB
+provider gains deleteDocumentsFromNamespace(namespace, docIds), one delete per 1000 vector ids,
+and removeDocuments uses it, 500 documents per batch, when the provider has it. Other vector
+databases keep the loop as it was. Same rows are removed: the workspace_documents of those paths
+in that workspace and their document_vectors.
+
+Paths are relative to upstream/. Apply from the repository root with
+  git apply --directory=upstream patches/008-bulk-remove-documents.patch
+
+diff --git a/server/models/documents.js b/server/models/documents.js
+index 42dbdb59..ceda6e80 100644
+--- a/server/models/documents.js
++++ b/server/models/documents.js
+@@ -252,6 +252,33 @@ const Document = {
+     const VectorDb = getVectorDbClass();
+     if (removals.length === 0) return;
+ 
++    // AskFiles: providers with a bulk delete remove many documents in one call per batch.
++    if (typeof VectorDb.deleteDocumentsFromNamespace === "function") {
++      for (let i = 0; i < removals.length; i += 500) {
++        const documents = await prisma.workspace_documents.findMany({
++          where: {
++            docpath: { in: removals.slice(i, i + 500) },
++            workspaceId: workspace.id,
++          },
++        });
++        if (!documents.length) continue;
++        const docIds = documents.map((d) => d.docId);
++        await VectorDb.deleteDocumentsFromNamespace(workspace.slug, docIds);
++        try {
++          await prisma.workspace_documents.deleteMany({
++            where: {
++              id: { in: documents.map((d) => d.id) },
++              workspaceId: workspace.id,
++            },
++          });
++          await prisma.document_vectors.deleteMany({
++            where: { docId: { in: docIds } },
++          });
++        } catch (error) {
++          console.error(error.message);
++        }
++      }
++    } else
+     for (const path of removals) {
+       const document = await this.get({
+         docpath: path,
+diff --git a/server/utils/vectorDbProviders/lance/index.js b/server/utils/vectorDbProviders/lance/index.js
+index d0232e15..241173de 100644
+--- a/server/utils/vectorDbProviders/lance/index.js
++++ b/server/utils/vectorDbProviders/lance/index.js
+@@ -309,6 +309,23 @@ class LanceDb extends VectorDatabase {
+     return true;
+   }
+ 
++  // AskFiles: the vectors of many documents in one delete per 1000 ids; each delete writes a
++  // new table version, so one per document made removing a library's 1311 sections take 5 minutes.
++  async deleteDocumentsFromNamespace(namespace, docIds = []) {
++    const { client } = await this.connect();
++    if (!docIds.length || !(await this.namespaceExists(client, namespace))) return;
++    const { DocumentVectors } = require("../../../models/vectors");
++    const table = await client.openTable(namespace);
++    const vectorIds = (
++      await DocumentVectors.where({ docId: { in: docIds } })
++    ).map((record) => record.vectorId);
++    for (let i = 0; i < vectorIds.length; i += 1000) {
++      const ids = vectorIds.slice(i, i + 1000);
++      await table.delete(`id IN (${ids.map((v) => `'${v}'`).join(",")})`);
++    }
++    return true;
++  }
++
+   async addDocumentToNamespace(
+     namespace,
+     documentData = {},

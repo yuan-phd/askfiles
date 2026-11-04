@@ -337,3 +337,35 @@ describe('BrowseIndex', () => {
     expect(fs.readdirSync(path.join(tmp, 'other'))).toEqual([]);
   });
 });
+
+describe('keyword index with keywordStemming', () => {
+  it('matches procurement planning to a Procurement Plan section only with stemming, and keeps the terms as given', async () => {
+    await put(
+      'regulations.md',
+      [
+        '# Regulations',
+        '## 4.6 Procurement Plan',
+        'The Borrower prepares a Procurement Plan with the rated criteria and their weighting.',
+        '## 4.7 Planets',
+        'The planets of the solar system are not procurement subjects.',
+        '## 4.8 Records',
+        'The Borrower keeps records of every contract.',
+      ].join('\n\n'),
+    );
+    const titles = (rs: { documentId: string; sectionIndex: number }[]) =>
+      rs.map((r) => index.section(r.documentId, r.sectionIndex)!.section.title);
+    expect(index.sectionFrequency('procurement planning')).toBe(0);
+    expect(index.sectionFrequency('procurement planning', { stem: true })).toBe(1);
+    const ranked = index.rankSections(['procurement planning', 'plan'], 10, { stem: true });
+    expect(titles(ranked)).toEqual(['4.6 Procurement Plan']);
+    expect(ranked[0]!.terms).toEqual(['procurement planning', 'plan']);
+    // Without stemming plan is a substring of planets and planning is in no section.
+    expect(titles(index.rankSections(['procurement planning', 'plan'], 10)).sort()).toEqual([
+      '4.6 Procurement Plan',
+      '4.7 Planets',
+    ]);
+    // Chinese terms are matched as before.
+    await put('制度.md', '# 采购计划\n\n采购人应当编制采购计划。');
+    expect(index.sectionFrequency('采购计划', { stem: true })).toBe(index.sectionFrequency('采购计划'));
+  });
+});

@@ -224,6 +224,55 @@ test.describe('overview page', () => {
     await node(page, 'budget-2026.xlsx').click({ force: true });
     await expect(page.getByTestId('doc-title')).toHaveText('budget-2026.xlsx');
   });
+
+  test('a document opened from the Overview scrolls, and the graph leaves no zoom listeners behind', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1200, height: 520 });
+    await openOverview(page);
+    await node(page, 'it-handbook.pdf').click({ force: true });
+    await expect(page.getByTestId('doc-title')).toHaveText('it-handbook.pdf');
+    const content = page.getByTestId('browse-content');
+    await expect(content).not.toHaveClass(/overview-on/);
+    expect(await content.evaluate((c) => window.getComputedStyle(c).overflowY)).toBe('auto');
+    const { scrollHeight, clientHeight } = await content.evaluate((c) => ({
+      scrollHeight: c.scrollHeight,
+      clientHeight: c.clientHeight,
+    }));
+    expect(scrollHeight, 'the handbook is longer than the window').toBeGreaterThan(clientHeight);
+    // The wheel scrolls the document, which it cannot do while the graph's zoom still holds it.
+    await content.hover();
+    await page.mouse.wheel(0, 400);
+    await expect.poll(() => content.evaluate((c) => c.scrollTop)).toBeGreaterThan(0);
+    expect(await page.locator('.overview-svg *').count()).toBe(0);
+    expect(await page.locator('.overview-svg').evaluate((s) => '__zoom' in s && s.__on?.length > 0)).toBe(false);
+  });
+
+  test('a document without links settles at the edge of the cluster, inside the panel, without zooming out', async ({
+    page,
+  }) => {
+    const isolated = overview.nodes.find((n) => !overview.edges.some((e) => e.source === n.id || e.target === n.id));
+    expect(isolated, 'corpus S and L have a document without links').toBeTruthy();
+    await openOverview(page);
+    const box = await page.getByTestId('overview-svg').evaluate((s) => ({ w: s.clientWidth, h: s.clientHeight }));
+    const pos = await page.$$eval('[data-testid="overview-node"]', (els) =>
+      els.map((e) => ({ id: e.dataset.id, x: Number(e.getAttribute('cx')), y: Number(e.getAttribute('cy')) })),
+    );
+    for (const p of pos) {
+      expect(p.x, p.id).toBeGreaterThan(0);
+      expect(p.x, p.id).toBeLessThan(box.w);
+      expect(p.y, p.id).toBeGreaterThan(0);
+      expect(p.y, p.id).toBeLessThan(box.h);
+    }
+    // The centering pull alone kept it in: the zoom-out fallback did not have to act.
+    expect(await page.locator('.zoom-layer').getAttribute('transform')).toBeNull();
+    const others = pos.filter((p) => p.id !== isolated.id);
+    const cx = others.reduce((s, p) => s + p.x, 0) / others.length;
+    const cy = others.reduce((s, p) => s + p.y, 0) / others.length;
+    const me = pos.find((p) => p.id === isolated.id);
+    // Within the panel's reach of the cluster, not flung to a far corner.
+    expect(Math.hypot(me.x - cx, me.y - cy)).toBeLessThan(Math.min(box.w, box.h) * 0.6);
+  });
 });
 
 test.describe('summaries and types on the browse pages', () => {
@@ -354,7 +403,9 @@ test.describe('Ask page: lockout and the summary controls in the top bar', () =>
         },
       }),
     );
-    await expect(page.getByTestId('summaries-text')).toHaveText('Summaries 5 of 9, waiting for indexing');
+    await expect(page.getByTestId('summaries-text')).toHaveText(
+      'Summaries paused until indexing finishes (4 of 9 done)',
+    );
 
     await page.getByTestId('library-switcher').click();
     await expect(page.getByTestId('library-profile')).toHaveValue('legal-finance');

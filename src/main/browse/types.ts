@@ -9,6 +9,14 @@ export interface OutlineEntry {
   page: number | null;
   /** Printed page label of page, when the PDF defines labels. */
   pageLabel: string | null;
+  /**
+   * Set when the entry stands for several parts the splitter cut (titles ending in (page N) or
+   * (continued)): the last page they reach and the section index of every part, in order. The
+   * Document page still renders each part; the outline shows one entry with the page range.
+   */
+  pageEnd?: number | null;
+  pageLabelEnd?: string | null;
+  parts?: number[];
   children: OutlineEntry[];
 }
 

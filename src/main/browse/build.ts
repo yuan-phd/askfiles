@@ -47,6 +47,14 @@ function headingKey(title: string, level: number): string {
  * subsection) gets its own entry pointing at that section, one level above the next heading.
  * Level 0 text is the top of the page and gets no entry.
  */
+/** The splitter's titles for the pages of a long section and for text after a table. */
+export const PAGE_PART = /\s*\((?:page \d+|continued)\)\s*$/i;
+
+/**
+ * The outline of a document. Parts the splitter cut from one section (T (page 1), T (page 2), T
+ * (continued)) fold into the entry for T, which keeps the first part's page and gains the page
+ * range and the list of parts; the sections themselves are unchanged.
+ */
 export function buildOutline(sections: BrowseSection[]): OutlineEntry[] {
   const root: OutlineEntry[] = [];
   const stack: OutlineEntry[] = [];
@@ -62,10 +70,36 @@ export function buildOutline(sections: BrowseSection[]): OutlineEntry[] {
     while (stack.length && stack[stack.length - 1]!.level >= level) stack.pop();
     (stack.length ? stack[stack.length - 1]!.children : root).push(entry);
     stack.push(entry);
+    return entry;
+  };
+  const extend = (entry: OutlineEntry, s: BrowseSection) => {
+    entry.parts ??= [entry.sectionIndex];
+    if (!entry.parts.includes(s.index)) entry.parts.push(s.index);
+    const end = s.pageEnd ?? s.pageStart;
+    if (end !== null && (entry.pageEnd ?? entry.page ?? 0) <= end) {
+      entry.pageEnd = end;
+      entry.pageLabelEnd = s.pageLabelEnd ?? s.pageLabelStart;
+    }
+    entry.page ??= s.pageStart;
+    entry.pageLabel ??= s.pageLabelStart;
   };
   for (const s of sections) {
     if (s.level === 0) continue;
     s.lead.forEach((t, k) => add(t, Math.max(1, s.level - (s.lead.length - k)), s));
+    if (PAGE_PART.test(s.title)) {
+      const base = s.title.replace(PAGE_PART, '').trim();
+      // The section it was cut from: an open heading of that title (the first page part brings it
+      // as its lead; text after a table sits below the section that held the table).
+      const owner = [...stack].reverse().find((e) => e.title === base && (e.level < s.level || e.parts));
+      if (owner) {
+        extend(owner, s);
+        // Deeper entries (the table) close, so a later part of the same section folds in too.
+        while (stack.length && stack[stack.length - 1] !== owner) stack.pop();
+        continue;
+      }
+      extend(add(base, s.level, s), s);
+      continue;
+    }
     add(s.title, s.level, s);
   }
   return root;

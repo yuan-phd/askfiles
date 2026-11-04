@@ -118,7 +118,7 @@ describe.skipIf(reason !== null)('process manager with real ollama, collector an
   });
 
   it('boots, binds to 127.0.0.1, keeps data under the data directory, refuses foreign origins, stays offline, chats without thinking, and leaves no child', async () => {
-    expect(listPatches(path.join(ROOT, 'patches'))).toHaveLength(7);
+    expect(listPatches(path.join(ROOT, 'patches'))).toHaveLength(8);
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'askfiles-it-'));
     const data = path.join(dir, 'data');
     const logs = path.join(dir, 'logs');

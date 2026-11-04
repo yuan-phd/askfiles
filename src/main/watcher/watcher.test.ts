@@ -30,6 +30,7 @@ afterEach(async () => {
 
 function make(opts: { watch?: WatchFactory; splitter?: Splitter; retryDelaysMs?: number[]; debounceMs?: number } = {}) {
   const events: FileEvent[] = [];
+  const logs: string[] = [];
   const w = new FolderWatcher({
     root,
     dataDir,
@@ -41,11 +42,11 @@ function make(opts: { watch?: WatchFactory; splitter?: Splitter; retryDelaysMs?:
     debounceMs: opts.debounceMs ?? 30,
     stableMs: 30,
     retryDelaysMs: opts.retryDelaysMs ?? [10, 20, 40],
-    log: () => {},
+    log: (m) => logs.push(m),
   });
   w.on('file', (e) => events.push(e));
   running.push(w);
-  return { w, events };
+  return { w, events, logs };
 }
 
 const readIndex = (): IndexData => {
@@ -64,7 +65,7 @@ const readDoc = (location: string) =>
 describe('FolderWatcher', () => {
   it('indexes an added file: section document, embedding and index.json record', async () => {
     const watch = manualWatch();
-    const { w, events } = make({ watch });
+    const { w, events, logs } = make({ watch });
     await w.start();
     const p = write('notes/leave.md', 'Annual leave is 27 days.');
     watch.emit('add', p);
@@ -98,7 +99,27 @@ describe('FolderWatcher', () => {
       docSource: 'askfiles section split',
     });
     expect(sec).toMatchObject({ sectionTitle: 'leave', sectionIndex: 1, subIndex: 1, pageStart: null, pageEnd: null });
-    expect(events).toEqual([{ path: p, kind: 'upsert', outcome: 'indexed', sections: 1 }]);
+    expect(events).toEqual([
+      {
+        path: p,
+        kind: 'upsert',
+        outcome: 'indexed',
+        sections: 1,
+        times: {
+          split: expect.any(Number),
+          ocr: 0,
+          write: expect.any(Number),
+          embed: expect.any(Number),
+          total: expect.any(Number),
+        },
+      },
+    ]);
+    // One timing line per indexed file, for the indexing-time table (docs/app.md).
+    expect(
+      logs.some((l) =>
+        /^timing leave\.md: split \d+ ms, ocr 0 ms, write \d+ ms, embed \d+ ms, total \d+ ms, 1 sections$/.test(l),
+      ),
+    ).toBe(true);
     expect(w.status()).toMatchObject({ state: 'idle', pending: 0, indexed: 1, deadLetters: [] });
   });
 

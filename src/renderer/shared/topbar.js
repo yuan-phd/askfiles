@@ -285,8 +285,11 @@ export function mountTopBar(header, { views = {}, onView = () => {}, onLibraryCh
   function summariesText(s) {
     if (!s || !s.enabled || s.state === 'idle' || !s.total) return null;
     const base = `Summaries ${Math.min(s.done + 1, s.total)} of ${s.total}`;
+    // Indexing comes first: summaries wait for the whole batch of files (docs/summaries.md, Queue).
+    if (s.state === 'paused' && s.reason === 'indexing')
+      return `Summaries paused until indexing finishes (${s.done} of ${s.total} done)`;
     if (s.state === 'paused') {
-      const why = { user: 'paused', indexing: 'waiting for indexing', answering: 'waiting for the answer' }[s.reason];
+      const why = { user: 'paused', answering: 'waiting for the answer' }[s.reason];
       return why ? `${base}, ${why}` : base;
     }
     return base;

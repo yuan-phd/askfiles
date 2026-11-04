@@ -68,7 +68,9 @@ Summaries of each section are off unless you turn them on. There are two ways:
 - **One document**: on its page, click Summarize each section. The button says about how many minutes it will take.
 - **The whole library**: in the library menu, tick Summarize every section. This also covers documents you add later.
 
-Summaries use the same model as your questions, so asking is slower while they are being written. AskFiles stops writing summaries while it reads new files or answers a question, and starts again a few seconds later. The top bar shows Summaries 3 of 10 while it works. Click Pause to stop, and Resume to go on.
+Summaries use the model on this computer, so asking is slower while they are being written. AskFiles stops writing summaries while it answers a question, and starts again a few seconds later. While it reads new files it waits until all of them are read; the top bar then says Summaries paused until indexing finishes (4 of 10 done). Otherwise it shows Summaries 3 of 10 while it works. Click Pause to stop, and Resume to go on.
+
+The Markdown export is the folder Open Markdown export in the library menu shows in Finder: <your home folder>/Library/Application Support/AskFiles/libraries/<library>/export, for the first library .../libraries/all-files/export. Open it in Obsidian as a vault.
 
 A computer with 8 GB of memory makes no summaries, and its Ask page is off. Browse, Find and Overview work there.
 

@@ -28,6 +28,8 @@ export class GraphService {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private readonly off: () => void;
   private readonly log: (msg: string) => void;
+  /** While the library indexes, changes only mark the graph stale; one rebuild follows the batch. */
+  private indexing = false;
 
   constructor(private readonly d: GraphServiceDeps) {
     this.log = d.log ?? (() => {});
@@ -40,10 +42,26 @@ export class GraphService {
     return this.graph!;
   }
 
+  /**
+   * The library started or finished indexing a batch of files. Rebuilding after every file costs a
+   * full build each time (docs/app.md, Indexing time); the pages get one rebuild when it ends. A page
+   * that asks meanwhile (data()) still gets a current graph.
+   */
+  setIndexing(on: boolean): void {
+    if (on === this.indexing) return;
+    this.indexing = on;
+    if (on) {
+      if (this.timer) clearTimeout(this.timer);
+      this.timer = null;
+    } else if (this.dirty) this.invalidate();
+  }
+
   /** Marks the graph stale and schedules a rebuild that tells the pages. */
   invalidate(): void {
     this.dirty = true;
     if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    if (this.indexing) return;
     this.timer = setTimeout(() => {
       this.timer = null;
       try {

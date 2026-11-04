@@ -14,9 +14,14 @@ import { exportFiles, writeExport } from './export.js';
 import { SummaryQueue, type QueueStatus, type SummaryJob } from './queue.js';
 import { emptySummaries, SummaryStore, versionKey, type DocumentSummaries, type StoredSummary } from './store.js';
 import {
+  BATCH_MAX_SECTIONS,
+  BATCH_MAX_TOKENS,
   checkSummary,
   documentPrompt,
   documentSource,
+  estimateTokens,
+  parseBatchReply,
+  sectionBatchPrompt,
   sectionPrompt,
   sectionSource,
   SUMMARY_PROMPT_VERSION,
@@ -72,8 +77,12 @@ export interface DocumentSummaryView {
   estimateMinutes: number;
 }
 
-/** Until a few summaries were timed: a 14B model with thinking off, about 3k tokens in, 50 out. */
-const DEFAULT_MS_PER_SUMMARY = 8000;
+/**
+ * Until a few sections were timed: per section, batched up to 5 to a call. Measured on 2026-11-04
+ * on the owner's M1 Max over 20 sections of the Procurement Regulations: 4.1 s with qwen3 14B
+ * Q3_K_M (the Faster model summaries use there), 3.6 s with q4_K_M (docs/summaries.md, Batches).
+ */
+export const DEFAULT_MS_PER_SECTION = 4100;
 
 export class SummaryService {
   readonly store: SummaryStore;
@@ -81,8 +90,12 @@ export class SummaryService {
   private readonly off: () => void;
   private readonly log: (msg: string) => void;
   private exportTimer: unknown = null;
+  /** Milliseconds per section of the last runs (a batch adds its time divided by its size). */
   private readonly durations: number[] = [];
   private userPaused = false;
+  /** While the library indexes the export waits: writing it reads the graph, which then rebuilds. */
+  private indexing = false;
+  private exportWanted = false;
   private readonly setTimer: (fn: () => void, ms: number) => unknown;
   private readonly clearTimer: (t: unknown) => void;
 
@@ -98,7 +111,8 @@ export class SummaryService {
       });
     this.clearTimer = d.clearTimer ?? ((t) => clearTimeout(t as ReturnType<typeof setTimeout>));
     this.queue = new SummaryQueue({
-      run: (job, signal) => this.run(job, signal),
+      run: (jobs, signal) => this.run(jobs, signal),
+      batch: (first, queued) => this.batchFor(first, queued),
       onStatus: () => this.d.onStatus?.(this.status()),
       idleMs: d.idleMs,
       setTimer: d.setTimer,
@@ -119,6 +133,14 @@ export class SummaryService {
 
   setIndexing(on: boolean): void {
     this.queue.setGate('indexing', on);
+    if (on === this.indexing) return;
+    this.indexing = on;
+    if (on && this.exportTimer !== null) {
+      this.clearTimer(this.exportTimer);
+      this.exportTimer = null;
+      this.exportWanted = true;
+    }
+    if (!on && this.exportWanted) this.scheduleExport();
   }
 
   setAnswering(on: boolean): void {
@@ -266,13 +288,49 @@ export class SummaryService {
     return out;
   }
 
-  private async run(job: SummaryJob, signal: AbortSignal): Promise<void> {
+  /**
+   * The section jobs that share a model call with first: later queued sections of the same document
+   * and request, in order, up to BATCH_MAX_SECTIONS and BATCH_MAX_TOKENS of section text.
+   */
+  private batchFor(first: SummaryJob, queued: SummaryJob[]): SummaryJob[] {
+    if (first.level !== 'section') return [];
+    const doc = this.d.browse.getDocument({ id: first.docId });
+    if (!doc) return [];
+    const size = (j: SummaryJob) => {
+      const sec = j.level === 'section' ? doc.sections.find((s) => s.index === j.sectionIndex) : null;
+      return sec ? estimateTokens(sectionSource(doc, sec)) : Infinity;
+    };
+    let tokens = size(first);
+    const out: SummaryJob[] = [];
+    for (const j of queued) {
+      if (out.length + 1 >= BATCH_MAX_SECTIONS) break;
+      if (j.level !== 'section' || j.docId !== first.docId || j.origin !== first.origin) continue;
+      const t = size(j);
+      if (tokens + t > BATCH_MAX_TOKENS) break;
+      tokens += t;
+      out.push(j);
+    }
+    return out;
+  }
+
+  private async run(jobs: SummaryJob[], signal: AbortSignal): Promise<void> {
+    const job = jobs[0]!;
     const key = this.key();
     const doc = this.d.browse.getDocument({ id: job.docId });
     if (!key || !doc) return;
     const t0 = Date.now();
     let entry: StoredSummary;
     let rec: DocumentSummaries;
+    if (job.level === 'section' && jobs.length > 1) {
+      await this.runBatch(doc, jobs, key, signal);
+      if (signal.aborted) return;
+      const per = (Date.now() - t0) / jobs.length;
+      for (let i = 0; i < jobs.length; i++) this.durations.push(per);
+      while (this.durations.length > 20) this.durations.shift();
+      this.d.onChange?.([doc.id]);
+      this.scheduleExport();
+      return;
+    }
     if (job.level === 'document') {
       const src = documentSource(doc);
       const out = await this.generate((shorter) => documentPrompt(doc, { shorter }), src.text, 'document', signal);
@@ -294,16 +352,58 @@ export class SummaryService {
       this.store.put({ ...rec, sections: { ...rec.sections, [String(section.index)]: entry } });
       if (!out.ok) this.log(`${doc.title} section ${section.index}: summary dropped (${out.reason})`);
     }
-    this.durations.push(Date.now() - t0);
-    if (this.durations.length > 20) this.durations.shift();
+    // The button's estimate is for sections; a document summary reads more and is timed apart.
+    if (job.level === 'section') {
+      this.durations.push(Date.now() - t0);
+      if (this.durations.length > 20) this.durations.shift();
+    }
     this.d.onChange?.([doc.id]);
     this.scheduleExport();
   }
 
+  /**
+   * Several sections in one call. Each sentence is checked against its own section like a single
+   * summary; a section the reply skipped or ran over the cap for is asked again on its own (with
+   * the shorter retry), so a batch never keeps less than single calls would.
+   */
+  private async runBatch(doc: BrowseDocument, jobs: SummaryJob[], key: string, signal: AbortSignal): Promise<void> {
+    const sections = jobs
+      .map((j) => (j.level === 'section' ? doc.sections.find((s) => s.index === j.sectionIndex) : undefined))
+      .filter((s): s is NonNullable<typeof s> => !!s);
+    const t0 = Date.now();
+    const reply = parseBatchReply(await this.ask(sectionBatchPrompt(doc, sections), signal), sections.length);
+    if (signal.aborted) return;
+    const entries: Record<string, StoredSummary> = {};
+    const again: typeof sections = [];
+    sections.forEach((section, i) => {
+      const source = sectionSource(doc, section);
+      const raw = reply.get(i + 1);
+      const out = raw === undefined ? null : checkSummary(raw, source, 'section');
+      if (!out || (!out.ok && out.reason !== 'unsupported')) again.push(section);
+      else {
+        entries[String(section.index)] = summaryEntry(out, key, textHash(source));
+        if (!out.ok) this.log(`${doc.title} section ${section.index}: summary dropped (${out.reason})`);
+      }
+    });
+    for (const section of again) {
+      const source = sectionSource(doc, section);
+      const out = await this.generate((shorter) => sectionPrompt(doc, section, { shorter }), source, 'section', signal);
+      if (signal.aborted) return;
+      entries[String(section.index)] = summaryEntry(out, key, textHash(source));
+      if (!out.ok) this.log(`${doc.title} section ${section.index}: summary dropped (${out.reason})`);
+    }
+    const rec = this.store.get(doc.id);
+    this.store.put({ ...rec, sections: { ...rec.sections, ...entries } });
+    this.log(
+      `${doc.title}: ${sections.length} sections in one call, ${again.length} asked again, ${Date.now() - t0} ms`,
+    );
+  }
+
   // --- reading --------------------------------------------------------------------------------
 
+  /** Milliseconds per section summary: the measured pace of the last runs, else the default. */
   msPerSummary(): number {
-    if (!this.durations.length) return DEFAULT_MS_PER_SUMMARY;
+    if (!this.durations.length) return DEFAULT_MS_PER_SECTION;
     return this.durations.reduce((a, b) => a + b, 0) / this.durations.length;
   }
 
@@ -359,6 +459,12 @@ export class SummaryService {
 
   scheduleExport(): void {
     if (this.exportTimer !== null) this.clearTimer(this.exportTimer);
+    this.exportTimer = null;
+    if (this.indexing) {
+      this.exportWanted = true;
+      return;
+    }
+    this.exportWanted = false;
     this.exportTimer = this.setTimer(() => {
       this.exportTimer = null;
       this.exportNow();

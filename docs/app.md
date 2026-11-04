@@ -174,7 +174,7 @@ The browse index (src/main/browse) is one JSON file per document in `<dataDir>/l
 | --- | --- |
 | `version`, `id`, `path`, `url`, `relPath`, `title` | 3 (files of other versions are rebuilt); the id; the file's path, file URL, shown path (linked folder's name and the path in it, or the added file's name) and file name |
 | `size`, `mtimeMs`, `hash`, `splitKey`, `indexedAt` | From the index.json record; hash and splitKey decide when the sections are read again |
-| `outline` | `{ title, level, sectionIndex, page, pageLabel, children }`, nested by heading level; a heading the splitter folded into the next section (a chapter heading right above its first subsection) gets an entry one level up pointing at that section; text before the first heading gets none |
+| `outline` | `{ title, level, sectionIndex, page, pageLabel, children }`, nested by heading level; a heading the splitter folded into the next section (a chapter heading right above its first subsection) gets an entry one level up pointing at that section; text before the first heading gets none. Parts the splitter cut from one section (titles ending in (page N), and the text after a table titled (continued)) fold into the entry of that section, which then also has `pageEnd`, `pageLabelEnd` and `parts` (the section index of every part, in order); the outline shows one entry with its page range and lights it for any part, while the Document page still renders every part in order. Built from the sections when a stored file loads, so older files show the folded outline with no reindex |
 | `sections` | `{ index, title, level, lead, heading, path, pageStart, pageEnd, pageLabelStart, pageLabelEnd, text, parts }`: parts is the sub-chunk bodies in order (version 3), which the answer pipeline assembles passages from; path is the full heading path from the section records; index is the sectionIndex of the section documents and search sources; text is the section's sub-chunks joined again, the heading lines the chunker put in front of each taken off; heading is the normalized key, empty for text before the first heading and for the Page N sections of a PDF without headings |
 
 Built from the index.json record and the section documents under STORAGE_DIR/documents, so it shows exactly the split that retrieval embeds, OCR text included. Kept current from the watcher's file events (indexed, unchanged, removed); after every watcher start, sync drops entries for files the watcher no longer has and builds missing ones. Loaded before the watcher starts, so the library shows during a long reconcile.
@@ -213,11 +213,42 @@ Switches that change the single mode, each off in the presets until an eval roun
 
 The main log gets one line per question, without the question text: `[answer] 2 cited of 3 selected, 12 candidates, vector 45 ms, keyword 2 ms, rerank 640 ms, first token 900 ms, total 4100 ms`.
 
+## Indexing time
+
+The watcher logs one line per indexed file with the time per stage, and the browse follower one for the browse index:
+
+    [watcher] timing 01_Procurement_Regulations_2025.pdf: split 513 ms, ocr 0 ms, write 47 ms, embed 28128 ms, total 28688 ms, 328 sections
+    [browse] timing 01_Procurement_Regulations_2025.pdf: browse index 21 ms
+
+split is parsing and chunking without OCR; ocr the time in the OCR hook (zero when the OCR cache has the file); write the section documents written to the server's document store (the shell writes them directly, there is no upload request); embed the update-embeddings call and the workspace reads around it. The graph logs each build (`[graph] built ... in N ms`) and the summaries each job.
+
+Measured on 2026-11-04 with Reindex of the owner's English folder in the dev app (13 files with the one added file, 1311 sections; OCR cache moved aside so the scanned file was OCRed; qwen3 14B, bge-m3, M1 Max), before and after the fixes below:
+
+| Stage | Before | After |
+| --- | --- | --- |
+| Clearing the old index (Reindex only, before any file) | 289 s | 6 s |
+| Split (13 files) | 4.3 s | 3.9 s |
+| OCR (09_Scanned_Historical_Records.pdf, 26 garbled pages; no other file) | 19.2 s | 19.1 s |
+| Write section documents | 0.2 s | 0.2 s |
+| Embed (one update-embeddings call per file; upstream embeds each section document on its own) | 110.6 s | 113.4 s |
+| Browse index (13 updates) | 0.1 s | 0.1 s |
+| Graph | 14 builds, 1.1 s | 2 builds, 0.4 s |
+| Reindex call to indexing done | 427 s | 145 s |
+| Document summaries done, after the reindex | 497 s | 177 s |
+
+What the table showed, against the first suspects:
+
+- **Clearing.** Reindex unembeds every section first, and upstream deleted each document's vectors with its own LanceDB delete, one new table version each. patches/008-bulk-remove-documents.patch deletes them in batches. This was 68 percent of the reindex.
+- **Summaries between files.** Not seen: the indexing gate stayed closed through the batch and the first summary started after the last file. The queue's wait is for the whole batch (watcher pending counts settling, queued and running files). The Markdown export was written 2 s after every file, though, and writing it read the graph, which rebuilt it each time; the export and the graph now wait for the batch too (GraphService.setIndexing, SummaryService.setIndexing).
+- **One request per section.** The shell sends one update-embeddings request per file; inside it upstream embeds each section document with its own Ollama call and LanceDB add, about 85 ms per section. This is the same cost the eval harness pays (its embedding of the English corpus takes about the same two minutes) and is what remains; batching it means changing upstream's document embedding loop, not done here.
+- **OCR on good pages.** Not seen: only the scanned file's 26 garbled pages went to OCR.
+- **Graph and browse index per file.** The browse index has to take each file (1 to 22 ms); the graph now builds once per batch.
+
 ## OCR in the watcher
 
 A PDF with a text layer can still have garbled pages: a scan whose own OCR layer is poor. The PDF parser (src/main/sections/pdf.ts, pageQuality) measures each page: the share of non-space characters that are letters, digits or CJK, runs of three or more of one punctuation mark (contents leaders) left out, and the share of words that are plausible (any CJK, or two or more letters with at most an apostrophe, hyphen or period between them; numbers and punctuation-only tokens count for neither side). A page of at least 40 characters with either share below 0.85 is garbled. In a PDF with at least one garbled page, a page with fewer than 200 characters that draws an image is OCRed too: a scanned page whose layer lost most of its text. Thresholds from the owner's first corpus: no page of its eight digital PDFs (599 pages) went below 0.92 for characters or 0.88 for words; the scanned one goes down to 0.52 and 0.55. The splitter (src/main/watcher/splitter.ts, splitWithOcr, shared with the eval harness) OCRs those pages through the same per-page path as below, cached by file hash and page list, and parses the file again with their OCR text in place of the layer; headings from bookmarks still apply, and OCR lines are never taken for font-size headings. A page whose OCR finds nothing keeps its layer. The log says which pages were replaced: `[watcher] <file>: garbled text layer on pages 4, 7, 8; replaced with OCR: 4, 7, 8`.
 
-Long sections without sub-headings are split by page in the chunker (src/main/sections/chunk.ts, splitLongByPage): a section whose own text (up to the next heading of any level, so without sub-headings) is longer than three chunk maximums and spans more than one page becomes one sub-section per page, titled with the parent title and the page (Operational Procurement Matters (page 1)), one level down, the parent title kept as the first one's folded heading so the outline still shows it. A section followed by deeper sections is split too: the owner's nine-page cover section had sub-sections after it. SPLITTER_VERSION 3 makes every library reindex once.
+Long sections without sub-headings are split by page in the chunker (src/main/sections/chunk.ts, splitLongByPage): a section whose own text (up to the next heading of any level, so without sub-headings) is longer than three chunk maximums and spans more than one page becomes one sub-section per page, titled with the parent title and the page (Operational Procurement Matters (page 1)), one level down, the parent title kept as the first one's folded heading so the outline still shows it. A section followed by deeper sections is split too: the owner's nine-page cover section had sub-sections after it. SPLITTER_VERSION 3 makes every library reindex once. The outline folds the page parts back into one entry with the page range (browse/build.ts buildOutline).
 
 A PDF without a text layer is OCRed page by page (Session K): the page images are taken out of the PDF with pdfjs (no canvas; JPEG and CCITT decode in JavaScript, JBIG2 and JPEG 2000 with the WebAssembly decoders pdfjs-dist ships, loaded through wasmUrl from node_modules/pdfjs-dist/wasm; before 2026-10-31 that option was missing and JBIG2 scans gave no page images, unnoticed because the fixtures are JPEG), encoded as PNG (gray scans as 8-bit gray) and uploaded to the collector one page per upload without embedding, up to min(CPUs, 4) pages at once like the collector's own whole-file OCR; each text is kept and the collector's copy deleted. Every page becomes a section titled Page N with its real page number. Only when no page holds an image is the whole file sent as before, its text recorded as page 0. The result is cached by file hash in `<dataDir>/ocr-cache/<hash>.pages.json`. Languages: TARGET_OCR_LANG from the preset (eng,chi_sim), written into server/.env by the wizard. Measured in the cloud container (Linux x86_64, 4 vCPU): about 1.1 s for a 1240 by 700 page and about 9 s per A4 page at 300 dpi on one worker, 12.1 s for three A4 pages in parallel against 11.4 s for the old whole-file upload; not measured on a Mac.
 

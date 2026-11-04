@@ -20,5 +20,6 @@ Running git apply from inside upstream/ silently skips every file ("Skipped patc
 | 005-cors-origin.patch | 403 for browser requests from origins other than the server's own and ANYTHING_LLM_ALLOWED_ORIGINS |
 | 006-no-boot-fetch.patch | No models.dev or raw.githubusercontent.com fetch at boot unless ANYTHING_LLM_ALLOW_REMOTE_MODEL_DATA=true |
 | 007-reasoning-effort-api.patch | /api/v1 workspace and thread chat routes take reasoningEffort, default DEFAULT_REASONING_EFFORT |
+| 008-bulk-remove-documents.patch | Removing documents from a LanceDB workspace deletes their vectors in batches (one delete per 1000 vector ids) instead of one delete per document; clearing 1311 sections for Reindex went from 289 s to 6 s (docs/app.md, Indexing time) |
 
 test/integration/process-manager.test.ts applies all patches in sequence for its run (as build.sh does), checks what each one is for, and reverts them afterwards.
