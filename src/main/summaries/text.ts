@@ -12,13 +12,27 @@ import type { BrowseDocument, BrowseSection } from '../browse/types.js';
  * again (docs/summaries.md, Version key).
  */
 export const SUMMARY_PROMPT_VERSION = 1;
+/**
+ * The prompt version of a mainly Chinese document's summaries: 2 since the Chinese caps went to
+ * 100 characters in up to two sentences and 60 for a section (owner request 2026-11-04). Apart from
+ * the English one, so the change remakes only Chinese summaries.
+ */
+export const SUMMARY_PROMPT_VERSION_CJK = 2;
+
+/** The prompt version for a document: the Chinese one when its summary source is mainly Chinese. */
+export function promptVersionOf(doc: BrowseDocument): number {
+  return mainlyCjk(documentSource(doc).text) ? SUMMARY_PROMPT_VERSION_CJK : SUMMARY_PROMPT_VERSION;
+}
 
 export type SummaryLevel = 'document' | 'section';
 
-/** At most this many English words, or Chinese characters for a mainly Chinese summary. */
-export const CAPS: Record<SummaryLevel, { words: number; cjkChars: number }> = {
-  document: { words: 40, cjkChars: 50 },
-  section: { words: 25, cjkChars: 35 },
+/**
+ * At most this many English words, or Chinese characters for a mainly Chinese summary, in at most
+ * this many sentences. English summaries are one sentence; a Chinese document summary may take two.
+ */
+export const CAPS: Record<SummaryLevel, { words: number; cjkChars: number; cjkSentences: number }> = {
+  document: { words: 40, cjkChars: 100, cjkSentences: 2 },
+  section: { words: 25, cjkChars: 60, cjkSentences: 1 },
 };
 
 /** Text of the first section given to the document prompt, and of a section to its prompt. */
@@ -47,7 +61,7 @@ export function withinCap(text: string, level: SummaryLevel): boolean {
  * The model's reply as one sentence: thinking, quotes, a leading label (Summary:, 摘要：), list
  * marks and citation marks taken off; only the first sentence kept.
  */
-export function cleanSentence(raw: string): string {
+export function cleanSentence(raw: string, maxSentences = 1): string {
   let t = raw
     .replace(/<think>[\s\S]*?<\/think>/g, '')
     .replace(/\s*\[\d+(?:\s*,\s*\d+)*\]/g, '')
@@ -58,18 +72,37 @@ export function cleanSentence(raw: string): string {
     .replace(/^\s*(?:summary|one-sentence summary|sentence|摘要|总结|概述)\s*[:：]\s*/i, '')
     .replace(/^["'“”‘’「」『』]+|["'“”‘’「」『』]+$/g, '')
     .trim();
-  const end = /^(.*?[.!?。！？])["'”’」』]*(?=\s|$|[\p{Lu}㐀-鿿])/u.exec(t);
-  return (end ? end[1]! : t)
-    .replace(/^["'“”‘’「」『』]+|["'“”‘’「」『』]+$/g, '')
+  const kept: string[] = [];
+  let rest = t;
+  while (kept.length < maxSentences && rest) {
+    const end = /^(.*?[.!?。！？])["'”’」』]*(?=\s|$|[\p{Lu}㐀-鿿])/u.exec(rest);
+    if (!end) {
+      // Text without an end mark counts as one sentence only when it is the first.
+      if (!kept.length) kept.push(rest);
+      break;
+    }
+    kept.push(end[1]!);
+    rest = rest.slice(end[0].length).trim();
+  }
+  return kept
+    .map((x) => x.replace(/^["'“”‘’「」『』]+|["'“”‘’「」『』]+$/g, '').trim())
+    .join(' ')
     .replace(/\s+/g, ' ')
+    .replace(/([。！？]) (?=[㐀-鿿])/g, '$1')
     .trim();
+}
+
+/** Sentences of a cleaned Chinese summary, split on the Chinese end marks only (3.5% stays whole). */
+function cjkSentencesOf(text: string): string[] {
+  return (text.match(/[^。！？]+[。！？]+["'”’」』]*|[^。！？]+$/gu) ?? [text]).map((x) => x.trim()).filter(Boolean);
 }
 
 function capLine(level: SummaryLevel, chinese: boolean): string {
   const cap = CAPS[level];
-  return chinese
-    ? `Write the sentence in Chinese, at most ${cap.cjkChars} Chinese characters.`
-    : `Write the sentence in English, at most ${cap.words} words.`;
+  if (!chinese) return `Write the sentence in English, at most ${cap.words} words.`;
+  return cap.cjkSentences > 1
+    ? `Write one or two sentences in Chinese, at most ${cap.cjkChars} Chinese characters in all.`
+    : `Write the sentence in Chinese, at most ${cap.cjkChars} Chinese characters.`;
 }
 
 const RULES =
@@ -105,10 +138,15 @@ export function documentPrompt(doc: BrowseDocument, opts: { shorter?: boolean } 
   return [
     {
       role: 'system',
-      content:
-        'You write one-sentence summaries of documents in a personal file library. ' +
-        'The sentence says what the document is and what it covers. ' +
-        `${RULES} ${capLine('document', chinese)}${opts.shorter ? ' Keep it well under that length.' : ''}`,
+      content: chinese
+        ? 'You write short summaries of documents in a personal file library, in one or two sentences. ' +
+          'They say what the document is and what it covers. ' +
+          'Use only facts stated in the text you are given; do not add anything from elsewhere. ' +
+          'Reply with the summary alone: no preamble, no label, no quotes, no list, no citation marks. ' +
+          `${capLine('document', true)}${opts.shorter ? ' Keep it well under that length.' : ''}`
+        : 'You write one-sentence summaries of documents in a personal file library. ' +
+          'The sentence says what the document is and what it covers. ' +
+          `${RULES} ${capLine('document', false)}${opts.shorter ? ' Keep it well under that length.' : ''}`,
     },
     { role: 'user', content: text },
   ];
@@ -188,14 +226,25 @@ export type CheckOutcome = { ok: true; text: string } | { ok: false; reason: 'em
 
 /**
  * A cleaned reply that fits the cap and that the source supports (the Ask threshold: half of its
- * content words, 0.3 of its character pairs for Chinese).
+ * content words, 0.3 of its character pairs for Chinese). A Chinese document summary may have two
+ * sentences: each is checked on its own, an unsupported one is left out, and the summary is
+ * dropped only when no sentence is supported.
  */
 export function checkSummary(raw: string, source: string, level: SummaryLevel): CheckOutcome {
-  const text = cleanSentence(raw);
+  const chinese = mainlyCjk(source);
+  const text = cleanSentence(raw, chinese ? CAPS[level].cjkSentences : 1);
   if (!/[\p{L}\p{N}]{2}/u.test(text)) return { ok: false, reason: 'empty' };
   if (!withinCap(text, level)) return { ok: false, reason: 'too-long' };
-  const { claims } = verifyClaims([{ text, citations: [1], unsupported: false }], [source], { cjk: true });
-  return claims[0]!.unsupported ? { ok: false, reason: 'unsupported' } : { ok: true, text };
+  // English summaries are one sentence; only a Chinese one may hold two.
+  const sentences = chinese ? cjkSentencesOf(text) : [text];
+  const { claims } = verifyClaims(
+    sentences.map((t) => ({ text: t, citations: [1], unsupported: false })),
+    [source],
+    { cjk: true },
+  );
+  const kept = sentences.filter((_, i) => !claims[i]!.unsupported);
+  if (!kept.length) return { ok: false, reason: 'unsupported' };
+  return { ok: true, text: kept.join('') };
 }
 
 /** sha256-free fingerprint of a text, for knowing when a section changed (FNV-1a, hex). */

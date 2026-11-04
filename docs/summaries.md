@@ -6,7 +6,7 @@ Session N. Code in src/main/summaries. Each summary is one sentence written by t
 
 | | Document summary | Section summary |
 | --- | --- | --- |
-| Length | At most 40 English words or 50 Chinese characters | At most 25 English words or 35 Chinese characters |
+| Length | One sentence of at most 40 English words; for a Chinese document up to two sentences and 100 Chinese characters in all | One sentence of at most 25 English words or 60 Chinese characters |
 | Made from | The title, the top-level outline (up to 30 entries) and the first section with text (up to 3000 characters) | The document title, the section path and the section text (up to 4000 characters) |
 | Cited to | That first section | The section |
 | When | Automatically, after the document is indexed | Off by default. Two ways to turn it on: Summarize each section on the Document page (that document only, with an estimate in minutes), or Summarize every section in the library menu (every document, and every document added later) |
@@ -21,7 +21,8 @@ src/main/summaries/text.ts. The system prompt asks for one sentence that says wh
 The reply is cleaned: thinking, citation marks, a leading label (Summary:, 摘要：), list marks and quotes are taken off, and only the first sentence is kept. Then it is checked in two ways:
 
 - **Cap.** A reply over the cap gets one more try asking for a shorter sentence. A second miss is dropped (too-long).
-- **Support.** src/main/answer/verify.ts verifyClaims runs with the source as the only passage and cjkOverlap on. The threshold is the Ask one: half the sentence's content words, or 0.3 of its character pairs for Chinese. Below that the sentence is dropped (unsupported).
+- **Sentences.** English summaries and Chinese section summaries keep the first sentence; a Chinese document summary keeps up to two (split on 。！？ only, so 3.5% stays whole).
+- **Support.** src/main/answer/verify.ts verifyClaims runs with the source as the only passage and cjkOverlap on. The threshold is the Ask one: half the sentence's content words, or 0.3 of its character pairs for Chinese. Below that the sentence is dropped (unsupported). Each sentence of a two-sentence Chinese summary is checked on its own; an unsupported one is left out and the summary is dropped only when neither is supported.
 
 A dropped summary is stored with its reason and not asked for again until its source, the model or the prompt version changes. Its document shows no summary.
 
@@ -51,7 +52,7 @@ Summaries use the Ask model in server/.env (OLLAMA_MODEL_PREF) and the Settings 
 - **The 8 GB tier** (Ask off, chatModel null) makes no summaries. The pages show no summary and no pending state, and the library switch is hidden.
 - **A changed file** gets its document summary made again, and its section summaries only for sections whose text changed. Summaries of sections the file no longer has are removed.
 - **A removed file** loses its summaries, its export note and its node.
-- **Version key.** Every stored summary carries `<model tag>|p<SUMMARY_PROMPT_VERSION>`. A new chat model (Settings, Answer model) or a prompt change marks every summary stale, and they are queued again.
+- **Version key.** Every stored summary carries `<model tag>|p<prompt version>`: SUMMARY_PROMPT_VERSION (1) for English documents, SUMMARY_PROMPT_VERSION_CJK (2) for documents whose summary source is mainly Chinese. A new chat model (Settings, Answer model) or a prompt change marks the summaries stale, and they are queued again. The Chinese version moved to 2 with the Chinese caps of 2026-11-04 (owner request: 100 characters in up to two sentences for a document, 60 for a section), so only Chinese summaries were made again. On the dev library both Chinese documents got one sentence of 35 and 38 characters.
 
 ### Batches
 

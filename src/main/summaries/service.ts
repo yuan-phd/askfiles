@@ -24,7 +24,7 @@ import {
   sectionBatchPrompt,
   sectionPrompt,
   sectionSource,
-  SUMMARY_PROMPT_VERSION,
+  promptVersionOf,
   textHash,
   type CheckOutcome,
 } from './text.js';
@@ -199,9 +199,9 @@ export class SummaryService {
     return this.view(docId);
   }
 
-  private key(): string | null {
-    const m = this.d.model();
-    return m ? versionKey(m.model, SUMMARY_PROMPT_VERSION) : null;
+  /** The version key of a document's summaries: model and prompt version, which differs for Chinese. */
+  private key(doc: BrowseDocument, m: SummaryModel | null = this.d.model()): string | null {
+    return m ? versionKey(m.model, promptVersionOf(doc)) : null;
   }
 
   private fresh(s: StoredSummary | null | undefined, key: string, hash: string): boolean {
@@ -217,7 +217,7 @@ export class SummaryService {
   }
 
   private plan(doc: BrowseDocument): void {
-    const key = this.key();
+    const key = this.key(doc);
     let rec = this.store.get(doc.id);
     // Section summaries of sections the file no longer has are dropped at once.
     const indexes = new Set(doc.sections.map((s) => String(s.index)));
@@ -315,8 +315,8 @@ export class SummaryService {
 
   private async run(jobs: SummaryJob[], signal: AbortSignal): Promise<void> {
     const job = jobs[0]!;
-    const key = this.key();
     const doc = this.d.browse.getDocument({ id: job.docId });
+    const key = doc ? this.key(doc) : null;
     if (!key || !doc) return;
     const t0 = Date.now();
     let entry: StoredSummary;
@@ -407,10 +407,11 @@ export class SummaryService {
     return this.durations.reduce((a, b) => a + b, 0) / this.durations.length;
   }
 
-  /** key: the version key, when the caller already has it (documentViews reads it once for all). */
-  view(docId: string, key: string | null = this.key()): DocumentSummaryView | null {
+  /** model: the summary model, when the caller already has it (documentViews reads it once for all). */
+  view(docId: string, model: SummaryModel | null = this.d.model()): DocumentSummaryView | null {
     const doc = this.d.browse.getDocument({ id: docId });
     if (!doc) return null;
+    const key = this.key(doc, model);
     const rec = this.store.get(docId);
     const sections: Record<string, string> = {};
     let missing = 0;
@@ -447,9 +448,9 @@ export class SummaryService {
   /** The document summary of every document, for the Library page and the overview's tooltips. */
   documentViews(): Record<string, { state: DocumentSummaryView['state']; text: string | null }> {
     const out: Record<string, { state: DocumentSummaryView['state']; text: string | null }> = {};
-    const key = this.key();
+    const model = this.d.model();
     for (const d of this.d.browse.allDocuments()) {
-      const v = this.view(d.id, key);
+      const v = this.view(d.id, model);
       if (v) out[d.id] = { state: v.state, text: v.text };
     }
     return out;

@@ -148,7 +148,7 @@ One preload script, src/main/preload.ts, for every window. Windows run with cont
 | `askfiles.answer.cancel(id)` | Stops the run |
 | `askfiles.answer.developer()`, `.setOverrides(o)`, `.saveCase(c)` | Developer panel, only with ASKFILES_DEVELOPER=1: last trace and live section count and rerank floor for the next question; Save as eval case appends to `<dataDir>/eval-questions.csv` (ASKFILES_EVAL_QUESTIONS overrides) |
 | `askfiles.graph.data()`, `.onChange(cb)` | The current library's overview graph (docs/graph.md) with each document's summary state; onChange after a rebuild |
-| `askfiles.graph.profiles()`, `.setType(id, type)`, `.answerFamily(a, b, same)` | The profiles (docs/profiles.md); a document's type override (null for Automatic); a family answer (null forgets it) |
+| `askfiles.graph.profiles()`, `.setType(id, type)`, `.answerFamily(a, b, same)` | The profiles (docs/profiles.md); a document's type override (null for Detected, back to detection); a family answer (null forgets it) |
 | `askfiles.libraries.create(name, profile)`, `.setProfile(profile)` | A new library's profile; the current library's profile, which rebuilds types and edges, not the index |
 | `askfiles.summaries.status()`, `.onEvent(cb)`, `.pause()`, `.resume()` | The summary queue (docs/summaries.md): Summaries n of m and why it waits; events `status` and `changed` (document ids) |
 | `askfiles.summaries.document(id)`, `.requestSections(id)`, `.setLibrary(on)`, `.openExport()` | A document's summary, section summaries and estimate; its section summaries on request; the library switch; the export folder in Finder |
@@ -185,7 +185,7 @@ Heading normalization (src/main/browse/normalize.ts, numbering prefixes from src
 
 Keyword search (src/main/browse/search.ts): the query is split at whitespace; each term, folded the same way (NFKC, lower case), must occur as a substring of the section title or text. No word boundaries, so Chinese matches inside a sentence. Documents with the most matches come first, sections in document order; at most 200 sections are returned, the total is always counted.
 
-While the current library is indexing, the Ask page's question box is off with one line, Reading new files, n left (Session N, docs/summaries.md). The Library page shows each document's type (a dropdown: Automatic or a type of the library's profile) and its summary, and asks about possible copies of one document; the Document page shows the summary, the section summaries and the Summarize each section button. The top bar shows Summaries n of m with Pause while the summary queue works, and the library menu holds Kind of documents, Summarize every section and Open Markdown export.
+While the current library is indexing, the Ask page's question box is off with one line, Reading new files, n left (Session N, docs/summaries.md). The Library page shows each document's type (Regulation (detected) when detection chose it, Regulation alone when the user set it; a click opens a dropdown of Detected: <type> and the types of the library's profile) and its summary, and asks about possible copies of one document; the Document page shows the summary, the section summaries and the Summarize each section button. The top bar shows Summaries n of m with Pause while the summary queue works, and the library menu holds Kind of documents, Summarize every section and Open Markdown export.
 
 ## Answer pipeline
 

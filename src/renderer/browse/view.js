@@ -386,15 +386,23 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     );
   }
 
-  /** The type of a document: a dropdown of the profile's types; Automatic goes back to detection. */
+  /**
+   * The type of a document: its label, with (detected) after it when detection chose it and alone
+   * when the owner set it; a dropdown of the profile's types lies over the label, its first entry
+   * Detected: <type> going back to detection. The wording is the same in every profile.
+   */
   function typeControl(node) {
     const wrap = el('label', 'doc-type');
     wrap.append(el('span', 'visually-hidden', `Type of ${node.title}`));
-    const select = el('select');
-    select.dataset.testid = 'library-type';
     const types = state.graph.profile.types;
     const label = (name) => types.find((t) => t.name === name)?.label || name;
-    const auto = el('option', '', `Automatic (${label(node.detectedType)})`);
+    const text = el('span', 'doc-type-text', node.overridden ? label(node.type) : `${label(node.type)} (detected)`);
+    text.dataset.testid = 'library-type-label';
+    text.setAttribute('aria-hidden', 'true');
+    wrap.append(text);
+    const select = el('select');
+    select.dataset.testid = 'library-type';
+    const auto = el('option', '', `Detected: ${label(node.detectedType)}`);
     auto.value = '';
     select.append(auto, ...types.map((t) => Object.assign(el('option', '', t.label), { value: t.name })));
     select.value = node.overridden ? node.type : '';

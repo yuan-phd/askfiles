@@ -35,7 +35,7 @@ legal-finance and team-work have a type `other` for documents the signals cannot
 
 ## How a type is chosen
 
-1. The user's choice for this document in this profile, from the type dropdown on the Library page; detection never replaces it. Stored in the library record, `typeOverrides[profile][document id]`; Automatic removes it.
+1. The user's choice for this document in this profile, from the type dropdown on the Library page; detection never replaces it. Stored in the library record, `typeOverrides[profile][document id]`; the dropdown's first entry, Detected: <type>, removes it. The Library page shows the type with (detected) after it when detection chose it (Regulation (detected)) and alone when the user set it (Regulation); the wording is the same in every profile.
 2. A spreadsheet (xlsx, xlsm, xls, csv) is always the data kind's type, whatever its name says.
 3. A title cue.
 4. The long rule.

@@ -8,6 +8,9 @@ import {
   documentSource,
   estimateTokens,
   parseBatchReply,
+  promptVersionOf,
+  SUMMARY_PROMPT_VERSION,
+  SUMMARY_PROMPT_VERSION_CJK,
   sectionBatchPrompt,
   withinCap,
   wordCount,
@@ -28,9 +31,10 @@ describe('summary text', () => {
     expect(withinCap(forty, 'document')).toBe(true);
     expect(withinCap(`${forty} more`, 'document')).toBe(false);
     expect(withinCap(Array.from({ length: 26 }, () => 'word').join(' '), 'section')).toBe(false);
-    expect(withinCap('员'.repeat(50), 'document')).toBe(true);
-    expect(withinCap('员'.repeat(51), 'document')).toBe(false);
-    expect(withinCap('员'.repeat(36), 'section')).toBe(false);
+    expect(withinCap('员'.repeat(100), 'document')).toBe(true);
+    expect(withinCap('员'.repeat(101), 'document')).toBe(false);
+    expect(withinCap('员'.repeat(60), 'section')).toBe(true);
+    expect(withinCap('员'.repeat(61), 'section')).toBe(false);
   });
 
   it('cleans a reply to its first sentence without labels, quotes or citation marks', () => {
@@ -72,7 +76,7 @@ describe('summary text', () => {
     expect(src.section!.index).toBe(1);
     expect(src.text).toContain('Outline: 适用范围; 提交期限');
     const [system, user] = documentPrompt(d);
-    expect(system!.content).toContain('in Chinese, at most 50 Chinese characters');
+    expect(system!.content).toContain('Write one or two sentences in Chinese, at most 100 Chinese characters in all.');
     expect(user!.content).toBe(src.text);
     expect(documentPrompt(doc('a.md', [['A', 'An English text about leave.']]))[0]!.content).toContain(
       'in English, at most 40 words',
@@ -103,5 +107,49 @@ describe('summary text', () => {
       '病假须报告。',
     ]);
     expect(estimateTokens('abcd员工')).toBe(3);
+  });
+
+  it('keeps up to two supported sentences of a Chinese document summary, one for English and for sections', () => {
+    const zh = [
+      'Title: 报销制度.docx',
+      'First section (适用范围):',
+      '因公出差、客户招待和培训产生的费用均可按本制度报销。报销申请须在费用发生后30天内提交，逾期不予受理。',
+    ].join('\n');
+    expect(
+      checkSummary('本制度规定因公出差和培训费用的报销。报销申请须在费用发生后30天内提交。另外一句。', zh, 'document'),
+    ).toEqual({
+      ok: true,
+      text: '本制度规定因公出差和培训费用的报销。报销申请须在费用发生后30天内提交。',
+    });
+    // The unsupported second sentence is left out; the supported first one stays.
+    expect(
+      checkSummary('本制度规定因公出差和培训费用的报销。员工每年享有带薪年假和住房补贴。', zh, 'document'),
+    ).toEqual({
+      ok: true,
+      text: '本制度规定因公出差和培训费用的报销。',
+    });
+    expect(checkSummary('员工每年享有带薪年假和住房补贴。公司提供班车。', zh, 'document')).toEqual({
+      ok: false,
+      reason: 'unsupported',
+    });
+    // A section summary stays one sentence, as English ones do.
+    expect(checkSummary('因公出差的费用可以报销。报销申请须在30天内提交。', zh, 'section')).toEqual({
+      ok: true,
+      text: '因公出差的费用可以报销。',
+    });
+    expect(
+      checkSummary('The policy gives 27.5 days of paid annual leave. It also covers sick leave.', source, 'document'),
+    ).toEqual({ ok: true, text: 'The policy gives 27.5 days of paid annual leave.' });
+    expect(cleanSentence('第一句。第二句。第三句。', 2)).toBe('第一句。第二句。');
+  });
+
+  it('gives Chinese documents their own prompt version, so only their summaries are made again', () => {
+    expect(promptVersionOf(doc('报销制度.docx', [['适用范围', '因公出差的费用均可按本制度报销。']]))).toBe(
+      SUMMARY_PROMPT_VERSION_CJK,
+    );
+    expect(promptVersionOf(doc('Leave.md', [['Annual leave', 'Employees receive 27 days.']]))).toBe(
+      SUMMARY_PROMPT_VERSION,
+    );
+    expect(SUMMARY_PROMPT_VERSION_CJK).not.toBe(SUMMARY_PROMPT_VERSION);
   });
 });

@@ -65,6 +65,9 @@ async function stubOverview(page, { summaryView = null, status = null } = {}) {
           ],
           setType: async (id, type) => {
             calls.push(['setType', id, type]);
+            // As the main process does: a chosen type overrides detection, none goes back to it.
+            const n = data.nodes.find((x) => x.id === id);
+            if (n) Object.assign(n, type ? { type, overridden: true } : { type: n.detectedType, overridden: false });
             return data;
           },
           answerFamily: async (...a) => {
@@ -300,14 +303,27 @@ test.describe('summaries and types on the browse pages', () => {
       page.getByTestId('library-item').filter({ hasText: 'budget-2026.xlsx' }).getByTestId('library-summary'),
     ).toHaveText('Summary pending');
     const type = page.getByTestId('library-item').filter({ hasText: 'budget-2026.xlsx' }).getByTestId('library-type');
+    const budgetRow = page.getByTestId('library-item').filter({ hasText: 'budget-2026.xlsx' });
     await expect(type).toHaveValue('');
-    await expect(type.locator('option').first()).toHaveText('Automatic (Data)');
+    await expect(budgetRow.getByTestId('library-type-label')).toHaveText('Data (detected)');
+    await expect(type.locator('option').first()).toHaveText('Detected: Data');
+    // A click on the label lands on the dropdown lying over it.
+    expect(
+      await budgetRow.getByTestId('library-type-label').evaluate((l) => {
+        const r = l.getBoundingClientRect();
+        return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.dataset.testid;
+      }),
+    ).toBe('library-type');
     await type.selectOption('template');
     expect(await page.evaluate(() => window.__overviewCalls)).toContainEqual([
       'setType',
       idOf('budget-2026.xlsx'),
       'template',
     ]);
+    // A type the owner set shows alone; back to detection shows (detected) again.
+    await expect(budgetRow.getByTestId('library-type-label')).toHaveText('Template');
+    await budgetRow.getByTestId('library-type').selectOption('');
+    await expect(budgetRow.getByTestId('library-type-label')).toHaveText('Data (detected)');
 
     await page.getByTestId('library-item').filter({ hasText: 'it-handbook.pdf' }).getByTestId('library-open').click();
     await expect(page.getByTestId('doc-summary')).toContainText(view.text);

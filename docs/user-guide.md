@@ -53,7 +53,7 @@ Organic and Layered switch the arrangement. Layered puts each type in its own ro
 
 ## Types
 
-AskFiles guesses each document's type from its name and its text. If it guesses wrong, choose the right type in the list next to the document on the Library page. Your choice is kept. Automatic goes back to AskFiles's guess.
+AskFiles guesses each document's type from its name and its text, and shows it next to the document on the Library page with (detected) after it, for example Regulation (detected). If it guesses wrong, click the type and choose the right one. Your choice is kept and shows without (detected). The first entry of the list, for example Detected: Regulation, goes back to AskFiles's guess.
 
 When AskFiles is not sure whether two files are copies or versions of one document, the Library page asks: Are these the same document? Answer Same document or Different.
 
