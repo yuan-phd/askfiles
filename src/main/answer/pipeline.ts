@@ -38,6 +38,7 @@ import { answerQuoted, isContentsSection, type QuotedStats } from './quoted.js';
 import type { Reranker } from './reranker.js';
 import { toAnswerSection, type AnswerSection } from './sections.js';
 import { selectSections, type Ranked, type Selection } from './select.js';
+import { fileSubqueries, type FileSubquery } from './subquery.js';
 import { extractTerms, isMainlyCjk, type Term } from './terms.js';
 import { verifyClaims, type VerifyStats } from './verify.js';
 
@@ -106,7 +107,13 @@ export interface Retrieval {
    * crossDocument: the question names two or more file groups; the files in the order the question
    * names them, and with the quota part the section keys taken as each file's top sections.
    */
-  crossDocument?: { documentIds: string[]; files: string[]; quota: string[] };
+  crossDocument?: {
+    documentIds: string[];
+    files: string[];
+    quota: string[];
+    /** perFileSubquery: the query each named file was searched with inside it. */
+    subqueries?: FileSubquery[];
+  };
 }
 
 /** crossDocument: sections of each named file taken from the fused list (round A2). */
@@ -184,18 +191,39 @@ export async function fileScopedSections(
   p: AnswerParams,
   deps: PipelineDeps,
   signal?: AbortSignal,
-  o: { per?: number; skipContents?: boolean } = {},
+  o: { per?: number; skipContents?: boolean; queries?: Map<string, string> } = {},
 ): Promise<FusedSection[]> {
   const per = o.per ?? CROSS_DOCUMENT_QUOTA;
   const ids = new Set(documentIds);
-  const hits = await vectorCandidates(await deps.vectorSearch(question, FILE_SCOPED_VECTOR_POOL, signal), deps, ids);
-  const ranking = terms.length
-    ? deps.index.rankSections(
-        terms.map((t) => t.text),
-        deps.index.sectionTotal(),
-        { stem: p.keywordStemming },
-      )
-    : [];
+  const stem = { stem: p.keywordStemming };
+  // perFileSubquery: a file searched with its own clause; one wide vector search and one keyword
+  // ranking per distinct query text, the whole question's shared by every file without a clause.
+  const searches = new Map<string, Promise<{ hits: VectorHit[]; ranking: RankedSection[] }>>();
+  const search = (query: string) => {
+    let s = searches.get(query);
+    if (!s) {
+      s = (async () => {
+        const qTerms =
+          query === question
+            ? terms
+            : extractTerms(query, {
+                total: deps.index.sectionTotal(),
+                frequency: (t) => deps.index.sectionFrequency(t, stem),
+              });
+        const hits = await vectorCandidates(await deps.vectorSearch(query, FILE_SCOPED_VECTOR_POOL, signal), deps, ids);
+        const ranking = qTerms.length
+          ? deps.index.rankSections(
+              qTerms.map((t) => t.text),
+              deps.index.sectionTotal(),
+              stem,
+            )
+          : [];
+        return { hits, ranking };
+      })();
+      searches.set(query, s);
+    }
+    return s;
+  };
   // Inside a file its table of contents holds every heading word, so keyword search ranks it high
   // (round C1); scopedQuotaV2 leaves such sections out of both lists.
   const contents = new Map<string, boolean>();
@@ -212,6 +240,8 @@ export async function fileScopedSections(
   };
   const out: FusedSection[] = [];
   for (const id of new Set(documentIds)) {
+    // Sequential: the searches of one question share Ollama's embedding model anyway.
+    const { hits, ranking } = await search(o.queries?.get(id) ?? question);
     const vector = hits
       .filter((h) => h.documentId === id)
       .filter((h) => !h.section || !isContents(id, Number(h.section.slice(h.section.lastIndexOf('#') + 1))))
@@ -298,24 +328,35 @@ export async function retrieve(
       const files = groups.flat();
       const documentIds = files.map((f) => f.documentId);
       let quota: string[] = [];
+      let subqueries: FileSubquery[] | undefined;
       const scopedSearch = p.fileScopedQuota || p.scopedQuotaV2;
       if (parts.has('quota') && scopedSearch) {
-        const scoped = await fileScopedSections(
-          question,
-          terms,
-          documentIds,
-          p,
-          deps,
-          signal,
-          p.scopedQuotaV2 ? { per: SCOPED_V2_QUOTA, skipContents: true } : {},
-        );
+        let queries: Map<string, string> | undefined;
+        if (p.perFileSubquery) {
+          const subs = fileSubqueries(question, groups, deps.index.identities?.() ?? []);
+          queries = new Map(subs.map((x) => [x.documentId, x.query]));
+          for (const x of subs)
+            deps.log?.(
+              `[answer] subquery: ${files.find((f) => f.documentId === x.documentId)?.file ?? x.documentId}: ${x.attributed ? x.query : '(whole question)'}`,
+            );
+          subqueries = subs;
+        }
+        const scoped = await fileScopedSections(question, terms, documentIds, p, deps, signal, {
+          ...(p.scopedQuotaV2 ? { per: SCOPED_V2_QUOTA, skipContents: true } : {}),
+          ...(queries ? { queries } : {}),
+        });
         quota = scoped.map((f) => f.key);
         // A section found only inside its file joins the end of the fused list, so it can become a
         // candidate; the library-wide ranks stay as they were.
         const seen = new Set(fused.map((f) => f.key));
         fused = [...fused, ...scoped.filter((f) => !seen.has(f.key))];
       } else if (parts.has('quota')) quota = quotaSections(fused, documentIds);
-      crossDocument = { documentIds, files: files.map((f) => f.file), quota };
+      crossDocument = {
+        documentIds,
+        files: files.map((f) => f.file),
+        quota,
+        ...(subqueries ? { subqueries } : {}),
+      };
       deps.log?.(
         `[answer] cross-document: ${crossDocument.files.join(', ')}; ${quota.length} quota sections` +
           (scopedSearch && parts.has('quota') ? (p.scopedQuotaV2 ? ' (file-scoped v2)' : ' (file-scoped)') : ''),

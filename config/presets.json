@@ -60,7 +60,8 @@
         "crossDocQuota": true,
         "fileScopedQuota": false,
         "scopedQuotaV2": true,
-        "keywordStemming": false
+        "keywordStemming": false,
+        "perFileSubquery": false
       },
       "summariesFasterModel": false,
       "indexing": {
@@ -134,7 +135,8 @@
         "crossDocQuota": true,
         "fileScopedQuota": false,
         "scopedQuotaV2": true,
-        "keywordStemming": false
+        "keywordStemming": false,
+        "perFileSubquery": false
       },
       "summariesFasterModel": false,
       "indexing": {
@@ -201,7 +203,8 @@
         "crossDocQuota": true,
         "fileScopedQuota": false,
         "scopedQuotaV2": true,
-        "keywordStemming": false
+        "keywordStemming": false,
+        "perFileSubquery": false
       },
       "summariesFasterModel": false,
       "indexing": {

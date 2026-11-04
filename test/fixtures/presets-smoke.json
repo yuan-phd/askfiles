@@ -61,7 +61,8 @@
         "crossDocQuota": false,
         "fileScopedQuota": false,
         "scopedQuotaV2": false,
-        "keywordStemming": false
+        "keywordStemming": false,
+        "perFileSubquery": false
       }
     }
   ]

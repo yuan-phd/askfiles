@@ -150,6 +150,12 @@ export interface AnswerParams {
    * docs/plan.md round S1).
    */
   keywordStemming: boolean;
+  /**
+   * With the in-file search of fileScopedQuota or scopedQuotaV2: each named file is searched
+   * inside with the clause of the question that names it alone (subquery.ts), the whole question
+   * when there is none; selection, the prompt and verification unchanged (docs/plan.md, round X1).
+   */
+  perFileSubquery: boolean;
 }
 
 /** The crossDocument parts in effect: crossDocument's own, or the quota alone with crossDocQuota. */
@@ -191,6 +197,7 @@ export const DEFAULT_PARAMS: AnswerParams = {
   fileScopedQuota: false,
   scopedQuotaV2: false,
   keywordStemming: false,
+  perFileSubquery: false,
 };
 
 /** Tokens kept free for the answer itself and for the instructions and the question. */
@@ -293,6 +300,7 @@ const CHECKS: Record<keyof AnswerParams, (v: unknown) => Problem> = {
   fileScopedQuota: bool,
   scopedQuotaV2: bool,
   keywordStemming: bool,
+  perFileSubquery: bool,
 };
 
 /** Problems with an answer block, each prefixed with at; every key is required. */
