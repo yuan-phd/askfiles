@@ -78,6 +78,18 @@ function externalHandlers(baseUrl: string | null, log: (m: string) => void): Bri
     },
     appInfo: () => ({ name: 'AskFiles', version: app.getVersion() }),
     appPageReady: (info) => log(`page ready ${info.page} connected=${info.connected ?? '-'}`),
+    graphData: () => null,
+    graphProfiles: () => [],
+    graphSetType: unavailable,
+    graphAnswerFamily: unavailable,
+    librariesSetProfile: unavailable,
+    summariesStatus: () => null,
+    summariesPause: () => null,
+    summariesResume: () => null,
+    summariesDocument: () => null,
+    summariesRequestSections: () => null,
+    summariesSetLibrary: unavailable,
+    summariesOpenExport: async () => false,
   };
 }
 
@@ -123,6 +135,7 @@ function main(): void {
       appProtocolHandler({
         rendererDir: path.join(appPath, 'src', 'renderer'),
         noticesFile: path.join(appPath, 'THIRD-PARTY-NOTICES'),
+        appDir: appPath,
       }),
     );
 

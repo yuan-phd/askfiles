@@ -142,13 +142,44 @@ describe('library records', () => {
 });
 
 describe('LibraryManager', () => {
+  it('creates a library with the chosen profile and changes its record without touching the index', async () => {
+    const t = setup();
+    await t.manager.start();
+    await t.manager.create('Team', 'team-work');
+    const lib = t.state().libraries.find((l) => l.name === 'Team')!;
+    expect(lib.profile).toBe('team-work');
+    expect(t.manager.view().libraries.find((l) => l.name === 'Team')).toMatchObject({ profile: 'team-work' });
+    await t.manager.updateRecord(lib.id, (l) => ({
+      ...l,
+      profile: 'general',
+      sectionSummaries: true,
+      name: 'ignored',
+    }));
+    const after = t.state().libraries.find((l) => l.id === lib.id)!;
+    expect(after).toMatchObject({ name: 'Team', profile: 'general', sectionSummaries: true });
+    expect(t.views.at(-1)!.libraries.find((l) => l.id === lib.id)).toMatchObject({
+      profile: 'general',
+      sectionSummaries: true,
+    });
+    await t.manager.stop();
+  });
+
   it('starts with the empty All files library, which cannot be renamed or deleted', async () => {
     const t = setup();
     await t.manager.start();
     const v = t.manager.view();
     expect(v.current).toBe('all-files');
     expect(v.libraries).toEqual([
-      { id: 'all-files', name: 'All files', isDefault: true, isCurrent: true, indexed: 0, sources: [] },
+      {
+        id: 'all-files',
+        name: 'All files',
+        isDefault: true,
+        isCurrent: true,
+        indexed: 0,
+        sources: [],
+        profile: 'legal-finance',
+        sectionSummaries: false,
+      },
     ]);
     expect(t.manager.isEmpty()).toBe(true);
     await expect(t.manager.rename('all-files', 'Mine')).rejects.toThrow('All files cannot be renamed.');

@@ -1,0 +1,78 @@
+{
+  "id": "team-work",
+  "name": "Team work",
+  "description": "Meetings, reports, tickets and specs. Links documents that name the same project or ticket, mention each other's titles or were written days apart.",
+  "types": [
+    { "name": "meeting", "label": "Meeting", "color": "#2fae7d" },
+    { "name": "report", "label": "Report", "color": "#4a7cff" },
+    { "name": "ticket", "label": "Ticket", "color": "#e05252" },
+    { "name": "spec", "label": "Spec", "color": "#9a6ff0" },
+    { "name": "other", "label": "Other", "color": "#8a8f9e" }
+  ],
+  "kinds": {
+    "normative": "spec",
+    "explanatory": "report",
+    "template": "other",
+    "record": "meeting",
+    "data": "report",
+    "other": "other"
+  },
+  "cues": {
+    "meeting": [
+      "meeting",
+      "minutes",
+      "standup",
+      "stand-up",
+      "retro",
+      "retrospective",
+      "sync",
+      "kickoff",
+      "kick-off",
+      "workshop",
+      "会议",
+      "纪要",
+      "例会",
+      "周会"
+    ],
+    "report": [
+      "report",
+      "summary",
+      "status",
+      "update",
+      "review",
+      "analysis",
+      "postmortem",
+      "报告",
+      "总结",
+      "周报",
+      "月报",
+      "复盘"
+    ],
+    "ticket": ["ticket", "issue", "bug", "incident", "jira", "工单", "缺陷", "故障"],
+    "spec": [
+      "spec",
+      "specification",
+      "design",
+      "rfc",
+      "requirements",
+      "prd",
+      "proposal",
+      "architecture",
+      "需求",
+      "设计",
+      "方案",
+      "规格"
+    ]
+  },
+  "bands": ["meeting", "ticket", "report", "spec", "other"],
+  "edges": {
+    "headings": false,
+    "references": true,
+    "clauseReferences": false,
+    "versions": false,
+    "related": false,
+    "projects": true,
+    "tickets": true,
+    "dates": true
+  }
+}

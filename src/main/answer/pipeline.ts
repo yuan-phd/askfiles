@@ -7,7 +7,7 @@
  * Three stages, so the eval can cache the first and sweep the second without the model:
  * retrieve (candidates, fusion, sections, rerank), choose (floor, count, budget), answer.
  */
-import type { BrowseDocument, BrowseSection, DocumentRef, RankedSection } from '../browse/index.js';
+import type { BrowseDocument, BrowseSection, DocumentRef, KeywordOptions, RankedSection } from '../browse/index.js';
 import { mentionedDocuments, namedFileGroups, type FileIdentity } from '../browse/identifiers.js';
 import { citationOrder, claimsOf, CitationStream, parseCitations, type Claim, type Part } from './citations.js';
 import { fuse, sectionKey, type FusedSection, type KeywordCandidate, type VectorCandidate } from './fusion.js';
@@ -52,8 +52,8 @@ export interface RawVectorHit {
 /** The parts of the browse index the pipeline reads (BrowseIndex). */
 export interface SectionIndex {
   sectionTotal(): number;
-  sectionFrequency(term: string): number;
-  rankSections(terms: string[], limit: number): RankedSection[];
+  sectionFrequency(term: string, o?: KeywordOptions): number;
+  rankSections(terms: string[], limit: number, o?: KeywordOptions): RankedSection[];
   section(documentId: string, sectionIndex: number): { document: BrowseDocument; section: BrowseSection } | null;
   getDocument(ref: DocumentRef): BrowseDocument | null;
   /** Names of each file for documentAffinity; absent in indexes built without them. */
@@ -193,6 +193,7 @@ export async function fileScopedSections(
     ? deps.index.rankSections(
         terms.map((t) => t.text),
         deps.index.sectionTotal(),
+        { stem: p.keywordStemming },
       )
     : [];
   // Inside a file its table of contents holds every heading word, so keyword search ranks it high
@@ -261,15 +262,17 @@ export async function retrieve(
   }));
   const t1 = performance.now();
 
+  const stem = { stem: p.keywordStemming };
   const terms = extractTerms(question, {
     total: deps.index.sectionTotal(),
-    frequency: (t) => deps.index.sectionFrequency(t),
+    frequency: (t) => deps.index.sectionFrequency(t, stem),
   });
   const keyword: KeywordCandidate[] = terms.length
     ? deps.index
         .rankSections(
           terms.map((t) => t.text),
           p.keywordTopK,
+          stem,
         )
         .map((r) => ({
           section: sectionKey(r.documentId, r.sectionIndex),

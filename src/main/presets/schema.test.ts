@@ -46,6 +46,8 @@ describe('config/presets.json', () => {
       'scopedQuotaV2',
     ];
     for (const t of p.tiers) {
+      // Summaries use the Ask model on every tier (owner decision 2026-11-04).
+      expect(t.summariesFasterModel).toBe(false);
       expect(t.reasoningEffort).toBe('off');
       expect(t.embeddingModel).toBe('bge-m3:567m');
       expect(t.contextLength).toBe(8192);

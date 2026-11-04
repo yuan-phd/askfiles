@@ -105,17 +105,17 @@ test.describe('Back', () => {
     await expect(page.getByTestId('answer-text')).toHaveText('Sixteen weeks.[1]');
     await expect(page.getByTestId('query')).toHaveValue('How long is parental leave?');
 
-    // Headings with a selection -> Read in document; Cmd+[ returns to the same selection.
+    // Compare with a selection -> Read in document; Cmd+[ returns to the same selection.
     await page.getByTestId('view-browse').click();
-    await page.getByTestId('browse-tab-headings').click();
-    await page.getByTestId('heading-item').filter({ hasText: 'Sick leave' }).click();
-    await expect(page.getByTestId('headings-title')).toHaveText(/Sick leave/i);
+    await page.getByTestId('browse-tab-compare').click();
+    await page.getByTestId('compare-item').filter({ hasText: 'Sick leave' }).click();
+    await expect(page.getByTestId('compare-title')).toHaveText(/Sick leave/i);
     await page.getByTestId('compare-read').first().click();
     await expect(page.getByTestId('browse-tab-document')).toHaveClass(/active/);
     await page.keyboard.press('Meta+BracketLeft');
-    await expect(page.getByTestId('browse-tab-headings')).toHaveClass(/active/);
-    await expect(page.getByTestId('headings-title')).toHaveText(/Sick leave/i);
-    await expect(page.getByTestId('heading-item').filter({ hasText: 'Sick leave' })).toHaveClass(/active/);
+    await expect(page.getByTestId('browse-tab-compare')).toHaveClass(/active/);
+    await expect(page.getByTestId('compare-title')).toHaveText(/Sick leave/i);
+    await expect(page.getByTestId('compare-item').filter({ hasText: 'Sick leave' })).toHaveClass(/active/);
 
     // Find results -> a hit; Back returns to the results and the words.
     await findWords(page, 'medical certificate');
@@ -188,7 +188,7 @@ test.describe('Back after a library change', () => {
     await page.goto(pageUrl());
     await expect(page.getByTestId('library-name')).toHaveText('All files');
     await page.getByTestId('view-browse').click();
-    await page.getByTestId('browse-tab-headings').click();
+    await page.getByTestId('browse-tab-compare').click();
     await page.getByTestId('browse-tab-find').click();
     await expect(page.getByTestId('browse-back')).toBeEnabled();
 

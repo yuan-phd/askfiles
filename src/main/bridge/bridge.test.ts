@@ -172,6 +172,18 @@ function recordingHandlers() {
     answerSaveCase: rec('answerSaveCase', { id: 'case-1', file: '/d/q.csv' }),
     appInfo: rec('appInfo', { name: 'AskFiles', version: '0.1.0' }),
     appPageReady: rec('appPageReady', undefined) as BridgeHandlers['appPageReady'],
+    graphData: rec('graphData', null),
+    graphProfiles: rec('graphProfiles', [{ id: 'legal-finance', name: 'Legal and finance', description: '' }]),
+    graphSetType: rec('graphSetType', Promise.resolve(null)) as BridgeHandlers['graphSetType'],
+    graphAnswerFamily: rec('graphAnswerFamily', Promise.resolve(null)) as BridgeHandlers['graphAnswerFamily'],
+    librariesSetProfile: rec('librariesSetProfile', Promise.resolve(libs)),
+    summariesStatus: rec('summariesStatus', null),
+    summariesPause: rec('summariesPause', null),
+    summariesResume: rec('summariesResume', null),
+    summariesDocument: rec('summariesDocument', null),
+    summariesRequestSections: rec('summariesRequestSections', null),
+    summariesSetLibrary: rec('summariesSetLibrary', Promise.resolve(libs)),
+    summariesOpenExport: rec('summariesOpenExport', Promise.resolve(true)),
   };
   return { h, calls };
 }
@@ -229,6 +241,11 @@ describe('preload bridge', () => {
         'askfiles.browse.search',
         'askfiles.developer.info',
         'askfiles.developer.openModels',
+        'askfiles.graph.answerFamily',
+        'askfiles.graph.data',
+        'askfiles.graph.onChange',
+        'askfiles.graph.profiles',
+        'askfiles.graph.setType',
         'askfiles.libraries.addFiles',
         'askfiles.libraries.addFolder',
         'askfiles.libraries.addPaths',
@@ -241,6 +258,7 @@ describe('preload bridge', () => {
         'askfiles.libraries.removeSource',
         'askfiles.libraries.rename',
         'askfiles.libraries.select',
+        'askfiles.libraries.setProfile',
         'askfiles.library.openOriginal',
         'askfiles.models.list',
         'askfiles.models.onProgress',
@@ -252,6 +270,14 @@ describe('preload bridge', () => {
         'askfiles.setup.onEvent',
         'askfiles.setup.retry',
         'askfiles.setup.start',
+        'askfiles.summaries.document',
+        'askfiles.summaries.onEvent',
+        'askfiles.summaries.openExport',
+        'askfiles.summaries.pause',
+        'askfiles.summaries.requestSections',
+        'askfiles.summaries.resume',
+        'askfiles.summaries.setLibrary',
+        'askfiles.summaries.status',
         'askfiles.watcher.onStatus',
         'askfiles.watcher.status',
         'shellConfig.openSource',
@@ -310,6 +336,20 @@ describe('preload bridge', () => {
     await a.answer.saveCase({ question: 'q', file: 'a.pdf', path: ['Leave'], pageStart: 3 });
     await a.app.info();
     a.app.pageReady({ page: 'ask' });
+    await a.graph.data();
+    a.graph.onChange(() => {});
+    await a.graph.profiles();
+    await a.graph.setType('0123456789abcdef', 'template');
+    await a.graph.answerFamily('0123456789abcdef', 'fedcba9876543210', true);
+    await a.libraries.setProfile('general');
+    a.summaries.onEvent(() => {});
+    await a.summaries.status();
+    await a.summaries.pause();
+    await a.summaries.resume();
+    await a.summaries.document('0123456789abcdef');
+    await a.summaries.requestSections('0123456789abcdef');
+    await a.summaries.setLibrary(true);
+    await a.summaries.openExport();
     const all = new Set([...REQUEST_CHANNELS, ...EVENT_CHANNELS]);
     expect([...p.used].sort()).toEqual([...all].sort());
     expect(new Set(Object.values(CHANNELS))).toEqual(all);

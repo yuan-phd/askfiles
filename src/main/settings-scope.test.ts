@@ -90,3 +90,24 @@ describe('answer scope from the settings store', () => {
     );
   });
 });
+
+describe('answer service busy signal', () => {
+  it('reports busy while a question runs, for the summary queue to pause (docs/summaries.md)', async () => {
+    const deps = pipeline();
+    const busy: boolean[] = [];
+    const service = new AnswerService({
+      pipeline: () => deps,
+      settings: () => runSettingsFor({ presets, machine, settings: null, chatModel: 'qwen3:8b' }),
+      developer: false,
+      evalQuestionsFile: '/dev/null',
+      log: () => {},
+      onBusy: (b) => busy.push(b),
+    });
+    expect(service.busy()).toBe(false);
+    const run = service.askOnce('How many days of annual leave?');
+    expect(service.busy()).toBe(true);
+    await run;
+    expect(service.busy()).toBe(false);
+    expect(busy).toEqual([true, false]);
+  });
+});

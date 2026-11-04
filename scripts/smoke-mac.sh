@@ -6,7 +6,7 @@
 # ASKFILES_LIBRARY_FOLDER then links a temp folder holding a text PDF and a two-page scanned PDF
 # into All files (the bridge-free way; a user adds folders with the Add button), which is indexed,
 # the scan OCRed page by page. Then it checks that the Ask page reached the library, that the
-# browse index lists both PDFs and that the first run fetched the reranker; once the library is
+# browse index and the graph data list both PDFs and that the first run fetched the reranker; once the library is
 # indexed the app asks one question through the answer pipeline (ASKFILES_SMOKE_QUESTION) and the
 # script checks the logged answer cites [1]. Then it takes a screenshot and quits.
 # Mac only. Usage: scripts/smoke-mac.sh path/to/AskFiles.app path/to/out-dir
@@ -147,6 +147,18 @@ until [ "$(browse_titles)" = "handbook.pdf,scanned.pdf" ]; do
   sleep 1
 done
 log "browse index lists $(browse_titles)"
+
+# The library graph (src/main/graph), rebuilt from the browse index after its changes and stored
+# beside it as graph.json: it must list both test documents as nodes.
+graph_titles() {
+  node -e 'const fs=require("fs");let out=[];try{out=JSON.parse(fs.readFileSync(process.argv[1],"utf8")).nodes.map(n=>n.title)}catch{}process.stdout.write(out.sort().join(","))' "$LIB/graph.json"
+}
+t_graph=$(date +%s)
+until [ "$(graph_titles)" = "handbook.pdf,scanned.pdf" ]; do
+  [ $(($(date +%s) - t_graph)) -lt 30 ] || fail "the graph data in $LIB/graph.json lists [$(graph_titles)], expected handbook.pdf and scanned.pdf"
+  sleep 1
+done
+log "graph data lists $(graph_titles)"
 dead=$(new_log | grep -c 'dead-letter' || true)
 [ "$dead" = "0" ] || fail "the watcher gave up on files: $(new_log | grep 'dead-letter')"
 for lang in eng chi_sim; do

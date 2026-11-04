@@ -62,7 +62,8 @@ const askfiles: AskfilesBridge = {
     list: () => invoke('askfiles:libraries:list'),
     onChange: (callback) => subscribe('askfiles:libraries:event', callback),
     select: (id) => invoke('askfiles:libraries:select', String(id)),
-    create: (name) => invoke('askfiles:libraries:create', String(name)),
+    create: (name, profile) => invoke('askfiles:libraries:create', String(name), profile ? String(profile) : null),
+    setProfile: (profile) => invoke('askfiles:libraries:set-profile', String(profile)),
     rename: (id, name) => invoke('askfiles:libraries:rename', String(id), String(name)),
     remove: (id) => invoke('askfiles:libraries:remove', String(id)),
     addFiles: () => invoke('askfiles:libraries:add-files'),
@@ -104,6 +105,24 @@ const askfiles: AskfilesBridge = {
   app: {
     info: () => invoke('askfiles:app:info'),
     pageReady: (info) => ipcRenderer.send('askfiles:app:page-ready', info),
+  },
+  graph: {
+    data: () => invoke('askfiles:graph:data'),
+    onChange: (callback) => subscribe('askfiles:graph:event', callback),
+    profiles: () => invoke('askfiles:graph:profiles'),
+    setType: (id, type) => invoke('askfiles:graph:set-type', String(id), type ? String(type) : null),
+    answerFamily: (a, b, same) =>
+      invoke('askfiles:graph:answer-family', String(a), String(b), typeof same === 'boolean' ? same : null),
+  },
+  summaries: {
+    status: () => invoke('askfiles:summaries:status'),
+    onEvent: (callback) => subscribe('askfiles:summaries:event', callback),
+    pause: () => invoke('askfiles:summaries:pause'),
+    resume: () => invoke('askfiles:summaries:resume'),
+    document: (id) => invoke('askfiles:summaries:document', String(id)),
+    requestSections: (id) => invoke('askfiles:summaries:request-sections', String(id)),
+    setLibrary: (on) => invoke('askfiles:summaries:set-library', on === true),
+    openExport: () => invoke('askfiles:summaries:open-export'),
   },
 };
 

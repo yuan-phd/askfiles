@@ -18,6 +18,7 @@
       "reasoningEffort": "off",
       "ocrLanguages": "eng,chi_sim",
       "systemPrompt": "Answer only from the provided context. Cite the source document for what you say. If the context does not contain the answer, say that you do not know.",
+      "summariesFasterModel": false,
       "answer": {
         "rerankerModel": "Xenova/ms-marco-MiniLM-L-6-v2",
         "rerankerBypassCjk": true,
@@ -59,7 +60,8 @@
         "crossDocumentParts": ["quota", "grouped", "verify"],
         "crossDocQuota": false,
         "fileScopedQuota": false,
-        "scopedQuotaV2": false
+        "scopedQuotaV2": false,
+        "keywordStemming": false
       }
     }
   ]

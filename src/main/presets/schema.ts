@@ -36,6 +36,12 @@ export interface Preset {
    * turning one on reindexes every library once. Missing means all off.
    */
   indexing?: IndexingOptions;
+  /**
+   * Summaries use the Faster tier's model (Settings, Answer model) when it is installed, instead of
+   * the Ask model. Missing means off. Off on every tier since 2026-11-04 (owner decision): on the
+   * owner's Mac it was slower than the Ask model and kept a second chat model loaded (docs/summaries.md).
+   */
+  summariesFasterModel?: boolean;
 }
 
 export interface ChatModelFile {
@@ -112,7 +118,8 @@ const fileProblems = (v: unknown, chatModel: unknown): string | null => {
   return null;
 };
 
-type RequiredField = Exclude<keyof Preset, 'chatModelFile' | 'indexing'>;
+type RequiredField = Exclude<keyof Preset, 'chatModelFile' | 'indexing' | 'summariesFasterModel'>;
+const OPTIONAL_FIELDS = ['chatModelFile', 'indexing', 'summariesFasterModel'];
 
 function indexingProblem(v: unknown): string | null {
   if (typeof v !== 'object' || v === null || Array.isArray(v)) return 'must be an object';
@@ -171,9 +178,10 @@ export function validatePresets(data: unknown): PresetFile {
       if (problem) problems.push(`${at}.${key} ${problem}`);
     }
     for (const key of Object.keys(tier)) {
-      if (!(key in PRESET_FIELDS) && key !== 'chatModelFile' && key !== 'indexing')
-        problems.push(`${at}.${key} is not a known field`);
+      if (!(key in PRESET_FIELDS) && !OPTIONAL_FIELDS.includes(key)) problems.push(`${at}.${key} is not a known field`);
     }
+    if ('summariesFasterModel' in tier && typeof tier.summariesFasterModel !== 'boolean')
+      problems.push(`${at}.summariesFasterModel must be true or false`);
     if ('indexing' in tier) {
       const p = indexingProblem(tier.indexing);
       if (p) problems.push(`${at}.indexing${p.startsWith('.') ? '' : ' '}${p}`);

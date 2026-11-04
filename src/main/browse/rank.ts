@@ -10,6 +10,11 @@ import { occurrences } from './search.js';
 const K1 = 1.2;
 const B = 0.75;
 
+/** keywordStemming: match English words by their Porter stem (stem.ts). */
+export interface KeywordOptions {
+  stem?: boolean;
+}
+
 export interface RankedSection {
   documentId: string;
   sectionIndex: number;

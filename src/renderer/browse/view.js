@@ -1,11 +1,11 @@
-// Browse view: read the library without asking anything. Library, headings, find and document
+// Browse view: read the library without asking anything. Library, compare, find and document
 // pages, all drawn from the shell's browse index through window.askfiles.browse; no model and no
 // server call. Mounted by the Ask page next to Ask, and by browse/index.html on its own.
 //
 // A fixed sidebar holds the four entries; only the content area scrolls. Document appears once a
 // document is open, labelled with its file name and with its outline below it. Opening a document
 // (from any page, or Read section on the Ask page) always lands on Document and never changes what
-// Library, Headings or Find show.
+// Library, Compare or Find show.
 //
 // Every move between pages and documents goes into the page history (shared/history.js): the
 // Ask page passes its own, which spans Ask and Browse; on its own the view keeps one. Back at the
@@ -16,8 +16,9 @@ const MARKUP = `
 <nav class="browse-sidebar" aria-label="Browse" data-testid="browse-sidebar">
   <button type="button" class="sidebar-back" data-testid="browse-back" aria-keyshortcuts="Meta+BracketLeft" title="Back (Cmd+[)" disabled>Back</button>
   <button type="button" class="browse-tab" data-tab="library" data-testid="browse-tab-library">Library</button>
-  <button type="button" class="browse-tab" data-tab="headings" data-testid="browse-tab-headings">Headings</button>
+  <button type="button" class="browse-tab" data-tab="compare" data-testid="browse-tab-compare">Compare</button>
   <button type="button" class="browse-tab" data-tab="find" data-testid="browse-tab-find">Find</button>
+  <button type="button" class="browse-tab" data-tab="graph" data-testid="browse-tab-graph">Graph</button>
   <div class="sidebar-doc" data-testid="sidebar-doc" hidden>
     <button type="button" class="browse-tab doc-tab" data-tab="document" data-testid="browse-tab-document"></button>
     <ol class="outline" data-testid="doc-outline"></ol>
@@ -37,6 +38,11 @@ const MARKUP = `
       </select>
     </label>
   </div>
+  <section class="family-questions" data-testid="family-questions" hidden aria-label="Possible copies of one document">
+    <h2 class="family-title">Are these the same document?</h2>
+    <p class="hint">AskFiles groups copies and issues of one document (a PDF and its Word file, the 2024 and 2025 editions). It is not sure about these.</p>
+    <ul class="family-list" data-testid="family-list"></ul>
+  </section>
   <ul class="library-list" data-testid="library-list"></ul>
   <p class="browse-empty" data-testid="library-empty" hidden>No documents yet. Files in your documents folder appear here once they are indexed.</p>
 </section>
@@ -47,23 +53,38 @@ const MARKUP = `
       <h1 class="doc-title" data-testid="doc-title"></h1>
       <p class="doc-path" data-testid="doc-path"></p>
       <button type="button" class="open" data-testid="doc-open">Open original</button>
+      <p class="doc-summary" data-testid="doc-summary" hidden></p>
+      <div class="doc-summary-actions" data-testid="doc-summary-actions" hidden>
+        <span class="has-tip">
+          <button type="button" class="link" data-testid="doc-summarize-sections" aria-describedby="tip-doc-sections"></button>
+          <span class="tip" id="tip-doc-sections" role="tooltip" data-testid="doc-summarize-tip">Uses the model on this computer. Ask is slower while it runs. You can pause it in the top bar.</span>
+        </span>
+        <span class="doc-summary-state" data-testid="doc-summary-state"></span>
+      </div>
     </header>
     <p class="error" data-testid="doc-error" role="alert" hidden></p>
     <div class="doc-sections" data-testid="doc-sections"></div>
   </article>
 </section>
 
-<section class="browse-page" data-page="headings" data-testid="headings" aria-label="Headings" hidden>
-  <div class="headings-layout">
-    <div class="headings-index">
-      <p class="hint">Headings found in two or more documents.</p>
-      <ul class="headings-list" data-testid="headings-list"></ul>
-      <p class="browse-empty" data-testid="headings-empty" hidden></p>
+<section class="browse-page" data-page="compare" data-testid="compare" aria-label="Compare" hidden>
+  <header class="compare-header">
+    <h1>Compare</h1>
+    <p class="hint" data-testid="compare-subtitle">The same heading across several files, shown side by side.</p>
+  </header>
+  <div class="compare-layout">
+    <div class="compare-index">
+      <ul class="compare-list" data-testid="compare-list"></ul>
+      <p class="browse-empty" data-testid="compare-empty" hidden></p>
     </div>
-    <div class="headings-detail" data-testid="headings-detail" aria-live="polite">
+    <div class="compare-detail" data-testid="compare-detail" aria-live="polite">
       <p class="browse-empty">Choose a heading to see that section from every document side by side.</p>
     </div>
   </div>
+</section>
+
+<section class="browse-page graph-page" data-page="graph" data-testid="graph" aria-label="Graph" hidden>
+  <div class="graph-root" data-testid="graph-root"></div>
 </section>
 
 <section class="browse-page" data-page="find" data-testid="find" aria-label="Find" hidden>
@@ -80,9 +101,15 @@ const MARKUP = `
 `;
 
 import { createHistory, isBackKey } from '../shared/history.js';
+import { createGraphPage } from './graph.js';
 
 const bridge = window.askfiles?.browse;
 const watcher = window.askfiles?.watcher;
+const graphBridge = window.askfiles?.graph;
+const summariesBridge = window.askfiles?.summaries;
+
+/** The splitter's suffix for the pages of a long section and the text after a table (src/main/browse/build.ts). */
+const PAGE_PART = /\s*\((?:page \d+|continued)\)\s*$/i;
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -182,6 +209,9 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     headingKey: null,
     status: null,
     loaded: false,
+    // The library graph (types, summaries, family questions); null without the bridge.
+    graph: null,
+    docSummary: null,
   };
 
   const content = q('browse-content');
@@ -216,21 +246,26 @@ export function createBrowseView(root, { history: shared = null } = {}) {
       if (on) t.setAttribute('aria-current', 'page');
       else t.removeAttribute('aria-current');
     }
+    // Every way off the Graph page (a tab, a node, an edge, Back) passes here, so the graph's zoom
+    // listeners go and the content area scrolls again.
+    content.classList.toggle('graph-on', name === 'graph');
+    if (name !== 'graph') graphPage.hide();
     if (changed) content.scrollTop = scrolls[name] ?? 0;
   }
 
   function show(tab) {
     if (tab === 'document' && !state.doc && !state.docRef) return;
     if (tab === 'library' && !state.loaded) void loadLibrary();
-    if (tab === 'headings') void loadHeadings();
+    if (tab === 'compare') void loadHeadings();
     showPage(tab);
+    if (tab === 'graph') void graphPage.show();
     if (tab === 'find') q('find-query').focus();
   }
 
   /** The page shown, as a history entry. */
   function current() {
     const entry = { view: 'browse', page: state.page };
-    if (state.page === 'headings') entry.headingKey = state.headingKey;
+    if (state.page === 'compare') entry.headingKey = state.headingKey;
     if (state.page === 'find') entry.query = state.findQuery ?? '';
     if (state.page === 'document') Object.assign(entry, { ref: state.docRef, target: state.docTarget ?? {} });
     return entry;
@@ -241,7 +276,7 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     if (entry.page === 'document') await openDocument(entry.ref, entry.target, { record: false });
     else {
       show(entry.page);
-      if (entry.page === 'headings' && entry.headingKey && entry.headingKey !== state.headingKey)
+      if (entry.page === 'compare' && entry.headingKey && entry.headingKey !== state.headingKey)
         await showHeading(entry.headingKey);
       if (entry.page === 'find' && (entry.query ?? '') !== (state.findQuery ?? '')) {
         q('find-query').value = entry.query ?? '';
@@ -289,6 +324,12 @@ export function createBrowseView(root, { history: shared = null } = {}) {
       const b = button('outline-link', e.title, testid);
       b.dataset.section = String(e.sectionIndex);
       b.dataset.level = String(e.level);
+      // One entry for the parts the splitter cut by page: its page range, and it lights for any part.
+      if (e.parts?.length > 1) {
+        b.dataset.parts = e.parts.join(' ');
+        const range = placeLabel(e.page, e.pageEnd, doc.title, e.pageLabel, e.pageLabelEnd);
+        if (range) b.append(el('span', 'outline-pages', range));
+      }
       b.addEventListener('click', () => openDocument({ id: doc.id }, { sectionIndex: e.sectionIndex }));
       li.append(b);
       if (e.children?.length) li.append(outlineList(e.children, doc, testid));
@@ -323,7 +364,11 @@ export function createBrowseView(root, { history: shared = null } = {}) {
           if (part) meta.append(el('span', '', part));
         }
         row.append(open, meta);
+        const node = state.graph?.nodes.find((n) => n.id === d.id);
+        if (node) row.append(typeControl(node));
         li.append(row);
+        const sum = summaryLine(d.id);
+        if (sum) li.append(sum);
         if (d.outline.length) {
           const expanded = state.expanded.has(d.id);
           const toggle = button('link outline-toggle', expanded ? 'Hide outline' : 'Show outline', 'library-toggle');
@@ -347,15 +392,102 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     );
   }
 
+  /**
+   * The type of a document: its label, with (detected) after it when detection chose it and alone
+   * when the owner set it; a dropdown of the profile's types lies over the label, its first entry
+   * Detected: <type> going back to detection. The wording is the same in every profile.
+   */
+  function typeControl(node) {
+    const wrap = el('label', 'doc-type');
+    wrap.append(el('span', 'visually-hidden', `Type of ${node.title}`));
+    const types = state.graph.profile.types;
+    const label = (name) => types.find((t) => t.name === name)?.label || name;
+    const text = el('span', 'doc-type-text', node.overridden ? label(node.type) : `${label(node.type)} (detected)`);
+    text.dataset.testid = 'library-type-label';
+    text.setAttribute('aria-hidden', 'true');
+    wrap.append(text);
+    const select = el('select');
+    select.dataset.testid = 'library-type';
+    const auto = el('option', '', `Detected: ${label(node.detectedType)}`);
+    auto.value = '';
+    select.append(auto, ...types.map((t) => Object.assign(el('option', '', t.label), { value: t.name })));
+    select.value = node.overridden ? node.type : '';
+    const color = types.find((t) => t.name === node.type)?.color;
+    if (color) wrap.style.setProperty('--type-color', color);
+    wrap.dataset.overridden = String(node.overridden);
+    select.addEventListener('change', async () => {
+      try {
+        state.graph = (await graphBridge.setType(node.id, select.value || null)) || state.graph;
+        renderLibrary();
+      } catch (e) {
+        console.warn('[browse] type not saved', e.message);
+      }
+    });
+    wrap.append(select);
+    return wrap;
+  }
+
+  /** The document summary line, Summary pending while it is being made; nothing on a tier without them. */
+  function summaryLine(id) {
+    const s = state.graph?.summaries?.[id];
+    if (!s || s.state === 'off' || s.state === 'none') return null;
+    const p = el(
+      'p',
+      `doc-item-summary${s.state === 'pending' ? ' pending' : ''}`,
+      s.state === 'ok' ? s.text : 'Summary pending',
+    );
+    p.dataset.testid = 'library-summary';
+    return p;
+  }
+
+  function renderFamilies() {
+    const questions = state.graph?.questions || [];
+    const box = q('family-questions');
+    box.hidden = questions.length === 0;
+    const title = (id) => state.graph.nodes.find((n) => n.id === id)?.title || id;
+    q('family-list').replaceChildren(
+      ...questions.map((f) => {
+        const li = el('li', 'family-item');
+        li.dataset.testid = 'family-item';
+        li.append(el('span', 'family-pair', `${title(f.a)} and ${title(f.b)}`));
+        const yes = button('open', 'Same document', 'family-same');
+        const no = button('link', 'Different', 'family-different');
+        const answer = async (same) => {
+          try {
+            state.graph = (await graphBridge.answerFamily(f.a, f.b, same)) || state.graph;
+            renderFamilies();
+          } catch (e) {
+            console.warn('[browse] family answer not saved', e.message);
+          }
+        };
+        yes.addEventListener('click', () => answer(true));
+        no.addEventListener('click', () => answer(false));
+        li.append(yes, no);
+        return li;
+      }),
+    );
+  }
+
+  async function loadGraph() {
+    if (!graphBridge) return;
+    try {
+      state.graph = await graphBridge.data();
+    } catch (e) {
+      console.warn('[browse] graph data failed', e.message);
+    }
+  }
+
   async function loadLibrary() {
     if (!bridge) {
       q('library-count').textContent = 'Browsing is available in the AskFiles app.';
       return;
     }
     try {
-      state.documents = await bridge.documents();
+      const [documents] = await Promise.all([bridge.documents(), loadGraph()]);
+      state.documents = documents;
       state.loaded = true;
       renderLibrary();
+      renderFamilies();
     } catch (e) {
       q('library-count').textContent = `The library could not be read: ${e.message}`;
     }
@@ -387,6 +519,9 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     q('doc-error').hidden = true;
     q('doc-outline').replaceChildren(...outlineList(doc.outline, doc, 'doc-outline-entry').children);
     q('doc-outline-empty').hidden = doc.outline.length > 0;
+    // Titles shown so far, so a part the splitter cut by page or after a table (T (page 4),
+    // T (continued)) does not repeat its parent's title: it shows its page marker only.
+    const shown = new Set();
     q('doc-sections').replaceChildren(
       ...doc.sections.map((s) => {
         const sec = el('section', 'doc-section');
@@ -396,23 +531,107 @@ export function createBrowseView(root, { history: shared = null } = {}) {
         for (const t of s.lead) {
           const lead = el(headingTag(Math.max(1, s.level - 1)), 'doc-heading doc-lead', t);
           sec.append(lead);
+          shown.add(t.trim());
         }
-        if (s.level > 0) {
-          const h = el(headingTag(s.level), 'doc-heading', s.title);
+        const part = PAGE_PART.test(s.title);
+        const base = part ? s.title.replace(PAGE_PART, '').trim() : s.title;
+        if (part) sec.dataset.part = 'true';
+        if (s.level > 0 && !(part && shown.has(base))) {
+          // A part whose parent title was not shown yet gets the parent title once, without the suffix.
+          const h = el(headingTag(part ? Math.max(1, s.level - 1) : s.level), 'doc-heading', base);
           h.dataset.testid = 'doc-section-title';
           sec.append(h);
         }
+        shown.add(base.trim());
         const place = placeLabel(s.pageStart, s.pageEnd, doc.title, s.pageLabelStart, s.pageLabelEnd);
         if (place) {
           const p = el('p', 'doc-page', place);
           p.dataset.testid = 'doc-section-page';
           sec.append(p);
         }
-        sec.append(...paragraphs(s.text));
+        const summary = el('p', 'doc-section-summary');
+        summary.dataset.testid = 'doc-section-summary';
+        summary.hidden = true;
+        sec.append(summary, ...paragraphs(s.text));
         return sec;
       }),
     );
+    void loadDocSummary(doc.id);
   }
+
+  /** The summary, the section summaries and the button of the open document. */
+  function renderDocSummary() {
+    const v = state.docSummary;
+    const doc = state.doc;
+    const line = q('doc-summary');
+    const actions = q('doc-summary-actions');
+    if (!v || !doc || v.documentId !== doc.id || v.state === 'off') {
+      line.hidden = true;
+      actions.hidden = true;
+      for (const n of root.querySelectorAll('.doc-section-summary')) n.hidden = true;
+      return;
+    }
+    line.hidden = v.state === 'none';
+    line.classList.toggle('pending', v.state === 'pending');
+    line.replaceChildren();
+    if (v.state === 'ok') {
+      line.append(document.createTextNode(`${v.text} `));
+      // Cited to the section it was made from, like an Ask sentence.
+      if (v.sectionIndex) {
+        const cite = button('cite', 'source', 'doc-summary-cite');
+        cite.title = 'The section this summary was made from';
+        cite.addEventListener('click', () => scrollToSection({ sectionIndex: v.sectionIndex }));
+        line.append(cite);
+      }
+    } else if (v.state === 'pending') line.textContent = 'Summary pending';
+    for (const n of root.querySelectorAll('.doc-section')) {
+      const sum = n.querySelector('.doc-section-summary');
+      const text = v.sections?.[n.dataset.section];
+      sum.hidden = !text;
+      sum.textContent = text || '';
+    }
+    actions.hidden = false;
+    const b = q('doc-summarize-sections');
+    const stateText = q('doc-summary-state');
+    if (v.sectionsMissing === 0) {
+      b.hidden = true;
+      stateText.textContent = Object.keys(v.sections || {}).length ? 'Every section is summarized.' : '';
+    } else if (v.sectionsWanted && v.sectionsPending > 0) {
+      b.hidden = true;
+      stateText.textContent = `Summarizing sections, ${v.sectionsPending} left`;
+    } else {
+      b.hidden = false;
+      const mins = v.estimateMinutes || 1;
+      b.textContent = `Summarize each section (about ${mins} ${mins === 1 ? 'minute' : 'minutes'})`;
+      stateText.textContent = '';
+    }
+  }
+
+  async function loadDocSummary(id) {
+    if (!summariesBridge) return;
+    try {
+      const v = await summariesBridge.document(id);
+      if (state.doc?.id !== id) return;
+      state.docSummary = v;
+      renderDocSummary();
+    } catch (e) {
+      console.warn('[browse] summary failed', e.message);
+    }
+  }
+
+  q('doc-summarize-sections').addEventListener('click', async () => {
+    const doc = state.doc;
+    if (!doc || !summariesBridge) return;
+    try {
+      const v = await summariesBridge.requestSections(doc.id);
+      if (v && state.doc?.id === doc.id) {
+        state.docSummary = v;
+        renderDocSummary();
+      }
+    } catch (e) {
+      console.warn('[browse] section summaries not started', e.message);
+    }
+  });
 
   function scrollToSection(target) {
     const doc = state.doc;
@@ -422,7 +641,8 @@ export function createBrowseView(root, { history: shared = null } = {}) {
       index = doc.sections.find((s) => s.title === target.sectionTitle)?.index;
     }
     for (const b of root.querySelectorAll('.sidebar-doc .outline-link')) {
-      b.classList.toggle('active', Number(b.dataset.section) === index);
+      const parts = b.dataset.parts ? b.dataset.parts.split(' ').map(Number) : [Number(b.dataset.section)];
+      b.classList.toggle('active', parts.includes(index));
     }
     const sec = root.querySelector(`.doc-section[data-section="${index}"]`);
     for (const s of root.querySelectorAll('.doc-section.target')) s.classList.remove('target');
@@ -488,25 +708,25 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     }
   });
 
-  // --- headings ------------------------------------------------------------------------------
+  // --- compare -------------------------------------------------------------------------------
 
   let headingGroups = [];
 
   function renderHeadings() {
     // The shell lists only headings found in two or more documents; the filter keeps that true here too.
     const groups = headingGroups.filter((g) => g.documents > 1);
-    const empty = q('headings-empty');
+    const empty = q('compare-empty');
     empty.hidden = groups.length > 0;
     empty.textContent = 'No heading appears in more than one document yet.';
-    q('headings-list').replaceChildren(
+    q('compare-list').replaceChildren(
       ...groups.map((g) => {
         const li = el('li');
-        const b = button('heading-item', '', 'heading-item');
+        const b = button('compare-item', '', 'compare-item');
         b.dataset.key = g.key;
         b.classList.toggle('active', g.key === state.headingKey);
         b.append(
-          el('span', 'heading-label', g.label),
-          el('span', 'heading-count', g.documents === 1 ? '1 document' : `${g.documents} documents`),
+          el('span', 'compare-label', g.label),
+          el('span', 'compare-count', g.documents === 1 ? '1 document' : `${g.documents} documents`),
         );
         b.addEventListener('click', () => showHeading(g.key));
         li.append(b);
@@ -521,16 +741,16 @@ export function createBrowseView(root, { history: shared = null } = {}) {
       headingGroups = await bridge.headings(null);
       renderHeadings();
     } catch (e) {
-      q('headings-empty').textContent = `The headings could not be read: ${e.message}`;
-      q('headings-empty').hidden = false;
+      q('compare-empty').textContent = `The headings could not be read: ${e.message}`;
+      q('compare-empty').hidden = false;
     }
   }
 
   async function showHeading(key) {
     state.headingKey = key;
-    if (state.page === 'headings') history.replace({ headingKey: key });
-    for (const b of root.querySelectorAll('.heading-item')) b.classList.toggle('active', b.dataset.key === key);
-    const detail = q('headings-detail');
+    if (state.page === 'compare') history.replace({ headingKey: key });
+    for (const b of root.querySelectorAll('.compare-item')) b.classList.toggle('active', b.dataset.key === key);
+    const detail = q('compare-detail');
     let group = null;
     try {
       [group] = await bridge.headings(key);
@@ -542,8 +762,8 @@ export function createBrowseView(root, { history: shared = null } = {}) {
       detail.replaceChildren(el('p', 'browse-empty', 'This heading is no longer in your documents.'));
       return;
     }
-    const title = el('h2', 'headings-title', group.label);
-    title.dataset.testid = 'headings-title';
+    const title = el('h2', 'compare-title', group.label);
+    title.dataset.testid = 'compare-title';
     const columns = el('div', 'compare');
     for (const e of group.entries) {
       const card = el('article', 'compare-card');
@@ -650,6 +870,48 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     }
   }
 
+  // --- graph -----------------------------------------------------------------------------------
+
+  const graphPage = createGraphPage(q('graph-root'), {
+    getData: async () => {
+      if (!graphBridge) return null;
+      state.graph = await graphBridge.data();
+      return state.graph;
+    },
+    onOpenDocument: (id, target) => openDocument({ id }, target || {}),
+    onOpenHeading: (key) =>
+      history.navigate(() => {
+        show('compare');
+        void showHeading(key);
+        return { view: 'browse', page: 'compare', headingKey: key };
+      }),
+  });
+
+  if (graphBridge) {
+    graphBridge.onChange(async () => {
+      await loadGraph();
+      if (state.loaded) {
+        renderLibrary();
+        renderFamilies();
+      }
+      void graphPage.refresh();
+    });
+  }
+  if (summariesBridge) {
+    let summaryTimer = null;
+    summariesBridge.onEvent((e) => {
+      if (e.type !== 'changed') return;
+      // Summaries arrive one by one; the pages refresh once a burst has passed.
+      clearTimeout(summaryTimer);
+      summaryTimer = setTimeout(async () => {
+        await loadGraph();
+        if (state.loaded) renderLibrary();
+        if (state.graph) graphPage.updateSummaries(state.graph.summaries);
+        if (state.doc && e.ids.includes(state.doc.id)) void loadDocSummary(state.doc.id);
+      }, 250);
+    });
+  }
+
   if (watcher) {
     watcher.onStatus(applyStatus);
     watcher
@@ -661,5 +923,13 @@ export function createBrowseView(root, { history: shared = null } = {}) {
   renderState();
   show('library');
   renderBack();
-  return { show, openDocument, current, restore, scrollTop: () => content.scrollTop, ready: () => state.loaded };
+  return {
+    show,
+    openDocument,
+    current,
+    restore,
+    scrollTop: () => content.scrollTop,
+    ready: () => state.loaded,
+    graphPage,
+  };
 }

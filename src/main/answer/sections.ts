@@ -33,6 +33,8 @@ function outlineChain(entries: OutlineEntry[], s: BrowseSection, above: string[]
   for (const e of entries) {
     const chain = [...above, e.title];
     if (e.sectionIndex === s.index && e.title === s.title) return chain;
+    // A part folded into its section's entry: the chain the unfolded outline gave, entry then part.
+    if (e.parts?.includes(s.index) && e.title !== s.title) return [...chain, s.title];
     const deeper = outlineChain(e.children, s, chain);
     if (deeper) return deeper;
   }

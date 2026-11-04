@@ -12,7 +12,7 @@ import {
 } from '../sections/index.js';
 import type { Section } from '../sections/index.js';
 import type { OcrPage } from './ocr.js';
-import type { Splitter } from './types.js';
+import type { SplitStats, Splitter } from './types.js';
 
 /** Same strategy name the evaluation harness uses (scripts/eval/config.ts), so split keys match. */
 export const SPLIT_STRATEGY = 'heading';
@@ -107,8 +107,20 @@ export function sectionSplitter(o: {
   });
   return {
     splitKey,
-    async split(filePath) {
-      return (await splitWithOcr(filePath, o)).chunks;
+    async split(filePath, stats?: SplitStats) {
+      const ocr: OcrFn | undefined =
+        o.ocr &&
+        (async (file, pages) => {
+          const t0 = Date.now();
+          try {
+            return await o.ocr!(file, pages);
+          } finally {
+            if (stats) stats.ocrMs += Date.now() - t0;
+          }
+        });
+      const r = await splitWithOcr(filePath, { ...o, ocr });
+      if (stats) stats.ocrPages += r.parsed.needsOcr ? r.parsed.pages : r.ocrReplaced.length;
+      return r.chunks;
     },
   };
 }

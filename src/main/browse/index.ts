@@ -1,16 +1,18 @@
+import path from 'node:path';
 import { readSectionDocument, type FileEvent, type FileRecord } from '../watcher/index.js';
 import type { BrowseIndex } from './browse-index.js';
 import type { StoredChunk } from './build.js';
 
 export { BrowseIndex } from './browse-index.js';
-export type { BrowseIndexOptions } from './browse-index.js';
+export type { BrowseChange, BrowseIndexOptions } from './browse-index.js';
 export { buildIdentities, mentionedDocuments, namedFileGroups } from './identifiers.js';
 export type { FileIdentity, Identifier } from './identifiers.js';
 export { buildDocument, buildOutline, documentId, splitHead } from './build.js';
 export type { StoredChunk } from './build.js';
 export { normalizeHeading } from './normalize.js';
 export { idf, rankSections, sectionFrequency } from './rank.js';
-export type { FoldedSection, RankedSection } from './rank.js';
+export type { FoldedSection, KeywordOptions, RankedSection } from './rank.js';
+export { porterStem, stemFolded } from './stem.js';
 export { fold, markRanges, matchTier, queryTerms, snippetOf } from './search.js';
 export * from './types.js';
 
@@ -32,8 +34,10 @@ export function followWatcher(index: BrowseIndex, watcher: WatcherLike, log: (ms
       if (e.outcome === 'removed') index.remove(e.path);
       else if (e.outcome === 'indexed' || e.outcome === 'unchanged') {
         const rec = watcher.file(e.path);
+        const t0 = Date.now();
         if (rec) index.update(rec);
         else index.remove(e.path);
+        if (e.outcome === 'indexed') log(`timing ${path.basename(e.path)}: browse index ${Date.now() - t0} ms`);
       }
     } catch (err) {
       // The browse view must never stop the watcher; the next sync repairs the entry.

@@ -2,9 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FileRecord } from '../watcher/index.js';
-import { buildDocument, documentId, type StoredChunk } from './build.js';
+import { detectKind } from '../graph/kinds.js';
+import { buildDocument, buildOutline, documentId, PAGE_PART, type StoredChunk } from './build.js';
+import { normalizeHeading } from './normalize.js';
 import { buildIdentities, type FileIdentity } from './identifiers.js';
-import { rankSections, sectionFrequency, type FoldedSection, type RankedSection } from './rank.js';
+import { rankSections, sectionFrequency, type FoldedSection, type KeywordOptions, type RankedSection } from './rank.js';
+import { stemFolded } from './stem.js';
 import { fold, markRanges, matchesOf, matchTier, queryTerms, snippetOf } from './search.js';
 import type {
   BrowseDocument,
@@ -30,6 +33,13 @@ export interface BrowseIndexOptions {
 /** Matching sections returned at most per search; more are counted in total only. */
 const SEARCH_LIMIT = 200;
 
+/**
+ * A change to the index: a document built again (sections true when its text was read again, not
+ * only its size or time), a document dropped, or the end of a sync or load.
+ */
+export type BrowseChange =
+  { type: 'update'; id: string; sections: boolean } | { type: 'remove'; id: string } | { type: 'sync' };
+
 /** The file identities (identifiers.ts), beside the document files; load() skips it. */
 const IDENTITIES_FILE = 'identifiers.json';
 
@@ -43,10 +53,13 @@ export class BrowseIndex {
   private readonly docs = new Map<string, BrowseDocument>();
   /** Folded title and text per section, built on the first search after a change. */
   private readonly folded = new Map<string, string[]>();
+  /** The folded sections with English words stemmed (keywordStemming), built on first use. */
+  private readonly stemmed = new Map<string, string[]>();
   /** Rebuilt after any document changed; null until then. */
   private identityList: FileIdentity[] | null = null;
   private readonly root: string | undefined;
   private readonly log: (msg: string) => void;
+  private readonly listeners = new Set<(c: BrowseChange) => void>();
 
   constructor(private readonly o: BrowseIndexOptions) {
     this.log = o.log ?? ((msg) => console.log(`[browse] ${msg}`));
@@ -62,10 +75,27 @@ export class BrowseIndex {
     }
   }
 
+  /** Calls listener after every change; returns the unsubscribe function. A throwing listener is logged. */
+  onChange(listener: (c: BrowseChange) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  private emit(c: BrowseChange): void {
+    for (const l of this.listeners) {
+      try {
+        l(c);
+      } catch (e) {
+        this.log(`change listener failed: ${(e as Error).message}`);
+      }
+    }
+  }
+
   /** Reads every stored document. Unreadable files are skipped; the next sync rebuilds them. */
   load(): void {
     this.docs.clear();
     this.folded.clear();
+    this.stemmed.clear();
     let names: string[];
     try {
       names = fs.readdirSync(this.o.dir).filter((n) => n.endsWith('.json') && n !== IDENTITIES_FILE);
@@ -75,14 +105,25 @@ export class BrowseIndex {
     }
     for (const name of names) {
       try {
-        const doc = JSON.parse(fs.readFileSync(path.join(this.o.dir, name), 'utf8')) as BrowseDocument;
+        const stored = JSON.parse(fs.readFileSync(path.join(this.o.dir, name), 'utf8')) as BrowseDocument;
+        // The outline comes from the sections each time, so files stored before page parts folded
+        // into one entry show the folded outline too, with no reindex.
+        const doc =
+          Array.isArray(stored?.sections) && stored.sections.every((s) => Array.isArray(s?.lead))
+            ? { ...stored, outline: buildOutline(stored.sections) }
+            : stored;
         // Older versions lack paths, labels or sub-chunks; skipped here, the next sync rebuilds them.
-        if (doc?.version === 3 && typeof doc.id === 'string' && Array.isArray(doc.sections)) this.docs.set(doc.id, doc);
+        if (doc?.version === 3 && typeof doc.id === 'string' && Array.isArray(doc.sections)) {
+          // Stored before kinds existed: detected now and written back, so it happens once.
+          if (!doc.kind) this.store({ ...doc, kind: detectKind(doc) }, { notify: false });
+          else this.docs.set(doc.id, doc);
+        }
       } catch (e) {
         this.log(`skipped ${name}: ${(e as Error).message}`);
       }
     }
     this.log(`loaded ${this.docs.size} documents`);
+    this.emit({ type: 'sync' });
   }
 
   /** Makes the index match the watcher's records: builds what is new or changed, drops the rest. */
@@ -102,6 +143,7 @@ export class BrowseIndex {
     }
     this.log(`sync: ${records.length} files, ${built} built, ${dropped} dropped`);
     this.identities();
+    this.emit({ type: 'sync' });
   }
 
   /**
@@ -120,17 +162,22 @@ export class BrowseIndex {
       old.relPath === relPath
     ) {
       if (old.size !== rec.size || old.mtimeMs !== rec.mtimeMs) {
-        this.store({ ...old, size: rec.size, mtimeMs: rec.mtimeMs });
+        this.store({ ...old, size: rec.size, mtimeMs: rec.mtimeMs }, { sections: false });
       }
       return false;
     }
-    this.store(buildDocument(rec, { root: this.root, readChunk: this.o.readChunk }));
+    this.store(buildDocument(rec, { root: this.root, readChunk: this.o.readChunk }), { sections: true });
     return true;
   }
 
   /** Drops a file the watcher removed. */
   remove(filePath: string): void {
     this.drop(documentId(filePath));
+  }
+
+  /** Every document with its sections, sorted by shown path; for the graph and the summaries. */
+  allDocuments(): BrowseDocument[] {
+    return [...this.docs.values()].sort((a, b) => a.relPath.localeCompare(b.relPath));
   }
 
   listDocuments(): DocumentSummary[] {
@@ -168,22 +215,42 @@ export class BrowseIndex {
   headings(o: { key?: string | null; minDocuments?: number } = {}): HeadingGroup[] {
     const groups = new Map<string, HeadingEntry[]>();
     for (const d of this.docs.values()) {
+      // Parts the splitter cut from one section (T (page N), T (continued)) merge into the entry of
+      // T, so a heading appears once per section and its card holds every part's text in order.
+      const open = new Map<string, HeadingEntry>();
       for (const s of d.sections) {
-        if (!s.heading || (o.key && s.heading !== o.key)) continue;
+        const part = PAGE_PART.test(s.title);
+        const title = part ? s.title.replace(PAGE_PART, '').trim() : s.title;
+        const key = part ? normalizeHeading(title) : s.heading;
+        if (!key || (o.key && key !== o.key)) continue;
+        const owner = part ? open.get(key) : undefined;
+        if (owner) {
+          if (s.pageStart !== null && owner.pageStart === null) {
+            owner.pageStart = s.pageStart;
+            owner.pageLabelStart = s.pageLabelStart;
+          }
+          if (s.pageEnd !== null || s.pageStart !== null) {
+            owner.pageEnd = s.pageEnd ?? s.pageStart;
+            owner.pageLabelEnd = s.pageLabelEnd ?? s.pageLabelStart;
+          }
+          if (o.key) owner.text = [owner.text, s.text].filter(Boolean).join('\n\n');
+          continue;
+        }
         const entry: HeadingEntry = {
           documentId: d.id,
           documentTitle: d.title,
           relPath: d.relPath,
           url: d.url,
           sectionIndex: s.index,
-          title: s.title,
+          title,
           pageStart: s.pageStart,
           pageEnd: s.pageEnd,
           pageLabelStart: s.pageLabelStart,
           pageLabelEnd: s.pageLabelEnd,
           ...(o.key ? { text: s.text } : {}),
         };
-        groups.set(s.heading, [...(groups.get(s.heading) ?? []), entry]);
+        open.set(key, entry);
+        groups.set(key, [...(groups.get(key) ?? []), entry]);
       }
     }
     return [...groups.entries()]
@@ -289,14 +356,31 @@ export class BrowseIndex {
     return n;
   }
 
-  /** Number of sections whose folded title or text contains the folded term. */
-  sectionFrequency(term: string): number {
-    return sectionFrequency(this.foldedSections(), fold(term));
+  /**
+   * Number of sections whose folded title or text contains the folded term. With stem, English
+   * words on both sides are matched by their Porter stem, as whole words (stem.ts).
+   */
+  sectionFrequency(term: string, o: KeywordOptions = {}): number {
+    return o.stem
+      ? sectionFrequency(this.foldedSections(true), stemFolded(fold(term)))
+      : sectionFrequency(this.foldedSections(), fold(term));
   }
 
-  /** BM25 over all sections for terms (any term matches); see rank.ts. */
-  rankSections(terms: string[], limit: number): RankedSection[] {
-    return rankSections(this.foldedSections(), terms.map(fold), limit);
+  /**
+   * BM25 over all sections for terms (any term matches); see rank.ts. With stem, matched by stems
+   * as above; each hit still lists the terms as they were given.
+   */
+  rankSections(terms: string[], limit: number, o: KeywordOptions = {}): RankedSection[] {
+    if (!o.stem) return rankSections(this.foldedSections(), terms.map(fold), limit);
+    const back = new Map<string, string>();
+    for (const t of terms) {
+      const k = stemFolded(fold(t));
+      if (!back.has(k)) back.set(k, fold(t));
+    }
+    return rankSections(this.foldedSections(true), [...back.keys()], limit).map((r) => ({
+      ...r,
+      terms: r.terms.map((t) => back.get(t) ?? t),
+    }));
   }
 
   /** One section of a document by its 1-based index. */
@@ -306,10 +390,10 @@ export class BrowseIndex {
     return document && section ? { document, section } : null;
   }
 
-  private foldedSections(): FoldedSection[] {
+  private foldedSections(stem = false): FoldedSection[] {
     const out: FoldedSection[] = [];
     for (const d of [...this.docs.values()].sort((a, b) => a.relPath.localeCompare(b.relPath))) {
-      const hay = this.foldedOf(d);
+      const hay = stem ? this.stemmedOf(d) : this.foldedOf(d);
       d.sections.forEach((s, i) => out.push({ documentId: d.id, sectionIndex: s.index, folded: hay[i]! }));
     }
     return out;
@@ -324,9 +408,19 @@ export class BrowseIndex {
     return f;
   }
 
-  private store(doc: BrowseDocument): void {
+  private stemmedOf(d: BrowseDocument): string[] {
+    let f = this.stemmed.get(d.id);
+    if (!f) {
+      f = this.foldedOf(d).map(stemFolded);
+      this.stemmed.set(d.id, f);
+    }
+    return f;
+  }
+
+  private store(doc: BrowseDocument, o: { sections?: boolean; notify?: boolean } = {}): void {
     this.docs.set(doc.id, doc);
     this.folded.delete(doc.id);
+    this.stemmed.delete(doc.id);
     this.identityList = null;
     fs.mkdirSync(this.o.dir, { recursive: true });
     const file = path.join(this.o.dir, `${doc.id}.json`);
@@ -334,13 +428,16 @@ export class BrowseIndex {
     const tmp = `${file}.tmp-${process.pid}`;
     fs.writeFileSync(tmp, JSON.stringify(doc));
     fs.renameSync(tmp, file);
+    if (o.notify !== false) this.emit({ type: 'update', id: doc.id, sections: o.sections ?? true });
   }
 
   private drop(id: string): void {
-    this.docs.delete(id);
+    const had = this.docs.delete(id);
     this.folded.delete(id);
+    this.stemmed.delete(id);
     this.identityList = null;
     fs.rmSync(path.join(this.o.dir, `${id}.json`), { force: true });
+    if (had) this.emit({ type: 'remove', id });
   }
 }
 
@@ -356,6 +453,7 @@ function summary(d: BrowseDocument): DocumentSummary {
     indexedAt: d.indexedAt,
     outline: d.outline,
     sectionCount: d.sections.length,
+    ...(d.kind ? { kind: d.kind } : {}),
   };
 }
 

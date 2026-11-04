@@ -71,6 +71,9 @@ src/main/libraries.ts (LibraryManager). A library is one upstream workspace plus
 | index.json | The watcher's records: per file its hash, shown path, source id and section records (title, index, level, full heading path, pages, printed page labels, document location) |
 | browse/ | The browse index, one JSON file per document |
 | files/ | Copies of files added with Add files or by dropping files; the library's own, deleted with it |
+| graph.json | The library graph (docs/graph.md), rebuilt after browse changes |
+| summaries/ | Document and section summaries, one JSON file per document (docs/summaries.md) |
+| export/ | The Markdown export of the summaries, an Obsidian-compatible folder |
 
 Section documents go to `STORAGE_DIR/documents/askfiles/<id>/`. The default library, All files (id all-files, workspace askfiles-library as before Session K), exists from the first launch and cannot be renamed or deleted. Others get an id lib-xxxxxx and a workspace askfiles-<id>.
 
@@ -92,7 +95,9 @@ Section documents go to `STORAGE_DIR/documents/askfiles/<id>/`. The default libr
   "setupCompletedAt": "2026-10-30T10:00:00.000Z",
   "libraries": [
     { "id": "all-files", "name": "All files", "workspaceSlug": "askfiles-library",
-      "folders": [{ "id": "folder-1", "path": "/Users/anna/Documents", "addedAt": "..." }], "createdAt": "..." }
+      "folders": [{ "id": "folder-1", "path": "/Users/anna/Documents", "addedAt": "..." }], "createdAt": "...",
+      "profile": "legal-finance", "typeOverrides": { "legal-finance": { "<document id>": "contract" } },
+      "familyDecisions": { "<id>|<id>": true }, "sectionSummaries": false }
   ],
   "currentLibrary": "all-files",
   "settings": { "answerScope": "balanced", "answerModel": "better", "contextLength": null }
@@ -142,6 +147,11 @@ One preload script, src/main/preload.ts, for every window. Windows run with cont
 | `askfiles.answer.onEvent(cb)` | Events of the asking page's runs, each with the run `id`: `stage` (retrieving, answering), `sources` (the numbered sections the model reads), `delta` (text and citation parts), `trace` (developer mode only), `done` (`result`: text, notFound, claims, cited, considered, nearest, timings), `error` |
 | `askfiles.answer.cancel(id)` | Stops the run |
 | `askfiles.answer.developer()`, `.setOverrides(o)`, `.saveCase(c)` | Developer panel, only with ASKFILES_DEVELOPER=1: last trace and live section count and rerank floor for the next question; Save as eval case appends to `<dataDir>/eval-questions.csv` (ASKFILES_EVAL_QUESTIONS overrides) |
+| `askfiles.graph.data()`, `.onChange(cb)` | The current library graph (docs/graph.md) with each document's summary state; onChange after a rebuild |
+| `askfiles.graph.profiles()`, `.setType(id, type)`, `.answerFamily(a, b, same)` | The profiles (docs/profiles.md); a document's type override (null for Detected, back to detection); a family answer (null forgets it) |
+| `askfiles.libraries.create(name, profile)`, `.setProfile(profile)` | A new library's profile; the current library's profile, which rebuilds types and edges, not the index |
+| `askfiles.summaries.status()`, `.onEvent(cb)`, `.pause()`, `.resume()` | The summary queue (docs/summaries.md): Summaries n of m and why it waits; events `status` and `changed` (document ids) |
+| `askfiles.summaries.document(id)`, `.requestSections(id)`, `.setLibrary(on)`, `.openExport()` | A document's summary, section summaries and estimate; its section summaries on request; the library switch; the export folder in Finder |
 | `askfiles.app.info()` | `{ name, version }` for the About page |
 | `askfiles.app.pageReady(info)` | Logs `[main] page ready ask connected=true documents=N`; the smoke test waits for it |
 | `window.shellConfig` | `{ baseUrl, apiKey, workspace, libraryId, libraryName, folder (always null), resolveSources, openSource }`, read once per page load; workspace is the current library's |
@@ -154,7 +164,7 @@ src/renderer/shared/topbar.js and topbar.css, mounted by the Ask page into `<hea
 
 ## Browse view
 
-The Ask and Browse switch in the top bar shows either view in the same page (src/renderer/ask/index.html); both stay in the page, so each keeps its state and nothing reloads. Browse (src/renderer/browse/view.js, also standalone at browse/index.html) has a fixed sidebar with Library, Headings, Find and, once a document is open, Document (labelled with the file name, its nested outline below it); only the content area scrolls, and each page keeps its scroll position. Library: every document, outline collapsed, sort by name or last change, indexing state. Headings: headings found in two or more documents; a heading shows that section from every document side by side. Find: keyword search, hits grouped by document and section (src/main/browse/search.ts): every word must occur in the section, and words in quotes ("annual leave", “年假 结转”) are one phrase that must occur as written. Sections where the words stand next to each other in the query's order come first, then sections with all words in one paragraph, then the rest; documents are ordered by their best section, and the ranking is done before the 200-hit limit cuts. The snippet is the stretch of the section where the words are densest. Document: sections in order, an anchor per section, the page and the printed page label when the PDF has one, Open original. Opening a document from any page, or Read section on the Ask page, always lands on Document and never changes the state of Library, Headings or Find.
+The Ask and Browse switch in the top bar shows either view in the same page (src/renderer/ask/index.html); both stay in the page, so each keeps its state and nothing reloads. Browse (src/renderer/browse/view.js, also standalone at browse/index.html) has a fixed sidebar with Library, Compare, Find, Graph (Session N, docs/graph.md) and, once a document is open, Document (labelled with the file name, its nested outline below it); only the content area scrolls, and each page keeps its scroll position. Library: every document, outline collapsed, sort by name or last change, indexing state. Compare (called Headings before 2026-11-04): its title with one line under it, The same heading across several files, shown side by side; the headings found in two or more documents, and a heading shows that section from every document side by side. Parts the splitter cut from one section (T (page N), T (continued)) merge into their parent: the heading appears once, and its card holds the parent section's full text, every part in order, with the page range. Cards show no summaries. Find: keyword search, hits grouped by document and section (src/main/browse/search.ts): every word must occur in the section, and words in quotes ("annual leave", “年假 结转”) are one phrase that must occur as written. Sections where the words stand next to each other in the query's order come first, then sections with all words in one paragraph, then the rest; documents are ordered by their best section, and the ranking is done before the 200-hit limit cuts. The snippet is the stretch of the section where the words are densest. Document: sections in order, an anchor per section, the page and the printed page label when the PDF has one, Open original. Opening a document from any page, or Read section on the Ask page, always lands on Document and never changes the state of Library, Headings or Find.
 
 Page history (src/renderer/shared/history.js): every move between Ask, the Browse pages and documents is an entry, with what it needs to come back as it was left: the scroll position, the heading selected, the words found, the document and section. Back at the top of the Browse sidebar, above Library (always shown, disabled when there is nothing to go back to), and Cmd+[ anywhere return to the entry before; the Ask results stay as they were. Changing the library clears the history. The standalone browse page keeps a history of its own. Find results carry no label for their rank; the order is the ranking. No model and no server call: everything comes from the browse index.
 
@@ -164,16 +174,18 @@ The browse index (src/main/browse) is one JSON file per document in `<dataDir>/l
 | --- | --- |
 | `version`, `id`, `path`, `url`, `relPath`, `title` | 3 (files of other versions are rebuilt); the id; the file's path, file URL, shown path (linked folder's name and the path in it, or the added file's name) and file name |
 | `size`, `mtimeMs`, `hash`, `splitKey`, `indexedAt` | From the index.json record; hash and splitKey decide when the sections are read again |
-| `outline` | `{ title, level, sectionIndex, page, pageLabel, children }`, nested by heading level; a heading the splitter folded into the next section (a chapter heading right above its first subsection) gets an entry one level up pointing at that section; text before the first heading gets none |
+| `outline` | `{ title, level, sectionIndex, page, pageLabel, children }`, nested by heading level; a heading the splitter folded into the next section (a chapter heading right above its first subsection) gets an entry one level up pointing at that section; text before the first heading gets none. Parts the splitter cut from one section (titles ending in (page N), and the text after a table titled (continued)) fold into the entry of that section, which then also has `pageEnd`, `pageLabelEnd` and `parts` (the section index of every part, in order); the outline shows one entry with its page range and lights it for any part, while the Document page still renders every part in order. Built from the sections when a stored file loads, so older files show the folded outline with no reindex |
 | `sections` | `{ index, title, level, lead, heading, path, pageStart, pageEnd, pageLabelStart, pageLabelEnd, text, parts }`: parts is the sub-chunk bodies in order (version 3), which the answer pipeline assembles passages from; path is the full heading path from the section records; index is the sectionIndex of the section documents and search sources; text is the section's sub-chunks joined again, the heading lines the chunker put in front of each taken off; heading is the normalized key, empty for text before the first heading and for the Page N sections of a PDF without headings |
 
 Built from the index.json record and the section documents under STORAGE_DIR/documents, so it shows exactly the split that retrieval embeds, OCR text included. Kept current from the watcher's file events (indexed, unchanged, removed); after every watcher start, sync drops entries for files the watcher no longer has and builds missing ones. Loaded before the watcher starts, so the library shows during a long reconcile.
 
-The Headings page asks for headings found in two or more documents only (BrowseIndex.headings, minDocuments 2).
+The Compare page asks for headings found in two or more documents only (BrowseIndex.headings, minDocuments 2). On the Document page a part the splitter cut by page or after a table shows no title of its own, only its page marker (Page 5); the parent title appears once above the first part. The per-section summary lines stay at each part.
 
 Heading normalization (src/main/browse/normalize.ts, numbering prefixes from src/main/sections/headings.ts): NFKC, which turns full-width letters, digits and punctuation into half-width; lower case; numbering prefixes removed, repeatedly (1, 1., 1.2.3, 1), 1、, (1), (a), a), I., IV), Chapter 3, Section 2.1, Part II, Article 5, Appendix A, § 4, 第一章, 第12节, 第三条, 第二部分, 一、, (一)); then punctuation and symbols removed and whitespace collapsed. Number parts have at most three digits, so 2026 Budget keeps its year. A heading that is only numbering (第一章 alone) keeps it.
 
 Keyword search (src/main/browse/search.ts): the query is split at whitespace; each term, folded the same way (NFKC, lower case), must occur as a substring of the section title or text. No word boundaries, so Chinese matches inside a sentence. Documents with the most matches come first, sections in document order; at most 200 sections are returned, the total is always counted.
+
+While the current library is indexing, the Ask page's question box is off with one line, Reading new files, n left (Session N, docs/summaries.md). The Library page shows each document's type (Regulation (detected) when detection chose it, Regulation alone when the user set it; a click opens a dropdown of Detected: <type> and the types of the library's profile) and its summary, and asks about possible copies of one document; the Document page shows the summary, the section summaries and the Summarize each section button. The top bar shows Summaries n of m with Pause while the summary queue works, and the library menu holds Kind of documents, Summarize every section and Open Markdown export.
 
 ## Answer pipeline
 
@@ -201,11 +213,42 @@ Switches that change the single mode, each off in the presets until an eval roun
 
 The main log gets one line per question, without the question text: `[answer] 2 cited of 3 selected, 12 candidates, vector 45 ms, keyword 2 ms, rerank 640 ms, first token 900 ms, total 4100 ms`.
 
+## Indexing time
+
+The watcher logs one line per indexed file with the time per stage, and the browse follower one for the browse index:
+
+    [watcher] timing 01_Procurement_Regulations_2025.pdf: split 513 ms, ocr 0 ms, write 47 ms, embed 28128 ms, total 28688 ms, 328 sections
+    [browse] timing 01_Procurement_Regulations_2025.pdf: browse index 21 ms
+
+split is parsing and chunking without OCR; ocr the time in the OCR hook (zero when the OCR cache has the file); write the section documents written to the server's document store (the shell writes them directly, there is no upload request); embed the update-embeddings call and the workspace reads around it. The graph logs each build (`[graph] built ... in N ms`) and the summaries each job.
+
+Measured on 2026-11-04 with Reindex of the owner's English folder in the dev app (13 files with the one added file, 1311 sections; OCR cache moved aside so the scanned file was OCRed; qwen3 14B, bge-m3, M1 Max), before and after the fixes below:
+
+| Stage | Before | After |
+| --- | --- | --- |
+| Clearing the old index (Reindex only, before any file) | 289 s | 6 s |
+| Split (13 files) | 4.3 s | 3.9 s |
+| OCR (09_Scanned_Historical_Records.pdf, 26 garbled pages; no other file) | 19.2 s | 19.1 s |
+| Write section documents | 0.2 s | 0.2 s |
+| Embed (one update-embeddings call per file; upstream embeds each section document on its own) | 110.6 s | 113.4 s |
+| Browse index (13 updates) | 0.1 s | 0.1 s |
+| Graph | 14 builds, 1.1 s | 2 builds, 0.4 s |
+| Reindex call to indexing done | 427 s | 145 s |
+| Document summaries done, after the reindex | 497 s | 177 s |
+
+What the table showed, against the first suspects:
+
+- **Clearing.** Reindex unembeds every section first, and upstream deleted each document's vectors with its own LanceDB delete, one new table version each. patches/008-bulk-remove-documents.patch deletes them in batches. This was 68 percent of the reindex.
+- **Summaries between files.** Not seen: the indexing gate stayed closed through the batch and the first summary started after the last file. The queue's wait is for the whole batch (watcher pending counts settling, queued and running files). The Markdown export was written 2 s after every file, though, and writing it read the graph, which rebuilt it each time; the export and the graph now wait for the batch too (GraphService.setIndexing, SummaryService.setIndexing).
+- **One request per section.** The shell sends one update-embeddings request per file; inside it upstream embeds each section document with its own Ollama call and LanceDB add, about 85 ms per section. This is the same cost the eval harness pays (its embedding of the English corpus takes about the same two minutes) and is what remains; batching it means changing upstream's document embedding loop, not done here.
+- **OCR on good pages.** Not seen: only the scanned file's 26 garbled pages went to OCR.
+- **Graph and browse index per file.** The browse index has to take each file (1 to 22 ms); the graph now builds once per batch.
+
 ## OCR in the watcher
 
 A PDF with a text layer can still have garbled pages: a scan whose own OCR layer is poor. The PDF parser (src/main/sections/pdf.ts, pageQuality) measures each page: the share of non-space characters that are letters, digits or CJK, runs of three or more of one punctuation mark (contents leaders) left out, and the share of words that are plausible (any CJK, or two or more letters with at most an apostrophe, hyphen or period between them; numbers and punctuation-only tokens count for neither side). A page of at least 40 characters with either share below 0.85 is garbled. In a PDF with at least one garbled page, a page with fewer than 200 characters that draws an image is OCRed too: a scanned page whose layer lost most of its text. Thresholds from the owner's first corpus: no page of its eight digital PDFs (599 pages) went below 0.92 for characters or 0.88 for words; the scanned one goes down to 0.52 and 0.55. The splitter (src/main/watcher/splitter.ts, splitWithOcr, shared with the eval harness) OCRs those pages through the same per-page path as below, cached by file hash and page list, and parses the file again with their OCR text in place of the layer; headings from bookmarks still apply, and OCR lines are never taken for font-size headings. A page whose OCR finds nothing keeps its layer. The log says which pages were replaced: `[watcher] <file>: garbled text layer on pages 4, 7, 8; replaced with OCR: 4, 7, 8`.
 
-Long sections without sub-headings are split by page in the chunker (src/main/sections/chunk.ts, splitLongByPage): a section whose own text (up to the next heading of any level, so without sub-headings) is longer than three chunk maximums and spans more than one page becomes one sub-section per page, titled with the parent title and the page (Operational Procurement Matters (page 1)), one level down, the parent title kept as the first one's folded heading so the outline still shows it. A section followed by deeper sections is split too: the owner's nine-page cover section had sub-sections after it. SPLITTER_VERSION 3 makes every library reindex once.
+Long sections without sub-headings are split by page in the chunker (src/main/sections/chunk.ts, splitLongByPage): a section whose own text (up to the next heading of any level, so without sub-headings) is longer than three chunk maximums and spans more than one page becomes one sub-section per page, titled with the parent title and the page (Operational Procurement Matters (page 1)), one level down, the parent title kept as the first one's folded heading so the outline still shows it. A section followed by deeper sections is split too: the owner's nine-page cover section had sub-sections after it. SPLITTER_VERSION 3 makes every library reindex once. The outline folds the page parts back into one entry with the page range (browse/build.ts buildOutline).
 
 A PDF without a text layer is OCRed page by page (Session K): the page images are taken out of the PDF with pdfjs (no canvas; JPEG and CCITT decode in JavaScript, JBIG2 and JPEG 2000 with the WebAssembly decoders pdfjs-dist ships, loaded through wasmUrl from node_modules/pdfjs-dist/wasm; before 2026-10-31 that option was missing and JBIG2 scans gave no page images, unnoticed because the fixtures are JPEG), encoded as PNG (gray scans as 8-bit gray) and uploaded to the collector one page per upload without embedding, up to min(CPUs, 4) pages at once like the collector's own whole-file OCR; each text is kept and the collector's copy deleted. Every page becomes a section titled Page N with its real page number. Only when no page holds an image is the whole file sent as before, its text recorded as page 0. The result is cached by file hash in `<dataDir>/ocr-cache/<hash>.pages.json`. Languages: TARGET_OCR_LANG from the preset (eng,chi_sim), written into server/.env by the wizard. Measured in the cloud container (Linux x86_64, 4 vCPU): about 1.1 s for a 1240 by 700 page and about 9 s per A4 page at 300 dpi on one worker, 12.1 s for three A4 pages in parallel against 11.4 s for the old whole-file upload; not measured on a Mac.
 

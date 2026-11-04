@@ -186,6 +186,12 @@ const indexed = await until('the handbook to be indexed', SETUP_TIMEOUT, () => {
 log(
   `handbook.pdf indexed after ${indexed.seconds}s: ${indexed.value.sections.length} section(s), path ${indexed.value.path}`,
 );
+// The library graph (src/main/graph) is stored beside the browse index and lists the handbook.
+const graphFile = path.join(DATA, 'libraries', 'all-files', 'graph.json');
+const graphed = await until('the graph data to list the handbook', 60_000, () =>
+  (readJson(graphFile)?.nodes ?? []).some((n) => n.title === 'handbook.pdf') ? readJson(graphFile) : null,
+);
+log(`graph data lists ${graphed.value.nodes.map((n) => n.title).join(', ')}`);
 const ws = await fetch(`${api}/v1/workspace/${slug}`, { headers: { Authorization: `Bearer ${key}` } });
 if (!ws.ok) fail(`GET /v1/workspace/${slug} answered ${ws.status} with the stored key`);
 const wsBody = await ws.json();

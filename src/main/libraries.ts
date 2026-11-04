@@ -30,6 +30,10 @@ export interface LibraryView {
   /** Indexed files; for the current library live from the watcher, for others from index.json. */
   indexed: number;
   sources: SourceView[];
+  /** The profile id (src/main/graph/profiles.ts); the default when the record has none. */
+  profile: string;
+  /** The library switch for section summaries (docs/summaries.md). */
+  sectionSummaries: boolean;
 }
 
 export interface LibrariesView {
@@ -72,11 +76,13 @@ export interface LibraryManagerDeps {
   /** Deletes the library's section documents under STORAGE_DIR/documents. */
   removeDocuments(docsFolder: string): void;
   createWatcher(o: { roots: WatchRoot[]; dataDir: string; docsFolder: string; workspaceSlug: string }): WatcherLike;
-  createBrowse(o: { dir: string }): BrowseIndex;
+  createBrowse(o: { dir: string; libraryId: string }): BrowseIndex;
   /** Keeps the browse index current from the watcher's file events (browse/index.ts followWatcher). */
   followWatcher(browse: BrowseIndex, watcher: WatcherLike): void;
   onChange(view: LibrariesView): void;
   onStatus(status: LibraryStatus): void;
+  /** The profile a library without one uses, and the ids a library may choose. */
+  profiles?: { defaultId: string; ids: string[] };
   log?: (msg: string) => void;
   now?: () => Date;
 }
@@ -236,6 +242,8 @@ export class LibraryManager {
         isCurrent: l.id === s.currentLibrary,
         indexed: l.id === this.runningId && this.watcher ? this.watcher.status().indexed : this.indexedCount(l.id),
         sources: this.sourcesOf(l),
+        profile: this.profileOf(l),
+        sectionSummaries: l.sectionSummaries === true,
       })),
     };
   }
@@ -255,6 +263,13 @@ export class LibraryManager {
       this.startError ??
       (n ? (n === 1 ? `${base.unavailable[0]} is not available` : `${n} folders are not available`) : null);
     return { ...base, libraryId: lib.id, ...(error ? { error } : {}) };
+  }
+
+  /** The library's profile id: its own when it is still offered, else the default. */
+  profileOf(lib: LibraryRecord): string {
+    const p = this.d.profiles;
+    if (!p) return lib.profile ?? 'legal-finance';
+    return lib.profile && p.ids.includes(lib.profile) ? lib.profile : p.defaultId;
   }
 
   /** True when the library has no source at all: the pages show the empty state. */
@@ -345,7 +360,7 @@ export class LibraryManager {
     });
     watcher.on('status', () => this.d.onStatus(this.status()));
     // Loaded before the watcher starts, so the browse pages list the library during a long reconcile.
-    const browse = this.d.createBrowse({ dir: path.join(dir, 'browse') });
+    const browse = this.d.createBrowse({ dir: path.join(dir, 'browse'), libraryId: lib.id });
     try {
       browse.load();
     } catch (e) {
@@ -403,20 +418,50 @@ export class LibraryManager {
     });
   }
 
-  /** Creates a library with its own workspace and switches to it. */
-  create(name: string): Promise<LibrariesView> {
+  /** Creates a library with its own workspace and profile (the default when none is given) and switches to it. */
+  create(name: string, profile?: string | null): Promise<LibrariesView> {
     return this.serial(async () => {
       const s = this.d.getState();
       const clean = checkLibraryName(name, s.libraries);
+      const ids = this.d.profiles?.ids;
+      if (profile && ids && !ids.includes(profile)) throw new Error('That kind of library is not available.');
       let id: string;
       do id = `lib-${randomBytes(3).toString('hex')}`;
       while (s.libraries.some((l) => l.id === id));
       const workspaceSlug = await this.d.workspaces.ensure(id);
-      const lib: LibraryRecord = { id, name: clean, workspaceSlug, folders: [], createdAt: this.now().toISOString() };
+      const lib: LibraryRecord = {
+        id,
+        name: clean,
+        workspaceSlug,
+        folders: [],
+        createdAt: this.now().toISOString(),
+        profile: profile || this.d.profiles?.defaultId || 'legal-finance',
+      };
       this.d.setState({ ...this.d.getState(), libraries: [...this.d.getState().libraries, lib], currentLibrary: id });
       fs.mkdirSync(filesDir(this.d.dataDir, id), { recursive: true });
       await this.restartRuntime();
       this.log(`created ${id} (${clean}), workspace ${workspaceSlug}`);
+      return this.changed();
+    });
+  }
+
+  /**
+   * Changes a library's own record (profile, type overrides, family answers, the section summary
+   * switch) without touching its index. change gets the record and returns the new one.
+   */
+  updateRecord(id: string, change: (lib: LibraryRecord) => LibraryRecord): Promise<LibrariesView> {
+    return this.serial(async () => {
+      const s = this.d.getState();
+      const lib = s.libraries.find((l) => l.id === id);
+      if (!lib) throw new Error('That library no longer exists.');
+      const next = {
+        ...change(lib),
+        id: lib.id,
+        name: lib.name,
+        workspaceSlug: lib.workspaceSlug,
+        folders: lib.folders,
+      };
+      this.d.setState({ ...s, libraries: s.libraries.map((l) => (l.id === id ? next : l)) });
       return this.changed();
     });
   }

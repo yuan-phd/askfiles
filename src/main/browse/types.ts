@@ -1,3 +1,5 @@
+import type { DocumentKind, KindScores } from '../graph/kinds.js';
+
 /** One entry of a document outline; children are the headings of a deeper level below it. */
 export interface OutlineEntry {
   title: string;
@@ -7,6 +9,14 @@ export interface OutlineEntry {
   page: number | null;
   /** Printed page label of page, when the PDF defines labels. */
   pageLabel: string | null;
+  /**
+   * Set when the entry stands for several parts the splitter cut (titles ending in (page N) or
+   * (continued)): the last page they reach and the section index of every part, in order. The
+   * Document page still renders each part; the outline shows one entry with the page range.
+   */
+  pageEnd?: number | null;
+  pageLabelEnd?: string | null;
+  parts?: number[];
   children: OutlineEntry[];
 }
 
@@ -39,6 +49,13 @@ export interface BrowseSection {
   parts: string[];
 }
 
+/** The structural kind of a document, found at index time (src/main/graph/kinds.ts). */
+export interface DocumentKindRecord {
+  kind: DocumentKind;
+  scores: KindScores;
+  words: number;
+}
+
 /** One file of <libraryDir>/browse, also what the document page receives. */
 export interface BrowseDocument {
   /** 3 since sections carry their sub-chunks (parts); other versions are rebuilt. */
@@ -58,6 +75,11 @@ export interface BrowseDocument {
   indexedAt: string;
   outline: OutlineEntry[];
   sections: BrowseSection[];
+  /**
+   * Kind and scores (docs/graph.md). Set when the document is built; a file stored before Session N
+   * lacks it and gets it when the index loads.
+   */
+  kind?: DocumentKindRecord;
 }
 
 /** A document in the library list: everything but the section text. */

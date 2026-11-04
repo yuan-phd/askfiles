@@ -654,3 +654,9 @@ span.cite {
   margin: 0.75rem 0 0;
   color: var(--text-muted);
 }
+
+/* The question box is off while the library indexes (Session N): one line says why. */
+.ask-locked {
+  margin: 0.75rem 0 0;
+  color: var(--busy);
+}

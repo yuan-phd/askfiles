@@ -1,0 +1,48 @@
+{
+  "id": "general",
+  "name": "General",
+  "description": "Books, articles, notes and reference works. Links documents that mention each other's titles or share rare words.",
+  "types": [
+    { "name": "book", "label": "Book", "color": "#4a7cff" },
+    { "name": "article", "label": "Article", "color": "#2fae7d" },
+    { "name": "note", "label": "Note", "color": "#d9a520" },
+    { "name": "reference", "label": "Reference", "color": "#9a6ff0" }
+  ],
+  "kinds": {
+    "normative": "reference",
+    "explanatory": "article",
+    "template": "note",
+    "record": "note",
+    "data": "reference",
+    "other": "note"
+  },
+  "long": { "kind": "explanatory", "type": "book", "minWords": 20000 },
+  "cues": {
+    "book": ["book", "novel", "书"],
+    "article": ["article", "paper", "essay", "post", "文章", "论文"],
+    "note": ["note", "journal", "diary", "todo", "笔记", "日记", "随笔"],
+    "reference": [
+      "reference",
+      "manual",
+      "handbook",
+      "glossary",
+      "dictionary",
+      "encyclopedia",
+      "手册",
+      "词典",
+      "辞典",
+      "参考"
+    ]
+  },
+  "bands": ["book", "article", "reference", "note"],
+  "edges": {
+    "headings": false,
+    "references": true,
+    "clauseReferences": false,
+    "versions": false,
+    "related": true,
+    "projects": false,
+    "tickets": false,
+    "dates": false
+  }
+}

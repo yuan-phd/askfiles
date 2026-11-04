@@ -20,6 +20,14 @@ export interface LibraryRecord {
   workspaceSlug: string | null;
   folders: FolderSource[];
   createdAt: string;
+  /** Profile id (config/profiles, src/main/graph/profiles.ts); absent means the default. */
+  profile?: string;
+  /** The user's document types, per profile id, by document id; never replaced by detection. */
+  typeOverrides?: Record<string, Record<string, string>>;
+  /** The user's answers to family questions, by pair key (src/main/graph/families.ts pairKey). */
+  familyDecisions?: Record<string, boolean>;
+  /** Section summaries for every document of the library (docs/summaries.md); off by default. */
+  sectionSummaries?: boolean;
 }
 
 export type AnswerScope = 'strict' | 'balanced' | 'broad';
@@ -103,12 +111,32 @@ function readLibrary(v: unknown): LibraryRecord | null {
     .map((f) => (f && typeof f === 'object' ? (f as Record<string, unknown>) : {}))
     .filter((f) => str(f.id) && str(f.path))
     .map((f) => ({ id: f.id as string, path: f.path as string, addedAt: str(f.addedAt) ?? new Date(0).toISOString() }));
+  const profile = str(d.profile);
+  const overrides: Record<string, Record<string, string>> = {};
+  if (d.typeOverrides && typeof d.typeOverrides === 'object') {
+    for (const [pid, map] of Object.entries(d.typeOverrides as Record<string, unknown>)) {
+      if (!/^[a-z0-9-]{1,40}$/.test(pid) || !map || typeof map !== 'object') continue;
+      const clean: Record<string, string> = {};
+      for (const [doc, type] of Object.entries(map as Record<string, unknown>))
+        if (/^[0-9a-f]{16}$/.test(doc) && typeof type === 'string' && /^[a-z0-9-]{1,30}$/.test(type)) clean[doc] = type;
+      if (Object.keys(clean).length) overrides[pid] = clean;
+    }
+  }
+  const decisions: Record<string, boolean> = {};
+  if (d.familyDecisions && typeof d.familyDecisions === 'object') {
+    for (const [pair, v] of Object.entries(d.familyDecisions as Record<string, unknown>))
+      if (/^[0-9a-f]{16}\|[0-9a-f]{16}$/.test(pair) && typeof v === 'boolean') decisions[pair] = v;
+  }
   return {
     id,
     name,
     workspaceSlug: str(d.workspaceSlug),
     folders,
     createdAt: str(d.createdAt) ?? new Date(0).toISOString(),
+    ...(profile && /^[a-z0-9-]{1,40}$/.test(profile) ? { profile } : {}),
+    ...(Object.keys(overrides).length ? { typeOverrides: overrides } : {}),
+    ...(Object.keys(decisions).length ? { familyDecisions: decisions } : {}),
+    ...(d.sectionSummaries === true ? { sectionSummaries: true } : {}),
   };
 }
 

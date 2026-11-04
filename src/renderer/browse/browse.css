@@ -299,6 +299,14 @@ button.link:hover {
   font-weight: 600;
 }
 
+/* The page range of an entry that stands for a section cut by page. */
+.outline-pages {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
 /* Document page */
 
 .doc-body {
@@ -379,22 +387,30 @@ h6.doc-heading {
   overflow-wrap: anywhere;
 }
 
-/* Headings page */
+/* Compare page */
 
-.headings-layout {
+.compare-header {
+  margin-bottom: var(--space-4);
+}
+
+.compare-header .hint {
+  margin: var(--space-1) 0 0;
+}
+
+.compare-layout {
   display: grid;
   grid-template-columns: 18rem minmax(0, 1fr);
   gap: var(--space-6);
   align-items: start;
 }
 
-.headings-list {
+.compare-list {
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-.heading-item {
+.compare-item {
   display: flex;
   width: 100%;
   justify-content: space-between;
@@ -407,26 +423,26 @@ h6.doc-heading {
   cursor: pointer;
 }
 
-.heading-item:hover .heading-label,
-.heading-item.active .heading-label {
+.compare-item:hover .compare-label,
+.compare-item.active .compare-label {
   color: var(--accent);
 }
 
-.heading-item.active .heading-label {
+.compare-item.active .compare-label {
   font-weight: 600;
 }
 
-.heading-label {
+.compare-label {
   overflow-wrap: anywhere;
 }
 
-.heading-count {
+.compare-count {
   flex: none;
   font-size: 0.8rem;
   color: var(--text-muted);
 }
 
-.headings-title {
+.compare-title {
   font-size: 1.2rem;
   font-weight: 600;
   letter-spacing: 0;
@@ -472,7 +488,7 @@ h6.doc-heading {
 }
 
 @media (max-width: 900px) {
-  .headings-layout {
+  .compare-layout {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -572,4 +588,377 @@ h6.doc-heading {
   background: var(--accent-soft);
   color: var(--text);
   border-radius: 2px;
+}
+
+/* Library page: type and summary per document, family questions (Session N) */
+
+.doc-type {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+  padding: 1px var(--space-1);
+  border: 1px solid transparent;
+  border-radius: var(--radius-small);
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.doc-type:hover,
+.doc-type:focus-within {
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.doc-type:focus-within {
+  box-shadow: 0 0 0 3px var(--focus);
+}
+
+.doc-type::before {
+  content: '';
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--type-color, var(--text-muted));
+}
+
+/* The label shows the type; the native dropdown lies over it, invisible, so a click opens it. */
+.doc-type select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.doc-type[data-overridden='true'] {
+  color: var(--text);
+}
+
+.doc-item-summary,
+.doc-summary {
+  margin: var(--space-1) 0 0;
+  max-width: var(--measure);
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+}
+
+.doc-item-summary.pending,
+.doc-summary.pending {
+  font-style: italic;
+  opacity: 0.8;
+}
+
+.family-questions {
+  margin: 0 0 var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.family-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.family-list {
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.family-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+}
+
+.family-pair {
+  flex: 1 1 20rem;
+  overflow-wrap: anywhere;
+}
+
+/* Document page: summary, section summaries and the button */
+
+.doc-summary .cite {
+  padding: 0 var(--space-1);
+  border: 0;
+  border-radius: var(--radius-small);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.doc-summary-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.doc-section-summary {
+  margin: 0 0 var(--space-2);
+  padding-left: var(--space-3);
+  border-left: 3px solid var(--accent-soft);
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+}
+
+/* Hover tooltip of the summary controls; also shown on keyboard focus. */
+.has-tip {
+  position: relative;
+}
+
+.has-tip .tip {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+  width: 18rem;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  line-height: 1.4;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  pointer-events: none;
+}
+
+.has-tip:hover .tip,
+.has-tip:focus-within .tip {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Graph page: the graph fills the content area, which then does not scroll */
+
+.browse-content.graph-on {
+  padding: 0;
+  overflow: hidden;
+}
+
+.browse-content > .browse-page.graph-page {
+  max-width: none;
+  height: 100%;
+}
+
+.graph {
+  position: relative;
+  height: 100%;
+  min-height: 320px;
+  background: var(--bg);
+}
+
+.graph-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.graph-tools {
+  position: absolute;
+  top: var(--space-4);
+  left: var(--space-4);
+  right: var(--space-4);
+  z-index: 10;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  pointer-events: none;
+}
+
+.graph-tools > * {
+  pointer-events: auto;
+}
+
+.graph-tools input {
+  width: 220px;
+  padding: 8px 14px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  outline: none;
+}
+
+.graph-tools input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus);
+}
+
+.graph-layout {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.graph-layout button {
+  padding: 6px 12px;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.graph-layout button[aria-pressed='true'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.graph .link {
+  stroke: var(--text-muted);
+  fill: none;
+}
+
+/* Edge style by kind: solid shared headings, dashed references, dotted version chains. */
+.graph .link.kind-headings {
+  stroke-dasharray: none;
+}
+
+.graph .link.kind-reference {
+  stroke-dasharray: 6 4;
+}
+
+.graph .link.kind-version {
+  stroke-dasharray: 1 4;
+  stroke-linecap: round;
+  stroke-width: 2.5px;
+}
+
+.graph .link.kind-related,
+.graph .link.kind-project {
+  stroke: var(--quote-rule);
+}
+
+.graph .link.kind-ticket {
+  stroke-dasharray: 10 3;
+}
+
+.graph .link.kind-date {
+  stroke-dasharray: 2 6;
+  stroke-linecap: round;
+}
+
+.graph .link-hit {
+  stroke: transparent;
+  stroke-width: 10px;
+  cursor: pointer;
+}
+
+.graph .node {
+  stroke: var(--surface);
+  stroke-width: 1.5px;
+  cursor: pointer;
+}
+
+.graph .label,
+.graph .legend {
+  pointer-events: none;
+}
+
+/* A document whose summary is still being made. */
+.graph .node.pending {
+  stroke: var(--text-muted);
+  stroke-dasharray: 2 2;
+}
+
+.graph .node.match {
+  stroke: var(--text);
+  stroke-width: 2px;
+}
+
+.graph .label {
+  fill: var(--text);
+}
+
+.graph .legend-box {
+  fill: var(--surface);
+  stroke: var(--border);
+  opacity: 0.9;
+}
+
+.graph .legend-label {
+  fill: var(--text);
+}
+
+.graph-tooltip,
+.graph-chooser {
+  position: absolute;
+  z-index: 20;
+  max-width: 300px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.graph-tooltip {
+  pointer-events: none;
+}
+
+.graph-tooltip span,
+.graph-tooltip strong {
+  display: block;
+}
+
+.graph-tooltip .tip-title {
+  overflow-wrap: anywhere;
+}
+
+.graph-tooltip .tip-meta {
+  color: var(--text-muted);
+}
+
+.graph-tooltip .tip-summary {
+  margin-top: var(--space-1);
+}
+
+.graph-tooltip .tip-summary.pending {
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+.chooser-title {
+  margin: 0 0 var(--space-1);
+  font-weight: 600;
+}
+
+.chooser-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.graph-empty {
+  position: absolute;
+  top: 40%;
+  left: 0;
+  right: 0;
+  text-align: center;
 }
