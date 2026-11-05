@@ -58,11 +58,15 @@
     "sourceDisplayNames": true,
     "verifyStripNames": false,
     "dropAnswerFileNames": false,
-    "restatementExempt": true,
-    "marginReattribution": 0.25,
-    "sentenceMatch": true,
-    "sentenceMatchMin": 0.56,
-    "sentenceMatchMinCjk": 0.56
+    "restatementExempt": false,
+    "marginReattribution": 0,
+    "sentenceMatch": false,
+    "sentenceMatchMin": 0.5,
+    "sentenceMatchMinCjk": 0.3,
+    "sentenceOverlap": false,
+    "sentenceOverlapMin": 0.5,
+    "sentenceOverlapMinCjk": 0.3,
+    "contentFreeExempt": false
   },
   "contextTokens": 8192,
   "indexing": {

@@ -705,7 +705,8 @@ export function answerRow(o: {
     verification: r?.verification
       ? `${r.verification.sentences} sentences, ${r.verification.reattributed} re-attributed, ${r.verification.attributed} attributed, ${r.verification.unsupported} unsupported` +
         (r.verification.restated !== undefined ? `, ${r.verification.restated} restated` : '') +
-        (r.verification.marginMoved !== undefined ? `, ${r.verification.marginMoved} moved by the margin` : '')
+        (r.verification.marginMoved !== undefined ? `, ${r.verification.marginMoved} moved by the margin` : '') +
+        (r.verification.contentFree !== undefined ? `, ${r.verification.contentFree} content-free` : '')
       : '',
     affinity: (retrieval.affinity ?? retrieval.crossDocument)?.files.join('; ') ?? '',
     follow_up: r?.followUp
@@ -758,6 +759,7 @@ export function answerRow(o: {
             ...(x.support ? { support: x.support.map((v) => Math.round(v * 1000) / 1000), min: x.minSupport } : {}),
             ...(x.unsupported ? { unsupported: true } : {}),
             ...(x.restatement ? { restatement: true } : {}),
+            ...(x.contentFree ? { contentFree: true } : {}),
           })),
         )
       : '',

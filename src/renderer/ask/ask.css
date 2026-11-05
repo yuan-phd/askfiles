@@ -365,6 +365,12 @@ h2 {
   overflow-wrap: anywhere;
 }
 
+.card-filename {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
 .card-section {
   color: var(--text);
 }

@@ -543,6 +543,8 @@ export interface SourceCard {
   /** The number the model cites it by. */
   n: number;
   file: string;
+  /** sourceDisplayNames: the name the prompt header showed for the file; the card shows it first. */
+  display?: string;
   relPath: string;
   url: string;
   documentId: string;
@@ -671,11 +673,15 @@ export async function answer(
   emit: (e: AnswerEvent) => void = () => {},
   signal?: AbortSignal,
 ): Promise<AnswerResult> {
+  // sourceDisplayNames: cards carry the same display name the prompt headers show.
+  const card: typeof cardOf = s.params.sourceDisplayNames
+    ? (n, section, rerank, trimmed) => ({ ...cardOf(n, section, rerank, trimmed), display: displayName(section.file) })
+    : cardOf;
   const nearest = ranked(r)
     .slice(0, NEAREST_COUNT)
-    .map((x, i) => cardOf(i + 1, x.section, x.rerank));
+    .map((x, i) => card(i + 1, x.section, x.rerank));
   if (s.params.answerMode === 'quoted')
-    return answerQuoted(question, r, sel, s, deps, { cardOf, nearest }, emit, signal);
+    return answerQuoted(question, r, sel, s, deps, { cardOf: card, nearest }, emit, signal);
   const sections = await sendTexts(
     question,
     r,
@@ -699,7 +705,7 @@ export async function answer(
       .sort((a, b) => rank(a.y.section.documentId) - rank(b.y.section.documentId) || a.i - b.i)
       .map(({ y }) => y);
   }
-  const sources = picked.map((y, i) => cardOf(i + 1, y.section, y.x.rerank, y.x.trimmed));
+  const sources = picked.map((y, i) => card(i + 1, y.section, y.x.rerank, y.x.trimmed));
   emit({ type: 'sources', sources });
   const base = {
     claims: [],
@@ -904,7 +910,17 @@ export async function answer(
           : {}),
         ...(s.params.cjkOverlap ? { cjk: true } : {}),
         ...(crossParts.has('verify') ? { allowedFor: ownFiles(claims, sources, deps) } : {}),
-        ...(s.params.restatementExempt ? { question: [question, asked] } : {}),
+        ...(s.params.restatementExempt || s.params.contentFreeExempt
+          ? { question: [question, asked], restatement: s.params.restatementExempt }
+          : {}),
+        ...(s.params.contentFreeExempt ? { contentFree: true } : {}),
+        ...(s.params.sentenceOverlap && !scores
+          ? {
+              sentenceLevel: true,
+              minOverlap: s.params.sentenceOverlapMin,
+              cjkMinOverlap: s.params.sentenceOverlapMinCjk,
+            }
+          : {}),
         ...(s.params.marginReattribution > 0 ? { margin: s.params.marginReattribution } : {}),
         ...(scores
           ? { scores, minOverlap: s.params.sentenceMatchMin, cjkMinOverlap: s.params.sentenceMatchMinCjk }
@@ -917,7 +933,8 @@ export async function answer(
     deps.log?.(
       `[answer] verify: ${v.stats.sentences} sentences, ${v.stats.reattributed} re-attributed, ${v.stats.attributed} attributed, ${v.stats.unsupported} unsupported` +
         (v.stats.restated !== undefined ? `, ${v.stats.restated} restating the question` : '') +
-        (v.stats.marginMoved !== undefined ? `, ${v.stats.marginMoved} moved by the margin` : ''),
+        (v.stats.marginMoved !== undefined ? `, ${v.stats.marginMoved} moved by the margin` : '') +
+        (v.stats.contentFree !== undefined ? `, ${v.stats.contentFree} content-free` : ''),
     );
   }
   let hedgesDropped: string[] = [];

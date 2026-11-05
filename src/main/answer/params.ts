@@ -206,6 +206,19 @@ export interface AnswerParams {
   sentenceMatch: boolean;
   sentenceMatchMin: number;
   sentenceMatchMinCjk: number;
+  /**
+   * Citation verification scores a sentence against each sentence of a source by content-token
+   * overlap only, the source's best sentence counting, with the thresholds sentenceOverlapMin
+   * (English) and sentenceOverlapMinCjk (mainly CJK sentences) (verify.ts sentenceLevel, round D3).
+   */
+  sentenceOverlap: boolean;
+  sentenceOverlapMin: number;
+  sentenceOverlapMinCjk: number;
+  /**
+   * A cited sentence with no content word besides the question's and the lead-in words (verify.ts
+   * LEAD_INS) loses its citations without being unsupported: no attribution credit or failure (round D3).
+   */
+  contentFreeExempt: boolean;
 }
 
 /** The crossDocument parts in effect: crossDocument's own, or the quota alone with crossDocQuota. */
@@ -260,6 +273,10 @@ export const DEFAULT_PARAMS: AnswerParams = {
   sentenceMatch: false,
   sentenceMatchMin: 0.5,
   sentenceMatchMinCjk: 0.3,
+  sentenceOverlap: false,
+  sentenceOverlapMin: 0.5,
+  sentenceOverlapMinCjk: 0.3,
+  contentFreeExempt: false,
 };
 
 /** Tokens kept free for the answer itself and for the instructions and the question. */
@@ -375,6 +392,10 @@ const CHECKS: Record<keyof AnswerParams, (v: unknown) => Problem> = {
   sentenceMatch: bool,
   sentenceMatchMin: numIn(0, 1),
   sentenceMatchMinCjk: numIn(0, 1),
+  sentenceOverlap: bool,
+  sentenceOverlapMin: numIn(0, 1),
+  sentenceOverlapMinCjk: numIn(0, 1),
+  contentFreeExempt: bool,
 };
 
 /** Problems with an answer block, each prefixed with at; every key is required. */

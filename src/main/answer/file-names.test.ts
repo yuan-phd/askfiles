@@ -182,6 +182,15 @@ describe('sourceFileNames header', () => {
     expect(result.claims[0]!.citations).toEqual([1]);
   });
 
+  it('sourceDisplayNames: the cards carry the display name the header showed; off, none', async () => {
+    const on = await run({ sourceDisplayNames: true }, 'When is it signed?', 'Signed after approval [1].');
+    expect(on.result.cited.map((c) => [c.display, c.file])).toEqual([
+      ['Procurement Regulations 2025', '01_Procurement_Regulations_2025.pdf'],
+    ]);
+    const off = await run({}, 'When is it signed?', 'Signed after approval [1].');
+    expect(off.result.cited[0]!.display).toBeUndefined();
+  });
+
   it('leaves the prompt as before with both switches off', async () => {
     const q = 'When is `01_Procurement_Regulations_2025.pdf` signed?';
     const { user } = await run({}, q, 'Signed by the Borrower after approval [1].');

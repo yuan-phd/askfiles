@@ -47,8 +47,6 @@ describe('config/presets.json', () => {
       'headingPathBonus',
       'questionFileNames',
       'sourceDisplayNames',
-      'restatementExempt',
-      'sentenceMatch',
     ];
     for (const t of p.tiers) {
       // Summaries use the Ask model on every tier (owner decision 2026-11-04).
@@ -59,9 +57,9 @@ describe('config/presets.json', () => {
       const switches = Object.entries(t.answer).filter(([k, v]) => typeof v === 'boolean' && k !== 'rerankerBypassCjk');
       expect(switches.filter(([, v]) => v).map(([k]) => k)).toEqual(on);
       expect(t.answer.crossDocumentParts).toEqual(['quota', 'grouped', 'verify']);
-      // Rounds D1, D2 (2026-11-05): margin and sentence-match thresholds as calibrated.
+      // Round D2 rolled back (2026-11-05): no margin, thresholds back to 0.5 / 0.3.
       expect([t.answer.marginReattribution, t.answer.sentenceMatchMin, t.answer.sentenceMatchMinCjk]).toEqual([
-        0.25, 0.56, 0.56,
+        0, 0.5, 0.3,
       ]);
       // Indexing rounds 2026-11-01: tables kept (I1); Chinese headings on by owner ruling after C4; OCR upscaling (I3) not.
       expect(t.indexing).toEqual({ structuredTables: true, cjkHeadings: true, ocrUpscale: false });

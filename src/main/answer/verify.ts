@@ -12,6 +12,7 @@
  * also over the source the model cited, and an exact tie cites all of them: never source order.
  */
 import type { Claim } from './citations.js';
+import { sourceSentences } from './source-sentences.js';
 
 /**
  * Share of a sentence's content tokens its source must contain. Measured on the round 1 tuning
@@ -129,6 +130,52 @@ export interface VerifyStats {
   restated?: number;
   /** marginReattribution: single-citation sentences moved to a source scoring at least the margin higher. */
   marginMoved?: number;
+  /** contentFreeExempt: cited sentences with no content word of their own, their citations not counted. */
+  contentFree?: number;
+}
+
+/**
+ * contentFreeExempt (round D3): lead-in words a cited sentence may hold besides the question's own
+ * words and still say nothing (The sources provide the following:, 具体如下：). Whole phrases,
+ * removed before the sentence is tokenized; longer forms first.
+ */
+export const LEAD_INS = [
+  'as follows',
+  'the following',
+  'following',
+  'follows',
+  'below',
+  'listed',
+  'namely',
+  'specifically',
+  'in summary',
+  'summarized',
+  'details',
+  'detailed',
+  '具体规定如下',
+  '规定如下',
+  '具体如下',
+  '分别如下',
+  '主要包括',
+  '具体包括',
+  '如下',
+  '包括',
+  '以下',
+  '下列',
+  '具体',
+  '分别',
+  '主要',
+];
+
+/**
+ * True when nothing of a sentence is left after its lead-in words and every content token that the
+ * question holds are taken out (contentFreeExempt).
+ */
+export function isContentFree(text: string, question: Set<string>, pairs: boolean): boolean {
+  let t = text.normalize('NFKC').toLowerCase();
+  for (const lead of LEAD_INS) t = t.split(lead).join(' ');
+  const tokens = pairs ? cjkTokens(t) : contentTokens(t);
+  return tokens.every((x) => question.has(x));
 }
 
 /**
@@ -162,6 +209,8 @@ export interface VerifyOptions {
   cjkMinOverlap?: number;
   /** restatementExempt: the question texts (as asked and as sent); an uncited restatement of them is exempt. */
   question?: string[];
+  /** restatementExempt off while question is given for contentFree only. */
+  restatement?: boolean;
   /**
    * marginReattribution: a sentence citing one source that passes moves to another eligible source
    * scoring at least this much higher; off when absent or 0.
@@ -172,6 +221,17 @@ export interface VerifyOptions {
    * whole-passage token share; claims without an entry keep the token share.
    */
   scores?: (number[] | undefined)[];
+  /**
+   * sentenceOverlap (round D3): a source's share is the best share among its sentences (split as
+   * the model read the text), not the share of the whole section; the union rule for a sentence
+   * citing several sources keeps the whole sections.
+   */
+  sentenceLevel?: boolean;
+  /**
+   * contentFreeExempt: a cited sentence with no content word besides the question's (question) and
+   * the lead-in words loses its citations without being unsupported: no credit, no failure.
+   */
+  contentFree?: boolean;
 }
 
 /**
@@ -192,6 +252,16 @@ export function verifyClaims(
   const asked = o.question?.filter(Boolean) ?? [];
   const askedWords = new Set(asked.flatMap((q) => contentTokens(q)));
   const askedPairs = new Set(asked.flatMap((q) => cjkTokens(q)));
+  // sentenceOverlap: token sets of each source's sentences, by tokenizer.
+  const sentenceSets = new Map<boolean, Set<string>[][]>();
+  const sentencesOf = (pairs: boolean) => {
+    let v = sentenceSets.get(pairs);
+    if (!v) {
+      v = passages.map((p) => sourceSentences(p).map((x) => new Set(pairs ? cjkTokens(x) : contentTokens(x))));
+      sentenceSets.set(pairs, v);
+    }
+    return v;
+  };
   const titleOf = (n: number) => o.meta?.[n - 1]?.title.trim().toLowerCase() ?? '';
   // Same-title sources of other files, per source.
   const twins = (n: number, eligible: (m: number) => boolean): number[] => {
@@ -207,8 +277,9 @@ export function verifyClaims(
     reattributed: 0,
     attributed: 0,
     unsupported: 0,
-    ...(asked.length ? { restated: 0 } : {}),
+    ...(asked.length && o.restatement !== false ? { restated: 0 } : {}),
     ...(o.margin ? { marginMoved: 0 } : {}),
+    ...(o.contentFree ? { contentFree: 0 } : {}),
   };
   const out = claims.map((c, i): Claim => {
     const allow = o.allowedFor?.[i] ?? o.allowed;
@@ -219,18 +290,30 @@ export function verifyClaims(
     const min = byPairs ? (o.cjkMinOverlap ?? VERIFY_MIN_OVERLAP_CJK) : (o.minOverlap ?? VERIFY_MIN_OVERLAP);
     const sources = byPairs ? pairsOf() : wordSources;
     const tokens = byPairs ? cjkTokens(c.text) : contentTokens(c.text);
+    if (o.contentFree && c.citations.length && isContentFree(c.text, byPairs ? askedPairs : askedWords, byPairs)) {
+      stats.contentFree!++;
+      return { ...c, citations: [], unsupported: false, contentFree: true };
+    }
     if (new Set(tokens).size < minTokens) {
       if (c.unsupported) stats.unsupported++;
       return c;
     }
-    if (asked.length && !c.citations.length && isRestatement(tokens, byPairs ? askedPairs : askedWords)) {
+    if (
+      asked.length &&
+      o.restatement !== false &&
+      !c.citations.length &&
+      isRestatement(tokens, byPairs ? askedPairs : askedWords)
+    ) {
       stats.restated!++;
       return { ...c, citations: [], unsupported: false, restatement: true };
     }
     const given = o.scores?.[i];
+    const bySentence = o.sentenceLevel ? sentencesOf(byPairs) : null;
     const share = given
       ? (n: number) => given[n - 1] ?? 0
-      : (n: number) => overlap(tokens, sources[n - 1] ?? new Set());
+      : bySentence
+        ? (n: number) => Math.max(0, ...(bySentence[n - 1] ?? []).map((x) => overlap(tokens, x)))
+        : (n: number) => overlap(tokens, sources[n - 1] ?? new Set());
     const done = (citations: number[]): Claim => ({
       ...c,
       citations,

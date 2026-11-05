@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { claimsOf, parseCitations } from './citations.js';
 import { SentenceVectorCache, sentenceScores, sourceSentences } from './sentence-match.js';
-import { isRestatement, contentTokens, verifyClaims } from './verify.js';
+import { cjkTokens, isContentFree, isRestatement, contentTokens, verifyClaims } from './verify.js';
 
 describe('sourceSentences', () => {
   it('splits English at .!? but not after abbreviations, initials, list markers or inside numbers', () => {
@@ -96,5 +96,28 @@ describe('verification rules of rounds D1 and D2', () => {
     expect(moved.claims.map((c) => c.citations)).toEqual([[2], [1, 2]]);
     expect(moved.stats.marginMoved).toBe(1);
     expect(verifyClaims(claims, passages, { scores, minOverlap: 0.56, margin: 0.35 }).stats.marginMoved).toBe(0);
+  });
+});
+
+describe('verification rules of round D3', () => {
+  const passages = ['Employees get 27 days of paid leave each year. Parking at the office is free.', 'Leave is paid.'];
+
+  it('scores a source by its best sentence with sentenceLevel', () => {
+    const claims = claimsOf(parseCitations('Employees get free parking [1].'), 2);
+    // Whole section: employees, get, free, parking all present (1.0); best sentence: free, parking (0.5).
+    expect(verifyClaims(claims, passages).claims[0]!.support).toEqual([1]);
+    expect(verifyClaims(claims, passages, { sentenceLevel: true }).claims[0]!.support).toEqual([0.5]);
+    expect(verifyClaims(claims, passages, { sentenceLevel: true, minOverlap: 0.6 }).claims[0]!.unsupported).toBe(true);
+  });
+
+  it('takes the citations off a cited sentence with nothing but the question and lead-in words', () => {
+    const question = 'How many days of paid leave do employees get?';
+    const claims = claimsOf(parseCitations('Employees get the following [1]. Employees get 27 days [1].'), 2);
+    const v = verifyClaims(claims, passages, { question: [question], restatement: false, contentFree: true });
+    expect(v.claims[0]).toMatchObject({ citations: [], unsupported: false, contentFree: true });
+    expect(v.claims[1]).toMatchObject({ citations: [1] });
+    expect(v.stats.contentFree).toBe(1);
+    expect(v.stats.restated).toBeUndefined();
+    expect(isContentFree('具体如下：', new Set(cjkTokens('两份范本的要求是否一致？')), true)).toBe(true);
   });
 });

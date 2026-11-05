@@ -201,6 +201,13 @@ export class AppController implements BridgeHandlers {
       // Without the preset the server would run with thinking on; a broken bundle must show, not limp.
       serverEnv = presetSpawnEnv(tier.preset);
       log(`preset ${tier.preset.id} from ${this.presetsFile}`);
+      // Every answer and indexing switch as read, so a run can be checked against config/presets.json.
+      const read = (o: object) =>
+        Object.entries(o)
+          .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
+          .join(' ');
+      log(`[presets] answer ${read(tier.preset.answer)}`);
+      log(`[presets] indexing ${read(tier.preset.indexing ?? {})}`);
     } catch (e) {
       log(`backend not started: ${(e as Error).message}`);
       void win.loadURL(messagePage('AskFiles could not start.', (e as Error).message));

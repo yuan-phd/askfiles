@@ -74,7 +74,11 @@
         "marginReattribution": 0,
         "sentenceMatch": false,
         "sentenceMatchMin": 0.5,
-        "sentenceMatchMinCjk": 0.3
+        "sentenceMatchMinCjk": 0.3,
+        "sentenceOverlap": false,
+        "sentenceOverlapMin": 0.5,
+        "sentenceOverlapMinCjk": 0.3,
+        "contentFreeExempt": false
       }
     }
   ]
