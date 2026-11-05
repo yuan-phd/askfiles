@@ -8,6 +8,7 @@ import {
   NO_RERANKER,
   ollamaChat,
   ollamaEmbed,
+  SentenceVectorCache,
   ParagraphStore,
   rerankerProcess,
   rerankerReady,
@@ -127,6 +128,8 @@ export class AppController implements BridgeHandlers {
   private readonly rerankerDir = path.join(this.dataDir, 'models', 'reranker');
   private reranker: { repo: string; instance: Reranker & { stop(): void } } | null = null;
   private paragraphs: { key: string; store: ParagraphStore } | null = null;
+  /** sentenceMatch: section sentence vectors, kept while the app runs (keyed by model and text). */
+  private readonly sentenceVectors = new SentenceVectorCache();
   private readonly answers: AnswerService;
   private readonly resourcesPath: string;
   /** The RAM the tier was chosen from (platform.ts machineRam); set at the start of run(). */
@@ -198,6 +201,13 @@ export class AppController implements BridgeHandlers {
       // Without the preset the server would run with thinking on; a broken bundle must show, not limp.
       serverEnv = presetSpawnEnv(tier.preset);
       log(`preset ${tier.preset.id} from ${this.presetsFile}`);
+      // Every answer and indexing switch as read, so a run can be checked against config/presets.json.
+      const read = (o: object) =>
+        Object.entries(o)
+          .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
+          .join(' ');
+      log(`[presets] answer ${read(tier.preset.answer)}`);
+      log(`[presets] indexing ${read(tier.preset.indexing ?? {})}`);
     } catch (e) {
       log(`backend not started: ${(e as Error).message}`);
       void win.loadURL(messagePage('AskFiles could not start.', (e as Error).message));
@@ -743,6 +753,16 @@ export class AppController implements BridgeHandlers {
       log: this.d.log,
       chat: ollamaChat(() => `http://127.0.0.1:${this.manager?.status().ports?.ollama ?? ollamaPort}`),
       paragraphs: this.paragraphStore(browse),
+      sentenceMatch: this.machinePreset?.answer.sentenceMatch
+        ? {
+            embed: ollamaEmbed(
+              () => `http://127.0.0.1:${this.manager?.status().ports?.ollama ?? ollamaPort}`,
+              this.machinePreset.embeddingModel,
+            ),
+            model: this.machinePreset.embeddingModel,
+            cache: this.sentenceVectors,
+          }
+        : null,
     };
   }
 

@@ -12,6 +12,7 @@
  * also over the source the model cited, and an exact tie cites all of them: never source order.
  */
 import type { Claim } from './citations.js';
+import { sourceSentences } from './source-sentences.js';
 
 /**
  * Share of a sentence's content tokens its source must contain. Measured on the round 1 tuning
@@ -125,6 +126,74 @@ export interface VerifyStats {
   attributed: number;
   /** Sentences no selected source supports, after verification. */
   unsupported: number;
+  /** restatementExempt: uncited sentences that only restate the question, left uncited and not unsupported. */
+  restated?: number;
+  /** marginReattribution: single-citation sentences moved to a source scoring at least the margin higher. */
+  marginMoved?: number;
+  /** contentFreeExempt: cited sentences with no content word of their own, their citations not counted. */
+  contentFree?: number;
+  /** duplicateTextAttribution: sentences that gained the sections holding the same text as one they cite. */
+  duplicateShared?: number;
+  /** duplicateTextTiers: citations decided by the sentence's name, the question's name, or shared with all. */
+  duplicateTiers?: { sentence: number; question: number; all: number };
+}
+
+/**
+ * contentFreeExempt (round D3): lead-in words a cited sentence may hold besides the question's own
+ * words and still say nothing (The sources provide the following:, 具体如下：). Whole phrases,
+ * removed before the sentence is tokenized; longer forms first.
+ */
+export const LEAD_INS = [
+  'as follows',
+  'the following',
+  'following',
+  'follows',
+  'below',
+  'listed',
+  'namely',
+  'specifically',
+  'in summary',
+  'summarized',
+  'details',
+  'detailed',
+  '具体规定如下',
+  '规定如下',
+  '具体如下',
+  '分别如下',
+  '主要包括',
+  '具体包括',
+  '如下',
+  '包括',
+  '以下',
+  '下列',
+  '具体',
+  '分别',
+  '主要',
+];
+
+/**
+ * True when nothing of a sentence is left after its lead-in words and every content token that the
+ * question holds are taken out (contentFreeExempt).
+ */
+export function isContentFree(text: string, question: Set<string>, pairs: boolean): boolean {
+  let t = text.normalize('NFKC').toLowerCase();
+  for (const lead of LEAD_INS) t = t.split(lead).join(' ');
+  const tokens = pairs ? cjkTokens(t) : contentTokens(t);
+  return tokens.every((x) => question.has(x));
+}
+
+/**
+ * restatementExempt (docs/plan.md, round D1): an uncited sentence is a restatement of the question
+ * when at least RESTATEMENT_SHARE of its distinct content tokens occur in the question and none is
+ * outside it. The second condition implies the first at 1.0; both are kept as the owner wrote them.
+ */
+export const RESTATEMENT_SHARE = 0.8;
+
+export function isRestatement(tokens: string[], question: Set<string>): boolean {
+  const distinct = [...new Set(tokens)];
+  if (!distinct.length) return false;
+  const inside = distinct.filter((t) => question.has(t)).length;
+  return inside / distinct.length >= RESTATEMENT_SHARE && inside === distinct.length;
 }
 
 export interface VerifyOptions {
@@ -142,12 +211,38 @@ export interface VerifyOptions {
    */
   cjk?: boolean;
   cjkMinOverlap?: number;
+  /** restatementExempt: the question texts (as asked and as sent); an uncited restatement of them is exempt. */
+  question?: string[];
+  /** restatementExempt off while question is given for contentFree only. */
+  restatement?: boolean;
+  /**
+   * marginReattribution: a sentence citing one source that passes moves to another eligible source
+   * scoring at least this much higher; off when absent or 0.
+   */
+  margin?: number;
+  /**
+   * sentenceMatch: per claim (by index), the score per source (index n - 1) in place of the
+   * whole-passage token share; claims without an entry keep the token share.
+   */
+  scores?: (number[] | undefined)[];
+  /**
+   * sentenceOverlap (round D3): a source's share is the best share among its sentences (split as
+   * the model read the text), not the share of the whole section; the union rule for a sentence
+   * citing several sources keeps the whole sections.
+   */
+  sentenceLevel?: boolean;
+  /**
+   * contentFreeExempt: a cited sentence with no content word besides the question's (question) and
+   * the lead-in words loses its citations without being unsupported: no credit, no failure.
+   */
+  contentFree?: boolean;
 }
 
 /**
  * Checks each claim against the passages (passages[n - 1] is source n). Returns new claims and
  * the counts; a cited sentence that passes keeps its citations unchanged, unless a same-title
- * source of another file overlaps it more (meta).
+ * source of another file overlaps it more (meta) or another source scores the margin higher
+ * (margin). Every verified claim carries the score of each citation it keeps (support).
  */
 export function verifyClaims(
   claims: Claim[],
@@ -158,6 +253,19 @@ export function verifyClaims(
   const wordSources = passages.map((p) => new Set(contentTokens(p)));
   let pairSources: Set<string>[] | null = null;
   const pairsOf = () => (pairSources ??= passages.map((p) => new Set(cjkTokens(p))));
+  const asked = o.question?.filter(Boolean) ?? [];
+  const askedWords = new Set(asked.flatMap((q) => contentTokens(q)));
+  const askedPairs = new Set(asked.flatMap((q) => cjkTokens(q)));
+  // sentenceOverlap: token sets of each source's sentences, by tokenizer.
+  const sentenceSets = new Map<boolean, Set<string>[][]>();
+  const sentencesOf = (pairs: boolean) => {
+    let v = sentenceSets.get(pairs);
+    if (!v) {
+      v = passages.map((p) => sourceSentences(p).map((x) => new Set(pairs ? cjkTokens(x) : contentTokens(x))));
+      sentenceSets.set(pairs, v);
+    }
+    return v;
+  };
   const titleOf = (n: number) => o.meta?.[n - 1]?.title.trim().toLowerCase() ?? '';
   // Same-title sources of other files, per source.
   const twins = (n: number, eligible: (m: number) => boolean): number[] => {
@@ -168,7 +276,15 @@ export function verifyClaims(
         out.push(m);
     return out;
   };
-  const stats: VerifyStats = { sentences: 0, reattributed: 0, attributed: 0, unsupported: 0 };
+  const stats: VerifyStats = {
+    sentences: 0,
+    reattributed: 0,
+    attributed: 0,
+    unsupported: 0,
+    ...(asked.length && o.restatement !== false ? { restated: 0 } : {}),
+    ...(o.margin ? { marginMoved: 0 } : {}),
+    ...(o.contentFree ? { contentFree: 0 } : {}),
+  };
   const out = claims.map((c, i): Claim => {
     const allow = o.allowedFor?.[i] ?? o.allowed;
     const eligible = (n: number) => !allow || allow.has(n);
@@ -178,29 +294,70 @@ export function verifyClaims(
     const min = byPairs ? (o.cjkMinOverlap ?? VERIFY_MIN_OVERLAP_CJK) : (o.minOverlap ?? VERIFY_MIN_OVERLAP);
     const sources = byPairs ? pairsOf() : wordSources;
     const tokens = byPairs ? cjkTokens(c.text) : contentTokens(c.text);
+    if (o.contentFree && c.citations.length && isContentFree(c.text, byPairs ? askedPairs : askedWords, byPairs)) {
+      stats.contentFree!++;
+      return { ...c, citations: [], unsupported: false, contentFree: true };
+    }
     if (new Set(tokens).size < minTokens) {
       if (c.unsupported) stats.unsupported++;
       return c;
     }
-    const share = (n: number) => overlap(tokens, sources[n - 1] ?? new Set());
+    if (
+      asked.length &&
+      o.restatement !== false &&
+      !c.citations.length &&
+      isRestatement(tokens, byPairs ? askedPairs : askedWords)
+    ) {
+      stats.restated!++;
+      return { ...c, citations: [], unsupported: false, restatement: true };
+    }
+    const given = o.scores?.[i];
+    const bySentence = o.sentenceLevel ? sentencesOf(byPairs) : null;
+    const share = given
+      ? (n: number) => given[n - 1] ?? 0
+      : bySentence
+        ? (n: number) => Math.max(0, ...(bySentence[n - 1] ?? []).map((x) => overlap(tokens, x)))
+        : (n: number) => overlap(tokens, sources[n - 1] ?? new Set());
+    const done = (citations: number[]): Claim => ({
+      ...c,
+      citations,
+      unsupported: false,
+      support: citations.map(share),
+      minSupport: min,
+    });
     const cited = c.citations.filter(eligible);
     const kept = cited.filter((n) => share(n) >= min);
     if (kept.length) {
       // A same-title source of another file that overlaps more takes the citation's place.
       let moved = false;
-      const chosen = kept.map((n) => {
+      let chosen = kept.map((n) => {
         const better = twins(n, eligible).filter((m) => share(m) > share(n));
         if (!better.length) return n;
         moved = true;
         return better.reduce((a, b) => (share(b) > share(a) ? b : a));
       });
+      // marginReattribution: one citation written, another source clearly better.
+      if (o.margin && c.citations.length === 1 && chosen.length === 1) {
+        const n = chosen[0]!;
+        let top = n;
+        for (let m = 1; m <= passages.length; m++)
+          if (m !== n && eligible(m) && share(m) - share(n) >= o.margin && share(m) > share(top)) top = m;
+        if (top !== n) {
+          chosen = [top];
+          moved = true;
+          stats.marginMoved!++;
+        }
+      }
       if (moved) stats.reattributed++;
-      return { ...c, citations: [...new Set(chosen)], unsupported: false };
+      return done([...new Set(chosen)]);
     }
     // A sentence that joins facts from the sources it cites passes on their union.
     if (cited.length > 1) {
       const union = new Set(cited.flatMap((n) => [...(sources[n - 1] ?? [])]));
-      if (overlap(tokens, union) >= min) return cited.length < c.citations.length ? { ...c, citations: cited } : c;
+      if (overlap(tokens, union) >= min) {
+        const d = done(cited);
+        return cited.length < c.citations.length ? d : { ...c, support: d.support, minSupport: min };
+      }
     }
     let best = 0;
     let bestShare = -1;
@@ -214,7 +371,7 @@ export function verifyClaims(
       else stats.attributed++;
       // An exact tie between same-title sections of different files is not broken by order.
       const tied = twins(best, eligible).filter((m) => share(m) === bestShare);
-      return { ...c, citations: [best, ...tied].sort((a, b) => a - b), unsupported: false };
+      return done([best, ...tied].sort((a, b) => a - b));
     }
     stats.unsupported++;
     return { ...c, citations: [], unsupported: true };

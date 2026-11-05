@@ -53,7 +53,13 @@ export function rrf(rank: number, k: number): number {
 }
 
 /** Sections by fused score, highest first; ties keep the order in which they were first seen. */
-export function fuse(vector: VectorCandidate[], keyword: KeywordCandidate[], k: number): FusedSection[] {
+export function fuse(
+  vector: VectorCandidate[],
+  keyword: KeywordCandidate[],
+  k: number,
+  /** headingPathBonus: added to a section's score after the tie-breaker (heading-bonus.ts). */
+  bonus?: (key: SectionKey) => number,
+): FusedSection[] {
   const out = new Map<SectionKey, FusedSection>();
   const get = (key: SectionKey): FusedSection => {
     let s = out.get(key);
@@ -94,6 +100,9 @@ export function fuse(vector: VectorCandidate[], keyword: KeywordCandidate[], k: 
       s.terms = c.terms;
     }
   });
-  for (const s of out.values()) s.score += Math.min(MULTI_HIT_SHARE * s.score, s.extraVector);
+  for (const s of out.values()) {
+    s.score += Math.min(MULTI_HIT_SHARE * s.score, s.extraVector);
+    if (bonus) s.score += bonus(s.key);
+  }
   return [...out.values()].sort((a, b) => b.score - a.score);
 }

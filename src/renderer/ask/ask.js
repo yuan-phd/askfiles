@@ -247,7 +247,10 @@ function cardNode(c, { numbered = true } = {}) {
   node.id = numbered ? `source-${c.n}` : '';
   node.dataset.n = String(c.n);
   setOptional(node.querySelector('.card-number'), numbered ? `[${c.n}]` : null);
-  node.querySelector('.card-file').textContent = c.file;
+  // sourceDisplayNames: the display name the prompt showed comes first, the file name smaller beside it.
+  const shown = c.display && c.display !== c.file ? c.display : c.file;
+  node.querySelector('.card-file').textContent = shown;
+  setOptional(node.querySelector('.card-filename'), shown === c.file ? null : c.file);
   setOptional(node.querySelector('.card-section'), pathLabel(c));
   setOptional(node.querySelector('.card-page'), pageLabel(c));
   const p = document.createElement('blockquote');

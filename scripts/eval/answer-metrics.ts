@@ -144,36 +144,83 @@ export function keyCoverage(q: MetricQuestion, answer: string, only?: string[]):
   return elements.filter((e) => hay.includes(squash(e))).length / elements.length;
 }
 
+/** A sentence of the answer with its citations and, after verification, each citation's score. */
+export interface ScoredClaim {
+  citations: number[];
+  support?: number[];
+  minSupport?: number;
+}
+
+export interface Attribution {
+  /** Attribution as defined from round D1 on (attributionOk). */
+  ok: boolean | null;
+  /** The definition before round D1 (attributionStrict). */
+  strict: boolean | null;
+  /** Cited sections that hold none of the stated key elements: the old requirement, now a side count. */
+  citedWithoutKey: number;
+  /** Citations whose sentence scores below the threshold against the section it cites. */
+  weakCitations: number;
+}
+
 /**
  * Checks the citations against what the answer says. The stated elements are the key elements
- * found in the answer text; attribution is true when the answer states at least one, every cited
- * section contains at least one of the stated ones, and every stated one is in a cited section. So
- * a citation of a section that holds some other key element, but not the fact the answer gives,
- * fails. Stated elements that the question itself contains (paragraph 5.88 in a question about
- * paragraph 5.88) are left out of the check: the answer may repeat the question without the
- * passage repeating it. A refusal (the not-found marker, with or without the sections it checked) to an absent
- * question is true; any other answer to one is false, and so is a refusal to an answerable
- * question or an answer citing nothing. Null when the question lists no key elements and is not
- * absent.
+ * found in the answer text, less those the question itself contains (paragraph 5.88 in a question
+ * about paragraph 5.88: the answer may repeat the question without the passage repeating it).
+ * From round D1 on (docs/plan.md) attribution is true when the answer states at least one, every
+ * stated one is in some cited section, and every cited section supports the sentence that cites
+ * it: the sentence passed the verification threshold against it (claims with support; a sentence
+ * verification did not score, too short or verification off, is not held to it). The old
+ * requirement that every cited section hold a stated element is strict, kept beside it with the
+ * count of cited sections that hold none. A refusal (the not-found marker, with or without the
+ * sections it checked) to an absent question is true; any other answer to one is false, and so is
+ * a refusal to an answerable question or an answer citing nothing. Null when the question lists
+ * no key elements and is not absent.
  */
-export function attributionOk(
+export function attribution(
   q: MetricQuestion,
-  o: { refused: boolean; answer: string; cited: Pick<CitedRecord, 'passage'>[] },
-): boolean | null {
+  o: { refused: boolean; answer: string; cited: Pick<CitedRecord, 'passage'>[]; claims?: ScoredClaim[] },
+): Attribution {
   const absent = (ABSENT as readonly string[]).includes(q.category);
-  if (o.refused) return absent;
-  if (absent) return false;
+  const plain = (v: boolean | null): Attribution => ({ ok: v, strict: v, citedWithoutKey: 0, weakCitations: 0 });
+  if (o.refused) return plain(absent);
+  if (absent) return plain(false);
   const elements = listOf(q.key_elements).map(squash);
-  if (!elements.length) return null;
-  if (!o.cited.length) return false;
+  if (!elements.length) return plain(null);
+  if (!o.cited.length) return plain(false);
   const said = squash(o.answer);
   const asked = squash(q.question ?? '');
   const stated = elements.filter((e) => said.includes(e) && !(asked && asked.includes(e)));
-  if (!stated.length) return false;
   const passages = o.cited.map((c) => squash(c.passage));
-  return (
-    passages.every((p) => stated.some((e) => p.includes(e))) && stated.every((e) => passages.some((p) => p.includes(e)))
-  );
+  const citedWithoutKey = passages.filter((p) => !stated.some((e) => p.includes(e))).length;
+  let weakCitations = 0;
+  for (const c of o.claims ?? []) {
+    if (!c.support || c.minSupport === undefined) continue;
+    weakCitations += c.support.filter((v) => v < c.minSupport!).length;
+  }
+  if (!stated.length) return { ok: false, strict: false, citedWithoutKey, weakCitations };
+  const found = stated.every((e) => passages.some((p) => p.includes(e)));
+  return {
+    ok: found && weakCitations === 0,
+    strict: found && citedWithoutKey === 0,
+    citedWithoutKey,
+    weakCitations,
+  };
+}
+
+/** Attribution as defined from round D1 on; see attribution. */
+export function attributionOk(
+  q: MetricQuestion,
+  o: { refused: boolean; answer: string; cited: Pick<CitedRecord, 'passage'>[]; claims?: ScoredClaim[] },
+): boolean | null {
+  return attribution(q, o).ok;
+}
+
+/** Attribution as defined before round D1: also every cited section holds a stated key element. */
+export function attributionStrict(
+  q: MetricQuestion,
+  o: { refused: boolean; answer: string; cited: Pick<CitedRecord, 'passage'>[] },
+): boolean | null {
+  return attribution(q, o).strict;
 }
 
 export interface MetricRow {

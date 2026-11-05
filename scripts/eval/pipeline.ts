@@ -16,6 +16,7 @@ import {
   ensureReranker,
   ollamaChat,
   ollamaEmbed,
+  SentenceVectorCache,
   ParagraphStore,
   NEAREST_COUNT,
   NOT_FOUND_MARKER,
@@ -37,7 +38,7 @@ import { sectionPath } from '../../src/main/answer/sections.js';
 import { createSourceResolver } from '../../src/main/watcher/index.js';
 import { readSectionText } from '../../src/main/watcher/section-docs.js';
 import {
-  attributionOk,
+  attribution,
   expectedSections,
   keyCoverage,
   literalElements,
@@ -102,6 +103,11 @@ export function indexHash(config: EvalConfig, library: Pick<Library, 'records'>)
       ...(crossDocumentPartsOf(p).has('quota') && p.fileScopedQuota ? ['fileScopedQuota'] : []),
       ...(crossDocumentPartsOf(p).has('quota') && p.scopedQuotaV2 ? ['scopedQuotaV2'] : []),
       ...(p.keywordStemming ? ['keywordStemming'] : []),
+      ...(crossDocumentPartsOf(p).has('quota') && (p.fileScopedQuota || p.scopedQuotaV2) && p.perFileSubquery
+        ? ['perFileSubquery']
+        : []),
+      ...(p.headingPathBonus ? ['headingPathBonus'] : []),
+      ...(crossDocumentPartsOf(p).has('quota') && p.scopedQuotaV2 && p.namedFileQuota8 ? ['namedFileQuota8'] : []),
     ],
   };
   return createHash('sha256').update(JSON.stringify(key)).digest('hex').slice(0, 16);
@@ -120,6 +126,22 @@ export function describeCards(cards: { file: string; path: string[]; rerank?: nu
         `${c.n ?? i + 1}. ${c.file} | ${c.path.join(' > ')}${typeof c.rerank === 'number' ? ` | ${c.rerank.toFixed(3)}` : ''}`,
     )
     .join('\n');
+}
+
+/** A fetch that adds options.seed to every JSON request body (eval config seed). */
+export function seededFetch(seed: number, base: typeof globalThis.fetch = globalThis.fetch): typeof globalThis.fetch {
+  return (input, init) => {
+    if (init && typeof init.body === 'string') {
+      try {
+        const body = JSON.parse(init.body) as { options?: Record<string, unknown> };
+        body.options = { ...body.options, seed };
+        return base(input, { ...init, body: JSON.stringify(body) });
+      } catch {
+        // Not JSON: sent as it is.
+      }
+    }
+    return base(input, init);
+  };
 }
 
 export async function buildPipeline(o: {
@@ -179,9 +201,16 @@ export async function buildPipeline(o: {
     resolveSources: (s) => resolver(s),
     index,
     reranker,
-    chat: ollamaChat(() => o.ollamaUrl),
+    chat: ollamaChat(() => o.ollamaUrl, o.config.seed >= 0 ? seededFetch(o.config.seed) : undefined),
     log: o.log,
     paragraphs,
+    sentenceMatch: o.config.answer.sentenceMatch
+      ? {
+          embed: ollamaEmbed(() => o.ollamaUrl, o.config.embeddingModel),
+          model: o.config.embeddingModel,
+          cache: new SentenceVectorCache(),
+        }
+      : null,
   };
 }
 
@@ -369,7 +398,8 @@ export function literalElementsOf(
  */
 export function answerMetrics(q: Question, row: AnswerRow, literal?: string[]) {
   const r = row.result;
-  if (!r) return { targetHit: null, keyCoverage: null, attribution: null };
+  if (!r)
+    return { targetHit: null, keyCoverage: null, attribution: null, attributionStrict: null, citedWithoutKey: null };
   if (q.category === 'section_listing' && r.notFound) {
     const listed = r.nearest.map(cardRecord);
     const hit = targetHit(q, listed);
@@ -377,6 +407,8 @@ export function answerMetrics(q: Question, row: AnswerRow, literal?: string[]) {
       targetHit: hit,
       keyCoverage: keyCoverage(q, listed.map((c) => c.path.join(' > ')).join('\n')),
       attribution: hit,
+      attributionStrict: hit,
+      citedWithoutKey: 0,
     };
   }
   const cited = r.cited.map(cardRecord);
@@ -384,9 +416,12 @@ export function answerMetrics(q: Question, row: AnswerRow, literal?: string[]) {
   // it lists (owner, round C3): isNotFound treats the marker beside [n] citations as an answer, so
   // without this a refusal citing the sources it checked counted as cited.
   const refusal = r.notFound || r.text.includes(NOT_FOUND_MARKER);
+  const a = attribution(q, { refused: r.notFound, answer: r.text, cited, claims: r.claims });
   return {
     targetHit: refusal ? targetHit(q, []) : targetHit(q, cited),
     keyCoverage: r.notFound ? (keyCoverage(q, '', literal) === null ? null : 0) : keyCoverage(q, r.text, literal),
-    attribution: attributionOk(q, { refused: r.notFound, answer: r.text, cited }),
+    attribution: a.ok,
+    attributionStrict: a.strict,
+    citedWithoutKey: a.ok === null ? null : a.citedWithoutKey,
   };
 }

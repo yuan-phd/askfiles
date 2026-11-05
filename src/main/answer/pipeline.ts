@@ -8,7 +8,13 @@
  * retrieve (candidates, fusion, sections, rerank), choose (floor, count, budget), answer.
  */
 import type { BrowseDocument, BrowseSection, DocumentRef, KeywordOptions, RankedSection } from '../browse/index.js';
-import { mentionedDocuments, namedFileGroups, type FileIdentity } from '../browse/identifiers.js';
+import {
+  displayName,
+  mentionedDocuments,
+  namedFileGroups,
+  rewriteFileNames,
+  type FileIdentity,
+} from '../browse/identifiers.js';
 import { citationOrder, claimsOf, CitationStream, parseCitations, type Claim, type Part } from './citations.js';
 import { fuse, sectionKey, type FusedSection, type KeywordCandidate, type VectorCandidate } from './fusion.js';
 import type { ChatFn } from './ollama-chat.js';
@@ -38,8 +44,13 @@ import { answerQuoted, isContentsSection, type QuotedStats } from './quoted.js';
 import type { Reranker } from './reranker.js';
 import { toAnswerSection, type AnswerSection } from './sections.js';
 import { selectSections, type Ranked, type Selection } from './select.js';
+import { fileSubqueries, type FileSubquery } from './subquery.js';
+import { headingBonus, headingMatcher } from './heading-bonus.js';
+import { dropBacktickedFileNames, namePhrases, stripNames } from './file-names.js';
 import { extractTerms, isMainlyCjk, type Term } from './terms.js';
 import { verifyClaims, type VerifyStats } from './verify.js';
+import { shareDuplicates } from './duplicates.js';
+import { sentenceScores, type SentenceMatchDeps } from './sentence-match.js';
 
 /** A vector-search result as the upstream route returns it. */
 export interface RawVectorHit {
@@ -80,6 +91,8 @@ export interface PipelineDeps {
   log?: (msg: string) => void;
   /** Paragraph embeddings of long sections, for paragraphSelection; absent until built. */
   paragraphs?: ParagraphSource | null;
+  /** sentenceMatch: the embedding call and the sentence vector cache; without it verification scores by tokens. */
+  sentenceMatch?: SentenceMatchDeps | null;
 }
 
 /** Upstream prepends a metadata block to some chunk texts (src/renderer/api/client.js parseHeader). */
@@ -106,7 +119,13 @@ export interface Retrieval {
    * crossDocument: the question names two or more file groups; the files in the order the question
    * names them, and with the quota part the section keys taken as each file's top sections.
    */
-  crossDocument?: { documentIds: string[]; files: string[]; quota: string[] };
+  crossDocument?: {
+    documentIds: string[];
+    files: string[];
+    quota: string[];
+    /** perFileSubquery: the query each named file was searched with inside it. */
+    subqueries?: FileSubquery[];
+  };
 }
 
 /** crossDocument: sections of each named file taken from the fused list (round A2). */
@@ -138,6 +157,33 @@ export const FILE_SCOPED_VECTOR_POOL = 2000;
 /** scopedQuotaV2: sections per named file, and the most sections a question naming several files gets. */
 export const SCOPED_V2_QUOTA = 5;
 export const SCOPED_V2_MAX_SECTIONS = 8;
+/** namedFileQuota8: the same two numbers for a question naming two or more files (round X3). */
+export const NAMED_FILE_QUOTA = 8;
+export const NAMED_FILE_MAX_SECTIONS = 10;
+
+/**
+ * headingPathBonus: the bonus per section key for these terms (heading-bonus.ts), or undefined
+ * when the switch is off, so fuse() scores as before.
+ */
+export function pathBonus(
+  terms: Term[],
+  p: Pick<AnswerParams, 'headingPathBonus' | 'rrfK'>,
+  index: Pick<SectionIndex, 'section'>,
+): ((key: string) => number) | undefined {
+  if (!p.headingPathBonus || !terms.length) return undefined;
+  const matches = headingMatcher(terms);
+  const bonus = headingBonus(p.rrfK);
+  const seen = new Map<string, number>();
+  return (key) => {
+    let v = seen.get(key);
+    if (v === undefined) {
+      const found = index.section(key.slice(0, key.lastIndexOf('#')), Number(key.slice(key.lastIndexOf('#') + 1)));
+      v = found && matches(found.section.path) ? bonus : 0;
+      seen.set(key, v);
+    }
+    return v;
+  };
+}
 
 type VectorHit = VectorCandidate & { file: string | null; documentId: string | null };
 
@@ -184,18 +230,42 @@ export async function fileScopedSections(
   p: AnswerParams,
   deps: PipelineDeps,
   signal?: AbortSignal,
-  o: { per?: number; skipContents?: boolean } = {},
+  o: { per?: number; skipContents?: boolean; queries?: Map<string, string> } = {},
 ): Promise<FusedSection[]> {
   const per = o.per ?? CROSS_DOCUMENT_QUOTA;
   const ids = new Set(documentIds);
-  const hits = await vectorCandidates(await deps.vectorSearch(question, FILE_SCOPED_VECTOR_POOL, signal), deps, ids);
-  const ranking = terms.length
-    ? deps.index.rankSections(
-        terms.map((t) => t.text),
-        deps.index.sectionTotal(),
-        { stem: p.keywordStemming },
-      )
-    : [];
+  const stem = { stem: p.keywordStemming };
+  // perFileSubquery: a file searched with its own clause; one wide vector search and one keyword
+  // ranking per distinct query text, the whole question's shared by every file without a clause.
+  const searches = new Map<
+    string,
+    Promise<{ hits: VectorHit[]; ranking: RankedSection[]; bonus: ((key: string) => number) | undefined }>
+  >();
+  const search = (query: string) => {
+    let s = searches.get(query);
+    if (!s) {
+      s = (async () => {
+        const qTerms =
+          query === question
+            ? terms
+            : extractTerms(query, {
+                total: deps.index.sectionTotal(),
+                frequency: (t) => deps.index.sectionFrequency(t, stem),
+              });
+        const hits = await vectorCandidates(await deps.vectorSearch(query, FILE_SCOPED_VECTOR_POOL, signal), deps, ids);
+        const ranking = qTerms.length
+          ? deps.index.rankSections(
+              qTerms.map((t) => t.text),
+              deps.index.sectionTotal(),
+              stem,
+            )
+          : [];
+        return { hits, ranking, bonus: pathBonus(qTerms, p, deps.index) };
+      })();
+      searches.set(query, s);
+    }
+    return s;
+  };
   // Inside a file its table of contents holds every heading word, so keyword search ranks it high
   // (round C1); scopedQuotaV2 leaves such sections out of both lists.
   const contents = new Map<string, boolean>();
@@ -212,6 +282,8 @@ export async function fileScopedSections(
   };
   const out: FusedSection[] = [];
   for (const id of new Set(documentIds)) {
+    // Sequential: the searches of one question share Ollama's embedding model anyway.
+    const { hits, ranking, bonus } = await search(o.queries?.get(id) ?? question);
     const vector = hits
       .filter((h) => h.documentId === id)
       .filter((h) => !h.section || !isContents(id, Number(h.section.slice(h.section.lastIndexOf('#') + 1))))
@@ -220,7 +292,7 @@ export async function fileScopedSections(
       .filter((r) => r.documentId === id && !isContents(id, r.sectionIndex))
       .slice(0, p.keywordTopK)
       .map((r) => ({ section: sectionKey(r.documentId, r.sectionIndex), score: r.score, terms: r.terms }));
-    out.push(...fuse(vector, keyword, p.rrfK).slice(0, per));
+    out.push(...fuse(vector, keyword, p.rrfK, bonus).slice(0, per));
   }
   return out;
 }
@@ -282,7 +354,7 @@ export async function retrieve(
     : [];
   const t2 = performance.now();
 
-  let fused = fuse(vector, keyword, p.rrfK);
+  let fused = fuse(vector, keyword, p.rrfK, pathBonus(terms, p, deps.index));
   let affinity: Retrieval['affinity'];
   if (p.documentAffinity) {
     const named = mentionedDocuments(question, deps.index.identities?.() ?? []);
@@ -298,24 +370,37 @@ export async function retrieve(
       const files = groups.flat();
       const documentIds = files.map((f) => f.documentId);
       let quota: string[] = [];
+      let subqueries: FileSubquery[] | undefined;
       const scopedSearch = p.fileScopedQuota || p.scopedQuotaV2;
       if (parts.has('quota') && scopedSearch) {
-        const scoped = await fileScopedSections(
-          question,
-          terms,
-          documentIds,
-          p,
-          deps,
-          signal,
-          p.scopedQuotaV2 ? { per: SCOPED_V2_QUOTA, skipContents: true } : {},
-        );
+        let queries: Map<string, string> | undefined;
+        if (p.perFileSubquery) {
+          const subs = fileSubqueries(question, groups, deps.index.identities?.() ?? []);
+          queries = new Map(subs.map((x) => [x.documentId, x.query]));
+          for (const x of subs)
+            deps.log?.(
+              `[answer] subquery: ${files.find((f) => f.documentId === x.documentId)?.file ?? x.documentId}: ${x.attributed ? x.query : '(whole question)'}`,
+            );
+          subqueries = subs;
+        }
+        const scoped = await fileScopedSections(question, terms, documentIds, p, deps, signal, {
+          ...(p.scopedQuotaV2
+            ? { per: p.namedFileQuota8 ? NAMED_FILE_QUOTA : SCOPED_V2_QUOTA, skipContents: true }
+            : {}),
+          ...(queries ? { queries } : {}),
+        });
         quota = scoped.map((f) => f.key);
         // A section found only inside its file joins the end of the fused list, so it can become a
         // candidate; the library-wide ranks stay as they were.
         const seen = new Set(fused.map((f) => f.key));
         fused = [...fused, ...scoped.filter((f) => !seen.has(f.key))];
       } else if (parts.has('quota')) quota = quotaSections(fused, documentIds);
-      crossDocument = { documentIds, files: files.map((f) => f.file), quota };
+      crossDocument = {
+        documentIds,
+        files: files.map((f) => f.file),
+        quota,
+        ...(subqueries ? { subqueries } : {}),
+      };
       deps.log?.(
         `[answer] cross-document: ${crossDocument.files.join(', ')}; ${quota.length} quota sections` +
           (scopedSearch && parts.has('quota') ? (p.scopedQuotaV2 ? ' (file-scoped v2)' : ' (file-scoped)') : ''),
@@ -419,7 +504,7 @@ export function choose(r: Retrieval, s: ChoiceSettings): Selection {
       // Each file's best quota section first, then each file's second and so on, so the cap of
       // SCOPED_V2_MAX_SECTIONS takes the same number from every file before an overall section.
       own = takeInTurn(r.crossDocument?.quota ?? [], own);
-      count = Math.min(count, SCOPED_V2_MAX_SECTIONS);
+      count = Math.min(count, s.params.namedFileQuota8 ? NAMED_FILE_MAX_SECTIONS : SCOPED_V2_MAX_SECTIONS);
     }
     return selectSections([...own, ...extra], {
       count,
@@ -459,6 +544,8 @@ export interface SourceCard {
   /** The number the model cites it by. */
   n: number;
   file: string;
+  /** sourceDisplayNames: the name the prompt header showed for the file; the card shows it first. */
+  display?: string;
   relPath: string;
   url: string;
   documentId: string;
@@ -520,6 +607,16 @@ export interface AnswerResult {
   split?: { how: 'asks' | 'set'; parts: string[]; notFound: boolean[]; ms: number[] };
   /** dropUnsupportedHedges: the sentences deleted. */
   hedgesDropped?: string[];
+  /** The model's reply as written, before any post-processing. */
+  rawText?: string;
+  /** The question text the model read (questionFileNames rewrites file names in it). */
+  questionSent?: string;
+  /** verifyStripNames: sentences that had a name taken out for scoring. */
+  namesStripped?: number;
+  /** dropAnswerFileNames: true when the answer had a backticked file name. */
+  fileNamesDropped?: boolean;
+  /** sentenceMatch: the embedding time of this answer and what it embedded; error when it fell back to tokens. */
+  sentenceMatch?: { embedMs: number; sectionsEmbedded: number; sentencesEmbedded: number; error?: string };
 }
 
 export type AnswerEvent =
@@ -531,7 +628,8 @@ export type AnswerEvent =
 /** Sections shown under nothing found. */
 export const NEAREST_COUNT = 8;
 
-export type AnswerDeps = Pick<PipelineDeps, 'chat' | 'log'> & Partial<Pick<PipelineDeps, 'index' | 'paragraphs'>>;
+export type AnswerDeps = Pick<PipelineDeps, 'chat' | 'log'> &
+  Partial<Pick<PipelineDeps, 'index' | 'paragraphs' | 'sentenceMatch'>>;
 
 /**
  * The section texts the model reads: as selected, or with paragraphSelection the long ones cut
@@ -576,11 +674,15 @@ export async function answer(
   emit: (e: AnswerEvent) => void = () => {},
   signal?: AbortSignal,
 ): Promise<AnswerResult> {
+  // sourceDisplayNames: cards carry the same display name the prompt headers show.
+  const card: typeof cardOf = s.params.sourceDisplayNames
+    ? (n, section, rerank, trimmed) => ({ ...cardOf(n, section, rerank, trimmed), display: displayName(section.file) })
+    : cardOf;
   const nearest = ranked(r)
     .slice(0, NEAREST_COUNT)
-    .map((x, i) => cardOf(i + 1, x.section, x.rerank));
+    .map((x, i) => card(i + 1, x.section, x.rerank));
   if (s.params.answerMode === 'quoted')
-    return answerQuoted(question, r, sel, s, deps, { cardOf, nearest }, emit, signal);
+    return answerQuoted(question, r, sel, s, deps, { cardOf: card, nearest }, emit, signal);
   const sections = await sendTexts(
     question,
     r,
@@ -604,7 +706,7 @@ export async function answer(
       .sort((a, b) => rank(a.y.section.documentId) - rank(b.y.section.documentId) || a.i - b.i)
       .map(({ y }) => y);
   }
-  const sources = picked.map((y, i) => cardOf(i + 1, y.section, y.x.rerank, y.x.trimmed));
+  const sources = picked.map((y, i) => card(i + 1, y.section, y.x.rerank, y.x.trimmed));
   emit({ type: 'sources', sources });
   const base = {
     claims: [],
@@ -636,15 +738,27 @@ export async function answer(
     title: x.title,
     type: typeOf.get(x.documentId) ?? '',
     group: cross?.documentIds.includes(x.documentId) ? x.file : '',
+    ...(s.params.sourceFileNames || s.params.sourceDisplayNames ? { display: displayName(x.file) } : {}),
   }));
   const enumerate = s.params.enumerateWhenAsked && isSetQuestion(question);
-  const messages = buildMessages(question, promptSources, s.params.promptVariant, {
+  // questionFileNames: the model reads file names in the question as display name (file name);
+  // retrieval already ran on the question as asked.
+  const asked = s.params.questionFileNames
+    ? rewriteFileNames(
+        question,
+        (deps.index?.identities?.() ?? []).map((f) => f.file),
+      )
+    : question;
+  if (asked !== question) deps.log?.(`[answer] question file names: ${asked}`);
+  const messages = buildMessages(asked, promptSources, s.params.promptVariant, {
     verdictLine,
     fileHeaders: affinity,
     enumerate,
     noSummarizing: s.params.noSummarizing,
     crossDocument: crossParts.has('grouped'),
     grouped: crossParts.has('grouped'),
+    fileNames: s.params.sourceFileNames,
+    displayNames: s.params.sourceDisplayNames,
   });
   const t0 = performance.now();
   let firstTokenMs: number | null = null;
@@ -720,15 +834,73 @@ export async function answer(
     all.push(...rest);
     if (rest.length) emit({ type: 'delta', parts: rest });
   }
-  const parts = notFound ? [] : all;
+  let parts = notFound ? [] : all;
+  // dropAnswerFileNames: backticked file names out of the answer before it is verified.
+  let fileNamesDropped = false;
+  if (s.params.dropAnswerFileNames && !notFound) {
+    const merged: Part[] = [];
+    for (const p of parts) {
+      const last = merged[merged.length - 1];
+      if (p.type === 'text' && last?.type === 'text')
+        merged[merged.length - 1] = { type: 'text', text: last.text + p.text };
+      else merged.push(p);
+    }
+    parts = merged.map((p) => {
+      if (p.type !== 'text') return p;
+      const d = dropBacktickedFileNames(p.text);
+      fileNamesDropped ||= d.changed;
+      return d.changed ? { type: 'text', text: d.text } : p;
+    });
+    if (fileNamesDropped) {
+      answerText = dropBacktickedFileNames(answerText).text;
+      deps.log?.('[answer] file names dropped from the answer');
+    }
+  }
   let claims = notFound ? [] : claimsOf(parts, sources.length);
+  let namesStripped = 0;
   let verification: VerifyStats | undefined;
+  let sentenceMatch: AnswerResult['sentenceMatch'];
   if (s.params.verifyCitations && claims.length) {
     // A question naming exactly one file may be attributed only to its sources, when any is selected.
     const named = affinity && r.affinity?.documentIds.length === 1 ? r.affinity.documentIds[0] : null;
     const own = named ? sources.filter((c) => c.documentId === named).map((c) => c.n) : [];
+    // verifyStripNames: whole display names and backticked file names do not count as overlap.
+    const phrases = s.params.verifyStripNames
+      ? namePhrases((deps.index?.identities?.() ?? []).map((f) => displayName(f.file)))
+      : null;
+    const scored = phrases
+      ? claims.map((c) => {
+          const x = stripNames(c.text, phrases);
+          if (x.changed) namesStripped++;
+          return x.changed ? { ...c, text: x.text } : c;
+        })
+      : claims;
+    if (phrases) deps.log?.(`[answer] names stripped for verification: ${namesStripped} sentences`);
+    // sentenceMatch: scores per sentence and source from the sources' sentences; tokens when it fails.
+    let scores: (number[] | undefined)[] | undefined;
+    if (s.params.sentenceMatch && deps.sentenceMatch) {
+      try {
+        const m = await sentenceScores(
+          scored.map((c) => c.text),
+          sources.map((c) => c.passage),
+          { cjk: s.params.cjkOverlap, deps: deps.sentenceMatch, signal },
+        );
+        scores = m.scores;
+        sentenceMatch = {
+          embedMs: m.embedMs,
+          sectionsEmbedded: m.sectionsEmbedded,
+          sentencesEmbedded: m.sentencesEmbedded,
+        };
+        deps.log?.(
+          `[answer] sentence match: ${m.sentencesEmbedded} sentences of ${m.sectionsEmbedded} new sections embedded in ${m.embedMs} ms`,
+        );
+      } catch (e) {
+        sentenceMatch = { embedMs: 0, sectionsEmbedded: 0, sentencesEmbedded: 0, error: (e as Error).message };
+        deps.log?.(`[answer] sentence match failed, verifying by tokens: ${(e as Error).message}`);
+      }
+    }
     const v = verifyClaims(
-      claims,
+      scored,
       sources.map((c) => c.passage),
       {
         ...(affinity
@@ -739,12 +911,50 @@ export async function answer(
           : {}),
         ...(s.params.cjkOverlap ? { cjk: true } : {}),
         ...(crossParts.has('verify') ? { allowedFor: ownFiles(claims, sources, deps) } : {}),
+        ...(s.params.restatementExempt || s.params.contentFreeExempt
+          ? { question: [question, asked], restatement: s.params.restatementExempt }
+          : {}),
+        ...(s.params.contentFreeExempt ? { contentFree: true } : {}),
+        ...(s.params.sentenceOverlap && !scores
+          ? {
+              sentenceLevel: true,
+              minOverlap: s.params.sentenceOverlapMin,
+              cjkMinOverlap: s.params.sentenceOverlapMinCjk,
+            }
+          : {}),
+        ...(s.params.marginReattribution > 0 ? { margin: s.params.marginReattribution } : {}),
+        ...(scores
+          ? { scores, minOverlap: s.params.sentenceMatchMin, cjkMinOverlap: s.params.sentenceMatchMinCjk }
+          : {}),
       },
     );
-    claims = v.claims;
+    // The sentences keep their own text; only the scoring read the stripped copy.
+    claims = v.claims.map((c, i) => (scored[i] === claims[i] ? c : { ...c, text: claims[i]!.text }));
     verification = v.stats;
+    if (s.params.duplicateTextAttribution) {
+      const d = shareDuplicates(
+        claims,
+        sources.map((c) => ({ passage: c.passage, file: c.file })),
+        s.params.duplicateTextTiers ? { question: [question, asked] } : undefined,
+      );
+      claims = d.claims;
+      verification = {
+        ...verification,
+        duplicateShared: d.shared,
+        ...(s.params.duplicateTextTiers ? { duplicateTiers: d.tiers } : {}),
+      };
+    }
     deps.log?.(
-      `[answer] verify: ${v.stats.sentences} sentences, ${v.stats.reattributed} re-attributed, ${v.stats.attributed} attributed, ${v.stats.unsupported} unsupported`,
+      `[answer] verify: ${v.stats.sentences} sentences, ${v.stats.reattributed} re-attributed, ${v.stats.attributed} attributed, ${v.stats.unsupported} unsupported` +
+        (v.stats.restated !== undefined ? `, ${v.stats.restated} restating the question` : '') +
+        (v.stats.marginMoved !== undefined ? `, ${v.stats.marginMoved} moved by the margin` : '') +
+        (v.stats.contentFree !== undefined ? `, ${v.stats.contentFree} content-free` : '') +
+        (verification.duplicateShared !== undefined
+          ? `, ${verification.duplicateShared} shared with same-text sections`
+          : '') +
+        (verification.duplicateTiers
+          ? ` (by sentence ${verification.duplicateTiers.sentence}, by question ${verification.duplicateTiers.question}, all ${verification.duplicateTiers.all})`
+          : ''),
     );
   }
   let hedgesDropped: string[] = [];
@@ -778,6 +988,11 @@ export async function answer(
     ...(verification ? { verification } : {}),
     ...(followUp ? { followUp } : {}),
     ...(hedgesDropped.length ? { hedgesDropped } : {}),
+    rawText: text,
+    questionSent: asked,
+    ...(s.params.verifyStripNames ? { namesStripped } : {}),
+    ...(s.params.dropAnswerFileNames ? { fileNamesDropped } : {}),
+    ...(sentenceMatch ? { sentenceMatch } : {}),
   };
   emit({ type: 'done', result });
   return result;

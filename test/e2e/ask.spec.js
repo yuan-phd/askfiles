@@ -71,6 +71,8 @@ test.describe('Ask page with the answer pipeline stubbed', () => {
     await expect(cards).toHaveCount(2);
     await expect(cards.getByTestId('source-number')).toHaveText(['[2]', '[1]']);
     await expect(cards.getByTestId('source-file')).toHaveText(['leave-policy.docx', 'handbook.pdf']);
+    await expect(cards.getByTestId('source-filename')).toHaveCount(2);
+    await expect(cards.getByTestId('source-filename').first()).toBeHidden();
     await expect(cards.nth(1).getByTestId('source-section')).toHaveText('Employee handbook > Leave > Annual leave');
     await expect(cards.nth(1).getByTestId('source-page')).toHaveText('Pages 4 to 5 (printed iv)');
     await expect(cards.nth(0).getByTestId('source-page')).toBeHidden();
@@ -92,6 +94,32 @@ test.describe('Ask page with the answer pipeline stubbed', () => {
 
     await expect(page.getByTestId('answer')).toHaveAttribute('aria-busy', 'false');
     expect(await page.evaluate(() => window.__answerCalls)).toEqual([['ask', QUESTION]]);
+  });
+
+  test('a card with a display name shows it first and the file name smaller beside it', async ({ page }) => {
+    const named = card(1, {
+      file: '01_Procurement_Regulations_2025.pdf',
+      display: 'Procurement Regulations 2025',
+      title: 'Thresholds',
+      path: ['Thresholds'],
+      passage: 'The threshold is 50,000.',
+    });
+    const q = 'What is the threshold?';
+    const run = answerRun({
+      sources: [named],
+      deltas: [partsOf('The threshold is 50,000 [1].')],
+      result: {
+        text: 'The threshold is 50,000 [1].',
+        claims: [{ text: 'The threshold is 50,000 . ', citations: [1], unsupported: false }],
+        cited: [named],
+        considered: [],
+      },
+    });
+    await open(page, { runs: { [q]: run } });
+    await askQuestion(page, q);
+    const cards = page.getByTestId('sources').getByTestId('source-card');
+    await expect(cards.getByTestId('source-file')).toHaveText(['Procurement Regulations 2025']);
+    await expect(cards.getByTestId('source-filename')).toHaveText(['01_Procurement_Regulations_2025.pdf']);
   });
 
   test('shows the streamed text with citations before the answer is done', async ({ page }) => {

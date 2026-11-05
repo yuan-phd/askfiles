@@ -35,7 +35,7 @@ describe('config/presets.json', () => {
       sha256: '9694f1db203d5a18bea6f19a36be01b2d2c79bf9b7f8df553a4cc5cff870b47e',
       sizeBytes: 7321313664,
     });
-    // cjkOverlap kept in answer round A1, crossDocQuota in A2a, scopedQuotaV2 in C3; crossDocument (A2) and
+    // cjkOverlap kept in answer round A1, crossDocQuota in A2a, scopedQuotaV2 in C3, headingPathBonus in X2; crossDocument (A2) and
     // fileScopedQuota (C1) not.
     const on = [
       'verifyCitations',
@@ -44,6 +44,10 @@ describe('config/presets.json', () => {
       'cjkOverlap',
       'crossDocQuota',
       'scopedQuotaV2',
+      'headingPathBonus',
+      'questionFileNames',
+      'sourceDisplayNames',
+      'duplicateTextAttribution',
     ];
     for (const t of p.tiers) {
       // Summaries use the Ask model on every tier (owner decision 2026-11-04).
@@ -54,6 +58,10 @@ describe('config/presets.json', () => {
       const switches = Object.entries(t.answer).filter(([k, v]) => typeof v === 'boolean' && k !== 'rerankerBypassCjk');
       expect(switches.filter(([, v]) => v).map(([k]) => k)).toEqual(on);
       expect(t.answer.crossDocumentParts).toEqual(['quota', 'grouped', 'verify']);
+      // Round D2 rolled back (2026-11-05): no margin, thresholds back to 0.5 / 0.3.
+      expect([t.answer.marginReattribution, t.answer.sentenceMatchMin, t.answer.sentenceMatchMinCjk]).toEqual([
+        0, 0.5, 0.3,
+      ]);
       // Indexing rounds 2026-11-01: tables kept (I1); Chinese headings on by owner ruling after C4; OCR upscaling (I3) not.
       expect(t.indexing).toEqual({ structuredTables: true, cjkHeadings: true, ocrUpscale: false });
     }

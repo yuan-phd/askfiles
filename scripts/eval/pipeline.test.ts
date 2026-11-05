@@ -4,7 +4,10 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { QUESTION_COLUMNS as CASE_COLUMNS, appendEvalCase, type Retrieval } from '../../src/main/answer/index.js';
 import {
+  attribution,
   attributionOk,
+  attributionStrict,
+  type ScoredClaim,
   squash,
   expectedSections,
   keyCoverage,
@@ -16,7 +19,7 @@ import {
 } from './answer-metrics.js';
 import { applySets, resolveConfig } from './config.js';
 import { csvHeader, csvLine } from './csv.js';
-import { answerMetrics, indexHash, sweep, sweepTable } from './pipeline.js';
+import { answerMetrics, indexHash, seededFetch, sweep, sweepTable } from './pipeline.js';
 import { loadQuestions, parseQuestions, type Question } from './questions.js';
 import { RESULT_COLUMNS } from './results.js';
 import { parseTry } from './run.js';
@@ -71,16 +74,28 @@ describe('answer metrics', () => {
     expect(keyCoverage(q(), 'x', [])).toBeNull();
   });
 
-  it('accepts attribution only when the cited sections hold the key elements the answer states', () => {
+  it('accepts attribution when every stated key element is in a cited section and every citation supports its sentence', () => {
     const good = { passage: 'Employees get 27 days of leave.' };
     const paid = { passage: 'Leave is paid.' };
     const bad = { passage: 'Parking is free.' };
-    const says = (answer: string, cited: { passage: string }[]) =>
-      attributionOk(q(), { refused: false, answer, cited });
+    const says = (answer: string, cited: { passage: string }[], claims?: ScoredClaim[]) =>
+      attributionOk(q(), { refused: false, answer, cited, ...(claims ? { claims } : {}) });
     expect(says('You get 27 days [1].', [good])).toBe(true);
-    expect(says('You get 27 days [1][2].', [good, bad])).toBe(false);
+    // A cited section without a key element no longer fails the answer (round D1); it is counted.
+    expect(says('You get 27 days [1]. Parking is free [2].', [good, bad])).toBe(true);
+    expect(
+      attribution(q(), { refused: false, answer: 'You get 27 days [1]. Parking is free [2].', cited: [good, bad] }),
+    ).toEqual({ ok: true, strict: false, citedWithoutKey: 1, weakCitations: 0 });
+    // ... unless the sentence citing it does not reach the threshold against it.
+    const weak: ScoredClaim[] = [
+      { citations: [1], support: [0.9], minSupport: 0.5 },
+      { citations: [2], support: [0.4], minSupport: 0.5 },
+    ];
+    expect(says('You get 27 days [1]. Parking is free [2].', [good, bad], weak)).toBe(false);
+    // A sentence verification did not score (no support) is not held to it.
+    expect(says('You get 27 days [1].', [good], [{ citations: [1] }])).toBe(true);
     expect(says('You get 27 days [1].', [])).toBe(false);
-    // The cited section holds a key element, but not the one the answer gives.
+    // The stated element must be in some cited section.
     expect(says('You get 27 days [1].', [paid])).toBe(false);
     expect(says('It is paid [1].', [paid])).toBe(true);
     // No key element in the answer: nothing to check the citation against.
@@ -89,6 +104,15 @@ describe('answer metrics', () => {
     const absent = q({ category: 'absent_related' });
     expect(attributionOk(absent, { refused: true, answer: 'NOT_IN_SOURCES [1]', cited: [good] })).toBe(true);
     expect(attributionOk(absent, { refused: false, answer: 'You get 27 days [1].', cited: [good] })).toBe(false);
+  });
+
+  it('keeps the definition before round D1 as attributionStrict', () => {
+    const good = { passage: 'Employees get 27 days of leave.' };
+    const bad = { passage: 'Parking is free.' };
+    const strict = (answer: string, cited: { passage: string }[]) =>
+      attributionStrict(q(), { refused: false, answer, cited });
+    expect(strict('You get 27 days [1].', [good])).toBe(true);
+    expect(strict('You get 27 days [1][2].', [good, bad])).toBe(false);
   });
 
   it('normalizes dashes, quotes, broken words and percent ranges, and ignores phrases copied from the question', () => {
@@ -381,12 +405,16 @@ describe('section listing answers', () => {
       targetHit: true,
       keyCoverage: 1,
       attribution: true,
+      attributionStrict: true,
+      citedWithoutKey: 0,
     });
     const missing = { ...result, nearest: [card('A')] };
     expect(answerMetrics(listing, { result: missing, error: '', totalMs: 10 })).toEqual({
       targetHit: false,
       keyCoverage: 0.5,
       attribution: false,
+      attributionStrict: false,
+      citedWithoutKey: 0,
     });
   });
 });
@@ -476,5 +504,26 @@ describe('score on upstream results', () => {
         excluded: false,
       },
     ]);
+  });
+});
+
+describe('seed', () => {
+  it('adds options.seed to the chat body and keeps the other options', async () => {
+    let sent = '';
+    const f = seededFetch(42, (async (_u: unknown, init?: RequestInit) => {
+      sent = String(init?.body);
+      return new Response('{}');
+    }) as typeof fetch);
+    await f('http://x/api/chat', {
+      method: 'POST',
+      body: JSON.stringify({ model: 'm', options: { temperature: 0.1 } }),
+    });
+    expect(JSON.parse(sent)).toEqual({ model: 'm', options: { temperature: 0.1, seed: 42 } });
+  });
+
+  it('is -1 by default and set with --set seed=7', () => {
+    const c = resolveConfig({ label: 'x', chatModel: 'm', embeddingModel: 'e', systemPrompt: 'p' }, '/tmp', '/tmp');
+    expect(c.seed).toBe(-1);
+    expect(applySets(c, ['seed=7']).seed).toBe(7);
   });
 });

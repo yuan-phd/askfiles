@@ -150,6 +150,86 @@ export interface AnswerParams {
    * docs/plan.md round S1).
    */
   keywordStemming: boolean;
+  /**
+   * With the in-file search of fileScopedQuota or scopedQuotaV2: each named file is searched
+   * inside with the clause of the question that names it alone (subquery.ts), the whole question
+   * when there is none; selection, the prompt and verification unchanged (docs/plan.md, round X1).
+   */
+  perFileSubquery: boolean;
+  /**
+   * In fusion, a fixed bonus of 0.5/(rrfK+1) for a section whose heading path holds a question
+   * term (English by stem, Chinese n-grams), once per section; never enough to pass a section both
+   * lists rank in their top 16 (heading-bonus.ts, docs/plan.md round X2). Every question.
+   */
+  headingPathBonus: boolean;
+  /**
+   * With scopedQuotaV2, for a question naming two or more files: quota NAMED_FILE_QUOTA (8) per
+   * file and at most NAMED_FILE_MAX_SECTIONS (10) sections (docs/plan.md, round X3).
+   */
+  namedFileQuota8: boolean;
+  /**
+   * Each source header names its file: [n] display name (file name) > heading path, the display
+   * name from the file name (displayName in browse/identifiers.ts); prompt only, retrieval and
+   * verification unchanged (docs/plan.md round N1).
+   */
+  sourceFileNames: boolean;
+  /**
+   * In the question the model reads, an indexed file name written with its extension (backticks
+   * or not) becomes its display name; the retrieval query stays the question as asked (round N2).
+   */
+  questionFileNames: boolean;
+  /** Each source header names its file by display name only: [n] display name > heading path (round N2). */
+  sourceDisplayNames: boolean;
+  /**
+   * Before citation verification scores a sentence, whole display names (and their Chinese
+   * 《…》 forms) and backticked file names are taken out of the copy it scores; the sentence shown
+   * is unchanged (file-names.ts, round N2b).
+   */
+  verifyStripNames: boolean;
+  /** Backticked file names are deleted from the answer text before verification (round N2b). */
+  dropAnswerFileNames: boolean;
+  /**
+   * Citation verification leaves an uncited sentence that only restates the question (every
+   * content token in the question) uncited and not unsupported (verify.ts isRestatement, round D1).
+   */
+  restatementExempt: boolean;
+  /**
+   * Citation verification moves a single-citation sentence to another selected source that scores
+   * at least this much higher than the one cited; 0 is off (round D2).
+   */
+  marginReattribution: number;
+  /**
+   * Citation verification scores a sentence against each sentence of a source, the larger of token
+   * overlap and bge-m3 cosine, the source's best sentence counting (sentence-match.ts, round D2),
+   * with the thresholds sentenceMatchMin (English) and sentenceMatchMinCjk (mainly CJK sentences).
+   */
+  sentenceMatch: boolean;
+  sentenceMatchMin: number;
+  sentenceMatchMinCjk: number;
+  /**
+   * Citation verification scores a sentence against each sentence of a source by content-token
+   * overlap only, the source's best sentence counting, with the thresholds sentenceOverlapMin
+   * (English) and sentenceOverlapMinCjk (mainly CJK sentences) (verify.ts sentenceLevel, round D3).
+   */
+  sentenceOverlap: boolean;
+  sentenceOverlapMin: number;
+  sentenceOverlapMinCjk: number;
+  /**
+   * A cited sentence with no content word besides the question's and the lead-in words (verify.ts
+   * LEAD_INS) loses its citations without being unsupported: no attribution credit or failure (round D3).
+   */
+  contentFreeExempt: boolean;
+  /**
+   * A sentence verification attributes to a selected section is attributed as well to every other
+   * selected section whose normalized text has the same hash (duplicates.ts, round D4).
+   */
+  duplicateTextAttribution: boolean;
+  /**
+   * With duplicateTextAttribution, which same-text sections a sentence gets (duplicates.ts, round
+   * D4b): the one document the sentence names by display name, else the one the question names,
+   * else all of them.
+   */
+  duplicateTextTiers: boolean;
 }
 
 /** The crossDocument parts in effect: crossDocument's own, or the quota alone with crossDocQuota. */
@@ -191,6 +271,25 @@ export const DEFAULT_PARAMS: AnswerParams = {
   fileScopedQuota: false,
   scopedQuotaV2: false,
   keywordStemming: false,
+  perFileSubquery: false,
+  headingPathBonus: false,
+  namedFileQuota8: false,
+  sourceFileNames: false,
+  questionFileNames: false,
+  sourceDisplayNames: false,
+  verifyStripNames: false,
+  dropAnswerFileNames: false,
+  restatementExempt: false,
+  marginReattribution: 0,
+  sentenceMatch: false,
+  sentenceMatchMin: 0.5,
+  sentenceMatchMinCjk: 0.3,
+  sentenceOverlap: false,
+  sentenceOverlapMin: 0.5,
+  sentenceOverlapMinCjk: 0.3,
+  contentFreeExempt: false,
+  duplicateTextAttribution: false,
+  duplicateTextTiers: false,
 };
 
 /** Tokens kept free for the answer itself and for the instructions and the question. */
@@ -293,6 +392,25 @@ const CHECKS: Record<keyof AnswerParams, (v: unknown) => Problem> = {
   fileScopedQuota: bool,
   scopedQuotaV2: bool,
   keywordStemming: bool,
+  perFileSubquery: bool,
+  headingPathBonus: bool,
+  namedFileQuota8: bool,
+  sourceFileNames: bool,
+  questionFileNames: bool,
+  sourceDisplayNames: bool,
+  verifyStripNames: bool,
+  dropAnswerFileNames: bool,
+  restatementExempt: bool,
+  marginReattribution: numIn(0, 1),
+  sentenceMatch: bool,
+  sentenceMatchMin: numIn(0, 1),
+  sentenceMatchMinCjk: numIn(0, 1),
+  sentenceOverlap: bool,
+  sentenceOverlapMin: numIn(0, 1),
+  sentenceOverlapMinCjk: numIn(0, 1),
+  contentFreeExempt: bool,
+  duplicateTextAttribution: bool,
+  duplicateTextTiers: bool,
 };
 
 /** Problems with an answer block, each prefixed with at; every key is required. */

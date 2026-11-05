@@ -61,7 +61,26 @@
         "crossDocQuota": false,
         "fileScopedQuota": false,
         "scopedQuotaV2": false,
-        "keywordStemming": false
+        "keywordStemming": false,
+        "perFileSubquery": false,
+        "headingPathBonus": false,
+        "namedFileQuota8": false,
+        "sourceFileNames": false,
+        "questionFileNames": false,
+        "sourceDisplayNames": false,
+        "verifyStripNames": false,
+        "dropAnswerFileNames": false,
+        "restatementExempt": false,
+        "marginReattribution": 0,
+        "sentenceMatch": false,
+        "sentenceMatchMin": 0.5,
+        "sentenceMatchMinCjk": 0.3,
+        "sentenceOverlap": false,
+        "sentenceOverlapMin": 0.5,
+        "sentenceOverlapMinCjk": 0.3,
+        "contentFreeExempt": false,
+        "duplicateTextAttribution": false,
+        "duplicateTextTiers": false
       }
     }
   ]
