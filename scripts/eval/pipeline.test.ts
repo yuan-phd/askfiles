@@ -16,7 +16,7 @@ import {
 } from './answer-metrics.js';
 import { applySets, resolveConfig } from './config.js';
 import { csvHeader, csvLine } from './csv.js';
-import { answerMetrics, indexHash, sweep, sweepTable } from './pipeline.js';
+import { answerMetrics, indexHash, seededFetch, sweep, sweepTable } from './pipeline.js';
 import { loadQuestions, parseQuestions, type Question } from './questions.js';
 import { RESULT_COLUMNS } from './results.js';
 import { parseTry } from './run.js';
@@ -476,5 +476,26 @@ describe('score on upstream results', () => {
         excluded: false,
       },
     ]);
+  });
+});
+
+describe('seed', () => {
+  it('adds options.seed to the chat body and keeps the other options', async () => {
+    let sent = '';
+    const f = seededFetch(42, (async (_u: unknown, init?: RequestInit) => {
+      sent = String(init?.body);
+      return new Response('{}');
+    }) as typeof fetch);
+    await f('http://x/api/chat', {
+      method: 'POST',
+      body: JSON.stringify({ model: 'm', options: { temperature: 0.1 } }),
+    });
+    expect(JSON.parse(sent)).toEqual({ model: 'm', options: { temperature: 0.1, seed: 42 } });
+  });
+
+  it('is -1 by default and set with --set seed=7', () => {
+    const c = resolveConfig({ label: 'x', chatModel: 'm', embeddingModel: 'e', systemPrompt: 'p' }, '/tmp', '/tmp');
+    expect(c.seed).toBe(-1);
+    expect(applySets(c, ['seed=7']).seed).toBe(7);
   });
 });

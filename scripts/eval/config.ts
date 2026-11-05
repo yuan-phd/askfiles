@@ -47,6 +47,12 @@ export interface EvalConfig {
   /** Sent with every chat (patches/007); empty uses the server's DEFAULT_REASONING_EFFORT. */
   reasoningEffort: string;
   passes: number;
+  /**
+   * Ollama sampling seed sent with every answer-pipeline chat call (options.seed); -1 sends none.
+   * Eval only, for variance checks (docs/eval.md); Ollama must run with OLLAMA_NUM_PARALLEL=1,
+   * since batched requests are not deterministic under a seed.
+   */
+  seed: number;
   /** Answer pipeline values, the answer block of config/presets.json (src/main/answer/params.ts). */
   answer: AnswerParams;
   /** Answer scope whose section count and rerank floor a run uses. */
@@ -89,6 +95,7 @@ const DEFAULTS: Omit<EvalConfig, 'label' | 'chatModel' | 'embeddingModel'> = {
   rerank: false,
   reasoningEffort: 'off',
   passes: 2,
+  seed: -1,
   answer: DEFAULT_PARAMS,
   scope: 'balanced',
   rerankerDir: '',
@@ -126,6 +133,7 @@ export function resolveConfig(raw: Record<string, unknown>, baseDir: string, rep
   num('chunkMax', (n) => Number.isInteger(n) && n >= 400, 'an integer of at least 400');
   num('temperature', (n) => n >= 0, '0 or more');
   num('passes', (n) => Number.isInteger(n) && n >= 1, 'an integer of at least 1');
+  num('seed', (n) => Number.isInteger(n) && n >= -1, 'an integer, -1 for none');
   num('contextTokens', (n) => Number.isInteger(n) && n >= 0, 'an integer, 0 for the default');
   num('ollamaPort', (n) => Number.isInteger(n) && n >= 0 && n < 65536, 'a port number, 0 to start Ollama');
   if (c.chunkStrategy !== 'heading') problems.push('chunkStrategy must be heading');

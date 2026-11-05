@@ -127,6 +127,22 @@ export function describeCards(cards: { file: string; path: string[]; rerank?: nu
     .join('\n');
 }
 
+/** A fetch that adds options.seed to every JSON request body (eval config seed). */
+export function seededFetch(seed: number, base: typeof globalThis.fetch = globalThis.fetch): typeof globalThis.fetch {
+  return (input, init) => {
+    if (init && typeof init.body === 'string') {
+      try {
+        const body = JSON.parse(init.body) as { options?: Record<string, unknown> };
+        body.options = { ...body.options, seed };
+        return base(input, { ...init, body: JSON.stringify(body) });
+      } catch {
+        // Not JSON: sent as it is.
+      }
+    }
+    return base(input, init);
+  };
+}
+
 export async function buildPipeline(o: {
   root: string;
   config: EvalConfig;
@@ -184,7 +200,7 @@ export async function buildPipeline(o: {
     resolveSources: (s) => resolver(s),
     index,
     reranker,
-    chat: ollamaChat(() => o.ollamaUrl),
+    chat: ollamaChat(() => o.ollamaUrl, o.config.seed >= 0 ? seededFetch(o.config.seed) : undefined),
     log: o.log,
     paragraphs,
   };
