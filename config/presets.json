@@ -77,7 +77,8 @@
         "sentenceOverlap": false,
         "sentenceOverlapMin": 0.5,
         "sentenceOverlapMinCjk": 0.3,
-        "contentFreeExempt": false
+        "contentFreeExempt": false,
+        "duplicateTextAttribution": true
       },
       "summariesFasterModel": false,
       "indexing": {
@@ -168,7 +169,8 @@
         "sentenceOverlap": false,
         "sentenceOverlapMin": 0.5,
         "sentenceOverlapMinCjk": 0.3,
-        "contentFreeExempt": false
+        "contentFreeExempt": false,
+        "duplicateTextAttribution": true
       },
       "summariesFasterModel": false,
       "indexing": {
@@ -252,7 +254,8 @@
         "sentenceOverlap": false,
         "sentenceOverlapMin": 0.5,
         "sentenceOverlapMinCjk": 0.3,
-        "contentFreeExempt": false
+        "contentFreeExempt": false,
+        "duplicateTextAttribution": true
       },
       "summariesFasterModel": false,
       "indexing": {

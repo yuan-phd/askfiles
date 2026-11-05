@@ -83,7 +83,7 @@ export function despace(text: string): string {
   return /^(?:[㐀-鿿]\s+){2,}[㐀-鿿]$/u.test(text.trim()) ? text.replace(/\s+/g, '') : text;
 }
 
-const PAGE_NUMBER =
+export const PAGE_NUMBER =
   /^(?:[-—–_\s]*\d{1,4}[-—–_\s]*|第\s*\d{1,4}\s*页(?:\s*[,，/]?\s*共\s*\d{1,4}\s*页)?|\d{1,4}\s*\/\s*\d{1,4}|-\s*[ivxlc]{1,6}\s*-)$/iu;
 const LEADER = /(?:\.{4,}|…{2,}|·{4,}|-{5,}|_{5,})\s*\d*\s*$/u;
 const ENDS_IN_PAGE = /\S\s{2,}\d{1,4}$/u;

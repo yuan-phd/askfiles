@@ -132,6 +132,8 @@ export interface VerifyStats {
   marginMoved?: number;
   /** contentFreeExempt: cited sentences with no content word of their own, their citations not counted. */
   contentFree?: number;
+  /** duplicateTextAttribution: sentences that gained the sections holding the same text as one they cite. */
+  duplicateShared?: number;
 }
 
 /**

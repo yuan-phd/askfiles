@@ -47,6 +47,7 @@ describe('config/presets.json', () => {
       'headingPathBonus',
       'questionFileNames',
       'sourceDisplayNames',
+      'duplicateTextAttribution',
     ];
     for (const t of p.tiers) {
       // Summaries use the Ask model on every tier (owner decision 2026-11-04).

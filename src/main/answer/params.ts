@@ -219,6 +219,11 @@ export interface AnswerParams {
    * LEAD_INS) loses its citations without being unsupported: no attribution credit or failure (round D3).
    */
   contentFreeExempt: boolean;
+  /**
+   * A sentence verification attributes to a selected section is attributed as well to every other
+   * selected section whose normalized text has the same hash (duplicates.ts, round D4).
+   */
+  duplicateTextAttribution: boolean;
 }
 
 /** The crossDocument parts in effect: crossDocument's own, or the quota alone with crossDocQuota. */
@@ -277,6 +282,7 @@ export const DEFAULT_PARAMS: AnswerParams = {
   sentenceOverlapMin: 0.5,
   sentenceOverlapMinCjk: 0.3,
   contentFreeExempt: false,
+  duplicateTextAttribution: false,
 };
 
 /** Tokens kept free for the answer itself and for the instructions and the question. */
@@ -396,6 +402,7 @@ const CHECKS: Record<keyof AnswerParams, (v: unknown) => Problem> = {
   sentenceOverlapMin: numIn(0, 1),
   sentenceOverlapMinCjk: numIn(0, 1),
   contentFreeExempt: bool,
+  duplicateTextAttribution: bool,
 };
 
 /** Problems with an answer block, each prefixed with at; every key is required. */

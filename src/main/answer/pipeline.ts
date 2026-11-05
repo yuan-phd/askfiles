@@ -49,6 +49,7 @@ import { headingBonus, headingMatcher } from './heading-bonus.js';
 import { dropBacktickedFileNames, namePhrases, stripNames } from './file-names.js';
 import { extractTerms, isMainlyCjk, type Term } from './terms.js';
 import { verifyClaims, type VerifyStats } from './verify.js';
+import { shareDuplicates } from './duplicates.js';
 import { sentenceScores, type SentenceMatchDeps } from './sentence-match.js';
 
 /** A vector-search result as the upstream route returns it. */
@@ -930,11 +931,22 @@ export async function answer(
     // The sentences keep their own text; only the scoring read the stripped copy.
     claims = v.claims.map((c, i) => (scored[i] === claims[i] ? c : { ...c, text: claims[i]!.text }));
     verification = v.stats;
+    if (s.params.duplicateTextAttribution) {
+      const d = shareDuplicates(
+        claims,
+        sources.map((c) => c.passage),
+      );
+      claims = d.claims;
+      verification = { ...verification, duplicateShared: d.shared };
+    }
     deps.log?.(
       `[answer] verify: ${v.stats.sentences} sentences, ${v.stats.reattributed} re-attributed, ${v.stats.attributed} attributed, ${v.stats.unsupported} unsupported` +
         (v.stats.restated !== undefined ? `, ${v.stats.restated} restating the question` : '') +
         (v.stats.marginMoved !== undefined ? `, ${v.stats.marginMoved} moved by the margin` : '') +
-        (v.stats.contentFree !== undefined ? `, ${v.stats.contentFree} content-free` : ''),
+        (v.stats.contentFree !== undefined ? `, ${v.stats.contentFree} content-free` : '') +
+        (verification.duplicateShared !== undefined
+          ? `, ${verification.duplicateShared} shared with same-text sections`
+          : ''),
     );
   }
   let hedgesDropped: string[] = [];
