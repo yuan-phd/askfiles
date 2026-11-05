@@ -69,7 +69,7 @@ function isCjkName(text: string): boolean {
  * removed: 01_标准设备采购招标文件_2017年版.pdf is 标准设备采购招标文件, the form a question
  * writes in title marks (《标准设备采购招标文件》).
  */
-function nameForms(file: string): string[] {
+export function nameForms(file: string): string[] {
   const stem = file.replace(/\.[^.]+$/, '');
   const spaced = stem
     .replace(/[_-]+/g, ' ')
@@ -84,6 +84,50 @@ function nameForms(file: string): string[] {
   return [
     ...new Set([file, stem, ...[spaced, noYear].filter((x) => x.split(' ').length >= 2 && !isCjkName(x)), ...cjk]),
   ];
+}
+
+/**
+ * Markers of a derived copy at the end of a file name part (14_..._衍生.xlsx, 15_..._网页正文.txt):
+ * not part of the document's name. Matched as whole underscore- or space-separated parts, Latin
+ * ones in any case.
+ */
+export const DERIVED_COPY_MARKERS = ['网页正文', '衍生', '副本', 'copy', 'draft'];
+
+/**
+ * The name a source header shows for a file (sourceFileNames, docs/plan.md round N1): the file
+ * name without its leading sequence number and its extension, derived-copy markers left out, year
+ * and version markers kept (2025, 2017年版, 试行), underscores as spaces, spaces collapsed.
+ * 01_Procurement_Regulations_2025.pdf is Procurement Regulations 2025; 01_标准设备采购招标文件_2017年版.pdf
+ * is 标准设备采购招标文件 2017年版. Falls back to the file name when nothing is left.
+ */
+export function displayName(file: string): string {
+  const markers = new Set(DERIVED_COPY_MARKERS.map((m) => m.toLowerCase()));
+  const name = file
+    .replace(/\.[^.\s]{1,5}$/, '')
+    .replace(/^\d+(?:[_\s-]+|$)/, '')
+    .split(/[_\s]+/)
+    .filter((part) => part && !markers.has(part.toLowerCase()))
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return name || file;
+}
+
+/**
+ * questionFileNames (docs/plan.md round N2): in the question text sent to the model, every
+ * indexed file name written whole with its extension (in backticks or not, on word boundaries)
+ * becomes its display name followed by the file name in parentheses. The retrieval query is not
+ * changed by this.
+ */
+export function rewriteFileNames(question: string, files: string[]): string {
+  let out = question;
+  // Longest first, so a file name inside another one is not replaced first.
+  for (const file of [...new Set(files)].sort((a, b) => b.length - a.length)) {
+    const name = file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`\`${name}\`|(?<![\\p{L}\\p{N}_.])${name}(?![\\p{L}\\p{N}_])`, 'gu');
+    out = out.replace(re, () => `${displayName(file)} (${file})`);
+  }
+  return out;
 }
 
 /**

@@ -167,6 +167,17 @@ export interface AnswerParams {
    * file and at most NAMED_FILE_MAX_SECTIONS (10) sections (docs/plan.md, round X3).
    */
   namedFileQuota8: boolean;
+  /**
+   * Each source header names its file: [n] display name (file name) > heading path, the display
+   * name from the file name (displayName in browse/identifiers.ts); prompt only, retrieval and
+   * verification unchanged (docs/plan.md round N1).
+   */
+  sourceFileNames: boolean;
+  /**
+   * In the question the model reads, an indexed file name written with its extension becomes
+   * display name (file name); the retrieval query stays the question as asked (round N2).
+   */
+  questionFileNames: boolean;
 }
 
 /** The crossDocument parts in effect: crossDocument's own, or the quota alone with crossDocQuota. */
@@ -211,6 +222,8 @@ export const DEFAULT_PARAMS: AnswerParams = {
   perFileSubquery: false,
   headingPathBonus: false,
   namedFileQuota8: false,
+  sourceFileNames: false,
+  questionFileNames: false,
 };
 
 /** Tokens kept free for the answer itself and for the instructions and the question. */
@@ -316,6 +329,8 @@ const CHECKS: Record<keyof AnswerParams, (v: unknown) => Problem> = {
   perFileSubquery: bool,
   headingPathBonus: bool,
   namedFileQuota8: bool,
+  sourceFileNames: bool,
+  questionFileNames: bool,
 };
 
 /** Problems with an answer block, each prefixed with at; every key is required. */

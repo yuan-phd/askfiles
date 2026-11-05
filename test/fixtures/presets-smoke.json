@@ -64,7 +64,9 @@
         "keywordStemming": false,
         "perFileSubquery": false,
         "headingPathBonus": false,
-        "namedFileQuota8": false
+        "namedFileQuota8": false,
+        "sourceFileNames": false,
+        "questionFileNames": false
       }
     }
   ]

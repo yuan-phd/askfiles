@@ -8,7 +8,13 @@
  * retrieve (candidates, fusion, sections, rerank), choose (floor, count, budget), answer.
  */
 import type { BrowseDocument, BrowseSection, DocumentRef, KeywordOptions, RankedSection } from '../browse/index.js';
-import { mentionedDocuments, namedFileGroups, type FileIdentity } from '../browse/identifiers.js';
+import {
+  displayName,
+  mentionedDocuments,
+  namedFileGroups,
+  rewriteFileNames,
+  type FileIdentity,
+} from '../browse/identifiers.js';
 import { citationOrder, claimsOf, CitationStream, parseCitations, type Claim, type Part } from './citations.js';
 import { fuse, sectionKey, type FusedSection, type KeywordCandidate, type VectorCandidate } from './fusion.js';
 import type { ChatFn } from './ollama-chat.js';
@@ -710,15 +716,26 @@ export async function answer(
     title: x.title,
     type: typeOf.get(x.documentId) ?? '',
     group: cross?.documentIds.includes(x.documentId) ? x.file : '',
+    ...(s.params.sourceFileNames ? { display: displayName(x.file) } : {}),
   }));
   const enumerate = s.params.enumerateWhenAsked && isSetQuestion(question);
-  const messages = buildMessages(question, promptSources, s.params.promptVariant, {
+  // questionFileNames: the model reads file names in the question as display name (file name);
+  // retrieval already ran on the question as asked.
+  const asked = s.params.questionFileNames
+    ? rewriteFileNames(
+        question,
+        (deps.index?.identities?.() ?? []).map((f) => f.file),
+      )
+    : question;
+  if (asked !== question) deps.log?.(`[answer] question file names: ${asked}`);
+  const messages = buildMessages(asked, promptSources, s.params.promptVariant, {
     verdictLine,
     fileHeaders: affinity,
     enumerate,
     noSummarizing: s.params.noSummarizing,
     crossDocument: crossParts.has('grouped'),
     grouped: crossParts.has('grouped'),
+    fileNames: s.params.sourceFileNames,
   });
   const t0 = performance.now();
   let firstTokenMs: number | null = null;

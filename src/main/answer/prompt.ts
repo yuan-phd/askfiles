@@ -104,6 +104,8 @@ export interface PromptSource {
   title?: string;
   /** crossDocument: the file the source is grouped under; '' for the files the question does not name. */
   group?: string;
+  /** sourceFileNames: the file's display name (displayName in browse/identifiers.ts). */
+  display?: string;
 }
 
 /** [n] file | type | full path, and a note when another source has the same section title. */
@@ -125,13 +127,27 @@ export function sourceHeader(sources: PromptSource[], i: number): string {
   return `[${i + 1}] ${fields}${note}`;
 }
 
+/**
+ * sourceFileNames (docs/plan.md round N1): [n] display name (file name) > heading path, one line,
+ * the same for every language. Only the prompt carries it: verification and the source cards use
+ * the section text and records.
+ */
+export function fileNameHeader(s: Pick<PromptSource, 'path' | 'file' | 'display'>, i: number): string {
+  return `[${i + 1}] ${s.display || s.file} (${s.file}) > ${s.path.join(' > ')}`;
+}
+
 export function userMessage(
   question: string,
   sources: PromptSource[],
-  o: { fileHeaders?: boolean; grouped?: boolean } = {},
+  o: { fileHeaders?: boolean; grouped?: boolean; fileNames?: boolean } = {},
 ): string {
   const blocks = sources.map((s, i) => {
-    const block = `${o.fileHeaders ? sourceHeader(sources, i) : `[${i + 1}] ${s.path.join(' > ')}`}\n${s.text.trim()}`;
+    const header = o.fileHeaders
+      ? sourceHeader(sources, i)
+      : o.fileNames && s.file
+        ? fileNameHeader(s, i)
+        : `[${i + 1}] ${s.path.join(' > ')}`;
+    const block = `${header}\n${s.text.trim()}`;
     // grouped: sources come ordered by file, with a line naming the file before each group.
     if (!o.grouped || (i > 0 && sources[i - 1]!.group === s.group)) return block;
     return `${s.group ? `Sources from ${s.group}:` : 'Sources from other files:'}\n\n${block}`;
@@ -155,6 +171,7 @@ export function buildMessages(
     noSummarizing?: boolean;
     crossDocument?: boolean;
     grouped?: boolean;
+    fileNames?: boolean;
   } = {},
 ): ChatMessage[] {
   return [

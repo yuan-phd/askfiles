@@ -52,7 +52,9 @@
     "keywordStemming": false,
     "perFileSubquery": false,
     "headingPathBonus": true,
-    "namedFileQuota8": false
+    "namedFileQuota8": false,
+    "sourceFileNames": false,
+    "questionFileNames": false
   },
   "contextTokens": 8192,
   "indexing": {
