@@ -707,7 +707,10 @@ export function answerRow(o: {
         (r.verification.restated !== undefined ? `, ${r.verification.restated} restated` : '') +
         (r.verification.marginMoved !== undefined ? `, ${r.verification.marginMoved} moved by the margin` : '') +
         (r.verification.contentFree !== undefined ? `, ${r.verification.contentFree} content-free` : '') +
-        (r.verification.duplicateShared !== undefined ? `, ${r.verification.duplicateShared} same-text shared` : '')
+        (r.verification.duplicateShared !== undefined ? `, ${r.verification.duplicateShared} same-text shared` : '') +
+        (r.verification.duplicateTiers
+          ? ` (by sentence ${r.verification.duplicateTiers.sentence}, by question ${r.verification.duplicateTiers.question}, all ${r.verification.duplicateTiers.all})`
+          : '')
       : '',
     affinity: (retrieval.affinity ?? retrieval.crossDocument)?.files.join('; ') ?? '',
     follow_up: r?.followUp

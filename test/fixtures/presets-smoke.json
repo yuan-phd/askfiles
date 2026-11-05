@@ -79,7 +79,8 @@
         "sentenceOverlapMin": 0.5,
         "sentenceOverlapMinCjk": 0.3,
         "contentFreeExempt": false,
-        "duplicateTextAttribution": false
+        "duplicateTextAttribution": false,
+        "duplicateTextTiers": false
       }
     }
   ]

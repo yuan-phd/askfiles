@@ -224,6 +224,12 @@ export interface AnswerParams {
    * selected section whose normalized text has the same hash (duplicates.ts, round D4).
    */
   duplicateTextAttribution: boolean;
+  /**
+   * With duplicateTextAttribution, which same-text sections a sentence gets (duplicates.ts, round
+   * D4b): the one document the sentence names by display name, else the one the question names,
+   * else all of them.
+   */
+  duplicateTextTiers: boolean;
 }
 
 /** The crossDocument parts in effect: crossDocument's own, or the quota alone with crossDocQuota. */
@@ -283,6 +289,7 @@ export const DEFAULT_PARAMS: AnswerParams = {
   sentenceOverlapMinCjk: 0.3,
   contentFreeExempt: false,
   duplicateTextAttribution: false,
+  duplicateTextTiers: false,
 };
 
 /** Tokens kept free for the answer itself and for the instructions and the question. */
@@ -403,6 +410,7 @@ const CHECKS: Record<keyof AnswerParams, (v: unknown) => Problem> = {
   sentenceOverlapMinCjk: numIn(0, 1),
   contentFreeExempt: bool,
   duplicateTextAttribution: bool,
+  duplicateTextTiers: bool,
 };
 
 /** Problems with an answer block, each prefixed with at; every key is required. */

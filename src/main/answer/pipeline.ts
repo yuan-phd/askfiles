@@ -934,10 +934,15 @@ export async function answer(
     if (s.params.duplicateTextAttribution) {
       const d = shareDuplicates(
         claims,
-        sources.map((c) => c.passage),
+        sources.map((c) => ({ passage: c.passage, file: c.file })),
+        s.params.duplicateTextTiers ? { question: [question, asked] } : undefined,
       );
       claims = d.claims;
-      verification = { ...verification, duplicateShared: d.shared };
+      verification = {
+        ...verification,
+        duplicateShared: d.shared,
+        ...(s.params.duplicateTextTiers ? { duplicateTiers: d.tiers } : {}),
+      };
     }
     deps.log?.(
       `[answer] verify: ${v.stats.sentences} sentences, ${v.stats.reattributed} re-attributed, ${v.stats.attributed} attributed, ${v.stats.unsupported} unsupported` +
@@ -946,6 +951,9 @@ export async function answer(
         (v.stats.contentFree !== undefined ? `, ${v.stats.contentFree} content-free` : '') +
         (verification.duplicateShared !== undefined
           ? `, ${verification.duplicateShared} shared with same-text sections`
+          : '') +
+        (verification.duplicateTiers
+          ? ` (by sentence ${verification.duplicateTiers.sentence}, by question ${verification.duplicateTiers.question}, all ${verification.duplicateTiers.all})`
           : ''),
     );
   }

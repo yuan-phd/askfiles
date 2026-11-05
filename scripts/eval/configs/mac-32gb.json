@@ -67,7 +67,8 @@
     "sentenceOverlapMin": 0.5,
     "sentenceOverlapMinCjk": 0.3,
     "contentFreeExempt": false,
-    "duplicateTextAttribution": true
+    "duplicateTextAttribution": true,
+    "duplicateTextTiers": false
   },
   "contextTokens": 8192,
   "indexing": {
