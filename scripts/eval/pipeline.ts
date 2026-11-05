@@ -16,6 +16,7 @@ import {
   ensureReranker,
   ollamaChat,
   ollamaEmbed,
+  SentenceVectorCache,
   ParagraphStore,
   NEAREST_COUNT,
   NOT_FOUND_MARKER,
@@ -37,7 +38,7 @@ import { sectionPath } from '../../src/main/answer/sections.js';
 import { createSourceResolver } from '../../src/main/watcher/index.js';
 import { readSectionText } from '../../src/main/watcher/section-docs.js';
 import {
-  attributionOk,
+  attribution,
   expectedSections,
   keyCoverage,
   literalElements,
@@ -203,6 +204,13 @@ export async function buildPipeline(o: {
     chat: ollamaChat(() => o.ollamaUrl, o.config.seed >= 0 ? seededFetch(o.config.seed) : undefined),
     log: o.log,
     paragraphs,
+    sentenceMatch: o.config.answer.sentenceMatch
+      ? {
+          embed: ollamaEmbed(() => o.ollamaUrl, o.config.embeddingModel),
+          model: o.config.embeddingModel,
+          cache: new SentenceVectorCache(),
+        }
+      : null,
   };
 }
 
@@ -390,7 +398,8 @@ export function literalElementsOf(
  */
 export function answerMetrics(q: Question, row: AnswerRow, literal?: string[]) {
   const r = row.result;
-  if (!r) return { targetHit: null, keyCoverage: null, attribution: null };
+  if (!r)
+    return { targetHit: null, keyCoverage: null, attribution: null, attributionStrict: null, citedWithoutKey: null };
   if (q.category === 'section_listing' && r.notFound) {
     const listed = r.nearest.map(cardRecord);
     const hit = targetHit(q, listed);
@@ -398,6 +407,8 @@ export function answerMetrics(q: Question, row: AnswerRow, literal?: string[]) {
       targetHit: hit,
       keyCoverage: keyCoverage(q, listed.map((c) => c.path.join(' > ')).join('\n')),
       attribution: hit,
+      attributionStrict: hit,
+      citedWithoutKey: 0,
     };
   }
   const cited = r.cited.map(cardRecord);
@@ -405,9 +416,12 @@ export function answerMetrics(q: Question, row: AnswerRow, literal?: string[]) {
   // it lists (owner, round C3): isNotFound treats the marker beside [n] citations as an answer, so
   // without this a refusal citing the sources it checked counted as cited.
   const refusal = r.notFound || r.text.includes(NOT_FOUND_MARKER);
+  const a = attribution(q, { refused: r.notFound, answer: r.text, cited, claims: r.claims });
   return {
     targetHit: refusal ? targetHit(q, []) : targetHit(q, cited),
     keyCoverage: r.notFound ? (keyCoverage(q, '', literal) === null ? null : 0) : keyCoverage(q, r.text, literal),
-    attribution: attributionOk(q, { refused: r.notFound, answer: r.text, cited }),
+    attribution: a.ok,
+    attributionStrict: a.strict,
+    citedWithoutKey: a.ok === null ? null : a.citedWithoutKey,
   };
 }

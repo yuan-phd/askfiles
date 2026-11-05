@@ -74,6 +74,12 @@ export interface Claim {
   citations: number[];
   /** True for a sentence that cites nothing valid and has words in it. */
   unsupported: boolean;
+  /** restatementExempt: an uncited sentence that only restates the question; neither cited nor unsupported. */
+  restatement?: boolean;
+  /** After verification: each citation's score against its source, in citation order. */
+  support?: number[];
+  /** After verification: the score a citation needed (the threshold the sentence was held to). */
+  minSupport?: number;
 }
 
 const END = /[.!?。！？]+["'”’）)]*\s+|[。！？]+|\n+/g;

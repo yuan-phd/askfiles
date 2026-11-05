@@ -49,6 +49,7 @@ import { headingBonus, headingMatcher } from './heading-bonus.js';
 import { dropBacktickedFileNames, namePhrases, stripNames } from './file-names.js';
 import { extractTerms, isMainlyCjk, type Term } from './terms.js';
 import { verifyClaims, type VerifyStats } from './verify.js';
+import { sentenceScores, type SentenceMatchDeps } from './sentence-match.js';
 
 /** A vector-search result as the upstream route returns it. */
 export interface RawVectorHit {
@@ -89,6 +90,8 @@ export interface PipelineDeps {
   log?: (msg: string) => void;
   /** Paragraph embeddings of long sections, for paragraphSelection; absent until built. */
   paragraphs?: ParagraphSource | null;
+  /** sentenceMatch: the embedding call and the sentence vector cache; without it verification scores by tokens. */
+  sentenceMatch?: SentenceMatchDeps | null;
 }
 
 /** Upstream prepends a metadata block to some chunk texts (src/renderer/api/client.js parseHeader). */
@@ -609,6 +612,8 @@ export interface AnswerResult {
   namesStripped?: number;
   /** dropAnswerFileNames: true when the answer had a backticked file name. */
   fileNamesDropped?: boolean;
+  /** sentenceMatch: the embedding time of this answer and what it embedded; error when it fell back to tokens. */
+  sentenceMatch?: { embedMs: number; sectionsEmbedded: number; sentencesEmbedded: number; error?: string };
 }
 
 export type AnswerEvent =
@@ -620,7 +625,8 @@ export type AnswerEvent =
 /** Sections shown under nothing found. */
 export const NEAREST_COUNT = 8;
 
-export type AnswerDeps = Pick<PipelineDeps, 'chat' | 'log'> & Partial<Pick<PipelineDeps, 'index' | 'paragraphs'>>;
+export type AnswerDeps = Pick<PipelineDeps, 'chat' | 'log'> &
+  Partial<Pick<PipelineDeps, 'index' | 'paragraphs' | 'sentenceMatch'>>;
 
 /**
  * The section texts the model reads: as selected, or with paragraphSelection the long ones cut
@@ -846,6 +852,7 @@ export async function answer(
   let claims = notFound ? [] : claimsOf(parts, sources.length);
   let namesStripped = 0;
   let verification: VerifyStats | undefined;
+  let sentenceMatch: AnswerResult['sentenceMatch'];
   if (s.params.verifyCitations && claims.length) {
     // A question naming exactly one file may be attributed only to its sources, when any is selected.
     const named = affinity && r.affinity?.documentIds.length === 1 ? r.affinity.documentIds[0] : null;
@@ -862,6 +869,29 @@ export async function answer(
         })
       : claims;
     if (phrases) deps.log?.(`[answer] names stripped for verification: ${namesStripped} sentences`);
+    // sentenceMatch: scores per sentence and source from the sources' sentences; tokens when it fails.
+    let scores: (number[] | undefined)[] | undefined;
+    if (s.params.sentenceMatch && deps.sentenceMatch) {
+      try {
+        const m = await sentenceScores(
+          scored.map((c) => c.text),
+          sources.map((c) => c.passage),
+          { cjk: s.params.cjkOverlap, deps: deps.sentenceMatch, signal },
+        );
+        scores = m.scores;
+        sentenceMatch = {
+          embedMs: m.embedMs,
+          sectionsEmbedded: m.sectionsEmbedded,
+          sentencesEmbedded: m.sentencesEmbedded,
+        };
+        deps.log?.(
+          `[answer] sentence match: ${m.sentencesEmbedded} sentences of ${m.sectionsEmbedded} new sections embedded in ${m.embedMs} ms`,
+        );
+      } catch (e) {
+        sentenceMatch = { embedMs: 0, sectionsEmbedded: 0, sentencesEmbedded: 0, error: (e as Error).message };
+        deps.log?.(`[answer] sentence match failed, verifying by tokens: ${(e as Error).message}`);
+      }
+    }
     const v = verifyClaims(
       scored,
       sources.map((c) => c.passage),
@@ -874,13 +904,20 @@ export async function answer(
           : {}),
         ...(s.params.cjkOverlap ? { cjk: true } : {}),
         ...(crossParts.has('verify') ? { allowedFor: ownFiles(claims, sources, deps) } : {}),
+        ...(s.params.restatementExempt ? { question: [question, asked] } : {}),
+        ...(s.params.marginReattribution > 0 ? { margin: s.params.marginReattribution } : {}),
+        ...(scores
+          ? { scores, minOverlap: s.params.sentenceMatchMin, cjkMinOverlap: s.params.sentenceMatchMinCjk }
+          : {}),
       },
     );
     // The sentences keep their own text; only the scoring read the stripped copy.
     claims = v.claims.map((c, i) => (scored[i] === claims[i] ? c : { ...c, text: claims[i]!.text }));
     verification = v.stats;
     deps.log?.(
-      `[answer] verify: ${v.stats.sentences} sentences, ${v.stats.reattributed} re-attributed, ${v.stats.attributed} attributed, ${v.stats.unsupported} unsupported`,
+      `[answer] verify: ${v.stats.sentences} sentences, ${v.stats.reattributed} re-attributed, ${v.stats.attributed} attributed, ${v.stats.unsupported} unsupported` +
+        (v.stats.restated !== undefined ? `, ${v.stats.restated} restating the question` : '') +
+        (v.stats.marginMoved !== undefined ? `, ${v.stats.marginMoved} moved by the margin` : ''),
     );
   }
   let hedgesDropped: string[] = [];
@@ -918,6 +955,7 @@ export async function answer(
     questionSent: asked,
     ...(s.params.verifyStripNames ? { namesStripped } : {}),
     ...(s.params.dropAnswerFileNames ? { fileNamesDropped } : {}),
+    ...(sentenceMatch ? { sentenceMatch } : {}),
   };
   emit({ type: 'done', result });
   return result;

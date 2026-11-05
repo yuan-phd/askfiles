@@ -69,7 +69,12 @@
         "questionFileNames": false,
         "sourceDisplayNames": false,
         "verifyStripNames": false,
-        "dropAnswerFileNames": false
+        "dropAnswerFileNames": false,
+        "restatementExempt": false,
+        "marginReattribution": 0,
+        "sentenceMatch": false,
+        "sentenceMatchMin": 0.5,
+        "sentenceMatchMinCjk": 0.3
       }
     }
   ]

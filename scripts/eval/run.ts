@@ -39,6 +39,7 @@ import {
   stage1Sections,
   sweep,
   sweepTable,
+  type AnswerRow,
 } from './pipeline.js';
 import { ANSWER_COLUMNS, RESULT_COLUMNS, RETRIEVAL_COLUMNS } from './results.js';
 import { choose, floorOf, rerankerOff, type PipelineDeps, type Retrieval } from '../../src/main/answer/index.js';
@@ -649,66 +650,7 @@ async function runStages(o: Parameters<typeof runPipeline>[0], deps: PipelineDep
           unsupported: r ? r.claims.filter((x) => x.unsupported).length : null,
           excluded: isUnsupported(q),
         });
-        const row: Record<string, unknown> = {
-          run_id: o.runId,
-          corpus: o.corpusLabel,
-          config: label,
-          pass,
-          ...q,
-          answer: r?.text ?? '',
-          not_found: yesNo(r ? r.notFound : null),
-          skipped_model: yesNo(r ? r.skippedModel : null),
-          cited: describeCards(r?.cited ?? []),
-          considered: describeCards(r?.considered ?? []),
-          unsupported_sentences: r?.claims.filter((x) => x.unsupported).length ?? '',
-          target_hit: yesNo(m.targetHit),
-          key_coverage: m.keyCoverage === null ? '' : m.keyCoverage.toFixed(2),
-          attribution_ok: yesNo(m.attribution),
-          first_token_ms: r?.timings.firstTokenMs ?? '',
-          model_ms: r?.timings.modelMs ?? '',
-          total_ms: out.totalMs,
-          prompt_tokens: r?.stats.promptTokens ?? '',
-          completion_tokens: r?.stats.completionTokens ?? '',
-          error: out.error,
-          verification: r?.verification
-            ? `${r.verification.sentences} sentences, ${r.verification.reattributed} re-attributed, ${r.verification.attributed} attributed, ${r.verification.unsupported} unsupported`
-            : '',
-          affinity: (retrieval.affinity ?? retrieval.crossDocument)?.files.join('; ') ?? '',
-          follow_up: r?.followUp
-            ? `${r.followUp.given} of ${r.followUp.wanted} items, ${r.followUp.added ? 'added' : 'nothing added'}, ${r.followUp.ms} ms`
-            : '',
-          split: r?.split
-            ? `${r.split.how}, ${r.split.parts.length} parts, ${r.split.ms.join(' + ')} ms${
-                r.split.notFound.some(Boolean)
-                  ? `, not found: ${r.split.notFound
-                      .map((x, k) => (x ? k + 1 : 0))
-                      .filter(Boolean)
-                      .join(', ')}`
-                  : ''
-              }`
-            : '',
-          // The answer as the Ask page renders it: each claim, its [n], a muted mark when unsupported.
-          shown:
-            r && !r.notFound
-              ? r.claims
-                  .map(
-                    (x) =>
-                      x.text.replace(/\s+$/, '') +
-                      x.citations.map((n) => `[${n}]`).join('') +
-                      (x.unsupported ? ' (no source supports this sentence)' : '') +
-                      (/\s+$/.exec(x.text)?.[0] ?? ' '),
-                  )
-                  .join('')
-                  .trim()
-              : '',
-          hedges_dropped: r?.hedgesDropped?.join(' | ') ?? '',
-          cited_json: r?.cited.length ? JSON.stringify(r.cited.map(cardRecord)) : '',
-          considered_json: r?.considered.length ? JSON.stringify(r.considered.map(cardRecord)) : '',
-          raw_answer: r?.rawText ?? '',
-          question_sent: r?.questionSent && r.questionSent !== q.question ? r.questionSent : '',
-          names_stripped: r?.namesStripped ?? '',
-          file_names_dropped: r?.fileNamesDropped === undefined ? '' : yesNo(r.fileNamesDropped),
-        };
+        const row = answerRow({ runId: o.runId, corpusLabel: o.corpusLabel, label, pass, q, retrieval, out, m });
         fs.appendFileSync(resultsFile, csvLine(ANSWER_COLUMNS.map((k) => row[k])));
         log(
           `stage 2 ${label} pass ${pass} ${i + 1}/${items.length} ${q.id}: ${r?.notFound ? 'not found' : `${r?.cited.length ?? 0} cited`}, ` +
@@ -724,6 +666,103 @@ async function runStages(o: Parameters<typeof runPipeline>[0], deps: PipelineDep
   o.save();
   console.log('\n' + metricsTable(summaries.filter((x) => x.category === 'all')));
   return errors;
+}
+
+/** One results.csv row of an answered question (run and rescore). */
+export function answerRow(o: {
+  runId: string;
+  corpusLabel: string;
+  label: string;
+  pass: number;
+  q: Question;
+  retrieval: Retrieval;
+  out: AnswerRow;
+  m: ReturnType<typeof answerMetrics>;
+}): Record<string, unknown> {
+  const { q, retrieval, out, m, label, pass } = o;
+  const r = out.result;
+  return {
+    run_id: o.runId,
+    corpus: o.corpusLabel,
+    config: label,
+    pass,
+    ...q,
+    answer: r?.text ?? '',
+    not_found: yesNo(r ? r.notFound : null),
+    skipped_model: yesNo(r ? r.skippedModel : null),
+    cited: describeCards(r?.cited ?? []),
+    considered: describeCards(r?.considered ?? []),
+    unsupported_sentences: r?.claims.filter((x) => x.unsupported).length ?? '',
+    target_hit: yesNo(m.targetHit),
+    key_coverage: m.keyCoverage === null ? '' : m.keyCoverage.toFixed(2),
+    attribution_ok: yesNo(m.attribution),
+    first_token_ms: r?.timings.firstTokenMs ?? '',
+    model_ms: r?.timings.modelMs ?? '',
+    total_ms: out.totalMs,
+    prompt_tokens: r?.stats.promptTokens ?? '',
+    completion_tokens: r?.stats.completionTokens ?? '',
+    error: out.error,
+    verification: r?.verification
+      ? `${r.verification.sentences} sentences, ${r.verification.reattributed} re-attributed, ${r.verification.attributed} attributed, ${r.verification.unsupported} unsupported` +
+        (r.verification.restated !== undefined ? `, ${r.verification.restated} restated` : '') +
+        (r.verification.marginMoved !== undefined ? `, ${r.verification.marginMoved} moved by the margin` : '')
+      : '',
+    affinity: (retrieval.affinity ?? retrieval.crossDocument)?.files.join('; ') ?? '',
+    follow_up: r?.followUp
+      ? `${r.followUp.given} of ${r.followUp.wanted} items, ${r.followUp.added ? 'added' : 'nothing added'}, ${r.followUp.ms} ms`
+      : '',
+    split: r?.split
+      ? `${r.split.how}, ${r.split.parts.length} parts, ${r.split.ms.join(' + ')} ms${
+          r.split.notFound.some(Boolean)
+            ? `, not found: ${r.split.notFound
+                .map((x, k) => (x ? k + 1 : 0))
+                .filter(Boolean)
+                .join(', ')}`
+            : ''
+        }`
+      : '',
+    // The answer as the Ask page renders it: each claim, its [n], a muted mark when unsupported.
+    shown:
+      r && !r.notFound
+        ? r.claims
+            .map(
+              (x) =>
+                x.text.replace(/\s+$/, '') +
+                x.citations.map((n) => `[${n}]`).join('') +
+                (x.unsupported ? ' (no source supports this sentence)' : '') +
+                (/\s+$/.exec(x.text)?.[0] ?? ' '),
+            )
+            .join('')
+            .trim()
+        : '',
+    hedges_dropped: r?.hedgesDropped?.join(' | ') ?? '',
+    cited_json: r?.cited.length ? JSON.stringify(r.cited.map(cardRecord)) : '',
+    considered_json: r?.considered.length ? JSON.stringify(r.considered.map(cardRecord)) : '',
+    raw_answer: r?.rawText ?? '',
+    question_sent: r?.questionSent && r.questionSent !== q.question ? r.questionSent : '',
+    names_stripped: r?.namesStripped ?? '',
+    file_names_dropped: r?.fileNamesDropped === undefined ? '' : yesNo(r.fileNamesDropped),
+    attribution_strict: yesNo(m.attributionStrict),
+    cited_without_key: m.citedWithoutKey ?? '',
+    restated:
+      r?.claims
+        .filter((x) => x.restatement)
+        .map((x) => x.text.trim())
+        .join(' | ') ?? '',
+    // Each sentence with its final citations and their scores, for the attribution checks.
+    claims_json: r?.claims.length
+      ? JSON.stringify(
+          r.claims.map((x) => ({
+            text: x.text,
+            citations: x.citations,
+            ...(x.support ? { support: x.support.map((v) => Math.round(v * 1000) / 1000), min: x.minSupport } : {}),
+            ...(x.unsupported ? { unsupported: true } : {}),
+            ...(x.restatement ? { restatement: true } : {}),
+          })),
+        )
+      : '',
+    embed_ms: r?.sentenceMatch?.embedMs ?? '',
+  };
 }
 
 // Guarded so tests can import this module, where require is not defined.

@@ -102,6 +102,11 @@ export const ANSWER_COLUMNS = [
   'question_sent',
   'names_stripped',
   'file_names_dropped',
+  'attribution_strict',
+  'cited_without_key',
+  'restated',
+  'claims_json',
+  'embed_ms',
 ] as const;
 
 export const SCORES = ['correct', 'partial', 'wrong', 'refused', 'hallucinated'] as const;

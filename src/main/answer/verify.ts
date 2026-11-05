@@ -125,6 +125,24 @@ export interface VerifyStats {
   attributed: number;
   /** Sentences no selected source supports, after verification. */
   unsupported: number;
+  /** restatementExempt: uncited sentences that only restate the question, left uncited and not unsupported. */
+  restated?: number;
+  /** marginReattribution: single-citation sentences moved to a source scoring at least the margin higher. */
+  marginMoved?: number;
+}
+
+/**
+ * restatementExempt (docs/plan.md, round D1): an uncited sentence is a restatement of the question
+ * when at least RESTATEMENT_SHARE of its distinct content tokens occur in the question and none is
+ * outside it. The second condition implies the first at 1.0; both are kept as the owner wrote them.
+ */
+export const RESTATEMENT_SHARE = 0.8;
+
+export function isRestatement(tokens: string[], question: Set<string>): boolean {
+  const distinct = [...new Set(tokens)];
+  if (!distinct.length) return false;
+  const inside = distinct.filter((t) => question.has(t)).length;
+  return inside / distinct.length >= RESTATEMENT_SHARE && inside === distinct.length;
 }
 
 export interface VerifyOptions {
@@ -142,12 +160,25 @@ export interface VerifyOptions {
    */
   cjk?: boolean;
   cjkMinOverlap?: number;
+  /** restatementExempt: the question texts (as asked and as sent); an uncited restatement of them is exempt. */
+  question?: string[];
+  /**
+   * marginReattribution: a sentence citing one source that passes moves to another eligible source
+   * scoring at least this much higher; off when absent or 0.
+   */
+  margin?: number;
+  /**
+   * sentenceMatch: per claim (by index), the score per source (index n - 1) in place of the
+   * whole-passage token share; claims without an entry keep the token share.
+   */
+  scores?: (number[] | undefined)[];
 }
 
 /**
  * Checks each claim against the passages (passages[n - 1] is source n). Returns new claims and
  * the counts; a cited sentence that passes keeps its citations unchanged, unless a same-title
- * source of another file overlaps it more (meta).
+ * source of another file overlaps it more (meta) or another source scores the margin higher
+ * (margin). Every verified claim carries the score of each citation it keeps (support).
  */
 export function verifyClaims(
   claims: Claim[],
@@ -158,6 +189,9 @@ export function verifyClaims(
   const wordSources = passages.map((p) => new Set(contentTokens(p)));
   let pairSources: Set<string>[] | null = null;
   const pairsOf = () => (pairSources ??= passages.map((p) => new Set(cjkTokens(p))));
+  const asked = o.question?.filter(Boolean) ?? [];
+  const askedWords = new Set(asked.flatMap((q) => contentTokens(q)));
+  const askedPairs = new Set(asked.flatMap((q) => cjkTokens(q)));
   const titleOf = (n: number) => o.meta?.[n - 1]?.title.trim().toLowerCase() ?? '';
   // Same-title sources of other files, per source.
   const twins = (n: number, eligible: (m: number) => boolean): number[] => {
@@ -168,7 +202,14 @@ export function verifyClaims(
         out.push(m);
     return out;
   };
-  const stats: VerifyStats = { sentences: 0, reattributed: 0, attributed: 0, unsupported: 0 };
+  const stats: VerifyStats = {
+    sentences: 0,
+    reattributed: 0,
+    attributed: 0,
+    unsupported: 0,
+    ...(asked.length ? { restated: 0 } : {}),
+    ...(o.margin ? { marginMoved: 0 } : {}),
+  };
   const out = claims.map((c, i): Claim => {
     const allow = o.allowedFor?.[i] ?? o.allowed;
     const eligible = (n: number) => !allow || allow.has(n);
@@ -182,25 +223,54 @@ export function verifyClaims(
       if (c.unsupported) stats.unsupported++;
       return c;
     }
-    const share = (n: number) => overlap(tokens, sources[n - 1] ?? new Set());
+    if (asked.length && !c.citations.length && isRestatement(tokens, byPairs ? askedPairs : askedWords)) {
+      stats.restated!++;
+      return { ...c, citations: [], unsupported: false, restatement: true };
+    }
+    const given = o.scores?.[i];
+    const share = given
+      ? (n: number) => given[n - 1] ?? 0
+      : (n: number) => overlap(tokens, sources[n - 1] ?? new Set());
+    const done = (citations: number[]): Claim => ({
+      ...c,
+      citations,
+      unsupported: false,
+      support: citations.map(share),
+      minSupport: min,
+    });
     const cited = c.citations.filter(eligible);
     const kept = cited.filter((n) => share(n) >= min);
     if (kept.length) {
       // A same-title source of another file that overlaps more takes the citation's place.
       let moved = false;
-      const chosen = kept.map((n) => {
+      let chosen = kept.map((n) => {
         const better = twins(n, eligible).filter((m) => share(m) > share(n));
         if (!better.length) return n;
         moved = true;
         return better.reduce((a, b) => (share(b) > share(a) ? b : a));
       });
+      // marginReattribution: one citation written, another source clearly better.
+      if (o.margin && c.citations.length === 1 && chosen.length === 1) {
+        const n = chosen[0]!;
+        let top = n;
+        for (let m = 1; m <= passages.length; m++)
+          if (m !== n && eligible(m) && share(m) - share(n) >= o.margin && share(m) > share(top)) top = m;
+        if (top !== n) {
+          chosen = [top];
+          moved = true;
+          stats.marginMoved!++;
+        }
+      }
       if (moved) stats.reattributed++;
-      return { ...c, citations: [...new Set(chosen)], unsupported: false };
+      return done([...new Set(chosen)]);
     }
     // A sentence that joins facts from the sources it cites passes on their union.
     if (cited.length > 1) {
       const union = new Set(cited.flatMap((n) => [...(sources[n - 1] ?? [])]));
-      if (overlap(tokens, union) >= min) return cited.length < c.citations.length ? { ...c, citations: cited } : c;
+      if (overlap(tokens, union) >= min) {
+        const d = done(cited);
+        return cited.length < c.citations.length ? d : { ...c, support: d.support, minSupport: min };
+      }
     }
     let best = 0;
     let bestShare = -1;
@@ -214,7 +284,7 @@ export function verifyClaims(
       else stats.attributed++;
       // An exact tie between same-title sections of different files is not broken by order.
       const tied = twins(best, eligible).filter((m) => share(m) === bestShare);
-      return { ...c, citations: [best, ...tied].sort((a, b) => a - b), unsupported: false };
+      return done([best, ...tied].sort((a, b) => a - b));
     }
     stats.unsupported++;
     return { ...c, citations: [], unsupported: true };

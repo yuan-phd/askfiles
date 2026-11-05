@@ -24,7 +24,8 @@
     "notices": "node scripts/third-party-notices.mjs",
     "eval": "tsx scripts/eval/run.ts",
     "eval:score": "tsx scripts/eval/score.ts",
-    "eval:compare": "tsx scripts/eval/compare.ts"
+    "eval:compare": "tsx scripts/eval/compare.ts",
+    "eval:rescore": "tsx scripts/eval/rescore.ts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

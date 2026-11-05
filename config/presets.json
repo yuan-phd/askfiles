@@ -65,10 +65,15 @@
         "headingPathBonus": true,
         "namedFileQuota8": false,
         "sourceFileNames": false,
-        "questionFileNames": false,
-        "sourceDisplayNames": false,
+        "questionFileNames": true,
+        "sourceDisplayNames": true,
         "verifyStripNames": false,
-        "dropAnswerFileNames": false
+        "dropAnswerFileNames": false,
+        "restatementExempt": true,
+        "marginReattribution": 0.25,
+        "sentenceMatch": true,
+        "sentenceMatchMin": 0.56,
+        "sentenceMatchMinCjk": 0.56
       },
       "summariesFasterModel": false,
       "indexing": {
@@ -147,10 +152,15 @@
         "headingPathBonus": true,
         "namedFileQuota8": false,
         "sourceFileNames": false,
-        "questionFileNames": false,
-        "sourceDisplayNames": false,
+        "questionFileNames": true,
+        "sourceDisplayNames": true,
         "verifyStripNames": false,
-        "dropAnswerFileNames": false
+        "dropAnswerFileNames": false,
+        "restatementExempt": true,
+        "marginReattribution": 0.25,
+        "sentenceMatch": true,
+        "sentenceMatchMin": 0.56,
+        "sentenceMatchMinCjk": 0.56
       },
       "summariesFasterModel": false,
       "indexing": {
@@ -222,10 +232,15 @@
         "headingPathBonus": true,
         "namedFileQuota8": false,
         "sourceFileNames": false,
-        "questionFileNames": false,
-        "sourceDisplayNames": false,
+        "questionFileNames": true,
+        "sourceDisplayNames": true,
         "verifyStripNames": false,
-        "dropAnswerFileNames": false
+        "dropAnswerFileNames": false,
+        "restatementExempt": true,
+        "marginReattribution": 0.25,
+        "sentenceMatch": true,
+        "sentenceMatchMin": 0.56,
+        "sentenceMatchMinCjk": 0.56
       },
       "summariesFasterModel": false,
       "indexing": {

@@ -8,6 +8,7 @@ import {
   NO_RERANKER,
   ollamaChat,
   ollamaEmbed,
+  SentenceVectorCache,
   ParagraphStore,
   rerankerProcess,
   rerankerReady,
@@ -127,6 +128,8 @@ export class AppController implements BridgeHandlers {
   private readonly rerankerDir = path.join(this.dataDir, 'models', 'reranker');
   private reranker: { repo: string; instance: Reranker & { stop(): void } } | null = null;
   private paragraphs: { key: string; store: ParagraphStore } | null = null;
+  /** sentenceMatch: section sentence vectors, kept while the app runs (keyed by model and text). */
+  private readonly sentenceVectors = new SentenceVectorCache();
   private readonly answers: AnswerService;
   private readonly resourcesPath: string;
   /** The RAM the tier was chosen from (platform.ts machineRam); set at the start of run(). */
@@ -743,6 +746,16 @@ export class AppController implements BridgeHandlers {
       log: this.d.log,
       chat: ollamaChat(() => `http://127.0.0.1:${this.manager?.status().ports?.ollama ?? ollamaPort}`),
       paragraphs: this.paragraphStore(browse),
+      sentenceMatch: this.machinePreset?.answer.sentenceMatch
+        ? {
+            embed: ollamaEmbed(
+              () => `http://127.0.0.1:${this.manager?.status().ports?.ollama ?? ollamaPort}`,
+              this.machinePreset.embeddingModel,
+            ),
+            model: this.machinePreset.embeddingModel,
+            cache: this.sentenceVectors,
+          }
+        : null,
     };
   }
 

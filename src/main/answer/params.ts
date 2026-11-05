@@ -188,6 +188,24 @@ export interface AnswerParams {
   verifyStripNames: boolean;
   /** Backticked file names are deleted from the answer text before verification (round N2b). */
   dropAnswerFileNames: boolean;
+  /**
+   * Citation verification leaves an uncited sentence that only restates the question (every
+   * content token in the question) uncited and not unsupported (verify.ts isRestatement, round D1).
+   */
+  restatementExempt: boolean;
+  /**
+   * Citation verification moves a single-citation sentence to another selected source that scores
+   * at least this much higher than the one cited; 0 is off (round D2).
+   */
+  marginReattribution: number;
+  /**
+   * Citation verification scores a sentence against each sentence of a source, the larger of token
+   * overlap and bge-m3 cosine, the source's best sentence counting (sentence-match.ts, round D2),
+   * with the thresholds sentenceMatchMin (English) and sentenceMatchMinCjk (mainly CJK sentences).
+   */
+  sentenceMatch: boolean;
+  sentenceMatchMin: number;
+  sentenceMatchMinCjk: number;
 }
 
 /** The crossDocument parts in effect: crossDocument's own, or the quota alone with crossDocQuota. */
@@ -237,6 +255,11 @@ export const DEFAULT_PARAMS: AnswerParams = {
   sourceDisplayNames: false,
   verifyStripNames: false,
   dropAnswerFileNames: false,
+  restatementExempt: false,
+  marginReattribution: 0,
+  sentenceMatch: false,
+  sentenceMatchMin: 0.5,
+  sentenceMatchMinCjk: 0.3,
 };
 
 /** Tokens kept free for the answer itself and for the instructions and the question. */
@@ -347,6 +370,11 @@ const CHECKS: Record<keyof AnswerParams, (v: unknown) => Problem> = {
   sourceDisplayNames: bool,
   verifyStripNames: bool,
   dropAnswerFileNames: bool,
+  restatementExempt: bool,
+  marginReattribution: numIn(0, 1),
+  sentenceMatch: bool,
+  sentenceMatchMin: numIn(0, 1),
+  sentenceMatchMinCjk: numIn(0, 1),
 };
 
 /** Problems with an answer block, each prefixed with at; every key is required. */

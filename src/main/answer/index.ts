@@ -13,6 +13,7 @@ export * from './quoted.js';
 export * from './reranker.js';
 export * from './reranker-models.js';
 export * from './sections.js';
+export * from './sentence-match.js';
 export * from './select.js';
 export * from './service.js';
 export * from './terms.js';
