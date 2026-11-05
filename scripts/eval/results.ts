@@ -98,6 +98,10 @@ export const ANSWER_COLUMNS = [
   'hedges_dropped',
   'cited_json',
   'considered_json',
+  'raw_answer',
+  'question_sent',
+  'names_stripped',
+  'file_names_dropped',
 ] as const;
 
 export const SCORES = ['correct', 'partial', 'wrong', 'refused', 'hallucinated'] as const;

@@ -65,7 +65,10 @@
         "headingPathBonus": true,
         "namedFileQuota8": false,
         "sourceFileNames": false,
-        "questionFileNames": false
+        "questionFileNames": false,
+        "sourceDisplayNames": false,
+        "verifyStripNames": false,
+        "dropAnswerFileNames": false
       },
       "summariesFasterModel": false,
       "indexing": {
@@ -144,7 +147,10 @@
         "headingPathBonus": true,
         "namedFileQuota8": false,
         "sourceFileNames": false,
-        "questionFileNames": false
+        "questionFileNames": false,
+        "sourceDisplayNames": false,
+        "verifyStripNames": false,
+        "dropAnswerFileNames": false
       },
       "summariesFasterModel": false,
       "indexing": {
@@ -216,7 +222,10 @@
         "headingPathBonus": true,
         "namedFileQuota8": false,
         "sourceFileNames": false,
-        "questionFileNames": false
+        "questionFileNames": false,
+        "sourceDisplayNames": false,
+        "verifyStripNames": false,
+        "dropAnswerFileNames": false
       },
       "summariesFasterModel": false,
       "indexing": {

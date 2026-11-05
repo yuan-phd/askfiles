@@ -139,14 +139,16 @@ export function fileNameHeader(s: Pick<PromptSource, 'path' | 'file' | 'display'
 export function userMessage(
   question: string,
   sources: PromptSource[],
-  o: { fileHeaders?: boolean; grouped?: boolean; fileNames?: boolean } = {},
+  o: { fileHeaders?: boolean; grouped?: boolean; fileNames?: boolean; displayNames?: boolean } = {},
 ): string {
   const blocks = sources.map((s, i) => {
     const header = o.fileHeaders
       ? sourceHeader(sources, i)
       : o.fileNames && s.file
         ? fileNameHeader(s, i)
-        : `[${i + 1}] ${s.path.join(' > ')}`;
+        : o.displayNames && s.file
+          ? `[${i + 1}] ${s.display || s.file} > ${s.path.join(' > ')}`
+          : `[${i + 1}] ${s.path.join(' > ')}`;
     const block = `${header}\n${s.text.trim()}`;
     // grouped: sources come ordered by file, with a line naming the file before each group.
     if (!o.grouped || (i > 0 && sources[i - 1]!.group === s.group)) return block;
@@ -172,6 +174,7 @@ export function buildMessages(
     crossDocument?: boolean;
     grouped?: boolean;
     fileNames?: boolean;
+    displayNames?: boolean;
   } = {},
 ): ChatMessage[] {
   return [

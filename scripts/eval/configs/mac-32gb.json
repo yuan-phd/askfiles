@@ -54,7 +54,10 @@
     "headingPathBonus": true,
     "namedFileQuota8": false,
     "sourceFileNames": false,
-    "questionFileNames": false
+    "questionFileNames": false,
+    "sourceDisplayNames": false,
+    "verifyStripNames": false,
+    "dropAnswerFileNames": false
   },
   "contextTokens": 8192,
   "indexing": {

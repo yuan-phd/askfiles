@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { displayName, rewriteFileNames } from '../browse/identifiers.js';
 import { answer, DEFAULT_PARAMS, NO_RERANKER, type Retrieval, type RunSettings } from './index.js';
+import { dropBacktickedFileNames, namePhrases, stripNames } from './file-names.js';
 import { fileNameHeader, userMessage } from './prompt.js';
 import type { AnswerSection } from './sections.js';
 
@@ -31,9 +32,7 @@ describe('rewriteFileNames', () => {
         'Compare `01_Procurement_Regulations_2025.pdf` and 08_Contract_Management_Guidance.pdf. When?',
         files,
       ),
-    ).toBe(
-      'Compare Procurement Regulations 2025 (01_Procurement_Regulations_2025.pdf) and Contract Management Guidance (08_Contract_Management_Guidance.pdf). When?',
-    );
+    ).toBe('Compare Procurement Regulations 2025 and Contract Management Guidance. When?');
   });
 
   it('leaves names without extension, parts of longer tokens and other text alone', () => {
@@ -153,9 +152,34 @@ describe('sourceFileNames header', () => {
       'Compare `01_Procurement_Regulations_2025.pdf` and `08_Contract_Management_Guidance.pdf`. When is it signed?';
     const { user } = await run({ questionFileNames: true }, q, 'Signed by the Borrower after approval [1].');
     expect(user).toContain(
-      'Question: Compare Procurement Regulations 2025 (01_Procurement_Regulations_2025.pdf) and Contract Management Guidance (08_Contract_Management_Guidance.pdf). When is it signed?',
+      'Question: Compare Procurement Regulations 2025 and Contract Management Guidance. When is it signed?',
     );
     expect(user).toContain('[1] Part > Signing\n');
+  });
+
+  it('N2: display-only header, file names out of the answer, names out of the scored copy only', async () => {
+    const q =
+      'Compare `01_Procurement_Regulations_2025.pdf` and `08_Contract_Management_Guidance.pdf`. When is it signed?';
+    const reply =
+      'According to `01_Procurement_Regulations_2025.pdf`, the Procurement Regulations 2025 say it is signed by the Borrower after approval [1].';
+    const { user, result } = await run(
+      { sourceDisplayNames: true, questionFileNames: true, verifyStripNames: true, dropAnswerFileNames: true },
+      q,
+      reply,
+    );
+    expect(user).toContain('[1] Procurement Regulations 2025 > Part > Signing\n');
+    expect(user).toContain(
+      'Question: Compare Procurement Regulations 2025 and Contract Management Guidance. When is it signed?',
+    );
+    expect(result.rawText).toBe(reply);
+    expect(result.fileNamesDropped).toBe(true);
+    expect(result.namesStripped).toBe(1);
+    expect(result.text).toBe(
+      'According to, the Procurement Regulations 2025 say it is signed by the Borrower after approval [1].',
+    );
+    // The sentence shown keeps the display name; verification scored it without.
+    expect(result.claims[0]!.text).toContain('Procurement Regulations 2025');
+    expect(result.claims[0]!.citations).toEqual([1]);
   });
 
   it('leaves the prompt as before with both switches off', async () => {
@@ -163,6 +187,53 @@ describe('sourceFileNames header', () => {
     const { user } = await run({}, q, 'Signed by the Borrower after approval [1].');
     expect(user).toBe(
       `Sources:\n\n[1] Part > Signing\n${sections[0]!.text}\n\n[2] Part > Planning\n${sections[1]!.text}\n\nQuestion: ${q}`,
+    );
+  });
+});
+
+describe('round N2 helpers', () => {
+  it('sourceDisplayNames header is [n] display name > heading path', () => {
+    const m = userMessage('Q?', [{ path: ['A', 'B'], text: 'body', file: 'f_x.pdf', display: 'f x' }], {
+      displayNames: true,
+    });
+    expect(m).toBe('Sources:\n\n[1] f x > A > B\nbody\n\nQuestion: Q?');
+  });
+
+  it('drops backticked file names from answer text and tidies the gap, keeping display names', () => {
+    expect(
+      dropBacktickedFileNames(
+        'In the Strategy Guidance (`06_Procurement_Strategy_Guidance.pdf`), objectives matter [5]. According to `01_Procurement_Regulations_2025.pdf`, it is signed [1].',
+      ),
+    ).toEqual({
+      text: 'In the Strategy Guidance, objectives matter [5]. According to, it is signed [1].',
+      changed: true,
+    });
+    expect(dropBacktickedFileNames('Procurement Regulations 2025 say so [1].')).toEqual({
+      text: 'Procurement Regulations 2025 say so [1].',
+      changed: false,
+    });
+  });
+
+  it('strips whole display names and their 《》 forms only, never single words', () => {
+    const phrases = namePhrases([
+      'Procurement Regulations 2025',
+      'Contract Management Guidance',
+      '标准设备采购招标文件 2017年版',
+    ]);
+    expect(
+      stripNames('The Procurement Regulations 2025 require a plan under the Contract Management Guidance.', phrases)
+        .text,
+    ).toBe('The require a plan under the.');
+    // Parts of a name stay.
+    expect(stripNames('The Procurement Regulations and the Guidance require it.', phrases)).toEqual({
+      text: 'The Procurement Regulations and the Guidance require it.',
+      changed: false,
+    });
+    expect(stripNames('《标准设备采购招标文件》规定异议应在投标截止时间10日前提出。', phrases).text).toBe(
+      '规定异议应在投标截止时间10日前提出。',
+    );
+    expect(stripNames('依照`01_标准设备采购招标文件_2017年版.pdf`，采购招标须公开。', phrases).text).toBe(
+      '依照，采购招标须公开。',
     );
   });
 });

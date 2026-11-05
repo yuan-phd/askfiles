@@ -704,6 +704,10 @@ async function runStages(o: Parameters<typeof runPipeline>[0], deps: PipelineDep
           hedges_dropped: r?.hedgesDropped?.join(' | ') ?? '',
           cited_json: r?.cited.length ? JSON.stringify(r.cited.map(cardRecord)) : '',
           considered_json: r?.considered.length ? JSON.stringify(r.considered.map(cardRecord)) : '',
+          raw_answer: r?.rawText ?? '',
+          question_sent: r?.questionSent && r.questionSent !== q.question ? r.questionSent : '',
+          names_stripped: r?.namesStripped ?? '',
+          file_names_dropped: r?.fileNamesDropped === undefined ? '' : yesNo(r.fileNamesDropped),
         };
         fs.appendFileSync(resultsFile, csvLine(ANSWER_COLUMNS.map((k) => row[k])));
         log(

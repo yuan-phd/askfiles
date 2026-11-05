@@ -116,8 +116,7 @@ export function displayName(file: string): string {
 /**
  * questionFileNames (docs/plan.md round N2): in the question text sent to the model, every
  * indexed file name written whole with its extension (in backticks or not, on word boundaries)
- * becomes its display name followed by the file name in parentheses. The retrieval query is not
- * changed by this.
+ * becomes its display name. The retrieval query is not changed by this.
  */
 export function rewriteFileNames(question: string, files: string[]): string {
   let out = question;
@@ -125,7 +124,7 @@ export function rewriteFileNames(question: string, files: string[]): string {
   for (const file of [...new Set(files)].sort((a, b) => b.length - a.length)) {
     const name = file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const re = new RegExp(`\`${name}\`|(?<![\\p{L}\\p{N}_.])${name}(?![\\p{L}\\p{N}_])`, 'gu');
-    out = out.replace(re, () => `${displayName(file)} (${file})`);
+    out = out.replace(re, () => displayName(file));
   }
   return out;
 }

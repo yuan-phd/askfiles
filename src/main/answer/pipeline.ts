@@ -46,6 +46,7 @@ import { toAnswerSection, type AnswerSection } from './sections.js';
 import { selectSections, type Ranked, type Selection } from './select.js';
 import { fileSubqueries, type FileSubquery } from './subquery.js';
 import { headingBonus, headingMatcher } from './heading-bonus.js';
+import { dropBacktickedFileNames, namePhrases, stripNames } from './file-names.js';
 import { extractTerms, isMainlyCjk, type Term } from './terms.js';
 import { verifyClaims, type VerifyStats } from './verify.js';
 
@@ -600,6 +601,14 @@ export interface AnswerResult {
   split?: { how: 'asks' | 'set'; parts: string[]; notFound: boolean[]; ms: number[] };
   /** dropUnsupportedHedges: the sentences deleted. */
   hedgesDropped?: string[];
+  /** The model's reply as written, before any post-processing. */
+  rawText?: string;
+  /** The question text the model read (questionFileNames rewrites file names in it). */
+  questionSent?: string;
+  /** verifyStripNames: sentences that had a name taken out for scoring. */
+  namesStripped?: number;
+  /** dropAnswerFileNames: true when the answer had a backticked file name. */
+  fileNamesDropped?: boolean;
 }
 
 export type AnswerEvent =
@@ -716,7 +725,7 @@ export async function answer(
     title: x.title,
     type: typeOf.get(x.documentId) ?? '',
     group: cross?.documentIds.includes(x.documentId) ? x.file : '',
-    ...(s.params.sourceFileNames ? { display: displayName(x.file) } : {}),
+    ...(s.params.sourceFileNames || s.params.sourceDisplayNames ? { display: displayName(x.file) } : {}),
   }));
   const enumerate = s.params.enumerateWhenAsked && isSetQuestion(question);
   // questionFileNames: the model reads file names in the question as display name (file name);
@@ -736,6 +745,7 @@ export async function answer(
     crossDocument: crossParts.has('grouped'),
     grouped: crossParts.has('grouped'),
     fileNames: s.params.sourceFileNames,
+    displayNames: s.params.sourceDisplayNames,
   });
   const t0 = performance.now();
   let firstTokenMs: number | null = null;
@@ -811,15 +821,49 @@ export async function answer(
     all.push(...rest);
     if (rest.length) emit({ type: 'delta', parts: rest });
   }
-  const parts = notFound ? [] : all;
+  let parts = notFound ? [] : all;
+  // dropAnswerFileNames: backticked file names out of the answer before it is verified.
+  let fileNamesDropped = false;
+  if (s.params.dropAnswerFileNames && !notFound) {
+    const merged: Part[] = [];
+    for (const p of parts) {
+      const last = merged[merged.length - 1];
+      if (p.type === 'text' && last?.type === 'text')
+        merged[merged.length - 1] = { type: 'text', text: last.text + p.text };
+      else merged.push(p);
+    }
+    parts = merged.map((p) => {
+      if (p.type !== 'text') return p;
+      const d = dropBacktickedFileNames(p.text);
+      fileNamesDropped ||= d.changed;
+      return d.changed ? { type: 'text', text: d.text } : p;
+    });
+    if (fileNamesDropped) {
+      answerText = dropBacktickedFileNames(answerText).text;
+      deps.log?.('[answer] file names dropped from the answer');
+    }
+  }
   let claims = notFound ? [] : claimsOf(parts, sources.length);
+  let namesStripped = 0;
   let verification: VerifyStats | undefined;
   if (s.params.verifyCitations && claims.length) {
     // A question naming exactly one file may be attributed only to its sources, when any is selected.
     const named = affinity && r.affinity?.documentIds.length === 1 ? r.affinity.documentIds[0] : null;
     const own = named ? sources.filter((c) => c.documentId === named).map((c) => c.n) : [];
+    // verifyStripNames: whole display names and backticked file names do not count as overlap.
+    const phrases = s.params.verifyStripNames
+      ? namePhrases((deps.index?.identities?.() ?? []).map((f) => displayName(f.file)))
+      : null;
+    const scored = phrases
+      ? claims.map((c) => {
+          const x = stripNames(c.text, phrases);
+          if (x.changed) namesStripped++;
+          return x.changed ? { ...c, text: x.text } : c;
+        })
+      : claims;
+    if (phrases) deps.log?.(`[answer] names stripped for verification: ${namesStripped} sentences`);
     const v = verifyClaims(
-      claims,
+      scored,
       sources.map((c) => c.passage),
       {
         ...(affinity
@@ -832,7 +876,8 @@ export async function answer(
         ...(crossParts.has('verify') ? { allowedFor: ownFiles(claims, sources, deps) } : {}),
       },
     );
-    claims = v.claims;
+    // The sentences keep their own text; only the scoring read the stripped copy.
+    claims = v.claims.map((c, i) => (scored[i] === claims[i] ? c : { ...c, text: claims[i]!.text }));
     verification = v.stats;
     deps.log?.(
       `[answer] verify: ${v.stats.sentences} sentences, ${v.stats.reattributed} re-attributed, ${v.stats.attributed} attributed, ${v.stats.unsupported} unsupported`,
@@ -869,6 +914,10 @@ export async function answer(
     ...(verification ? { verification } : {}),
     ...(followUp ? { followUp } : {}),
     ...(hedgesDropped.length ? { hedgesDropped } : {}),
+    rawText: text,
+    questionSent: asked,
+    ...(s.params.verifyStripNames ? { namesStripped } : {}),
+    ...(s.params.dropAnswerFileNames ? { fileNamesDropped } : {}),
   };
   emit({ type: 'done', result });
   return result;

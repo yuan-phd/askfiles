@@ -174,10 +174,20 @@ export interface AnswerParams {
    */
   sourceFileNames: boolean;
   /**
-   * In the question the model reads, an indexed file name written with its extension becomes
-   * display name (file name); the retrieval query stays the question as asked (round N2).
+   * In the question the model reads, an indexed file name written with its extension (backticks
+   * or not) becomes its display name; the retrieval query stays the question as asked (round N2).
    */
   questionFileNames: boolean;
+  /** Each source header names its file by display name only: [n] display name > heading path (round N2). */
+  sourceDisplayNames: boolean;
+  /**
+   * Before citation verification scores a sentence, whole display names (and their Chinese
+   * 《…》 forms) and backticked file names are taken out of the copy it scores; the sentence shown
+   * is unchanged (file-names.ts, round N2b).
+   */
+  verifyStripNames: boolean;
+  /** Backticked file names are deleted from the answer text before verification (round N2b). */
+  dropAnswerFileNames: boolean;
 }
 
 /** The crossDocument parts in effect: crossDocument's own, or the quota alone with crossDocQuota. */
@@ -224,6 +234,9 @@ export const DEFAULT_PARAMS: AnswerParams = {
   namedFileQuota8: false,
   sourceFileNames: false,
   questionFileNames: false,
+  sourceDisplayNames: false,
+  verifyStripNames: false,
+  dropAnswerFileNames: false,
 };
 
 /** Tokens kept free for the answer itself and for the instructions and the question. */
@@ -331,6 +344,9 @@ const CHECKS: Record<keyof AnswerParams, (v: unknown) => Problem> = {
   namedFileQuota8: bool,
   sourceFileNames: bool,
   questionFileNames: bool,
+  sourceDisplayNames: bool,
+  verifyStripNames: bool,
+  dropAnswerFileNames: bool,
 };
 
 /** Problems with an answer block, each prefixed with at; every key is required. */
