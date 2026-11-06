@@ -31,8 +31,8 @@ Questions that name two or more files take longer, about 76 seconds (median): As
 
 How well questions about two files work depends on how you name the files:
 
-- If the question names both files, by file name or title, about 90 percent of answers cite the right sections of each file.
-- If the question describes the files (the 2024 directive, the guidance) or names none, about 13 percent did on our test set of such questions. The main reason is that AskFiles does not recognise which files are meant, so it does not look in each file separately. Retrieval and the answer itself are less often the cause.
+- If the question names both files, by file name or title, 9 of 10 answers in our test set cite the right sections of each file (90 percent).
+- If the question describes the files (the 2024 directive, the guidance) or names none, 2 of 8 did on our test set of such questions (25 percent). The main reason is that AskFiles does not recognise which files are meant, so it does not look in each file separately. Retrieval and the answer itself are less often the cause.
 
 For a question about two documents, name both files.
 
