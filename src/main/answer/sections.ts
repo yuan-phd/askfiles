@@ -105,6 +105,21 @@ function partOf(parts: string[], hit: string): number {
 }
 
 /**
+ * Indexes of a section's matched sub-chunks: the parts holding a vector hit, best hit first, then
+ * the parts holding a keyword term, in document order; no repeats.
+ */
+export function matchedParts(parts: string[], hitTexts: string[] = [], terms: string[] = []): number[] {
+  const matched: number[] = [];
+  const add = (i: number) => {
+    if (i >= 0 && !matched.includes(i)) matched.push(i);
+  };
+  for (const h of hitTexts) add(partOf(parts, h));
+  const folded = terms.map(fold).filter(Boolean);
+  if (folded.length) parts.forEach((p, i) => folded.some((t) => fold(p).includes(t)) && add(i));
+  return matched;
+}
+
+/**
  * The passage of a long section: its matched sub-chunks (a vector hit, best first, then a keyword
  * term, in document order), each with one neighbour on both sides, in document order without
  * repeats, joined by blank lines, ... where parts are left out. Matched parts come first when the
@@ -117,13 +132,7 @@ export function assembleSection(
 ): string {
   const whole = parts.join('\n\n');
   if (whole.length <= Math.min(o.cap, o.wholeChars)) return whole;
-  const matched: number[] = [];
-  const add = (i: number) => {
-    if (i >= 0 && !matched.includes(i)) matched.push(i);
-  };
-  for (const h of o.hitTexts ?? []) add(partOf(parts, h));
-  const terms = (o.terms ?? []).map(fold).filter(Boolean);
-  if (terms.length) parts.forEach((p, i) => terms.some((t) => fold(p).includes(t)) && add(i));
+  const matched = matchedParts(parts, o.hitTexts, o.terms);
   if (!matched.length) return cutSection(whole, o.cap);
   const order = [...matched, ...matched.flatMap((m) => [m - 1, m + 1])].filter((i) => i >= 0 && i < parts.length);
   const chosen = new Set<number>();

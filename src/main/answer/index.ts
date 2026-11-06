@@ -20,3 +20,4 @@ export * from './terms.js';
 export * from './trace.js';
 export * from './upstream.js';
 export * from './verify.js';
+export * from './judge.js';

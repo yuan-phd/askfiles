@@ -107,6 +107,8 @@ export const ANSWER_COLUMNS = [
   'restated',
   'claims_json',
   'embed_ms',
+  'judge_ms',
+  'judge_json',
 ] as const;
 
 export const SCORES = ['correct', 'partial', 'wrong', 'refused', 'hallucinated'] as const;

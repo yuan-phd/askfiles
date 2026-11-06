@@ -14,6 +14,10 @@ export interface ChatOptions {
   contextLength: number;
   /** Ollama structured output: a JSON schema the reply must follow (the quoted mode's extraction). */
   format?: object;
+  /** Ollama options.seed; left out when undefined (the eval's seededFetch sets its own). */
+  seed?: number;
+  /** Ollama options.num_predict: the most tokens the reply may have; left out when undefined. */
+  maxTokens?: number;
   signal?: AbortSignal;
 }
 
@@ -81,7 +85,12 @@ export function ollamaChat(baseUrl: () => string, fetchImpl: FetchLike = globalT
         stream: true,
         ...(think ? { think: false } : {}),
         ...(o.format ? { format: o.format } : {}),
-        options: { temperature: o.temperature, num_ctx: o.contextLength },
+        options: {
+          temperature: o.temperature,
+          num_ctx: o.contextLength,
+          ...(o.seed !== undefined ? { seed: o.seed } : {}),
+          ...(o.maxTokens !== undefined ? { num_predict: o.maxTokens } : {}),
+        },
       });
     const url = `${baseUrl().replace(/\/+$/, '')}/api/chat`;
     const post = (think: boolean) =>

@@ -230,6 +230,13 @@ export interface AnswerParams {
    * else all of them.
    */
   duplicateTextTiers: boolean;
+  /**
+   * With scopedQuotaV2, for a question naming two or more files: each named file's first
+   * JUDGE_WINDOW (15) sections of its in-file list, searched with the file's own clause as
+   * perFileSubquery does, are scored 0 to 3 by the chat model one call each and reordered by that
+   * score before the file's quota of 5 is taken (judge.ts, docs/plan.md round B).
+   */
+  judgeRerank: boolean;
 }
 
 /** The crossDocument parts in effect: crossDocument's own, or the quota alone with crossDocQuota. */
@@ -290,6 +297,7 @@ export const DEFAULT_PARAMS: AnswerParams = {
   contentFreeExempt: false,
   duplicateTextAttribution: false,
   duplicateTextTiers: false,
+  judgeRerank: false,
 };
 
 /** Tokens kept free for the answer itself and for the instructions and the question. */
@@ -411,6 +419,7 @@ const CHECKS: Record<keyof AnswerParams, (v: unknown) => Problem> = {
   contentFreeExempt: bool,
   duplicateTextAttribution: bool,
   duplicateTextTiers: bool,
+  judgeRerank: bool,
 };
 
 /** Problems with an answer block, each prefixed with at; every key is required. */
