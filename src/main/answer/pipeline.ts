@@ -49,6 +49,7 @@ import { headingBonus, headingMatcher } from './heading-bonus.js';
 import { dropBacktickedFileNames, namePhrases, stripNames } from './file-names.js';
 import { extractTerms, isMainlyCjk, type Term } from './terms.js';
 import { verifyClaims, type VerifyStats } from './verify.js';
+import { splitRuleEchoes } from './rule-echo.js';
 import { judgeFile, type JudgedFile } from './judge.js';
 import { shareDuplicates } from './duplicates.js';
 import { sentenceScores, type SentenceMatchDeps } from './sentence-match.js';
@@ -648,6 +649,8 @@ export interface AnswerResult {
   split?: { how: 'asks' | 'set'; parts: string[]; notFound: boolean[]; ms: number[] };
   /** dropUnsupportedHedges: the sentences deleted. */
   hedgesDropped?: string[];
+  /** ruleEchoRefusal: the sentences that copied the not-found rule, removed from the answer. */
+  ruleEchoes?: string[];
   /** The model's reply as written, before any post-processing. */
   rawText?: string;
   /** The question text the model read (questionFileNames rewrites file names in it). */
@@ -850,7 +853,7 @@ export async function answer(
   const modelMs = Math.round(performance.now() - t0);
   if (verdictLine && !decided) verdict = readVerdict(text + '\n').verdict;
   let answerText = verdict === null ? text : readVerdict(text).rest;
-  const notFound = verdict === 'not_found' || (verdict === null && isNotFound(text));
+  let notFound = verdict === 'not_found' || (verdict === null && isNotFound(text));
   let followUp: AnswerResult['followUp'];
   if (!notFound) {
     if (!decided) push(answerText);
@@ -898,6 +901,22 @@ export async function answer(
     }
   }
   let claims = notFound ? [] : claimsOf(parts, sources.length);
+  // ruleEchoRefusal: sentences copying the not-found rule are no answer; with nothing else left
+  // the reply is a refusal and shows the nearest sections, as a reply with the marker does.
+  let ruleEchoes: string[] = [];
+  let echoRefusal = false;
+  if (s.params.ruleEchoRefusal && claims.length) {
+    const e = splitRuleEchoes(claims);
+    ruleEchoes = e.echoes.map((c) => c.text.trim());
+    for (const x of ruleEchoes) deps.log?.(`[answer] rule echo: ${x}`);
+    if (e.refusal) {
+      echoRefusal = true;
+      notFound = true;
+      claims = [];
+      // No cards from the reply's own citations: they become the sections it checked, as for the marker.
+      parts = [];
+    } else claims = e.rest;
+  }
   let namesStripped = 0;
   let verification: VerifyStats | undefined;
   let sentenceMatch: AnswerResult['sentenceMatch'];
@@ -952,9 +971,10 @@ export async function answer(
           : {}),
         ...(s.params.cjkOverlap ? { cjk: true } : {}),
         ...(crossParts.has('verify') ? { allowedFor: ownFiles(claims, sources, deps) } : {}),
-        ...(s.params.restatementExempt || s.params.contentFreeExempt
+        ...(s.params.restatementExempt || s.params.contentFreeExempt || s.params.verifyStripQuestion
           ? { question: [question, asked], restatement: s.params.restatementExempt }
           : {}),
+        ...(s.params.verifyStripQuestion ? { stripQuestion: true } : {}),
         ...(s.params.contentFreeExempt ? { contentFree: true } : {}),
         ...(s.params.sentenceOverlap && !scores
           ? {
@@ -1013,7 +1033,12 @@ export async function answer(
     : citationOrder(parts, sources.length);
   const result: AnswerResult = {
     // With hedges dropped the text is the kept sentences, so it says what the user sees.
-    text: verdict === 'not_found' ? text.trim() : hedgesDropped.length ? claimsText(claims) : answerText.trim(),
+    text:
+      verdict === 'not_found' || echoRefusal
+        ? text.trim()
+        : hedgesDropped.length || ruleEchoes.length
+          ? claimsText(claims)
+          : answerText.trim(),
     notFound,
     claims,
     cited: order.map((n) => sources[n - 1]!),
@@ -1029,6 +1054,7 @@ export async function answer(
     ...(verification ? { verification } : {}),
     ...(followUp ? { followUp } : {}),
     ...(hedgesDropped.length ? { hedgesDropped } : {}),
+    ...(ruleEchoes.length ? { ruleEchoes } : {}),
     rawText: text,
     questionSent: asked,
     ...(s.params.verifyStripNames ? { namesStripped } : {}),

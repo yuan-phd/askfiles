@@ -11,6 +11,9 @@ import type { PromptVariant } from './params.js';
 /** The whole reply when the sources do not answer the question. */
 export const NOT_FOUND_MARKER = 'NOT_IN_SOURCES';
 
+/** The not-found instruction, exported so rule-echo.ts can recognise a reply that copies it. */
+export const NOT_FOUND_RULE = `If the sources do not state the specific fact the question asks for, reply with ${NOT_FOUND_MARKER}, even when they discuss related material: do not answer from related material or from placeholders.`;
+
 const RULES = [
   'Answer the question using only the numbered sources below.',
   'After each sentence that uses a source, cite it as [n], for example [1] or [2][3].',
@@ -18,7 +21,7 @@ const RULES = [
   // A firmer wording (must start with the marker, never explain in own words, with an example) was
   // tried on 2026-10-31: qwen3:14b then refused three answerable multi-part questions whose one
   // part (a page number) was missing; target hit fell from 67 to 44 percent (docs/plan.md).
-  `If the sources do not state the specific fact the question asks for, reply with ${NOT_FOUND_MARKER}, even when they discuss related material: do not answer from related material or from placeholders.`,
+  NOT_FOUND_RULE,
   `After ${NOT_FOUND_MARKER} you may add one short sentence saying which sources you checked, cited as [n]; nothing else.`,
   'Answer in the language of the question.',
 ];
