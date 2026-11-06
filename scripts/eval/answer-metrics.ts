@@ -49,16 +49,18 @@ export interface ExpectedSection {
   /** Normalized headings, outermost first; one entry when only a title is known. */
   path: string[];
   /**
-   * Other sections of the same file that count as this one, written after | in the key
-   * (4.2 交货前检验 | 4.1 监造): a key whose facts two sections hold alike (docs/plan.md, Q12).
+   * Other sections that count as this one, written after | in the key: of the same file
+   * (4.2 交货前检验 | 4.1 监造, a key whose facts two sections hold alike; docs/plan.md, Q12), or of
+   * another file written file :: path (Chinese Q17: the values are only in the xlsx extract).
    */
-  alternatives?: string[][];
+  alternatives?: { file: string | null; path: string[] }[];
 }
 
 /**
  * The sections a question expects: expected_section_path entries when given (A > B), else
  * expected_section titles. Files pair with sections by position when the counts match; one file
- * applies to every section; otherwise the file is not checked. An entry A | B accepts either.
+ * applies to every section; otherwise the file is not checked. An entry A | B accepts either, and
+ * A | file :: B accepts B of another file.
  */
 export function expectedSections(q: MetricQuestion): ExpectedSection[] {
   const paths = listOf(q.expected_section_path);
@@ -70,21 +72,23 @@ export function expectedSections(q: MetricQuestion): ExpectedSection[] {
       .split('|')
       .map((x) => x.trim())
       .filter(Boolean);
-    return {
-      file: files.length === raw.length ? baseName(files[i]!) : files.length === 1 ? baseName(files[0]!) : null,
-      path: pathOf(first ?? ''),
-      ...(rest.length ? { alternatives: rest.map(pathOf) } : {}),
+    const file = files.length === raw.length ? baseName(files[i]!) : files.length === 1 ? baseName(files[0]!) : null;
+    const alternative = (x: string) => {
+      const m = /^(.+?)\s*::\s*(.+)$/.exec(x);
+      return m ? { file: baseName(m[1]!), path: pathOf(m[2]!) } : { file, path: pathOf(x) };
     };
+    return { file, path: pathOf(first ?? ''), ...(rest.length ? { alternatives: rest.map(alternative) } : {}) };
   });
 }
 
 /** True when the cited section is the expected one: same file if named, and its path ends with the expected path. */
 export function sectionMatches(want: ExpectedSection, c: Pick<CitedRecord, 'file' | 'path' | 'title'>): boolean {
-  if (want.file && baseName(c.file) !== want.file) return false;
   const have = (c.path.length ? c.path : [c.title]).map(normalizeName);
-  const ends = (path: string[]) =>
-    path.length <= have.length && path.every((h, i) => have[have.length - path.length + i] === h);
-  return ends(want.path) || (want.alternatives ?? []).some(ends);
+  const at = (file: string | null, path: string[]) =>
+    (!file || baseName(c.file) === file) &&
+    path.length <= have.length &&
+    path.every((h, i) => have[have.length - path.length + i] === h);
+  return at(want.file, want.path) || (want.alternatives ?? []).some((a) => at(a.file, a.path));
 }
 
 /** A file name without its number prefix and extension: 04_必须招标的工程项目规定.pdf and 13_必须招标的工程项目规定.docx are one document. */
