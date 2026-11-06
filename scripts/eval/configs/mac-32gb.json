@@ -71,7 +71,7 @@
     "duplicateTextTiers": false,
     "judgeRerank": true,
     "ruleEchoRefusal": true,
-    "verifyStripQuestion": false
+    "verifyStripQuestion": true
   },
   "contextTokens": 8192,
   "indexing": {

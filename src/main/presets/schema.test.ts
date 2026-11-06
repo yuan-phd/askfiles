@@ -50,8 +50,9 @@ describe('config/presets.json', () => {
       'duplicateTextAttribution',
       // Round B (2026-11-06).
       'judgeRerank',
-      // Round V1 (2026-11-06); verifyStripQuestion (V2) not kept.
+      // Rounds V1 and V2 (2026-11-06).
       'ruleEchoRefusal',
+      'verifyStripQuestion',
     ];
     for (const t of p.tiers) {
       // Summaries use the Ask model on every tier (owner decision 2026-11-04).
