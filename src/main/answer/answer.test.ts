@@ -568,6 +568,38 @@ describe('pipeline', () => {
     expect(events.some((e) => e.type === 'delta')).toBe(false);
   });
 
+  describe('ruleEchoRefusal (round V1)', () => {
+    const echo = (on: boolean): RunSettings => ({
+      ...settings,
+      params: { ...DEFAULT_PARAMS, verifyCitations: true, ruleEchoRefusal: on },
+    });
+    const h03 =
+      'The sources do not state the specific fact the question asks for, even though they discuss related material: do not answer from related material or from placeholders [1].';
+
+    it('takes a reply that only copies the not-found rule as a refusal with the nearest sections', async () => {
+      const { deps } = setup({ reply: [h03] });
+      const r = await retrieve('How many days of annual leave?', settings, deps);
+      const off = await answer('How many days of annual leave?', r, choose(r, echo(false)), echo(false), deps);
+      expect(off.notFound).toBe(false);
+      const result = await answer('How many days of annual leave?', r, choose(r, echo(true)), echo(true), deps);
+      expect(result).toMatchObject({ notFound: true, claims: [], cited: [] });
+      expect(result.ruleEchoes).toHaveLength(1);
+      expect(result.nearest.length).toBeGreaterThan(0);
+      expect(result.checked.map((c) => c.n)).toEqual([1]);
+    });
+
+    it('removes a bare marker after a partial answer and verifies the rest as an answer', async () => {
+      const { deps } = setup({ reply: ['Employees get 27 days of paid annual leave [1]. NOT_IN_SOURCES[1]'] });
+      const r = await retrieve('How many days of annual leave?', settings, deps);
+      const result = await answer('How many days of annual leave?', r, choose(r, echo(true)), echo(true), deps);
+      expect(result.notFound).toBe(false);
+      expect(result.ruleEchoes).toEqual(['NOT_IN_SOURCES']);
+      expect(result.claims.map((c) => c.text.trim())).toEqual(['Employees get 27 days of paid annual leave .']);
+      expect(result.text).not.toContain(NOT_FOUND_MARKER);
+      expect(result.cited.map((c) => c.title)).toEqual(['Annual leave']);
+    });
+  });
+
   it('bypasses an English-only reranker for a Chinese question and uses the fused order', async () => {
     let scored = false;
     const { deps } = setup({

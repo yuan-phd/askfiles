@@ -69,7 +69,9 @@
     "contentFreeExempt": false,
     "duplicateTextAttribution": true,
     "duplicateTextTiers": false,
-    "judgeRerank": true
+    "judgeRerank": true,
+    "ruleEchoRefusal": true,
+    "verifyStripQuestion": true
   },
   "contextTokens": 8192,
   "indexing": {

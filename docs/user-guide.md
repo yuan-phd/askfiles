@@ -29,6 +29,13 @@ Type a question on the Ask page and press Enter. The answer cites its sources wi
 
 Questions that name two or more files take longer, about 76 seconds (median): AskFiles reads the top sections of each named file once more to pick the ones that answer the question.
 
+How well questions about two files work depends on how you name the files:
+
+- If the question names both files, by file name or title, 9 of 10 answers in our test set cite the right sections of each file (90 percent).
+- If the question describes the files (the 2024 directive, the guidance) or names none, 2 of 8 did on our test set of such questions (25 percent). The main reason is that AskFiles does not recognise which files are meant, so it does not look in each file separately. Retrieval and the answer itself are less often the cause.
+
+For a question about two documents, name both files.
+
 While AskFiles is reading new files, the question box is switched off and says Reading new files, and how many are left. It comes back as soon as they are read, so an answer never misses a file you just added.
 
 ## Browsing

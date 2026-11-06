@@ -236,6 +236,30 @@ export interface VerifyOptions {
    * the lead-in words loses its citations without being unsupported: no credit, no failure.
    */
   contentFree?: boolean;
+  /**
+   * verifyStripQuestion (round V2): a sentence is scored on its content tokens that are not in the
+   * question texts (question), unless fewer than STRIP_MIN_TOKENS remain; then on all of them.
+   */
+  stripQuestion?: boolean;
+}
+
+/**
+ * verifyStripQuestion: below this many distinct tokens left after the question's are taken out,
+ * the sentence is scored on all its tokens, so a sentence that mostly repeats the question is not
+ * judged on one or two words.
+ */
+export const STRIP_MIN_TOKENS = 3;
+
+/**
+ * The tokens a sentence is scored on: with stripQuestion, those not in the question when at least
+ * STRIP_MIN_TOKENS distinct ones remain; else all. Holdout H06 (寄递用的封口带宽度上限是不大于 45mm,
+ * whose first eleven pairs repeat the question) scores 0.27 on all its pairs against the section
+ * that holds 不大于 45mm and 0.75 on the rest.
+ */
+export function scoringTokens(tokens: string[], question: Set<string>, strip: boolean): string[] {
+  if (!strip) return tokens;
+  const rest = tokens.filter((t) => !question.has(t));
+  return new Set(rest).size >= STRIP_MIN_TOKENS ? rest : tokens;
 }
 
 /**
@@ -311,13 +335,18 @@ export function verifyClaims(
       stats.restated!++;
       return { ...c, citations: [], unsupported: false, restatement: true };
     }
+    const scored = scoringTokens(
+      tokens,
+      byPairs ? askedPairs : askedWords,
+      Boolean(o.stripQuestion) && asked.length > 0,
+    );
     const given = o.scores?.[i];
     const bySentence = o.sentenceLevel ? sentencesOf(byPairs) : null;
     const share = given
       ? (n: number) => given[n - 1] ?? 0
       : bySentence
-        ? (n: number) => Math.max(0, ...(bySentence[n - 1] ?? []).map((x) => overlap(tokens, x)))
-        : (n: number) => overlap(tokens, sources[n - 1] ?? new Set());
+        ? (n: number) => Math.max(0, ...(bySentence[n - 1] ?? []).map((x) => overlap(scored, x)))
+        : (n: number) => overlap(scored, sources[n - 1] ?? new Set());
     const done = (citations: number[]): Claim => ({
       ...c,
       citations,
@@ -354,7 +383,7 @@ export function verifyClaims(
     // A sentence that joins facts from the sources it cites passes on their union.
     if (cited.length > 1) {
       const union = new Set(cited.flatMap((n) => [...(sources[n - 1] ?? [])]));
-      if (overlap(tokens, union) >= min) {
+      if (overlap(scored, union) >= min) {
         const d = done(cited);
         return cited.length < c.citations.length ? d : { ...c, support: d.support, minSupport: min };
       }

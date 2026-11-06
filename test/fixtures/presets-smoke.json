@@ -81,7 +81,9 @@
         "contentFreeExempt": false,
         "duplicateTextAttribution": false,
         "duplicateTextTiers": false,
-        "judgeRerank": false
+        "judgeRerank": false,
+        "ruleEchoRefusal": false,
+        "verifyStripQuestion": false
       }
     }
   ]

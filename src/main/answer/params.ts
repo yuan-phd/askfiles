@@ -237,6 +237,17 @@ export interface AnswerParams {
    * score before the file's quota of 5 is taken (judge.ts, docs/plan.md round B).
    */
   judgeRerank: boolean;
+  /**
+   * A reply sentence whose content words are at least RULE_ECHO_SHARE in the not-found rule's own
+   * text (the marker counts as one of its words) is a copy of the rule, not an answer (rule-echo.ts,
+   * docs/plan.md round V1): with nothing else left the reply is a refusal, else those sentences go.
+   */
+  ruleEchoRefusal: boolean;
+  /**
+   * Verification measures a sentence by its content words that are not in the question (as asked
+   * and as sent), unless fewer than three remain; then by all of them as before (verify.ts, round V2).
+   */
+  verifyStripQuestion: boolean;
 }
 
 /** The crossDocument parts in effect: crossDocument's own, or the quota alone with crossDocQuota. */
@@ -298,6 +309,8 @@ export const DEFAULT_PARAMS: AnswerParams = {
   duplicateTextAttribution: false,
   duplicateTextTiers: false,
   judgeRerank: false,
+  ruleEchoRefusal: false,
+  verifyStripQuestion: false,
 };
 
 /** Tokens kept free for the answer itself and for the instructions and the question. */
@@ -420,6 +433,8 @@ const CHECKS: Record<keyof AnswerParams, (v: unknown) => Problem> = {
   duplicateTextAttribution: bool,
   duplicateTextTiers: bool,
   judgeRerank: bool,
+  ruleEchoRefusal: bool,
+  verifyStripQuestion: bool,
 };
 
 /** Problems with an answer block, each prefixed with at; every key is required. */
