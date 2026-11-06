@@ -69,7 +69,7 @@
     "contentFreeExempt": false,
     "duplicateTextAttribution": true,
     "duplicateTextTiers": false,
-    "judgeRerank": false
+    "judgeRerank": true
   },
   "contextTokens": 8192,
   "indexing": {
