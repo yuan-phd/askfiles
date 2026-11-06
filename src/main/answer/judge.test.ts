@@ -221,6 +221,26 @@ describe('judgeRerank in the pipeline', () => {
     expect(choose(r, s).selected.map((x) => docOf(x.section.key))).toEqual([0, 1, 0, 1, 0, 1, 0, 1].map((i) => ids[i]));
   });
 
+  it('candidate source, both paths: a file with its own clause is searched with it, a file without one inside the file with the whole question', async () => {
+    const { deps, ids, queries } = setup(likes);
+    const s = settingsWith({ crossDocQuota: true, scopedQuotaV2: true, judgeRerank: true });
+    const docOf = (k: string) => k.slice(0, k.lastIndexOf('#'));
+    // Clause path for the Regulations, fallback for the Guidance.
+    const mixed = (await retrieve(q, s, deps)).crossDocument!.judge!.files;
+    expect(mixed.map((f) => f.query)).toEqual(['When is approval due under the Regulations?', q]);
+    // No clause for either file: both fall back to the whole question.
+    const plain = 'Compare the Procurement Regulations and the Contract Management Guidance on approval and signing.';
+    const none = (await retrieve(plain, s, deps)).crossDocument!.judge!.files;
+    expect(none.map((f) => f.query)).toEqual([plain, plain]);
+    expect(queries).toContain(plain);
+    // Either way the candidates come from the in-file list: only the file's own sections.
+    for (const f of [...mixed, ...none]) {
+      expect(f.candidates.length).toBeGreaterThan(0);
+      expect(f.candidates.every((c) => docOf(c.key) === f.documentId)).toBe(true);
+    }
+    expect(none.map((f) => f.documentId)).toEqual(ids);
+  });
+
   it('does not fire for a question naming one file, or with the switch off', async () => {
     const { deps, judged, queries } = setup(likes);
     const s = settingsWith({ crossDocQuota: true, scopedQuotaV2: true, judgeRerank: true });

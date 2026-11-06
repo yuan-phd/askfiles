@@ -5,23 +5,36 @@ import type { Claim } from './citations.js';
 const claim = (citations: number[], text = 'x'): Claim => ({ text, citations, unsupported: citations.length === 0 });
 
 describe('duplicateTextAttribution (round D4)', () => {
-  it('normalizes whitespace, full-width forms and page-number lines, nothing else', () => {
-    expect(normalizedText('投标人在 10 日前提出：\n\n  答复。\n- 23 -\n')).toBe('投标人在 10 日前提出: 答复。');
-    expect(textHashOf('Ａ  b\nc')).toBe(textHashOf('A b c'));
+  it('normalizes: NFKC, full-width to half-width, whitespace and ASCII and CJK punctuation removed', () => {
+    expect(normalizedText('投标人在 10 日前提出：\n\n  “答复”。\n- 23 -\n')).toBe('投标人在10日前提出答复23');
+    expect(normalizedText('Ａ  b,\nc.（第１条）【附件】《范本》、——…·')).toBe('Abc第1条附件范本');
+    expect(normalizedText('Sec. 4.6: "Plan" (a)/[b]_{c}!?')).toBe('Sec46Planabc');
+    // Letters and digits are never altered: Chinese and Arabic numerals stay different.
+    expect(normalizedText('第五条')).not.toBe(normalizedText('第5条'));
+    expect(normalizedText('〇々')).toBe('〇々');
     // One character apart is a different text: equality by hash only, never by similarity.
     expect(textHashOf('应当在投标截止时间10日前')).not.toBe(textHashOf('应当在投标截止时间15日前'));
+    expect(textHashOf('第五条　全部或者部分使用国有资金投资，\n施工单项合同估算价在400万元人民币以上；')).toBe(
+      textHashOf('第五条 全部或者部分使用国有资金投资 施工单项合同估算价在400万元人民币以上'),
+    );
   });
 
-  it('groups only sections with equal hashes', () => {
-    const g = duplicateGroups(['same text', 'other', 'same  text', '', '  ']);
+  it('groups only sections with equal hashes and a normalized text of 50 characters or more', () => {
+    const long = 'x'.repeat(50);
+    const g = duplicateGroups([long, 'other', `${long.slice(0, 25)} , ${long.slice(25)}`, '', '  ', 'short', 'short']);
     expect([...g.entries()]).toEqual([
       [1, [3]],
       [3, [1]],
     ]);
+    // 49 characters after normalization: never part of the rule, even when identical.
+    const s49 = `${'y'.repeat(49)}。`;
+    expect(duplicateGroups([s49, s49]).size).toBe(0);
+    expect(duplicateGroups([`${s49}y`, `${s49}y`]).size).toBe(2);
   });
 
   it('a sentence attributed to one copy is attributed to both; uncited sentences stay as they are', () => {
-    const passages = ['clause 2.4 text', 'something else', 'clause 2.4  text'].map((passage, i) => ({
+    const c24 = 'clause 2.4 text '.repeat(5);
+    const passages = [c24, 'something else', c24.replace(/ /g, '  ')].map((passage, i) => ({
       passage,
       file: `f${i}.pdf`,
     }));
@@ -42,7 +55,8 @@ describe('duplicateTextAttribution (round D4)', () => {
   });
 
   describe('tiers (round D4b), two duplicate sections', () => {
-    const clause = '投标人或者其他利害关系人对招标文件有异议的，应当在投标截止时间10日前以书面形式提出。';
+    const clause =
+      '投标人或者其他利害关系人对招标文件有异议的，应当在投标截止时间10日前以书面形式提出。招标人应当自收到异议之日起3日内作出答复；作出答复前，应当暂停招标投标活动。';
     const sources = [
       { passage: clause, file: '01_标准设备采购招标文件_2017年版.pdf' },
       { passage: '其他条款。', file: '03_标准勘察招标文件_2017年版.pdf' },

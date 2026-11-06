@@ -7,24 +7,29 @@
  * file's identical clause goes uncited.
  */
 import { createHash } from 'node:crypto';
-import { PAGE_NUMBER } from '../sections/cjk.js';
 import type { Claim } from './citations.js';
 import { displayName } from '../browse/identifiers.js';
 
 /**
- * The text a section is compared by: page-number lines removed (the index's own pattern; running
- * headers are already gone from section texts), NFKC (full-width letters, digits and punctuation
- * to their half-width forms), whitespace collapsed.
+ * The text a section is compared by (owner's brief, round D4 normalization fix), in this order:
+ * NFKC; full-width forms folded to half-width (NFKC does it for letters, digits and punctuation;
+ * the explicit fold keeps it so for any form NFKC leaves); all whitespace removed; all ASCII
+ * punctuation and all CJK punctuation removed. Letters and digits are never altered: 第五条 and
+ * 第5条 stay different texts. CJK punctuation is every character of the CJK Symbols and
+ * Punctuation, CJK Compatibility Forms, Vertical Forms, Halfwidth and Fullwidth Forms and General
+ * Punctuation blocks and the middle dot that is not a letter or a number (so 〇 and 々 stay).
  */
 export function normalizedText(text: string): string {
   return text
-    .split('\n')
-    .filter((l) => !PAGE_NUMBER.test(l.trim()))
-    .join('\n')
     .normalize('NFKC')
-    .replace(/\s+/g, ' ')
-    .trim();
+    .replace(/[\uff01-\uff5e]/gu, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+    .replace(/\s+/gu, '')
+    .replace(/[!-/:-@[-`{-~]/gu, '')
+    .replace(/(?![\p{L}\p{N}])[\u00b7\u2010-\u205e\u3000-\u303f\ufe10-\ufe1f\ufe30-\ufe4f\uff00-\uffef]/gu, '');
 }
+
+/** Shorter normalized texts never take part in the identical-text rule (owner's brief). */
+export const MIN_IDENTICAL_LENGTH = 50;
 
 export function textHashOf(text: string): string {
   return createHash('sha256').update(normalizedText(text)).digest('hex');
@@ -34,7 +39,7 @@ export function textHashOf(text: string): string {
 export function duplicateGroups(passages: string[]): Map<number, number[]> {
   const byHash = new Map<string, number[]>();
   passages.forEach((p, i) => {
-    if (!normalizedText(p)) return;
+    if ([...normalizedText(p)].length < MIN_IDENTICAL_LENGTH) return;
     const h = textHashOf(p);
     byHash.set(h, [...(byHash.get(h) ?? []), i + 1]);
   });
