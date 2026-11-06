@@ -27,6 +27,8 @@ The kind only changes how documents are grouped and linked on the Graph page. Yo
 
 Type a question on the Ask page and press Enter. The answer cites its sources with numbers, and a card for each source shows the file, the section and the page. Click Read section to see the passage in the document, or Open file to open the original.
 
+Questions that name two or more files take longer, about 76 seconds (median): AskFiles reads the top sections of each named file once more to pick the ones that answer the question.
+
 While AskFiles is reading new files, the question box is switched off and says Reading new files, and how many are left. It comes back as soon as they are read, so an answer never misses a file you just added.
 
 ## Browsing

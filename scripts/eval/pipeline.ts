@@ -108,6 +108,10 @@ export function indexHash(config: EvalConfig, library: Pick<Library, 'records'>)
         : []),
       ...(p.headingPathBonus ? ['headingPathBonus'] : []),
       ...(crossDocumentPartsOf(p).has('quota') && p.scopedQuotaV2 && p.namedFileQuota8 ? ['namedFileQuota8'] : []),
+      // The judge's scores come from the chat model, so its name is part of the retrieval.
+      ...(crossDocumentPartsOf(p).has('quota') && p.scopedQuotaV2 && p.judgeRerank
+        ? [`judgeRerank:${config.chatModel}`]
+        : []),
     ],
   };
   return createHash('sha256').update(JSON.stringify(key)).digest('hex').slice(0, 16);

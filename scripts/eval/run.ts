@@ -536,6 +536,21 @@ async function runStages(o: Parameters<typeof runPipeline>[0], deps: PipelineDep
   const base = runSettings(config, config.chunkMax);
   const mark = { count: base.params.sectionCount[config.scope], floor: floorOf(base.params, config.scope) };
 
+  // judgeRerank calls the chat model inside stage 1: load it first, so the first judged question
+  // does not carry the model's load time (the answer stage's warm-up below then finds it loaded).
+  if (base.params.judgeRerank && o.answerStage)
+    await deps
+      .chat(
+        {
+          model: config.chatModel,
+          messages: [{ role: 'user', content: 'Reply with the single word OK.' }],
+          temperature: 0,
+          contextLength: base.contextLength,
+        },
+        () => {},
+      )
+      .catch((e: Error) => log(`judge warm-up failed: ${e.message}`));
+
   // Stage 1: retrieval once per question, cached; its rows go to retrieval.csv.
   const stage1File = path.join(o.outDir, o.answerStage ? 'retrieval.csv' : 'results.csv');
   fs.writeFileSync(stage1File, csvHeader([...RETRIEVAL_COLUMNS]));
@@ -768,6 +783,9 @@ export function answerRow(o: {
         )
       : '',
     embed_ms: r?.sentenceMatch?.embedMs ?? '',
+    // judgeRerank: the judge's time, and per named file its candidates with fused and judged ranks and scores.
+    judge_ms: retrieval.crossDocument?.judge?.ms ?? '',
+    judge_json: retrieval.crossDocument?.judge ? JSON.stringify(retrieval.crossDocument.judge.files) : '',
   };
 }
 

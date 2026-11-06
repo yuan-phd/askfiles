@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "comment": "One preset per RAM tier, the result of phase 2 (docs/plan.md, Phase 2 result): every value was measured on the owner's Mac with the evaluation harness (docs/eval.md) or fixed by the plan. Tiers are matched on total RAM in GiB: the highest tier whose minRamGb is not above the machine's RAM. Answer switches on: verifyCitations, enumerateWhenAsked, dropUnsupportedHedges, cjkOverlap (docs/plan.md, Answer layer rounds, 2026-11-01, round A1), crossDocQuota (A2a), scopedQuotaV2 (C3), headingPathBonus (X2, 2026-11-05, confirmed seeded in S0b); crossDocument (A2), fileScopedQuota (C1), keywordStemming (S1, 2026-11-04), perFileSubquery (X1, 2026-11-04), namedFileQuota8 (X3, 2026-11-05; seeded S0c), sourceFileNames (N1), sourceDisplayNames, questionFileNames, verifyStripNames, dropAnswerFileNames (N2) and the others are unused options, off (docs/eval.md, answer switches). Indexing switches (docs/plan.md, Indexing rounds, 2026-11-01): structuredTables on (round I1); cjkHeadings on by owner ruling after round C4 (an exception to the round rule, docs/plan.md); ocrUpscale (I3) measured and off.",
+  "comment": "One preset per RAM tier, the result of phase 2 (docs/plan.md, Phase 2 result): every value was measured on the owner's Mac with the evaluation harness (docs/eval.md) or fixed by the plan. Tiers are matched on total RAM in GiB: the highest tier whose minRamGb is not above the machine's RAM. Answer switches on: verifyCitations, enumerateWhenAsked, dropUnsupportedHedges, cjkOverlap (docs/plan.md, Answer layer rounds, 2026-11-01, round A1), crossDocQuota (A2a), scopedQuotaV2 (C3), headingPathBonus (X2, 2026-11-05, confirmed seeded in S0b), duplicateTextAttribution (D4), judgeRerank (B, 2026-11-06; when it fires, each named file's candidates are its in-file list searched with the file's own clause from perFileSubquery's split, used only to make the candidates while the main retrieval is unchanged; a named file with no clause of its own is searched inside the file with the whole question; questions naming two or more files take about 76 seconds in total, median (judge calls a median 50 s)); crossDocument (A2), fileScopedQuota (C1), keywordStemming (S1, 2026-11-04), perFileSubquery (X1, 2026-11-04), namedFileQuota8 (X3, 2026-11-05; seeded S0c), sourceFileNames (N1), sourceDisplayNames, questionFileNames, verifyStripNames, dropAnswerFileNames (N2) and the others are unused options, off (docs/eval.md, answer switches). Indexing switches (docs/plan.md, Indexing rounds, 2026-11-01): structuredTables on (round I1); cjkHeadings on by owner ruling after round C4 (an exception to the round rule, docs/plan.md); ocrUpscale (I3) measured and off.",
   "tiers": [
     {
       "id": "8gb",
@@ -79,7 +79,8 @@
         "sentenceOverlapMinCjk": 0.3,
         "contentFreeExempt": false,
         "duplicateTextAttribution": true,
-        "duplicateTextTiers": false
+        "duplicateTextTiers": false,
+        "judgeRerank": true
       },
       "summariesFasterModel": false,
       "indexing": {
@@ -172,7 +173,8 @@
         "sentenceOverlapMinCjk": 0.3,
         "contentFreeExempt": false,
         "duplicateTextAttribution": true,
-        "duplicateTextTiers": false
+        "duplicateTextTiers": false,
+        "judgeRerank": true
       },
       "summariesFasterModel": false,
       "indexing": {
@@ -258,7 +260,8 @@
         "sentenceOverlapMinCjk": 0.3,
         "contentFreeExempt": false,
         "duplicateTextAttribution": true,
-        "duplicateTextTiers": false
+        "duplicateTextTiers": false,
+        "judgeRerank": true
       },
       "summariesFasterModel": false,
       "indexing": {

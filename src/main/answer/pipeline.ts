@@ -49,6 +49,7 @@ import { headingBonus, headingMatcher } from './heading-bonus.js';
 import { dropBacktickedFileNames, namePhrases, stripNames } from './file-names.js';
 import { extractTerms, isMainlyCjk, type Term } from './terms.js';
 import { verifyClaims, type VerifyStats } from './verify.js';
+import { judgeFile, type JudgedFile } from './judge.js';
 import { shareDuplicates } from './duplicates.js';
 import { sentenceScores, type SentenceMatchDeps } from './sentence-match.js';
 
@@ -125,6 +126,8 @@ export interface Retrieval {
     quota: string[];
     /** perFileSubquery: the query each named file was searched with inside it. */
     subqueries?: FileSubquery[];
+    /** judgeRerank: each named file's judged candidates and the time of all judge calls. */
+    judge?: { ms: number; files: JudgedFile[] };
   };
 }
 
@@ -230,7 +233,13 @@ export async function fileScopedSections(
   p: AnswerParams,
   deps: PipelineDeps,
   signal?: AbortSignal,
-  o: { per?: number; skipContents?: boolean; queries?: Map<string, string> } = {},
+  o: {
+    per?: number;
+    skipContents?: boolean;
+    queries?: Map<string, string>;
+    /** judgeRerank: reorders a file's fused list before its first per sections are taken. */
+    reorder?: (documentId: string, query: string, fused: FusedSection[]) => Promise<FusedSection[]>;
+  } = {},
 ): Promise<FusedSection[]> {
   const per = o.per ?? CROSS_DOCUMENT_QUOTA;
   const ids = new Set(documentIds);
@@ -283,7 +292,8 @@ export async function fileScopedSections(
   const out: FusedSection[] = [];
   for (const id of new Set(documentIds)) {
     // Sequential: the searches of one question share Ollama's embedding model anyway.
-    const { hits, ranking, bonus } = await search(o.queries?.get(id) ?? question);
+    const query = o.queries?.get(id) ?? question;
+    const { hits, ranking, bonus } = await search(query);
     const vector = hits
       .filter((h) => h.documentId === id)
       .filter((h) => !h.section || !isContents(id, Number(h.section.slice(h.section.lastIndexOf('#') + 1))))
@@ -292,7 +302,9 @@ export async function fileScopedSections(
       .filter((r) => r.documentId === id && !isContents(id, r.sectionIndex))
       .slice(0, p.keywordTopK)
       .map((r) => ({ section: sectionKey(r.documentId, r.sectionIndex), score: r.score, terms: r.terms }));
-    out.push(...fuse(vector, keyword, p.rrfK, bonus).slice(0, per));
+    let fused = fuse(vector, keyword, p.rrfK, bonus);
+    if (o.reorder) fused = await o.reorder(id, query, fused);
+    out.push(...fused.slice(0, per));
   }
   return out;
 }
@@ -319,7 +331,8 @@ export function boostDocuments(fused: FusedSection[], documentIds: Set<string>):
 
 export async function retrieve(
   question: string,
-  s: Pick<RunSettings, 'params' | 'chunkMaxChars'>,
+  /** chatModel and contextLength are needed by judgeRerank only. */
+  s: Pick<RunSettings, 'params' | 'chunkMaxChars'> & Partial<Pick<RunSettings, 'chatModel' | 'contextLength'>>,
   deps: PipelineDeps,
   signal?: AbortSignal,
 ): Promise<Retrieval> {
@@ -371,10 +384,36 @@ export async function retrieve(
       const documentIds = files.map((f) => f.documentId);
       let quota: string[] = [];
       let subqueries: FileSubquery[] | undefined;
+      let judge: { ms: number; files: JudgedFile[] } | undefined;
       const scopedSearch = p.fileScopedQuota || p.scopedQuotaV2;
       if (parts.has('quota') && scopedSearch) {
         let queries: Map<string, string> | undefined;
-        if (p.perFileSubquery) {
+        // judgeRerank takes its candidates from the in-file lists searched with each file's clause
+        // (owner, round B pre-check), so it uses perFileSubquery's queries whether that switch is on or not.
+        const judging = p.judgeRerank && p.scopedQuotaV2 && !!s.chatModel && !!s.contextLength;
+        if (p.judgeRerank && !judging)
+          deps.log?.('[answer] judge: skipped (needs scopedQuotaV2, the chat model and its context length)');
+        let reorder: ((documentId: string, query: string, list: FusedSection[]) => Promise<FusedSection[]>) | undefined;
+        if (judging) {
+          judge = { ms: 0, files: [] };
+          const j = judge;
+          const sectionOf = (key: string) =>
+            deps.index.section(key.slice(0, key.lastIndexOf('#')), Number(key.slice(key.lastIndexOf('#') + 1)));
+          reorder = async (documentId, query, list) => {
+            const { ordered, record } = await judgeFile(question, documentId, query, list, {
+              chat: deps.chat,
+              model: s.chatModel!,
+              contextLength: s.contextLength!,
+              section: sectionOf,
+              ...(deps.log ? { log: deps.log } : {}),
+              ...(signal ? { signal } : {}),
+            });
+            j.files.push(record);
+            j.ms += record.ms;
+            return ordered;
+          };
+        }
+        if (p.perFileSubquery || judging) {
           const subs = fileSubqueries(question, groups, deps.index.identities?.() ?? []);
           queries = new Map(subs.map((x) => [x.documentId, x.query]));
           for (const x of subs)
@@ -388,6 +427,7 @@ export async function retrieve(
             ? { per: p.namedFileQuota8 ? NAMED_FILE_QUOTA : SCOPED_V2_QUOTA, skipContents: true }
             : {}),
           ...(queries ? { queries } : {}),
+          ...(reorder ? { reorder } : {}),
         });
         quota = scoped.map((f) => f.key);
         // A section found only inside its file joins the end of the fused list, so it can become a
@@ -400,6 +440,7 @@ export async function retrieve(
         files: files.map((f) => f.file),
         quota,
         ...(subqueries ? { subqueries } : {}),
+        ...(judge ? { judge } : {}),
       };
       deps.log?.(
         `[answer] cross-document: ${crossDocument.files.join(', ')}; ${quota.length} quota sections` +

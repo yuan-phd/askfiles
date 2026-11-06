@@ -48,6 +48,8 @@ describe('config/presets.json', () => {
       'questionFileNames',
       'sourceDisplayNames',
       'duplicateTextAttribution',
+      // Round B (2026-11-06).
+      'judgeRerank',
     ];
     for (const t of p.tiers) {
       // Summaries use the Ask model on every tier (owner decision 2026-11-04).
