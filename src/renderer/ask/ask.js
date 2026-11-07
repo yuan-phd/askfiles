@@ -345,10 +345,28 @@ function renderStreaming(parts, max) {
 }
 
 /**
+ * What the asterisk means (owner's wording, round P1 follow-up), in the language of the answer:
+ * Chinese when at least 30 percent of its letters are CJK (as mainlyCjk in verify.ts), else
+ * English. The page has no other locale, so the answer's own language decides.
+ */
+const MARKER_NOTE = {
+  en: 'Starred sentences have no word-for-word support in the sources. They may be a summary or conclusion drawn from the sources, or they may be inaccurate. Check them against the source cards.',
+  zh: '带星号的句子在来源中没有逐字对应的原文，可能是根据来源归纳的结论，也可能不准确，请对照来源卡片核实。',
+};
+
+function markerNote(answerText) {
+  const letters = answerText.match(/[\p{L}\p{N}]/gu)?.length ?? 0;
+  const cjk = answerText.match(/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]/gu)?.length ?? 0;
+  const zh = letters > 0 && cjk / letters >= 0.3;
+  return { text: zh ? MARKER_NOTE.zh : MARKER_NOTE.en, lang: zh ? 'zh' : 'en' };
+}
+
+/**
  * The finished answer, sentence by sentence. A sentence no source supports stays muted and gets
  * an asterisk; the note under the answer says what the asterisk means.
  */
 function renderClaims(claims) {
+  const note = markerNote(claims.map((c) => c.text).join(''));
   els.answerText.replaceChildren(
     ...claims.map((c) => {
       const span = document.createElement('span');
@@ -361,7 +379,7 @@ function renderClaims(claims) {
         mark.className = 'unsupported-mark';
         mark.dataset.testid = 'unsupported-mark';
         mark.textContent = '*';
-        mark.title = 'No supporting passage in the library; may be inaccurate';
+        mark.title = note.text;
         span.append(mark);
       }
       const trailing = /\s+$/.exec(c.text)?.[0] ?? ' ';
@@ -370,6 +388,8 @@ function renderClaims(claims) {
     }),
   );
   els.answerNote.hidden = !claims.some((c) => c.unsupported);
+  els.answerNote.textContent = `* ${note.text}`;
+  els.answerNote.lang = note.lang;
 }
 
 function handleEvent(e) {
