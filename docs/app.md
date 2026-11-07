@@ -31,7 +31,7 @@ Then:
 npm run dev
 ```
 
-It compiles src/main, makes sure the patches are applied to upstream/ (idempotent; build.sh leaves them applied) and starts Electron on the repository with ASKFILES_DEV=1. With that variable the unpackaged app runs the same AppController as the packaged one, with three differences (src/main/app-mode.ts, devBackend):
+It compiles src/main, makes sure the patches are applied to upstream/ (idempotent; build.sh leaves them applied), makes sure upstream/server's generated Prisma client matches the patched schema (scripts/lib/prisma-client.mjs ensure: a client generated while upstream/ was restored is generated again, with one line saying so, and the start stops only if it still does not match) and starts Electron on the repository with ASKFILES_DEV=1. With that variable the unpackaged app runs the same AppController as the packaged one, with three differences (src/main/app-mode.ts, devBackend):
 
 - Server and collector come from upstream/server and upstream/collector and run under the Node that runs npm (npm_node_execpath), not under Electron, because yarn built their native modules for that Node.
 - No bundled Ollama: the app uses the Ollama already running on 127.0.0.1:11434 (ASKFILES_OLLAMA_PORT for another port) and its models in ~/.ollama. Start the Ollama app first; the start fails with a message when nothing answers. The first run pulls the tier's models there if they are missing, and the Models page removes from there.

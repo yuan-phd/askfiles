@@ -13,7 +13,7 @@
     "build": "npm run build:main && npm run build:upstream",
     "build:main": "tsc -p tsconfig.json",
     "build:upstream": "bash scripts/build.sh",
-    "dev": "npm run build:main && node scripts/lib/patches.mjs apply . && node scripts/lib/prisma-client.mjs check upstream/server && ASKFILES_DEV=1 electron .",
+    "dev": "npm run build:main && node scripts/lib/patches.mjs apply . && node scripts/lib/prisma-client.mjs ensure upstream/server && ASKFILES_DEV=1 electron .",
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.mjs",
     "lint": "tsc -p tsconfig.json --noEmit && tsc -p scripts/eval/tsconfig.json && eslint . && prettier --check .",
