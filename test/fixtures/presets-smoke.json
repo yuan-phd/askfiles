@@ -86,7 +86,8 @@
         "verifyStripQuestion": false,
         "verifyStripMin": 3,
         "leadInExempt": false,
-        "displayFormatSuffix": false
+        "displayFormatSuffix": false,
+        "verifyStemEnglish": false
       }
     }
   ]

@@ -983,6 +983,7 @@ export async function answer(
           : {}),
         ...(s.params.verifyStripQuestion ? { stripQuestion: true, stripMin: s.params.verifyStripMin } : {}),
         ...(s.params.leadInExempt ? { leadIn: true } : {}),
+        ...(s.params.verifyStemEnglish ? { stem: true } : {}),
         ...(s.params.contentFreeExempt ? { contentFree: true } : {}),
         ...(s.params.sentenceOverlap && !scores
           ? {

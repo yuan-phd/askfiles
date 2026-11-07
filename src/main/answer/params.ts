@@ -267,6 +267,12 @@ export interface AnswerParams {
    * (identifiers.ts libraryDisplayNames, docs/plan.md round P2).
    */
   displayFormatSuffix: boolean;
+  /**
+   * Citation verification compares English content words by their Porter stems, sentence, sources
+   * and question alike (verify.ts stemTokens, docs/plan.md round P3); Chinese pairs unchanged.
+   * Retrieval and the keyword index are not affected (that was keywordStemming, round S1).
+   */
+  verifyStemEnglish: boolean;
 }
 
 /** The crossDocument parts in effect: crossDocument's own, or the quota alone with crossDocQuota. */
@@ -333,6 +339,7 @@ export const DEFAULT_PARAMS: AnswerParams = {
   verifyStripMin: 3,
   leadInExempt: false,
   displayFormatSuffix: false,
+  verifyStemEnglish: false,
 };
 
 /** Tokens kept free for the answer itself and for the instructions and the question. */
@@ -460,6 +467,7 @@ const CHECKS: Record<keyof AnswerParams, (v: unknown) => Problem> = {
   verifyStripMin: intAtLeast(1),
   leadInExempt: bool,
   displayFormatSuffix: bool,
+  verifyStemEnglish: bool,
 };
 
 /** Problems with an answer block, each prefixed with at; every key is required. */

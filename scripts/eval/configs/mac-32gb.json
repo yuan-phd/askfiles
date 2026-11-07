@@ -74,7 +74,8 @@
     "verifyStripQuestion": true,
     "verifyStripMin": 3,
     "leadInExempt": true,
-    "displayFormatSuffix": false
+    "displayFormatSuffix": false,
+    "verifyStemEnglish": true
   },
   "contextTokens": 8192,
   "indexing": {

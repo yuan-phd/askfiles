@@ -57,6 +57,8 @@ describe('config/presets.json', () => {
       'verifyStripQuestion',
       // Round P1, F1 (2026-11-07).
       'leadInExempt',
+      // Round P3 (2026-11-07).
+      'verifyStemEnglish',
     ];
     for (const t of p.tiers) {
       // Summaries use the Ask model on every tier (owner decision 2026-11-04).

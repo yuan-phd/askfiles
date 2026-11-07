@@ -13,6 +13,7 @@
  */
 import type { Claim } from './citations.js';
 import { sourceSentences } from './source-sentences.js';
+import { porterStem } from '../browse/stem.js';
 
 /**
  * Share of a sentence's content tokens its source must contain. Measured on the round 1 tuning
@@ -250,6 +251,17 @@ export interface VerifyOptions {
    * words carries a citation is a structural lead-in: neither cited nor unsupported.
    */
   leadIn?: boolean;
+  /**
+   * verifyStemEnglish (round P3): English content words are compared by their Porter stems on both
+   * sides, sentence and source, and the question's words for stripping as well; numbers and
+   * character pairs are unchanged. Verification only: retrieval keeps its own terms.
+   */
+  stem?: boolean;
+}
+
+/** Porter stems of the all-ASCII-letter tokens (scored for score, exceptions for except); others unchanged. */
+export function stemTokens(tokens: string[]): string[] {
+  return tokens.map((t) => (/^[a-z]+$/.test(t) ? porterStem(t) : t));
 }
 
 /**
@@ -306,18 +318,21 @@ export function verifyClaims(
   o: VerifyOptions = {},
 ): { claims: Claim[]; stats: VerifyStats } {
   const minTokens = o.minTokens ?? VERIFY_MIN_TOKENS;
-  const wordSources = passages.map((p) => new Set(contentTokens(p)));
+  // verifyStemEnglish: English words by stem; mainly CJK sentences keep cjkTokens.
+  const words = o.stem ? (t: string) => stemTokens(contentTokens(t)) : contentTokens;
+  const wordSources = passages.map((p) => new Set(words(p)));
   let pairSources: Set<string>[] | null = null;
   const pairsOf = () => (pairSources ??= passages.map((p) => new Set(cjkTokens(p))));
   const asked = o.question?.filter(Boolean) ?? [];
-  const askedWords = new Set(asked.flatMap((q) => contentTokens(q)));
+  const askedWords = new Set(asked.flatMap((q) => words(q)));
+  const askedRaw = o.stem ? new Set(asked.flatMap((q) => contentTokens(q))) : askedWords;
   const askedPairs = new Set(asked.flatMap((q) => cjkTokens(q)));
   // sentenceOverlap: token sets of each source's sentences, by tokenizer.
   const sentenceSets = new Map<boolean, Set<string>[][]>();
   const sentencesOf = (pairs: boolean) => {
     let v = sentenceSets.get(pairs);
     if (!v) {
-      v = passages.map((p) => sourceSentences(p).map((x) => new Set(pairs ? cjkTokens(x) : contentTokens(x))));
+      v = passages.map((p) => sourceSentences(p).map((x) => new Set(pairs ? cjkTokens(x) : words(x))));
       sentenceSets.set(pairs, v);
     }
     return v;
@@ -353,8 +368,8 @@ export function verifyClaims(
     const byPairs = Boolean(o.cjk) && mainlyCjk(c.text);
     const min = byPairs ? (o.cjkMinOverlap ?? VERIFY_MIN_OVERLAP_CJK) : (o.minOverlap ?? VERIFY_MIN_OVERLAP);
     const sources = byPairs ? pairsOf() : wordSources;
-    const tokens = byPairs ? cjkTokens(c.text) : contentTokens(c.text);
-    if (o.contentFree && c.citations.length && isContentFree(c.text, byPairs ? askedPairs : askedWords, byPairs)) {
+    const tokens = byPairs ? cjkTokens(c.text) : words(c.text);
+    if (o.contentFree && c.citations.length && isContentFree(c.text, byPairs ? askedPairs : askedRaw, byPairs)) {
       stats.contentFree!++;
       return { ...c, citations: [], unsupported: false, contentFree: true };
     }
