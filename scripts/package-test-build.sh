@@ -18,7 +18,10 @@ if [ ! -f dist/main/test-record/index.js ] || [ ! -f dist/main/test-record/ui/ui
   exit 1
 fi
 
-COMMON=(--config electron-builder.yml "-c.productName=$NAME" "-c.directories.output=$OUT")
+# --publish never: on a push to main electron-builder detects CI and publishes implicitly, which
+# needs a GitHub token and stops the DMG step without one (mac run #65); the test build is never
+# published, only uploaded as a workflow artifact.
+COMMON=(--config electron-builder.yml "-c.productName=$NAME" "-c.directories.output=$OUT" --publish never)
 
 case "${1:-}" in
   mac)
@@ -32,7 +35,7 @@ case "${1:-}" in
   win)
     rm -rf "$OUT/win-unpacked"
     npx electron-builder "${COMMON[@]}" "-c.nsis.artifactName=AskFiles-Test-Setup.exe" \
-      "-c.nsis.shortcutName=$NAME" --win nsis --x64 --publish never
+      "-c.nsis.shortcutName=$NAME" --win nsis --x64
     ls -l "$OUT/AskFiles-Test-Setup.exe"
     ;;
   *)
