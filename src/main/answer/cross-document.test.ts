@@ -36,47 +36,47 @@ const doc = (id: string, title: string) => ({ id, title, relPath: title, outline
 
 describe('crossDocument detection', () => {
   const ids = buildIdentities([
-    doc('a', '01_标准设备采购招标文件_2017年版.pdf'),
-    doc('b', '02_标准材料采购招标文件_2017年版.pdf'),
-    doc('c', '04_必须招标的工程项目规定.pdf'),
-    doc('d', '07_必须招标的基础设施和公用事业项目范围规定.pdf'),
-    doc('e', '13_必须招标的工程项目规定.docx'),
-    doc('f', '01_Procurement_Regulations_2025.pdf'),
-    doc('g', '08_Contract_Management_Guidance.pdf'),
+    doc('a', '01_标准办公用品招标文件_2017年版.pdf'),
+    doc('b', '02_标准印刷服务招标文件_2017年版.pdf'),
+    doc('c', '04_必须审批的差旅事项规定.pdf'),
+    doc('d', '07_必须审批的办公设施和公务用车项目范围规定.pdf'),
+    doc('e', '13_必须审批的差旅事项规定.docx'),
+    doc('f', '01_Maintenance_Regulations_2025.pdf'),
+    doc('g', '08_Building_Management_Guidance.pdf'),
   ]);
   const groups = (q: string) => namedFileGroups(q, ids).map((g) => g.map((f) => f.documentId).join('+'));
 
   it('names Chinese files by the title in their file name, without word boundaries', () => {
-    expect(groups('对比《标准设备采购招标文件》和《标准材料采购招标文件》：异议的最迟时间是什么？')).toEqual([
+    expect(groups('对比《标准办公用品招标文件》和《标准印刷服务招标文件》：异议的最迟时间是什么？')).toEqual([
       'a',
       'b',
     ]);
     // In the order the question names them.
-    expect(groups('比较必须招标的基础设施和公用事业项目范围规定与01_标准设备采购招标文件_2017年版.pdf')).toEqual([
+    expect(groups('比较必须审批的办公设施和公务用车项目范围规定与01_标准办公用品招标文件_2017年版.pdf')).toEqual([
       'd',
       'a',
     ]);
   });
 
   it('counts a name two formats of one document share as one mention of both', () => {
-    expect(groups('依照《必须招标的工程项目规定》，门槛是什么？')).toEqual(['c+e']);
-    expect(groups('比较《必须招标的工程项目规定》和《必须招标的基础设施和公用事业项目范围规定》')).toEqual([
+    expect(groups('依照《必须审批的差旅事项规定》，门槛是什么？')).toEqual(['c+e']);
+    expect(groups('比较《必须审批的差旅事项规定》和《必须审批的办公设施和公务用车项目范围规定》')).toEqual([
       'c+e',
       'd',
     ]);
     // Only file names share: the shared name is no identifier of one file (documentAffinity).
     expect(ids.find((f) => f.documentId === 'c')!.identifiers.map((i) => i.text)).not.toContain(
-      '必须招标的工程项目规定',
+      '必须审批的差旅事项规定',
     );
   });
 
   it('counts a file named twice once and leaves English names as before', () => {
     expect(
       groups(
-        'Compare `01_Procurement_Regulations_2025.pdf` and the Contract Management Guidance with the Regulations.',
+        'Compare `01_Maintenance_Regulations_2025.pdf` and the Building Management Guidance with the Regulations.',
       ),
     ).toEqual(['f', 'g']);
-    expect(groups('What do the Procurement Regulations say?')).toEqual(['f']);
+    expect(groups('What do the Maintenance Regulations say?')).toEqual(['f']);
   });
 });
 
@@ -132,11 +132,11 @@ describe('crossDocument in the pipeline', () => {
     const lib = fixtureLibrary([
       { name: 'Other_Notes.pdf', sections: many('note', 8) },
       {
-        name: 'Procurement_Regulations.pdf',
+        name: 'Maintenance_Regulations.pdf',
         sections: [{ title: 'Plan', parts: ['The contract plan is developed during contract creation.'] }],
       },
       {
-        name: 'Contract_Management_Guidance.pdf',
+        name: 'Building_Management_Guidance.pdf',
         sections: [{ title: 'When to Plan', parts: ['The contract plan is completed when signing the contract.'] }],
       },
     ]);
@@ -144,8 +144,8 @@ describe('crossDocument in the pipeline', () => {
     const resolver = createSourceResolver({ files: () => lib.records, readText: (l) => lib.chunkText.get(l) ?? null });
     const prompts: string[] = [];
     const reply =
-      'Under the Procurement Regulations the contract plan is developed during contract creation [1].\n\n' +
-      'Under the Contract Management Guidance the contract plan is completed when signing the contract [1].';
+      'Under the Maintenance Regulations the contract plan is developed during contract creation [1].\n\n' +
+      'Under the Building Management Guidance the contract plan is completed when signing the contract [1].';
     const chat: ChatFn = async (o, onText) => {
       prompts.push(o.messages.map((m) => m.content).join('\n'));
       onText(reply);
@@ -171,19 +171,19 @@ describe('crossDocument in the pipeline', () => {
     };
     // Vector search misses the two files; the keyword index finds them by creation and signing.
     const q =
-      'Compare the Procurement Regulations and the Contract Management Guidance: is the plan made at creation or signing?';
+      'Compare the Maintenance Regulations and the Building Management Guidance: is the plan made at creation or signing?';
     const on = settingsWith({ crossDocument: true });
     const r = await retrieve(q, on, deps);
-    expect(r.crossDocument?.files).toEqual(['Procurement_Regulations.pdf', 'Contract_Management_Guidance.pdf']);
+    expect(r.crossDocument?.files).toEqual(['Maintenance_Regulations.pdf', 'Building_Management_Guidance.pdf']);
     const sel = choose(r, on);
     const files = sel.selected.map((x) => x.section.file);
-    expect(files).toContain('Procurement_Regulations.pdf');
-    expect(files).toContain('Contract_Management_Guidance.pdf');
+    expect(files).toContain('Maintenance_Regulations.pdf');
+    expect(files).toContain('Building_Management_Guidance.pdf');
     expect(sel.selected.length).toBeLessThanOrEqual(r.crossDocument!.quota.length + on.params.sectionCount.balanced);
     const result = await answer(q, r, sel, on, deps);
     // Grouped: the Regulations first as [1], the Guidance as [2], then the other files.
-    expect(prompts[0]).toContain('Sources from Procurement_Regulations.pdf:\n\n[1] ');
-    expect(prompts[0]).toContain('Sources from Contract_Management_Guidance.pdf:\n\n[2] ');
+    expect(prompts[0]).toContain('Sources from Maintenance_Regulations.pdf:\n\n[1] ');
+    expect(prompts[0]).toContain('Sources from Building_Management_Guidance.pdf:\n\n[2] ');
     expect(prompts[0]).toContain('Sources from other files:');
     // The second sentence cited [1] but names the Guidance, so it moves to [2].
     expect(result.claims.map((c) => c.citations)).toEqual([[1], [2]]);
@@ -200,7 +200,7 @@ describe('crossDocument in the pipeline', () => {
     expect(prompts[0]).toContain('Never write page numbers, file names or section names');
 
     // A question naming one file, or the switch off, is unchanged.
-    const single = await retrieve('What do the Procurement Regulations say about the plan?', on, deps);
+    const single = await retrieve('What do the Maintenance Regulations say about the plan?', on, deps);
     expect(single.crossDocument).toBeUndefined();
     const off = settingsWith({});
     expect((await retrieve(q, off, deps)).crossDocument).toBeUndefined();
@@ -224,8 +224,8 @@ describe('fileScopedQuota', () => {
   function setup() {
     const lib = fixtureLibrary([
       { name: 'Other_Notes.pdf', sections: notes },
-      { name: 'Procurement_Regulations.pdf', sections: regs },
-      { name: 'Contract_Management_Guidance.pdf', sections: guidance },
+      { name: 'Maintenance_Regulations.pdf', sections: regs },
+      { name: 'Building_Management_Guidance.pdf', sections: guidance },
     ]);
     cleanups.push(lib.cleanup);
     const resolver = createSourceResolver({ files: () => lib.records, readText: (l) => lib.chunkText.get(l) ?? null });
@@ -254,7 +254,7 @@ describe('fileScopedQuota', () => {
     const docId = (n: number) => lib.index.getDocument({ url: lib.records[n]!.url, title: lib.records[n]!.name })!.id;
     return { deps, topKs, regs: docId(1), guidance: docId(2) };
   }
-  const q = 'Compare the Procurement Regulations and the Contract Management Guidance on approval and signing.';
+  const q = 'Compare the Maintenance Regulations and the Building Management Guidance on approval and signing.';
 
   it('takes each named file top 3 by vector and keyword search inside the file, fused by RRF', async () => {
     const { deps, topKs, regs, guidance } = setup();
@@ -280,7 +280,7 @@ describe('fileScopedQuota', () => {
   it('changes nothing for a question naming one file', async () => {
     const { deps, topKs } = setup();
     const s = settingsWith({ crossDocQuota: true, fileScopedQuota: true });
-    const r = await retrieve('What do the Procurement Regulations say on signing?', s, deps);
+    const r = await retrieve('What do the Maintenance Regulations say on signing?', s, deps);
     expect(r.crossDocument).toBeUndefined();
     expect(topKs).toEqual([s.params.vectorTopK]);
   });
@@ -294,8 +294,8 @@ describe('scopedQuotaV2', () => {
   ];
   function setup() {
     const lib = fixtureLibrary([
-      { name: 'Procurement_Regulations.pdf', sections: sections('reg') },
-      { name: 'Contract_Management_Guidance.pdf', sections: sections('guide') },
+      { name: 'Maintenance_Regulations.pdf', sections: sections('reg') },
+      { name: 'Building_Management_Guidance.pdf', sections: sections('guide') },
     ]);
     cleanups.push(lib.cleanup);
     const resolver = createSourceResolver({ files: () => lib.records, readText: (l) => lib.chunkText.get(l) ?? null });
@@ -317,7 +317,7 @@ describe('scopedQuotaV2', () => {
     const id = (n: number) => lib.index.getDocument({ url: lib.records[n]!.url, title: lib.records[n]!.name })!.id;
     return { deps, ids: [id(0), id(1)] };
   }
-  const q = 'Compare the Procurement Regulations and the Contract Management Guidance on approval and signing.';
+  const q = 'Compare the Maintenance Regulations and the Building Management Guidance on approval and signing.';
 
   it('leaves contents out inside the file, takes 5 per file and selects at most 8, the files in turn', async () => {
     const { deps, ids } = setup();
@@ -340,7 +340,7 @@ describe('scopedQuotaV2', () => {
 
   it('namedFileQuota8 takes 8 per file and selects at most 10, the files in turn', async () => {
     const lib = fixtureLibrary(
-      ['Procurement_Regulations.pdf', 'Contract_Management_Guidance.pdf'].map((name, f) => ({
+      ['Maintenance_Regulations.pdf', 'Building_Management_Guidance.pdf'].map((name, f) => ({
         name,
         sections: Array.from({ length: 12 }, (_, i) => ({
           title: `Part ${i}`,

@@ -15,12 +15,12 @@ describe('verifyStemEnglish (round P3)', () => {
     expect(stemTokens(cjkTokens('施工400万元'))).toEqual(cjkTokens('施工400万元'));
   });
 
-  it('tuning Q13: the sentence passes against the Standstill Period clause by stems', () => {
+  it('a tuning-set sentence: it passes against the Suspension Period clause by stems', () => {
     const passage =
-      '5.78 To give Bidders time to examine the Notification and to assess whether to submit a complaint, a Standstill Period shall apply, except in the situations described in Paragraph 5.80.';
+      '5.78 To give Bidders time to examine the Notification and to assess whether to submit a complaint, a Suspension Period shall apply, except in the situations described in Paragraph 5.80.';
     const sentence = 'The exceptions to its application are identified in paragraph 5.80 .';
     const question =
-      'According to paragraph 5.78 of the Procurement Regulations, why is a Standstill Period provided, and which paragraph identifies the exceptions to its application?';
+      'According to paragraph 5.78 of the Maintenance Regulations, why is a Suspension Period provided, and which paragraph identifies the exceptions to its application?';
     const o = { question: [question], restatement: false, stripQuestion: true };
     expect(verifyClaims([claim(sentence, [1])], [passage], o).claims[0]).toMatchObject({ unsupported: true });
     expect(verifyClaims([claim(sentence, [1])], [passage], { ...o, stem: true }).claims[0]).toMatchObject({
@@ -29,7 +29,7 @@ describe('verifyStemEnglish (round P3)', () => {
     });
   });
 
-  it('check Q39: brings becomes a question word by its stem, two tokens are left, the guard scores all', () => {
+  it('a check-set sentence: brings becomes a question word by its stem, two tokens are left, the guard scores all', () => {
     const table =
       'Criteria: Sustainability | Weighting: 10% | Score: 1 | Weighted Score: 10\nOverall Technical Score | Weighted Score: 240';
     const question =

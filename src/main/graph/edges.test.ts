@@ -18,14 +18,14 @@ describe('edges', () => {
     const a = doc('Regulations.pdf', [
       ['1. Scope', 'x'],
       ['2. Definitions', 'x'],
-      ['Contract Management (page 1)', 'x'],
-      ['Contract Management (page 2)', 'x'],
+      ['Building Management (page 1)', 'x'],
+      ['Building Management (page 2)', 'x'],
       ['第一章', 'x'],
     ]);
     const b = doc('Guidance.pdf', [
       ['Scope', 'y'],
       ['DEFINITIONS', 'y'],
-      ['Contract Management', 'y'],
+      ['Building Management', 'y'],
       ['第一章', 'y'],
     ]);
     const c = doc('Template.docx', [
@@ -36,22 +36,22 @@ describe('edges', () => {
     const h = edgesOf(g, 'headings');
     expect(h).toHaveLength(1);
     expect(h[0]!.weight).toBe(3);
-    expect(h[0]!.headings!.map((x) => x.key).sort()).toEqual(['contract management', 'definitions', 'scope']);
+    expect(h[0]!.headings!.map((x) => x.key).sort()).toEqual(['building management', 'definitions', 'scope']);
     expect(edgeHeading('第一章')).toBe('');
     // Shared headings are off in the general profile.
     expect(edgesOf(buildGraph([a, b], { profile: general }), 'headings')).toEqual([]);
   });
 
   it('finds explicit references by title, title marks and clause references, with the passage', () => {
-    const regs = doc('01_Procurement_Regulations_2025.pdf', [['Scope', 'These Regulations apply to every Borrower.']]);
-    const guide = doc('07_Value_for_Money_Guidance.pdf', [
-      ['Intro', 'This note expands on the Procurement Regulations for its readers.'],
+    const regs = doc('01_Maintenance_Regulations_2025.pdf', [['Scope', 'These Regulations apply to every Borrower.']]);
+    const guide = doc('07_Wages_for_Hours_Guidance.pdf', [
+      ['Intro', 'This note expands on the Maintenance Regulations for its readers.'],
       ['Detail', 'As set out in paragraph 5.9 of the Regulations, the Borrower publishes a plan.'],
       ['Other', 'Nothing here.'],
     ]);
-    const zhA = doc('04_必须招标的工程项目规定.pdf', [['第一条', '为了确定必须招标的工程项目，制定本规定。']]);
-    const zhB = doc('07_必须招标的基础设施和公用事业项目范围规定.pdf', [
-      ['第一条', '根据《中华人民共和国招标投标法》和《必须招标的工程 项目规定》，制定本规定。'],
+    const zhA = doc('04_必须审批的差旅事项规定.pdf', [['第一条', '为了确定必须审批的差旅事项，制定本规定。']]);
+    const zhB = doc('07_必须审批的办公设施和公务用车项目范围规定.pdf', [
+      ['第一条', '根据《中华人民共和国招标投标法》和《必须审批的差旅 事项规定》，制定本规定。'],
     ]);
     const g = buildGraph([regs, guide, zhA, zhB], { profile: legal });
     const refs = edgesOf(g, 'reference');
@@ -71,10 +71,10 @@ describe('edges', () => {
   });
 
   it('merges a pair that references both ways into one edge with the weights summed', () => {
-    const a = doc('Procurement Policy.pdf', [['A', 'See the Procurement Directive for details.']]);
-    const b = doc('Procurement Directive.pdf', [
-      ['B', 'The Procurement Policy sets the principles.'],
-      ['C', 'The Procurement Policy is reviewed yearly.'],
+    const a = doc('Maintenance Policy.pdf', [['A', 'See the Maintenance Directive for details.']]);
+    const b = doc('Maintenance Directive.pdf', [
+      ['B', 'The Maintenance Policy sets the principles.'],
+      ['C', 'The Maintenance Policy is reviewed yearly.'],
     ]);
     const refs = edgesOf(buildGraph([a, b], { profile: legal }), 'reference');
     expect(refs).toHaveLength(1);

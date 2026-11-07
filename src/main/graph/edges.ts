@@ -205,7 +205,7 @@ function clauseMention(text: string, name: string): number {
   }
 }
 
-/** Titles in Chinese title marks: 《标准施工招标文件》. */
+/** Titles in Chinese title marks: 《标准装修招标文件》. */
 function bookTitles(hay: string): string[] {
   return [...hay.matchAll(/《([^《》]{2,60})》/g)].map((m) => m[1]!.replace(/\s+/g, ''));
 }

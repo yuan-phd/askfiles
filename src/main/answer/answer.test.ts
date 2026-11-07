@@ -666,16 +666,16 @@ describe('quoted mode', () => {
 
   it('keeps only excerpts found in their own section, piece by piece, and counts the rest', () => {
     const sections = [
-      { text: 'The Standstill Period shall last ten (10) Business Days after such transmission.' },
+      { text: 'The Suspension Period shall last ten (10) Business Days after such transmission.' },
       { text: 'Other text about meals and travel.' },
     ];
     expect(parseExcerpts('not json', 2)).toEqual([]);
     const ex = parseExcerpts(
       JSON.stringify({
         excerpts: [
-          { source: 1, text: '"The Standstill Period shall last ten (10) Business Days"' },
+          { source: 1, text: '"The Suspension Period shall last ten (10) Business Days"' },
           { source: 1, text: 'shall last ten (10) business days ... after such transmission' },
-          { source: 2, text: 'The Standstill Period shall last ten (10) Business Days' },
+          { source: 2, text: 'The Suspension Period shall last ten (10) Business Days' },
           { source: 1, text: 'The period lasts two weeks' },
           { source: 9, text: 'out of range' },
         ],
@@ -686,7 +686,7 @@ describe('quoted mode', () => {
     const v = verifyExcerpts(ex, sections);
     expect([...v.verified.keys()]).toEqual([1]);
     expect(v.verified.get(1)).toEqual([
-      'The Standstill Period shall last ten (10) Business Days',
+      'The Suspension Period shall last ten (10) Business Days',
       'shall last ten (10) business days',
       'after such transmission',
     ]);

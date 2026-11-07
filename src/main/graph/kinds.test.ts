@@ -36,7 +36,7 @@ describe('kind detection', () => {
   });
 
   it('tells regulation, guidance, template, record and data apart', () => {
-    expect(detectKind(text('Procurement Regulations.pdf', REGULATION_TEXT.repeat(3))).kind).toBe('normative');
+    expect(detectKind(text('Maintenance Regulations.pdf', REGULATION_TEXT.repeat(3))).kind).toBe('normative');
     expect(detectKind(text('Value guidance.pdf', `${PROSE_TEXT}\n\n${PROSE_TEXT}\n\n${PROSE_TEXT}`)).kind).toBe(
       'explanatory',
     );

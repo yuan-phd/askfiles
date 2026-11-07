@@ -31,26 +31,26 @@ let tmp: string | null = null;
 afterEach(() => tmp && fs.rmSync(tmp, { recursive: true, force: true }));
 
 describe('markdown export', () => {
-  const regs = doc('Procurement Regulations 2025.pdf', [
-    ['Scope', 'These rules apply to all procurement.'],
+  const regs = doc('Maintenance Regulations 2025.pdf', [
+    ['Scope', 'These rules apply to all maintenance.'],
     ['Definitions', 'Terms used.'],
   ]);
-  const guide = doc('Value for Money Guidance.pdf', [
-    ['Scope', 'This guidance applies the Procurement Regulations.'],
+  const guide = doc('Wages for Hours Guidance.pdf', [
+    ['Scope', 'This guidance applies the Maintenance Regulations.'],
     ['Definitions', 'More terms.'],
   ]);
   const sums: Record<string, DocumentSummaries> = {
     [regs.id]: {
       ...emptySummaries(regs.id),
       document: {
-        text: 'The regulations set the rules for procurement.',
+        text: 'The regulations set the rules for maintenance.',
         status: 'ok',
         key: 'm|p1',
         sourceHash: 'x',
         at: 't',
       },
       sections: {
-        '1': { text: 'The rules apply to all procurement.', status: 'ok', key: 'm|p1', sourceHash: 'y', at: 't' },
+        '1': { text: 'The rules apply to all maintenance.', status: 'ok', key: 'm|p1', sourceHash: 'y', at: 't' },
       },
     },
   };
@@ -65,27 +65,27 @@ describe('markdown export', () => {
     expect([...files.keys()].sort()).toEqual([
       'Headings/Definitions.md',
       'Headings/Scope.md',
-      'Procurement Regulations 2025.md',
-      'Value for Money Guidance.md',
+      'Maintenance Regulations 2025.md',
+      'Wages for Hours Guidance.md',
     ]);
-    const r = files.get('Procurement Regulations 2025.md')!;
+    const r = files.get('Maintenance Regulations 2025.md')!;
     expect(frontMatter(r)).toEqual({
-      title: 'Procurement Regulations 2025.pdf',
+      title: 'Maintenance Regulations 2025.pdf',
       type: 'regulation',
       source: regs.path,
-      summary: 'The regulations set the rules for procurement.',
+      summary: 'The regulations set the rules for maintenance.',
     });
-    expect(r).toContain('- **Scope**: The rules apply to all procurement.');
-    expect(links(r)).toEqual(['Value for Money Guidance', 'Headings/Definitions', 'Headings/Scope']);
-    const g = files.get('Value for Money Guidance.md')!;
+    expect(r).toContain('- **Scope**: The rules apply to all maintenance.');
+    expect(links(r)).toEqual(['Wages for Hours Guidance', 'Headings/Definitions', 'Headings/Scope']);
+    const g = files.get('Wages for Hours Guidance.md')!;
     expect(frontMatter(g)).toMatchObject({ type: 'guidance' });
     expect(frontMatter(g).summary).toBeUndefined();
-    expect(g).toMatch(/## References\n\n- \[\[Procurement Regulations 2025\]\]/);
+    expect(g).toMatch(/## References\n\n- \[\[Maintenance Regulations 2025\]\]/);
     const scope = files.get('Headings/Scope.md')!;
     expect(frontMatter(scope)).toEqual({ heading: 'Scope', documents: 2 });
-    expect(links(scope)).toEqual(['Procurement Regulations 2025', 'Value for Money Guidance']);
+    expect(links(scope)).toEqual(['Maintenance Regulations 2025', 'Wages for Hours Guidance']);
     // No summaries on a heading note, as on the Compare page.
-    expect(scope).not.toContain('The rules apply to all procurement.');
+    expect(scope).not.toContain('The rules apply to all maintenance.');
     expect(scope).not.toContain('No section summary yet.');
   });
 
@@ -107,7 +107,7 @@ describe('markdown export', () => {
     expect(writeExport(tmp, files)).toEqual({ written: 0, removed: 0 });
     const fewer = exportFiles({ ...input(), docs: [regs], graph: buildGraph([regs], { profile }) });
     expect(writeExport(tmp, fewer)).toEqual({ written: 1, removed: 3 });
-    expect(fs.existsSync(path.join(tmp, 'Value for Money Guidance.md'))).toBe(false);
+    expect(fs.existsSync(path.join(tmp, 'Wages for Hours Guidance.md'))).toBe(false);
     expect(fs.readFileSync(path.join(tmp, 'My own note.md'), 'utf8')).toBe('mine');
   });
 });

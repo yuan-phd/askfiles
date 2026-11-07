@@ -17,7 +17,7 @@ const item = (str: string, x: number, y: number, size = 10, width?: number): Pdf
 
 /** The scoring table of the owner's file 05, page 44, as pdf.js reports it (rounded). */
 const scoringTable: PdfItem[] = [
-  item('Bid/Proposal Example (using the 0 to 4 scale example above)', 72, 411),
+  item('Fee/Discount Example (using the 0 to 4 scale example above)', 72, 411),
   item('Criteria', 76, 385),
   item('Weighting', 294, 385, 10, 40),
   item('Score', 342, 385, 10, 22),
@@ -48,7 +48,7 @@ describe('findPdfTables', () => {
   it('reads columns, a wrapped cell, the total row and the caption from text positions', () => {
     const [t, ...rest] = findPdfTables(scoringTable, 44);
     expect(rest).toEqual([]);
-    expect(t!.table.title).toBe('Bid/Proposal Example (using the 0 to 4 scale example above)');
+    expect(t!.table.title).toBe('Fee/Discount Example (using the 0 to 4 scale example above)');
     expect(t!.table.header).toEqual(['Criteria', 'Weighting', 'Score', 'Weighted Score']);
     expect(t!.table.rows.map((r) => formatRow(r.cells, t!.table.header))).toEqual([
       'Criteria: Overall effectiveness of proposed project in delivering requirements | Weighting: 50% | Score: 3 | Weighted Score: 150',
@@ -243,14 +243,14 @@ describe('structuredTables in Word and spreadsheets', () => {
   it('spreadsheet: a title row above the header becomes the caption', () => {
     const t = sheetToTable(
       [
-        ['台式计算机采购指标', null, null],
+        ['笔记本电脑配置指标', null, null],
         ['序号', '指标', '要求'],
         [13, '固态存储容量', '≥240GB'],
       ],
       1,
     );
     expect(t).toEqual({
-      title: '台式计算机采购指标',
+      title: '笔记本电脑配置指标',
       header: ['序号', '指标', '要求'],
       rows: [{ cells: ['13', '固态存储容量', '≥240GB'], page: 1 }],
     });

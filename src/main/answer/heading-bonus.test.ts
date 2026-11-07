@@ -8,11 +8,11 @@ const t = (text: string, kind: Term['kind'] = 'word'): Term => ({ text, kind, df
 
 describe('headingMatcher', () => {
   it('matches English terms by stem as whole words', () => {
-    const m = headingMatcher([t('procurement planning', 'pair')]);
-    expect(m(['IV', 'PPSD and Procurement Plan', 'Procurement Plan'])).toBe(true);
-    expect(m(['Procurement Methods'])).toBe(false);
+    const m = headingMatcher([t('maintenance planning', 'pair')]);
+    expect(m(['IV', 'PPSD and Maintenance Plan', 'Maintenance Plan'])).toBe(true);
+    expect(m(['Maintenance Methods'])).toBe(false);
     expect(headingMatcher([t('plan')])(['Planet Survey'])).toBe(false);
-    expect(headingMatcher([t('rated criteria', 'name')])(['VI', 'Market Approach Options', 'Rated Criteria'])).toBe(
+    expect(headingMatcher([t('fixed criteria', 'name')])(['VI', 'Market Approach Options', 'Fixed Criteria'])).toBe(
       true,
     );
   });
@@ -24,7 +24,7 @@ describe('headingMatcher', () => {
   });
 
   it('matches nothing without terms or a path', () => {
-    expect(headingMatcher([])(['Procurement Plan'])).toBe(false);
+    expect(headingMatcher([])(['Maintenance Plan'])).toBe(false);
     expect(headingMatcher([t('plan')])([])).toBe(false);
   });
 });
@@ -53,7 +53,7 @@ describe('heading bonus in fusion', () => {
     const index = {
       section: (_d: string, i: number) => {
         reads++;
-        return { document: {} as never, section: { path: i === 2 ? ['Procurement Plan'] : ['Signing'] } as never };
+        return { document: {} as never, section: { path: i === 2 ? ['Maintenance Plan'] : ['Signing'] } as never };
       },
     };
     expect(pathBonus([t('planning')], { headingPathBonus: false, rrfK: k }, index)).toBeUndefined();

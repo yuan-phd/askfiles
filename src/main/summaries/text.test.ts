@@ -156,14 +156,14 @@ describe('summary text', () => {
   });
 
   it('gives a Chinese document summary the outline to three levels and the text of the first sections', () => {
-    const d = doc('必须招标的工程项目规定.pdf', [
-      ['必须招标的工程项目规定', '国家发展改革委令第16号，2018年3月27日公布，自2018年6月1日起施行。'],
-      ['第一条', '为了确定必须招标的工程项目，规范招标投标活动，制定本规定。'],
+    const d = doc('必须审批的差旅事项规定.pdf', [
+      ['必须审批的差旅事项规定', '某市行政事务局令第16号，2018年3月27日公布，自2018年6月1日起施行。'],
+      ['第一条', '为了确定必须审批的差旅事项，规范招标投标活动，制定本规定。'],
       ['第二条', '全部或者部分使用国有资金投资的项目必须招标。'],
     ]);
     d.outline = [
       {
-        title: '必须招标的工程项目规定',
+        title: '必须审批的差旅事项规定',
         level: 1,
         sectionIndex: 1,
         page: null,
@@ -176,7 +176,7 @@ describe('summary text', () => {
     ];
     const src = documentSource(d);
     expect(src.section!.index).toBe(1);
-    expect(src.text).toContain('Outline: 必须招标的工程项目规定; 第一条; 第二条');
+    expect(src.text).toContain('Outline: 必须审批的差旅事项规定; 第一条; 第二条');
     expect(src.text).toContain('第二条:\n全部或者部分使用国有资金投资的项目必须招标。');
     const [system] = documentPrompt(d);
     expect(system!.content).toContain('exactly two sentences');

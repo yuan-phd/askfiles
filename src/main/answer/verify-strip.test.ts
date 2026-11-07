@@ -4,12 +4,12 @@ import { cjkTokens, scoringTokens, STRIP_MIN_TOKENS, verifyClaims } from './veri
 
 const claim = (text: string, citations: number[]): Claim => ({ text, citations, unsupported: false });
 
-// Holdout H06 (docs/plan.md round V2): the sentence's first eleven pairs repeat the question.
-const question = '政府采购时，商品本身的外包装最多可以包几层、空隙比例上限是多少？寄递用的封口带宽度上限是多少？';
+// A holdout sentence (docs/plan.md round V2): the sentence's first eleven pairs repeat the question.
+const question = '内部配置时，商品本身的外包装最多可以包几层、空隙比例上限是多少？寄递用的封口带宽度上限是多少？';
 const sentence = '寄递用的封口带宽度上限是不大于 45mm 。';
 const passages = [
-  '商品包装层数不得超过 3 层，空隙率不大于 40%。',
-  '快递包装使用的胶带：宜使用幅宽不大于 45mm 的生物降解胶带，不得使用含有重金属的油墨。',
+  '办公家具层数不得超过 3 层，空隙率不大于 40%。',
+  '文具耗材使用的胶带：宜使用幅宽不大于 45mm 的生物降解胶带，不得使用含有重金属的油墨。',
 ];
 
 describe('verifyStripQuestion (round V2)', () => {
@@ -37,7 +37,7 @@ describe('verifyStripQuestion (round V2)', () => {
 });
 
 describe('verifyStripMin (round P1, F3, measured and not kept)', () => {
-  it('scores H06 on all its pairs when the guard is 5 (four remain)', () => {
+  it('scores the holdout sentence on all its pairs when the guard is 5 (four remain)', () => {
     const o = { cjk: true, question: [question], restatement: false, stripQuestion: true } as const;
     expect(verifyClaims([claim(sentence, [2])], passages, o).claims[0]).toMatchObject({ citations: [2] });
     expect(verifyClaims([claim(sentence, [2])], passages, { ...o, stripMin: 5 }).claims[0]).toMatchObject({

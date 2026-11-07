@@ -21,14 +21,14 @@ const NOW = new Date('2026-11-07T10:15:30.000Z');
 function card(over: Partial<SourceCard> = {}): SourceCard {
   return {
     n: 1,
-    file: 'Contract Management Guidance.pdf',
-    display: 'the Contract Management Guidance',
-    relPath: 'Contract Management Guidance.pdf',
-    url: 'file:///x/Contract Management Guidance.pdf',
+    file: 'Building Management Guidance.pdf',
+    display: 'the Building Management Guidance',
+    relPath: 'Building Management Guidance.pdf',
+    url: 'file:///x/Building Management Guidance.pdf',
     documentId: '0123456789abcdef',
     sectionIndex: 3,
-    title: 'Contract Management Plan',
-    path: ['4 Planning', 'Contract Management Plan'],
+    title: 'Building Management Plan',
+    path: ['4 Planning', 'Building Management Plan'],
     pageStart: 12,
     pageEnd: 13,
     pageLabel: null,
@@ -54,7 +54,7 @@ function result(over: Partial<AnswerResult> = {}): AnswerResult {
     skippedModel: false,
     timings: { firstTokenMs: 900, modelMs: 4000 },
     stats: { promptTokens: 100, completionTokens: 20 },
-    questionSent: 'What does the plan in Contract Management Guidance say?',
+    questionSent: 'What does the plan in Building Management Guidance say?',
     ...over,
   };
 }
@@ -88,7 +88,7 @@ describe('question records', () => {
       library: 'Work',
       question: 'What does the plan in the guidance say?',
       switches: {
-        questionRewrite: { fired: true, sent: 'What does the plan in Contract Management Guidance say?' },
+        questionRewrite: { fired: true, sent: 'What does the plan in Building Management Guidance say?' },
         namedFiles: { fired: false, files: [] },
         perFileQuota: { fired: false, sections: 0 },
         judgeRerank: { fired: false, files: 0, ms: 0 },
@@ -98,9 +98,9 @@ describe('question records', () => {
       answer: 'The plan names the contract manager [1]. It is reviewed yearly.',
       cited: [
         {
-          file: 'Contract Management Guidance.pdf',
-          display: 'the Contract Management Guidance',
-          section: '4 Planning > Contract Management Plan',
+          file: 'Building Management Guidance.pdf',
+          display: 'the Building Management Guidance',
+          section: '4 Planning > Building Management Plan',
           page: 12,
         },
       ],
@@ -146,11 +146,11 @@ describe('question records', () => {
 
   it('shows the file name as the display only when the card showed something else', () => {
     const q = questionRecord(
-      run({ result: result({ cited: [card({ display: 'Contract Management Guidance.pdf', path: [] })] }) }),
+      run({ result: result({ cited: [card({ display: 'Building Management Guidance.pdf', path: [] })] }) }),
       null,
       NOW,
     );
-    expect(q.cited[0]).toMatchObject({ display: null, section: 'Contract Management Plan' });
+    expect(q.cited[0]).toMatchObject({ display: null, section: 'Building Management Plan' });
   });
 });
 

@@ -66,19 +66,19 @@ describe('duplicateTextAttribution (round D4)', () => {
     const clause =
       '投标人或者其他利害关系人对招标文件有异议的，应当在投标截止时间10日前以书面形式提出。招标人应当自收到异议之日起3日内作出答复；作出答复前，应当暂停招标投标活动。';
     const sources = [
-      { passage: clause, file: '01_标准设备采购招标文件_2017年版.pdf' },
-      { passage: '其他条款。', file: '03_标准勘察招标文件_2017年版.pdf' },
-      { passage: clause, file: '02_标准材料采购招标文件_2017年版.pdf' },
+      { passage: clause, file: '01_标准办公用品招标文件_2017年版.pdf' },
+      { passage: '其他条款。', file: '03_标准保洁招标文件_2017年版.pdf' },
+      { passage: clause, file: '02_标准印刷服务招标文件_2017年版.pdf' },
     ];
-    const both = '对比《标准设备采购招标文件》和《标准材料采购招标文件》：异议的最迟时间是什么？';
-    const one = '《标准材料采购招标文件》中异议的最迟时间是什么？';
+    const both = '对比《标准办公用品招标文件》和《标准印刷服务招标文件》：异议的最迟时间是什么？';
+    const one = '《标准印刷服务招标文件》中异议的最迟时间是什么？';
     const none = '异议的最迟时间是什么？';
 
     it('a. the sentence names one document by its display name or 《》 form: only its section', () => {
       const r = shareDuplicates(
         [
-          claim([1], '《标准材料采购招标文件》规定10日前提出。'),
-          claim([1], '标准设备采购招标文件 2017年版规定10日前提出。'),
+          claim([1], '《标准印刷服务招标文件》规定10日前提出。'),
+          claim([1], '标准办公用品招标文件 2017年版规定10日前提出。'),
         ],
         sources,
         { question: [both] },
@@ -98,33 +98,33 @@ describe('duplicateTextAttribution (round D4)', () => {
       expect(plain.claims[0]!.citations).toEqual([1, 3]);
       const unnamed = shareDuplicates([claim([3], '应在10日前提出。')], sources, { question: [none] });
       expect(unnamed.claims[0]!.citations).toEqual([3, 1]);
-      const named = shareDuplicates([claim([1], '《标准设备采购招标文件》和《标准材料采购招标文件》一致。')], sources, {
+      const named = shareDuplicates([claim([1], '《标准办公用品招标文件》和《标准印刷服务招标文件》一致。')], sources, {
         question: [none],
       });
       expect(named.claims[0]!.citations).toEqual([1, 3]);
       expect(named.tiers).toEqual({ sentence: 0, question: 0, format: 0, all: 1 });
     });
 
-    it('a short form the display name does not contain is not a name (设备采购招标文件)', () => {
-      const r = shareDuplicates([claim([1], '设备采购招标文件中，下一项排序依据是技术得分。')], sources, {
+    it('a short form the display name does not contain is not a name (办公用品招标文件)', () => {
+      const r = shareDuplicates([claim([1], '办公用品招标文件中，下一项排序依据是技术得分。')], sources, {
         question: [none],
       });
       expect(r.claims[0]!.citations).toEqual([1, 3]);
     });
 
     it('English names match whole words in any case; the question may name the file', () => {
-      const m = nameMatcher('01_Procurement_Regulations_2025.pdf');
-      expect(m.sentence('Under the procurement regulations 2025, ...')).toBe(true);
-      expect(m.sentence('Procurement Regulations 20251')).toBe(false);
-      expect(m.question('Compare `01_Procurement_Regulations_2025.pdf` and ...')).toBe(true);
+      const m = nameMatcher('01_Maintenance_Regulations_2025.pdf');
+      expect(m.sentence('Under the maintenance regulations 2025, ...')).toBe(true);
+      expect(m.sentence('Maintenance Regulations 20251')).toBe(false);
+      expect(m.question('Compare `01_Maintenance_Regulations_2025.pdf` and ...')).toBe(true);
     });
   });
 
   describe('format words (round P2), files that differ only in format', () => {
     const article =
       '第二条 全部或者部分使用国有资金投资或者国家融资的项目包括：使用预算资金200万元人民币以上，并且该资金占投资额10%以上的项目；使用国有企业事业单位资金，并且该资金占控股或者主导地位的项目。';
-    const word = '13_必须招标的工程项目规定.docx';
-    const pdf = '04_必须招标的工程项目规定.pdf';
+    const word = '13_必须审批的差旅事项规定.docx';
+    const pdf = '04_必须审批的差旅事项规定.pdf';
     const sources = [
       { passage: article, file: word },
       { passage: article, file: pdf },
@@ -133,7 +133,7 @@ describe('duplicateTextAttribution (round D4)', () => {
     const nameOf = (f: string) => names.get(f)!;
     const said = '使用预算资金的项目须达到200万元人民币以上，并且该资金占投资额10%以上。';
 
-    it('Chinese Q02 (请从Word版本说明) cites only the Word copy, a PDF question only the PDF copy', () => {
+    it('a Chinese question (请从Word版本说明) cites only the Word copy, a PDF question only the PDF copy', () => {
       const q02 = '请从Word版本说明：使用预算资金的项目须同时达到哪些规模条件？';
       const r = shareDuplicates([claim([1], said)], sources, { question: [q02], nameOf });
       expect(r.claims[0]!.citations).toEqual([1]);
@@ -152,7 +152,7 @@ describe('duplicateTextAttribution (round D4)', () => {
     });
 
     it('a sentence naming one copy by its suffixed display name decides first (tier a)', () => {
-      const r = shareDuplicates([claim([1], `《必须招标的工程项目规定》PDF版规定${said}`)], sources, {
+      const r = shareDuplicates([claim([1], `《必须审批的差旅事项规定》PDF版规定${said}`)], sources, {
         question: ['请从Word版本说明规模条件。'],
         nameOf,
       });
@@ -163,7 +163,7 @@ describe('duplicateTextAttribution (round D4)', () => {
     it('files with different names are no format copies, whatever the question says', () => {
       const other = [
         { passage: article, file: word },
-        { passage: article, file: '07_必须招标的基础设施和公用事业项目范围规定.pdf' },
+        { passage: article, file: '07_必须审批的办公设施和公务用车项目范围规定.pdf' },
       ];
       const r = shareDuplicates([claim([1], said)], other, { question: ['请从Word版本说明。'] });
       expect(r.claims[0]!.citations).toEqual([1, 2]);
@@ -172,7 +172,7 @@ describe('duplicateTextAttribution (round D4)', () => {
     it('format words are a fixed list, matched without a letter beside them', () => {
       expect(formatAsked(['请从Word版本说明'])).toBe('Word');
       expect(formatAsked(['Answer from the PDF version.'])).toBe('PDF');
-      expect(formatAsked(['the file `10_Procurement_Plan_Template.docx`'])).toBe('Word');
+      expect(formatAsked(['the file `10_Maintenance_Plan_Template.docx`'])).toBe('Word');
       expect(formatAsked(['in a word, what is it?', 'Wordy text', 'PDFs'])).toBeNull();
       expect(formatAsked(['Word and PDF'])).toBeNull();
     });
