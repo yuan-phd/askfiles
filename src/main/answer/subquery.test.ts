@@ -33,14 +33,14 @@ const subs = (q: string) =>
   );
 
 const CROSS_QUESTION =
-  'Compare `01_Maintenance_Regulations_2025.pdf` and `05_Inspecting_Labs_and_Workshops.pdf`. What information about Fixed Criteria should be included in maintenance planning under the Regulations, and how does the evaluation example show those criteria being converted into an Overall Technical Score?';
+  'Compare `01_Maintenance_Regulations_2025.pdf` and `05_Inspecting_Labs_and_Workshops.pdf`. What information about Fixed Criteria should be included in maintenance planning under the Regulations, and how does the evaluation example show those criteria being converted into an General Technical Score?';
 
 describe('clausesOf', () => {
   it('splits sentences, not at the dot of a file name, and clauses at a comma before and', () => {
     expect(clausesOf(CROSS_QUESTION)).toEqual([
       'Compare `01_Maintenance_Regulations_2025.pdf` and `05_Inspecting_Labs_and_Workshops.pdf`.',
       'What information about Fixed Criteria should be included in maintenance planning under the Regulations',
-      'and how does the evaluation example show those criteria being converted into an Overall Technical Score?',
+      'and how does the evaluation example show those criteria being converted into an General Technical Score?',
     ]);
   });
 
@@ -85,7 +85,7 @@ describe('perFileSubquery in retrieval', () => {
       {
         name: 'Maintenance_Regulations.pdf',
         sections: [
-          { title: 'Signing', parts: ['The contract is signed by the Borrower.'] },
+          { title: 'Signing', parts: ['The contract is signed by the Employer.'] },
           { title: 'Maintenance Plan', parts: ['The Maintenance Plan sets out fixed criteria and weighting.'] },
         ],
       },

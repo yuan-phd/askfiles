@@ -48,11 +48,11 @@ describe('sourceFileNames header', () => {
         {
           file: '01_标准办公用品招标文件_2017年版.pdf',
           display: '标准办公用品招标文件 2017年版',
-          path: ['第二章', '2.4 招标文件的异议'],
+          path: ['第二章', '2.4 报销文件的异议'],
         },
         1,
       ),
-    ).toBe('[2] 标准办公用品招标文件 2017年版 (01_标准办公用品招标文件_2017年版.pdf) > 第二章 > 2.4 招标文件的异议');
+    ).toBe('[2] 标准办公用品招标文件 2017年版 (01_标准办公用品招标文件_2017年版.pdf) > 第二章 > 2.4 报销文件的异议');
     const m = userMessage('Q?', [{ path: ['A', 'B'], text: 'body', file: 'f.pdf', display: 'f' }], { fileNames: true });
     expect(m).toBe('Sources:\n\n[1] f (f.pdf) > A > B\nbody\n\nQuestion: Q?');
   });
@@ -76,7 +76,7 @@ describe('sourceFileNames header', () => {
     section(
       '01_Maintenance_Regulations_2025.pdf',
       'Signing',
-      'The contract is signed by the Borrower after approval.',
+      'The contract is signed by the Employer after approval.',
       1,
     ),
     section('08_Building_Management_Guidance.pdf', 'Planning', 'The plan is completed when signing the contract.', 2),
@@ -150,7 +150,7 @@ describe('sourceFileNames header', () => {
   it('questionFileNames rewrites the question the model reads only', async () => {
     const q =
       'Compare `01_Maintenance_Regulations_2025.pdf` and `08_Building_Management_Guidance.pdf`. When is it signed?';
-    const { user } = await run({ questionFileNames: true }, q, 'Signed by the Borrower after approval [1].');
+    const { user } = await run({ questionFileNames: true }, q, 'Signed by the Employer after approval [1].');
     expect(user).toContain(
       'Question: Compare Maintenance Regulations 2025 and Building Management Guidance. When is it signed?',
     );
@@ -161,7 +161,7 @@ describe('sourceFileNames header', () => {
     const q =
       'Compare `01_Maintenance_Regulations_2025.pdf` and `08_Building_Management_Guidance.pdf`. When is it signed?';
     const reply =
-      'According to `01_Maintenance_Regulations_2025.pdf`, the Maintenance Regulations 2025 say it is signed by the Borrower after approval [1].';
+      'According to `01_Maintenance_Regulations_2025.pdf`, the Maintenance Regulations 2025 say it is signed by the Employer after approval [1].';
     const { user, result } = await run(
       { sourceDisplayNames: true, questionFileNames: true, verifyStripNames: true, dropAnswerFileNames: true },
       q,
@@ -175,7 +175,7 @@ describe('sourceFileNames header', () => {
     expect(result.fileNamesDropped).toBe(true);
     expect(result.namesStripped).toBe(1);
     expect(result.text).toBe(
-      'According to, the Maintenance Regulations 2025 say it is signed by the Borrower after approval [1].',
+      'According to, the Maintenance Regulations 2025 say it is signed by the Employer after approval [1].',
     );
     // The sentence shown keeps the display name; verification scored it without.
     expect(result.claims[0]!.text).toContain('Maintenance Regulations 2025');
@@ -193,7 +193,7 @@ describe('sourceFileNames header', () => {
 
   it('leaves the prompt as before with both switches off', async () => {
     const q = 'When is `01_Maintenance_Regulations_2025.pdf` signed?';
-    const { user } = await run({}, q, 'Signed by the Borrower after approval [1].');
+    const { user } = await run({}, q, 'Signed by the Employer after approval [1].');
     expect(user).toBe(
       `Sources:\n\n[1] Part > Signing\n${sections[0]!.text}\n\n[2] Part > Planning\n${sections[1]!.text}\n\nQuestion: ${q}`,
     );
@@ -238,8 +238,8 @@ describe('round N2 helpers', () => {
       text: 'The Maintenance Regulations and the Guidance require it.',
       changed: false,
     });
-    expect(stripNames('《标准办公用品招标文件》规定异议应在投标截止时间10日前提出。', phrases).text).toBe(
-      '规定异议应在投标截止时间10日前提出。',
+    expect(stripNames('《标准办公用品招标文件》规定异议应在报销截止时间10日前提出。', phrases).text).toBe(
+      '规定异议应在报销截止时间10日前提出。',
     );
     expect(stripNames('依照`01_标准办公用品招标文件_2017年版.pdf`，采购招标须公开。', phrases).text).toBe(
       '依照，采购招标须公开。',

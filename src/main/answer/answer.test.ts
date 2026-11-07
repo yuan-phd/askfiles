@@ -644,8 +644,8 @@ describe('pipeline', () => {
 
 describe('quoted mode', () => {
   it('normalizes whitespace, dashes, quotes, case and broken words for the excerpt check', () => {
-    expect(normalizeForMatch('Natural or man‑made  disaster or con- flicts, “A”')).toBe(
-      normalizeForMatch('natural or man-made disaster or conflicts, "a"'),
+    expect(normalizeForMatch('Natural or man‑made  accident or con- flicts, “A”')).toBe(
+      normalizeForMatch('natural or man-made accident or conflicts, "a"'),
     );
   });
 
@@ -666,16 +666,16 @@ describe('quoted mode', () => {
 
   it('keeps only excerpts found in their own section, piece by piece, and counts the rest', () => {
     const sections = [
-      { text: 'The Suspension Period shall last ten (10) Business Days after such transmission.' },
+      { text: 'The Suspension Period shall last ten (10) Calendar Days after such confirmation.' },
       { text: 'Other text about meals and travel.' },
     ];
     expect(parseExcerpts('not json', 2)).toEqual([]);
     const ex = parseExcerpts(
       JSON.stringify({
         excerpts: [
-          { source: 1, text: '"The Suspension Period shall last ten (10) Business Days"' },
-          { source: 1, text: 'shall last ten (10) business days ... after such transmission' },
-          { source: 2, text: 'The Suspension Period shall last ten (10) Business Days' },
+          { source: 1, text: '"The Suspension Period shall last ten (10) Calendar Days"' },
+          { source: 1, text: 'shall last ten (10) calendar days ... after such confirmation' },
+          { source: 2, text: 'The Suspension Period shall last ten (10) Calendar Days' },
           { source: 1, text: 'The period lasts two weeks' },
           { source: 9, text: 'out of range' },
         ],
@@ -686,9 +686,9 @@ describe('quoted mode', () => {
     const v = verifyExcerpts(ex, sections);
     expect([...v.verified.keys()]).toEqual([1]);
     expect(v.verified.get(1)).toEqual([
-      'The Suspension Period shall last ten (10) Business Days',
-      'shall last ten (10) business days',
-      'after such transmission',
+      'The Suspension Period shall last ten (10) Calendar Days',
+      'shall last ten (10) calendar days',
+      'after such confirmation',
     ]);
     expect(v.dropped).toBe(2);
   });

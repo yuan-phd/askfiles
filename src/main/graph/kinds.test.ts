@@ -67,7 +67,7 @@ describe('kind detection', () => {
   it('scores Chinese articles and obligations as normative', () => {
     const zh = Array.from(
       { length: 8 },
-      (_, i) => `第${'一二三四五六七八'[i]}条 招标人应当按照本规定发布公告，不得限制或者排斥潜在投标人。`,
+      (_, i) => `第${'一二三四五六七八'[i]}条 审核人应当按照本规定发布公示，不得限制或者排斥潜在申请人。`,
     ).join('\n');
     expect(detectKind(text('招标公告管理办法.pdf', zh)).kind).toBe('normative');
   });

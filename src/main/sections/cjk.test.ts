@@ -25,20 +25,20 @@ describe('cjkHeading', () => {
   });
 
   it('splits an article number from the sentence it starts', () => {
-    expect(cjkHeading('第五条 本规定第二条至第四条规定范围内的项目，其勘察、')).toEqual({
+    expect(cjkHeading('第五条 本办法第二条至第四条所列范围内的事项，其设计、')).toEqual({
       title: '第五条',
-      rest: '本规定第二条至第四条规定范围内的项目，其勘察、',
+      rest: '本办法第二条至第四条所列范围内的事项，其设计、',
       rank: 4,
     });
   });
 
   it('leaves numbered paragraphs, references and years alone', () => {
     expect(cjkHeading('3.2 本次招标接受联合体投标。')).toBeNull();
-    expect(cjkHeading('（一）使用预算资金 200 万元人民币以上，并且该资金占投')).toBeNull();
+    expect(cjkHeading('（一）使用部门经费 200 万元人民币以上，并且该经费占投')).toBeNull();
     expect(cjkHeading('第三条的规定，制定本规定。')).toBeNull();
-    expect(cjkHeading('第二条、第三条规定情形的')).toBeNull();
+    expect(cjkHeading('第二条、第三条所列情形的')).toBeNull();
     expect(cjkHeading('2018.6 起施行')).toBeNull();
-    expect(cjkHeading('第三章“评标办法”前附表应列明全部评审因素，并在本章')).toBeNull();
+    expect(cjkHeading('第三章“评审办法”前附表应写明全部评审要点，并在本章')).toBeNull();
   });
 });
 
@@ -50,7 +50,7 @@ describe('despace and isCjkText', () => {
   });
   it('tells Chinese documents from English ones', () => {
     expect(isCjkText('第一条 为了确定必须审批的差旅事项')).toBe(true);
-    expect(isCjkText('Maintenance Regulations for IPF Borrowers, 第一条')).toBe(false);
+    expect(isCjkText('Maintenance Regulations for IPF Employers, 第一条')).toBe(false);
   });
 });
 
@@ -88,17 +88,17 @@ describe('cjkMarks', () => {
   it('nests numbered headings by font and numbering, splits articles, joins a wrapped title', () => {
     const lines: Line[] = [
       line(1, 700, '关于印发《报销申报违规行为记录', 22),
-      line(1, 670, '公告暂行办法》的通知', 22),
+      line(1, 670, '公示暂行办法》的通知', 22),
       line(1, 600, '第一章 总则'),
-      line(1, 560, '第一条 为了规范招标投标活动，制定本办法。'),
-      line(1, 520, '第二条 本办法适用于招标投标活动。'),
+      line(1, 560, '第一条 为了规范报销审批活动，制定本办法。'),
+      line(1, 520, '第二条 本办法适用于报销审批活动。'),
       line(1, 480, '一、 适用范围'),
       line(1, 440, '（一）总体要求'),
       line(1, 400, '正文。'),
     ];
     const { marks, lines: out } = cjkMarks(lines);
     expect(marks.map((m) => `${m.level}:${m.title}`)).toEqual([
-      '1:关于印发《报销申报违规行为记录公告暂行办法》的通知',
+      '1:关于印发《报销申报违规行为记录公示暂行办法》的通知',
       '2:第一章 总则',
       '3:第一条',
       '3:第二条',
@@ -107,7 +107,7 @@ describe('cjkMarks', () => {
     ]);
     const sections = sectionsFromMarks(out, marks, 'f');
     expect(sections.find((s) => s.title === '第一条')!.blocks.map((b) => b.text)).toEqual([
-      '为了规范招标投标活动，制定本办法。',
+      '为了规范报销审批活动，制定本办法。',
     ]);
   });
 
@@ -115,11 +115,11 @@ describe('cjkMarks', () => {
     const full = 90 + 24 * 16;
     const lines: Line[] = [
       line(1, 600, '二、 文具耗材环保要求'),
-      line(1, 570, '1.文具耗材中重金属（铅、汞、镉、六价铬）总量应', 16, full),
+      line(1, 570, '1.文具耗材中重元素（铅、汞、镉、六价铬）总量应', 16, full),
       line(1, 539, '不大于 100mg/kg；', 16, 300),
-      line(1, 508, '2.文具耗材印刷使用的油墨中不应添加邻苯二甲酸酯，', 16, full),
-      line(1, 477, '其挥发性有机化合物含量应不大于 5%（以重量计）；', 16, full),
-      line(1, 446, '本标准中的文具耗材主要指快递封装材料，包括封套、', 16, full),
+      line(1, 508, '2.文具耗材表面使用的涂料中不应添加有害增塑剂类，', 16, full),
+      line(1, 477, '其挥发性有害化合物含量应不大于 5%（以重量计）；', 16, full),
+      line(1, 446, '本标准中的文具耗材主要指办公消耗材料，包括笔芯、', 16, full),
       line(1, 415, '胶带、面单、包装袋、填充物、集装袋、周转箱等。', 16, full),
     ];
     expect(cjkMarks(lines).marks.map((m) => m.title)).toEqual(['二、 文具耗材环保要求']);
@@ -129,12 +129,12 @@ describe('cjkMarks', () => {
 describe('cjkSectionsFromBlocks (Word and plain text)', () => {
   it('makes articles sections when the file has no heading styles', () => {
     const html =
-      '<p>必须审批的差旅事项规定</p><p>第一条 为了确定必须审批的差旅事项，制定本规定。</p><p>第二条 全部使用国有资金的项目包括：</p><p>（一）使用预算资金200万元人民币以上的项目；</p>';
+      '<p>必须审批的差旅事项规定</p><p>第一条 为了确定必须审批的差旅事项，制定本规定。</p><p>第二条 全部使用公司经费的项目包括：</p><p>（一）使用部门经费200万元人民币以上的项目；</p>';
     const doc = sectionsFromHtml(html, '13.docx', { cjkHeadings: true });
     expect(doc.sections.map((s) => `${s.level}:${s.title}`)).toEqual(['0:13', '1:第一条', '1:第二条']);
     expect(doc.sections[2]!.blocks.map((b) => b.text)).toEqual([
-      '全部使用国有资金的项目包括：',
-      '（一）使用预算资金200万元人民币以上的项目；',
+      '全部使用公司经费的项目包括：',
+      '（一）使用部门经费200万元人民币以上的项目；',
     ]);
     expect(doc.outline).toBe('headings');
     expect(sectionsFromHtml(html, '13.docx').sections.map((s) => s.title)).toEqual(['13']);

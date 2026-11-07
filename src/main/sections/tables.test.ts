@@ -17,29 +17,29 @@ const item = (str: string, x: number, y: number, size = 10, width?: number): Pdf
 
 /** The scoring table of the owner's file 05, page 44, as pdf.js reports it (rounded). */
 const scoringTable: PdfItem[] = [
-  item('Fee/Discount Example (using the 0 to 4 scale example above)', 72, 411),
+  item('Fee/Discount Example (using the 1 to 5 scale example shown)', 72, 411),
   item('Criteria', 76, 385),
   item('Weighting', 294, 385, 10, 40),
   item('Score', 342, 385, 10, 22),
   item('Weighted Score', 436, 385, 10, 62),
-  item('Overall effectiveness of proposed project in delivering', 76, 369, 10, 208),
-  item('requirements', 76, 356, 10, 51),
+  item('General functionality of selected service in fulfilling', 76, 369, 10, 208),
+  item('expectations', 76, 356, 10, 51),
   item('50%', 306, 369, 10, 17),
   item('3', 383, 369, 10, 5),
   item('150', 462, 369, 10, 13),
-  item('Methodology for delivering project', 76, 340, 10, 128),
+  item('Workmanship for fulfilling service', 76, 340, 10, 128),
   item('25%', 306, 340, 10, 17),
   item('2', 383, 340, 10, 5),
   item('50', 463, 340, 10, 10),
-  item('Quality of team proposed', 76, 325, 10, 94),
+  item('Quality of crew selected', 76, 325, 10, 94),
   item('15%', 307, 325, 10, 15),
   item('2', 383, 325, 10, 5),
   item('30', 464, 325, 10, 10),
-  item('Sustainability', 76, 309, 10, 49),
+  item('Responsiveness', 76, 309, 10, 49),
   item('10%', 307, 309, 10, 15),
   item('1', 384, 309, 10, 3),
   item('10', 464, 309, 10, 8),
-  item('Overall Technical Score', 342, 293, 10, 86),
+  item('General Technical Score', 342, 293, 10, 86),
   item('240', 461, 293, 10, 15),
   item('Scoring by Individual Evaluators', 72, 250, 16),
 ];
@@ -48,14 +48,14 @@ describe('findPdfTables', () => {
   it('reads columns, a wrapped cell, the total row and the caption from text positions', () => {
     const [t, ...rest] = findPdfTables(scoringTable, 44);
     expect(rest).toEqual([]);
-    expect(t!.table.title).toBe('Fee/Discount Example (using the 0 to 4 scale example above)');
+    expect(t!.table.title).toBe('Fee/Discount Example (using the 1 to 5 scale example shown)');
     expect(t!.table.header).toEqual(['Criteria', 'Weighting', 'Score', 'Weighted Score']);
     expect(t!.table.rows.map((r) => formatRow(r.cells, t!.table.header))).toEqual([
-      'Criteria: Overall effectiveness of proposed project in delivering requirements | Weighting: 50% | Score: 3 | Weighted Score: 150',
-      'Criteria: Methodology for delivering project | Weighting: 25% | Score: 2 | Weighted Score: 50',
-      'Criteria: Quality of team proposed | Weighting: 15% | Score: 2 | Weighted Score: 30',
-      'Criteria: Sustainability | Weighting: 10% | Score: 1 | Weighted Score: 10',
-      'Overall Technical Score | Weighted Score: 240',
+      'Criteria: General functionality of selected service in fulfilling expectations | Weighting: 50% | Score: 3 | Weighted Score: 150',
+      'Criteria: Workmanship for fulfilling service | Weighting: 25% | Score: 2 | Weighted Score: 50',
+      'Criteria: Quality of crew selected | Weighting: 15% | Score: 2 | Weighted Score: 30',
+      'Criteria: Responsiveness | Weighting: 10% | Score: 1 | Weighted Score: 10',
+      'General Technical Score | Weighted Score: 240',
     ]);
   });
 
@@ -66,13 +66,13 @@ describe('findPdfTables', () => {
       item('指标', 120, 748, 9, 18),
       item('要求', 200, 748, 9, 18),
       item('说明', 300, 748, 9, 18),
-      item('采购人根据需要选择', 300, 728, 9, 81),
+      item('使用人根据需要选择', 300, 728, 9, 81),
       item('13', 70, 716, 9, 9),
       item('固态存储容量', 120, 716, 9, 54),
       item('≥240GB', 200, 716, 9, 31),
       item('容量越大越好', 300, 716, 9, 54),
       item('可存储数据越多', 300, 704, 9, 63),
-      item('采购人根据需要选择', 300, 692, 9, 81),
+      item('使用人根据需要选择', 300, 692, 9, 81),
       item('15', 70, 686, 9, 9),
       item('机械硬盘总容量', 120, 686, 9, 63),
       item('≥500GB', 200, 686, 9, 31),
@@ -81,15 +81,15 @@ describe('findPdfTables', () => {
     const [t] = findPdfTables(items, 3);
     expect(t!.table.header).toEqual(['序号', '指标', '要求', '说明']);
     expect(t!.table.rows.map((r) => r.cells)).toEqual([
-      ['13', '固态存储容量', '≥240GB', '采购人根据需要选择容量越大越好可存储数据越多'],
-      ['15', '机械硬盘总容量', '≥500GB', '采购人根据需要选择容量越大越好'],
+      ['13', '固态存储容量', '≥240GB', '使用人根据需要选择容量越大越好可存储数据越多'],
+      ['15', '机械硬盘总容量', '≥500GB', '使用人根据需要选择容量越大越好'],
     ]);
   });
 
   it('finds nothing in body text, bullet lists or fill-in form lines', () => {
     const body = [
-      item('When the evaluation committee has agreed the score to be allocated to each Rated', 72, 469, 10, 432),
-      item('Criteria, the scores for each Bid/Proposal are multiplied by the weighting.', 72, 455, 10, 400),
+      item('When the inspection committee has set the score to be given to each Fixed', 72, 469, 10, 432),
+      item('Criteria, the scores for each Fee/Discount are multiplied by the weighting.', 72, 455, 10, 400),
     ];
     const bullets = [
       item('◾', 80, 400, 10, 6),
@@ -105,7 +105,7 @@ describe('findPdfTables', () => {
       item('（项目审批机关名称），招标人为', 400, 600, 12, 100),
       item('（招标人名称），项目资金来自', 90, 580, 12, 160),
       item('（资金来源），出资比例为', 300, 580, 12, 130),
-      item('。项目已具备招标条件。', 470, 580, 12, 60),
+      item('。项目已具备审批条件。', 470, 580, 12, 60),
     ];
     expect(findPdfTables(body, 1)).toEqual([]);
     expect(findPdfTables(bullets, 1)).toEqual([]);
@@ -150,7 +150,7 @@ describe('looksLikeHeader', () => {
     expect(looksLikeHeader(['序号', '指标分类', '指标要求'])).toBe(true);
     expect(looksLikeHeader(['A', '190'])).toBe(false);
     expect(looksLikeHeader(['BAFO', 'Best and Final Offer.'])).toBe(false);
-    expect(looksLikeHeader(['Company A', '240 × Overall Technical Weighting (40%) = 40'])).toBe(false);
+    expect(looksLikeHeader(['Company A', '240 × General Technical Weighting (40%) = 40'])).toBe(false);
     expect(looksLikeHeader(['我方已于', '年', '月'])).toBe(false);
     expect(looksLikeHeader(['Only one'])).toBe(false);
   });

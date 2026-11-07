@@ -43,15 +43,15 @@ describe('edges', () => {
   });
 
   it('finds explicit references by title, title marks and clause references, with the passage', () => {
-    const regs = doc('01_Maintenance_Regulations_2025.pdf', [['Scope', 'These Regulations apply to every Borrower.']]);
+    const regs = doc('01_Maintenance_Regulations_2025.pdf', [['Scope', 'These Regulations apply to every Employer.']]);
     const guide = doc('07_Wages_for_Hours_Guidance.pdf', [
       ['Intro', 'This note expands on the Maintenance Regulations for its readers.'],
-      ['Detail', 'As set out in paragraph 5.9 of the Regulations, the Borrower publishes a plan.'],
+      ['Detail', 'As set out in paragraph 5.9 of the Regulations, the Employer publishes a plan.'],
       ['Other', 'Nothing here.'],
     ]);
     const zhA = doc('04_必须审批的差旅事项规定.pdf', [['第一条', '为了确定必须审批的差旅事项，制定本规定。']]);
     const zhB = doc('07_必须审批的办公设施和公务用车项目范围规定.pdf', [
-      ['第一条', '根据《中华人民共和国招标投标法》和《必须审批的差旅 事项规定》，制定本规定。'],
+      ['第一条', '根据《中华人民共和国会计核算法》和《必须审批的差旅 事项规定》，制定本规定。'],
     ]);
     const g = buildGraph([regs, guide, zhA, zhB], { profile: legal });
     const refs = edgesOf(g, 'reference');

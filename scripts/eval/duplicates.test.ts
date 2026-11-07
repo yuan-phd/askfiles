@@ -16,10 +16,10 @@ describe('duplicate documents share credit', () => {
 
   it('counts the Word copy when its text holds every key element, never a part of it', () => {
     const copy = { file: '13_必须审批的差旅事项规定.docx', path: ['第五条'], title: '第五条' };
-    expect(targetHit(q, [{ ...copy, passage: '施工单项合同估算价在400万元人民币以上；货物200万元人民币以上。' }])).toBe(
+    expect(targetHit(q, [{ ...copy, passage: '差旅单次报销申请额在400万元人民币以上；住宿200万元人民币以上。' }])).toBe(
       true,
     );
-    expect(targetHit(q, [{ ...copy, passage: '施工单项合同估算价在400万元人民币以上。' }])).toBe(false);
+    expect(targetHit(q, [{ ...copy, passage: '差旅单次报销申请额在400万元人民币以上。' }])).toBe(false);
     expect(targetHit(q, [copy])).toBe(false);
     const other = { file: '07_必须审批的办公设施和公务用车项目范围规定.pdf', path: ['第二条'], title: '第二条' };
     expect(targetHit(q, [{ ...other, passage: '400万元人民币 200万元人民币' }])).toBe(false);
@@ -31,18 +31,18 @@ describe('alternative expected sections', () => {
     const q = {
       category: 'middle_of_long_doc',
       expected_source_file: '01_标准办公用品招标文件_2017年版.pdf',
-      expected_section: '4.2 交货前检验 | 4.1 监造',
+      expected_section: '4.2 到货后验收 | 4.1 检查',
       expected_section_path: '',
       key_elements: '提前 7 日',
     } as never;
     expect(expectedSections(q)).toHaveLength(1);
     const at = (title: string, file = '01_标准办公用品招标文件_2017年版.pdf') => [
-      { file, path: ['4. 监造及交货前检验', title], title },
+      { file, path: ['4. 监造及到货后验收', title], title },
     ];
-    expect(targetHit(q, at('4.1 监造'))).toBe(true);
-    expect(targetHit(q, at('4.2 交货前检验'))).toBe(true);
+    expect(targetHit(q, at('4.1 检查'))).toBe(true);
+    expect(targetHit(q, at('4.2 到货后验收'))).toBe(true);
     expect(targetHit(q, at('4.3 包装'))).toBe(false);
-    expect(targetHit(q, at('4.1 监造', '02_标准印刷服务招标文件_2017年版.pdf'))).toBe(false);
+    expect(targetHit(q, at('4.1 检查', '02_标准印刷服务招标文件_2017年版.pdf'))).toBe(false);
   });
 
   it('accepts a section of another file written file :: path (a key whose values are in a spreadsheet extract), and only in that file', () => {

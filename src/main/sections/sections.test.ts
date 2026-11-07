@@ -489,7 +489,7 @@ describe('zip and PNG helpers', () => {
 
 describe('pageQuality', () => {
   it('passes clean prose, contents leaders and tables of figures, and flags garbage', () => {
-    const prose = 'The Borrower develops a Project Procurement Strategy for each operation, e.g. a U.S. one.';
+    const prose = 'The Employer develops a Project Maintenance Strategy for each operation, e.g. a U.S. one.';
     expect(isGarbled(pageQuality(prose.repeat(2)))).toBe(false);
     const contents =
       'Tool: Risk Management Quadrant . . . . . . . . . . . . . . . . 32\nAnnex 1 ............................ 40';

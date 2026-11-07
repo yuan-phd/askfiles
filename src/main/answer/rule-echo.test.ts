@@ -15,7 +15,7 @@ describe('ruleEchoRefusal (round V1)', () => {
 
   it('catches the bare marker after a partial answer but not an answer sentence or a remark about the sources', () => {
     expect(isRuleEcho('NOT_IN_SOURCES')).toBe(true);
-    expect(isRuleEcho('The Suspension Period lasts ten Business Days.')).toBe(false);
+    expect(isRuleEcho('The Suspension Period lasts ten Calendar Days.')).toBe(false);
     expect(isRuleEcho('The sources do not specify the exact amount allocated per year.')).toBe(false);
     expect(isRuleEcho('因此，关于公示期的具体时长，资料中没有相关信息。')).toBe(false);
     expect(isRuleEcho('.')).toBe(false);

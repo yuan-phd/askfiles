@@ -9,10 +9,10 @@ const t = (text: string, kind: Term['kind'] = 'word'): Term => ({ text, kind, df
 describe('headingMatcher', () => {
   it('matches English terms by stem as whole words', () => {
     const m = headingMatcher([t('maintenance planning', 'pair')]);
-    expect(m(['IV', 'PPSD and Maintenance Plan', 'Maintenance Plan'])).toBe(true);
+    expect(m(['IV', 'SMPD and Maintenance Plan', 'Maintenance Plan'])).toBe(true);
     expect(m(['Maintenance Methods'])).toBe(false);
     expect(headingMatcher([t('plan')])(['Planet Survey'])).toBe(false);
-    expect(headingMatcher([t('fixed criteria', 'name')])(['VI', 'Market Approach Options', 'Fixed Criteria'])).toBe(
+    expect(headingMatcher([t('fixed criteria', 'name')])(['VI', 'Supply Approach Options', 'Fixed Criteria'])).toBe(
       true,
     );
   });

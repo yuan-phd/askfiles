@@ -17,7 +17,7 @@ describe('verifyStemEnglish (round P3)', () => {
 
   it('a tuning-set sentence: it passes against the Suspension Period clause by stems', () => {
     const passage =
-      '5.78 To give Bidders time to examine the Notification and to assess whether to submit a complaint, a Suspension Period shall apply, except in the situations described in Paragraph 5.80.';
+      '5.78 To give Members time to inspect the Announcement and to decide whether to launch a grievance, a Suspension Period shall apply, except in the cases that are set out in Paragraph 5.80.';
     const sentence = 'The exceptions to its application are identified in paragraph 5.80 .';
     const question =
       'According to paragraph 5.78 of the Maintenance Regulations, why is a Suspension Period provided, and which paragraph identifies the exceptions to its application?';
@@ -31,10 +31,10 @@ describe('verifyStemEnglish (round P3)', () => {
 
   it('a check-set sentence: brings becomes a question word by its stem, two tokens are left, the guard scores all', () => {
     const table =
-      'Criteria: Sustainability | Weighting: 10% | Score: 1 | Weighted Score: 10\nOverall Technical Score | Weighted Score: 240';
+      'Criteria: Responsiveness | Weighting: 10% | Score: 1 | Weighted Score: 10\nGeneral Technical Score | Weighted Score: 240';
     const question =
-      'In the technical evaluation example where the Overall Technical Score is 240, what are the three weighted scores other than Sustainability, what is their subtotal, and how does Sustainability bring the total to 240?';
-    const sentence = 'Sustainability has a weighted score of 10 , which brings the total to 240 (230 + 10) .';
+      'In the technical inspection example where the General Technical Score is 240, what are the three weighted scores other than Responsiveness, what is their subtotal, and how does Responsiveness bring the total to 240?';
+    const sentence = 'Responsiveness has a weighted score of 10 , which brings the total to 240 (230 + 10) .';
     const o = { question: [question], restatement: false, stripQuestion: true };
     expect(verifyClaims([claim(sentence, [1])], [table], o).claims[0]).toMatchObject({ unsupported: true });
     const on = verifyClaims([claim(sentence, [1])], [table], { ...o, stem: true }).claims[0]!;
@@ -43,8 +43,8 @@ describe('verifyStemEnglish (round P3)', () => {
   });
 
   it('a Chinese sentence scores the same with and without the switch', () => {
-    const c = [claim('施工单项合同估算价在400万元人民币以上。', [1])];
-    const p = ['施工单项合同估算价在400万元人民币以上的项目必须招标。'];
+    const c = [claim('差旅单次报销申请额在400万元人民币以上。', [1])];
+    const p = ['差旅单次报销申请额在400万元人民币以上的项目必须审批。'];
     expect(verifyClaims(c, p, { cjk: true, stem: true }).claims).toEqual(verifyClaims(c, p, { cjk: true }).claims);
   });
 });

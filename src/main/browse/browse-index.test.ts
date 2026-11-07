@@ -339,33 +339,33 @@ describe('BrowseIndex', () => {
 });
 
 describe('keyword index with keywordStemming', () => {
-  it('matches procurement planning to a Procurement Plan section only with stemming, and keeps the terms as given', async () => {
+  it('matches maintenance planning to a Maintenance Plan section only with stemming, and keeps the terms as given', async () => {
     await put(
       'regulations.md',
       [
         '# Regulations',
-        '## 4.6 Procurement Plan',
-        'The Borrower prepares a Procurement Plan with the rated criteria and their weighting.',
+        '## 4.6 Maintenance Plan',
+        'The Employer prepares a Maintenance Plan with the fixed criteria and their weighting.',
         '## 4.7 Planets',
-        'The planets of the solar system are not procurement subjects.',
+        'The planets of the solar system are not maintenance subjects.',
         '## 4.8 Records',
-        'The Borrower keeps records of every contract.',
+        'The Employer keeps records of every contract.',
       ].join('\n\n'),
     );
     const titles = (rs: { documentId: string; sectionIndex: number }[]) =>
       rs.map((r) => index.section(r.documentId, r.sectionIndex)!.section.title);
-    expect(index.sectionFrequency('procurement planning')).toBe(0);
-    expect(index.sectionFrequency('procurement planning', { stem: true })).toBe(1);
-    const ranked = index.rankSections(['procurement planning', 'plan'], 10, { stem: true });
-    expect(titles(ranked)).toEqual(['4.6 Procurement Plan']);
-    expect(ranked[0]!.terms).toEqual(['procurement planning', 'plan']);
+    expect(index.sectionFrequency('maintenance planning')).toBe(0);
+    expect(index.sectionFrequency('maintenance planning', { stem: true })).toBe(1);
+    const ranked = index.rankSections(['maintenance planning', 'plan'], 10, { stem: true });
+    expect(titles(ranked)).toEqual(['4.6 Maintenance Plan']);
+    expect(ranked[0]!.terms).toEqual(['maintenance planning', 'plan']);
     // Without stemming plan is a substring of planets and planning is in no section.
-    expect(titles(index.rankSections(['procurement planning', 'plan'], 10)).sort()).toEqual([
-      '4.6 Procurement Plan',
+    expect(titles(index.rankSections(['maintenance planning', 'plan'], 10)).sort()).toEqual([
+      '4.6 Maintenance Plan',
       '4.7 Planets',
     ]);
     // Chinese terms are matched as before.
-    await put('制度.md', '# 采购计划\n\n采购人应当编制采购计划。');
-    expect(index.sectionFrequency('采购计划', { stem: true })).toBe(index.sectionFrequency('采购计划'));
+    await put('制度.md', '# 维修计划\n\n维修人应当编制维修计划。');
+    expect(index.sectionFrequency('维修计划', { stem: true })).toBe(index.sectionFrequency('维修计划'));
   });
 });

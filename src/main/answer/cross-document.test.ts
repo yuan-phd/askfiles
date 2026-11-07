@@ -128,24 +128,24 @@ function settingsWith(p: Partial<typeof DEFAULT_PARAMS>): RunSettings {
 describe('crossDocument in the pipeline', () => {
   it('adds the named files quota, groups the prompt and verifies by the file a sentence names', async () => {
     const many = (w: string, n: number) =>
-      Array.from({ length: n }, (_, i) => ({ title: `${w} ${i}`, parts: [`Contract plan rule ${w} ${i}.`] }));
+      Array.from({ length: n }, (_, i) => ({ title: `${w} ${i}`, parts: [`Facility plan rule ${w} ${i}.`] }));
     const lib = fixtureLibrary([
       { name: 'Other_Notes.pdf', sections: many('note', 8) },
       {
         name: 'Maintenance_Regulations.pdf',
-        sections: [{ title: 'Plan', parts: ['The contract plan is developed during contract creation.'] }],
+        sections: [{ title: 'Plan', parts: ['The facility plan is developed during facility creation.'] }],
       },
       {
         name: 'Building_Management_Guidance.pdf',
-        sections: [{ title: 'When to Plan', parts: ['The contract plan is completed when signing the contract.'] }],
+        sections: [{ title: 'When to Plan', parts: ['The facility plan is completed when signing the contract.'] }],
       },
     ]);
     cleanups.push(lib.cleanup);
     const resolver = createSourceResolver({ files: () => lib.records, readText: (l) => lib.chunkText.get(l) ?? null });
     const prompts: string[] = [];
     const reply =
-      'Under the Maintenance Regulations the contract plan is developed during contract creation [1].\n\n' +
-      'Under the Building Management Guidance the contract plan is completed when signing the contract [1].';
+      'Under the Maintenance Regulations the facility plan is developed during facility creation [1].\n\n' +
+      'Under the Building Management Guidance the facility plan is completed when signing the contract [1].';
     const chat: ChatFn = async (o, onText) => {
       prompts.push(o.messages.map((m) => m.content).join('\n'));
       onText(reply);
@@ -213,13 +213,13 @@ describe('fileScopedQuota', () => {
   const notes = Array.from({ length: 40 }, (_, i) => ({ title: `Note ${i}`, parts: [`General remark ${i}.`] }));
   const regs = [
     { title: 'Scope', parts: ['Scope of these rules.'] },
-    { title: 'Approval', parts: ['Approval of the contract plan by the board.'] },
+    { title: 'Approval', parts: ['Approval of the facility plan by the board.'] },
     { title: 'Records', parts: ['Records are kept for seven years.'] },
-    { title: 'Signing', parts: ['Signing of the contract plan by the director.'] },
+    { title: 'Signing', parts: ['Signing of the facility plan by the director.'] },
   ];
   const guidance = [
     { title: 'Intro', parts: ['Introduction to the guidance.'] },
-    { title: 'Timing', parts: ['The contract plan approval comes before signing.'] },
+    { title: 'Timing', parts: ['The facility plan approval comes before signing.'] },
   ];
   function setup() {
     const lib = fixtureLibrary([

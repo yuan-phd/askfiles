@@ -97,8 +97,8 @@ describe('Porter stemmer', () => {
   it('stems the English words of a folded text and leaves Chinese, digits and punctuation alone', () => {
     const m = (s: string) => `${WORD_MARK}${s}${WORD_MARK}`;
     expect(stemFolded('maintenance planning')).toBe(`${m('mainten')} ${m('plan')}`);
-    expect(stemFolded('4.6 the maintenance plan, 采购计划')).toBe(
-      `4.6 ${m('the')} ${m('mainten')} ${m('plan')}, 采购计划`,
+    expect(stemFolded('4.6 the maintenance plan, 维修计划')).toBe(
+      `4.6 ${m('the')} ${m('mainten')} ${m('plan')}, 维修计划`,
     );
     expect(stemFolded('iso-9001')).toBe(`${m('iso')}-9001`);
     // Whole words only: a stemmed term never matches inside a longer word.
