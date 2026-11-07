@@ -98,7 +98,12 @@ const bar = mountTopBar($('top-bar'), {
   onView: (view) =>
     history.navigate(() => {
       showView(view);
-      return view === 'search' ? { view: 'search' } : state.browse.current();
+      if (view === 'search') return { view: 'search' };
+      const entry = state.browse.current();
+      // For the test build's record, like the page changes inside Browse (browse/view.js announcePage).
+      const detail = { page: entry.page, document: entry.page === 'document' ? (entry.ref?.title ?? null) : null };
+      window.dispatchEvent(new CustomEvent('askfiles:browse-page', { detail }));
+      return entry;
     }),
   // Another library is a fresh start: nothing to go back to. (Selecting one normally reloads the
   // window, which clears the history too.)
@@ -236,6 +241,15 @@ function readSection(c) {
   });
 }
 
+/**
+ * Says which source card was clicked, for the test build's record (docs/test-build.md), which
+ * listens for this event; nothing listens in the release build.
+ */
+function announceCard(c, action) {
+  const detail = { action, file: c.file, section: pathLabel(c), page: c.pageStart ?? null };
+  window.dispatchEvent(new CustomEvent('askfiles:source-card', { detail }));
+}
+
 function setOptional(el, text) {
   el.hidden = !text;
   el.textContent = text || '';
@@ -259,8 +273,14 @@ function cardNode(c, { numbered = true } = {}) {
   p.textContent = c.passage;
   node.querySelector('.card-passages').append(p);
   setOptional(node.querySelector('.card-count'), c.trimmed ? 'Shortened to fit' : null);
-  node.querySelector('.open').addEventListener('click', () => openSource(c));
-  node.querySelector('.read').addEventListener('click', () => readSection(c));
+  node.querySelector('.open').addEventListener('click', () => {
+    announceCard(c, 'open');
+    void openSource(c);
+  });
+  node.querySelector('.read').addEventListener('click', () => {
+    announceCard(c, 'read');
+    readSection(c);
+  });
   return node;
 }
 
@@ -287,8 +307,14 @@ function renderFallback(nearest) {
       setOptional(node.querySelector('.section-file'), c.file);
       setOptional(node.querySelector('.section-page'), pageLabel(c));
       node.querySelector('.section-preview').textContent = preview(c.passage);
-      node.querySelector('.open').addEventListener('click', () => openSource(c));
-      node.querySelector('.read').addEventListener('click', () => readSection(c));
+      node.querySelector('.open').addEventListener('click', () => {
+        announceCard(c, 'open');
+        void openSource(c);
+      });
+      node.querySelector('.read').addEventListener('click', () => {
+        announceCard(c, 'read');
+        readSection(c);
+      });
       return node;
     }),
   );

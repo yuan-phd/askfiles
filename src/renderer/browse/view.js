@@ -251,6 +251,8 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     content.classList.toggle('graph-on', name === 'graph');
     if (name !== 'graph') graphPage.hide();
     if (changed) content.scrollTop = scrolls[name] ?? 0;
+    // The document page announces itself once its document is known (openDocument).
+    if (changed && name !== 'document') announcePage(name, null);
   }
 
   function show(tab) {
@@ -654,6 +656,14 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     }
   }
 
+  /**
+   * Says which Browse page opened, for the test build's record (docs/test-build.md), which listens
+   * for this event; nothing listens in the release build.
+   */
+  function announcePage(page, documentTitle) {
+    window.dispatchEvent(new CustomEvent('askfiles:browse-page', { detail: { page, document: documentTitle } }));
+  }
+
   /** Opens a document at a section; record false when going back through the history. */
   async function openDocument(ref, target = {}, { record = true } = {}) {
     if (record) {
@@ -696,6 +706,7 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     }
     const same = state.doc?.id === doc.id && state.doc?.indexedAt === doc.indexedAt;
     state.doc = doc;
+    announcePage('document', doc.title);
     if (!same) renderDocument(doc);
     else showDocEntry(doc.title);
     scrollToSection(target);

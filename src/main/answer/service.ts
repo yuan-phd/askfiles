@@ -39,6 +39,24 @@ export interface ServiceDeps {
   log(msg: string): void;
   /** True when a question starts, false when the last one ends; the summary queue pauses meanwhile. */
   onBusy?(busy: boolean): void;
+  /**
+   * Told about every question once it ends; only the test build passes one (src/main/test-build.ts).
+   * It reads the run and changes nothing; an error it throws is logged and ignored.
+   */
+  onAnswered?(run: AnsweredRun): void;
+}
+
+/** A finished question as onAnswered sees it. */
+export interface AnsweredRun {
+  question: string;
+  /** The retrieval of the question (of its first part when split); null when it failed before. */
+  retrieval: Retrieval | null;
+  result: AnswerResult | null;
+  /** The message the page showed; null unless the run failed. */
+  error: string | null;
+  /** A newer question or the page cancelled this one before it ended. */
+  cancelled: boolean;
+  totalMs: number;
 }
 
 export class AnswerService {
@@ -144,13 +162,21 @@ export class AnswerService {
       if (!signal?.aborted) emit({ id, ...e } as ServiceEvent);
     };
     const t0 = performance.now();
+    let first: { r: Retrieval; sel: Selection; trace: Trace } | null = null;
+    const observe = (o: Pick<AnsweredRun, 'result' | 'error' | 'cancelled'>) => {
+      if (!this.d.onAnswered) return;
+      try {
+        this.d.onAnswered({ question, retrieval: first?.r ?? null, totalMs: Math.round(performance.now() - t0), ...o });
+      } catch (e) {
+        this.d.log(`[answer] observer failed: ${(e as Error).message}`);
+      }
+    };
     try {
       const deps = this.d.pipeline();
       if (!deps) throw new Error('The library is not ready yet. Try again in a moment.');
       const s = this.effectiveSettings();
       send({ type: 'stage', stage: 'retrieving' });
       // The trace and the log line describe the first part of a split question.
-      let first: { r: Retrieval; sel: Selection; trace: Trace } | null = null;
       const one = async (q: string, emit: (e: AnswerEvent) => void) => {
         const r = await retrieve(q, s, deps, signal);
         const sel = choose(r, s);
@@ -181,11 +207,16 @@ export class AnswerService {
           `vector ${r.timings.vectorMs} ms, keyword ${r.timings.keywordMs} ms, rerank ${r.timings.rerankMs} ms, ` +
           `first token ${result.timings.firstTokenMs ?? '-'} ms, total ${Math.round(performance.now() - t0)} ms`,
       );
+      observe({ result, error: null, cancelled: !!signal?.aborted });
     } catch (e) {
-      if (signal?.aborted) return;
+      if (signal?.aborted) {
+        observe({ result: null, error: null, cancelled: true });
+        return;
+      }
       const message = (e as Error).message;
       this.d.log(`[answer] failed: ${message}`);
       send({ type: 'error', message });
+      observe({ result: null, error: message, cancelled: false });
     }
   }
 }

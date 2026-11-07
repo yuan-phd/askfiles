@@ -18,6 +18,7 @@ import {
   type PipelineDeps,
   type Reranker,
   type RunSettings,
+  type ServiceDeps,
   type ServiceEvent,
 } from './answer/index.js';
 import { APP_ORIGIN, pageUrl, type PageName } from './app-protocol.js';
@@ -105,6 +106,8 @@ export interface AppDeps {
   openModelsWindow(): void;
   /** npm run dev: backend from the repository and the Mac's own Ollama, not from the bundle. */
   dev?: DevBackend | null;
+  /** The test build's question record (src/main/test-build.ts); absent in a release build. */
+  onAnswered?: ServiceDeps['onAnswered'];
 }
 
 /**
@@ -171,6 +174,7 @@ export class AppController implements BridgeHandlers {
       log: d.log,
       // The summary queue gives way to every question (docs/summaries.md, Queue).
       onBusy: (busy) => this.libraryViews?.summaries.setAnswering(busy),
+      ...(d.onAnswered ? { onAnswered: d.onAnswered } : {}),
     });
   }
 

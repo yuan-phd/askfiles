@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, protocol } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, protocol, session, shell } from 'electron';
 import path from 'node:path';
 import { AppController } from './app.js';
 import { messagePage, STARTING_PAGE } from './message-page.js';
@@ -8,6 +8,7 @@ import type { BridgeHandlers } from './bridge/contract.js';
 import { registerBridge } from './bridge/register.js';
 import { createLogger, resolveLogDir, resolvePort, PORT_ENV, CONFIG_ENV } from './config.js';
 import { appDirs } from './platform.js';
+import { loadTestBuild, removeTestRecord, type TestBuild } from './test-build.js';
 
 // Must run before the app is ready. standard and secure give the pages a real origin and a secure
 // context; supportFetchAPI lets them fetch their own files (the about page reads the notices).
@@ -103,9 +104,40 @@ function main(): void {
   }
   // Its own data directory, so a dev run never touches the installed app's library or models.
   else if (dev) app.setPath('userData', path.join(app.getPath('appData'), 'AskFiles-dev'));
+  // Only a test build has this module (scripts/build-main.mjs --flavour test).
+  const testModule = loadTestBuild(__dirname);
+  // The packaged test build is named AskFiles Test but keeps the release build's data directory and
+  // logs, so libraries and models carry over when the release build is installed over it. Windows
+  // names its folders itself (platform.ts); a run from source keeps its own.
+  if (testModule && !dirs && !dev && app.isPackaged) {
+    app.setPath('userData', path.join(app.getPath('appData'), 'AskFiles'));
+    if (process.platform === 'darwin')
+      app.setPath('logs', path.join(app.getPath('home'), 'Library', 'Logs', 'AskFiles'));
+  }
   const log = createLogger(resolveLogDir(process.env, app.getPath('logs')), 'main');
-  log(`starting version ${app.getVersion()} pid ${process.pid}`);
+  log(`starting version ${app.getVersion()} pid ${process.pid}${testModule ? ' (test build)' : ''}`);
   if (dev) log(`dev run: backend from ${dev.resourcesPath}, node ${dev.nodePath}, ollama on ${dev.externalOllamaPort}`);
+  if (!testModule) removeTestRecord(app.getPath('userData'), log);
+  // Set once the bridge handlers exist; the record names the current library.
+  let currentHandlers: BridgeHandlers | null = null;
+  const testBuild: TestBuild | null = testModule
+    ? testModule.createTestBuild({
+        dataDir: app.getPath('userData'),
+        desktopDir: app.getPath('desktop'),
+        version: app.getVersion(),
+        platform: process.platform,
+        log,
+        showItemInFolder: (file) => shell.showItemInFolder(file),
+        libraryName: () => {
+          try {
+            return currentHandlers?.shellConfig().libraryName ?? null;
+          } catch {
+            return null;
+          }
+        },
+      })
+    : null;
+  const windowTitle = WINDOW_TITLE + (testBuild?.titleSuffix ?? '');
 
   let external: string | null = null;
   let configError: string | null = null;
@@ -136,8 +168,10 @@ function main(): void {
         rendererDir: path.join(appPath, 'src', 'renderer'),
         noticesFile: path.join(appPath, 'THIRD-PARTY-NOTICES'),
         appDir: appPath,
+        ...(testBuild ? { extraFile: (p: string) => testBuild.resolveAsset(p) } : {}),
       }),
     );
+    if (testBuild) session.defaultSession.registerPreloadScript({ type: 'frame', filePath: testBuild.preloadFile });
 
     let controller: AppController | null = null;
     // The window shows the AskFiles pages; the upstream interface only behind the developer switch.
@@ -149,7 +183,7 @@ function main(): void {
     const createWindow = (key: string, o: { width: number; height: number }): BrowserWindow => {
       const win = new BrowserWindow({
         ...o,
-        title: WINDOW_TITLE,
+        title: windowTitle,
         webPreferences: {
           preload: path.join(__dirname, 'preload.js'),
           contextIsolation: true,
@@ -199,6 +233,7 @@ function main(): void {
         dev,
         broadcast,
         openModelsWindow: () => openPage('models', { width: 900, height: 640 }),
+        ...(testBuild ? { onAnswered: (run) => testBuild.onAnswered(run) } : {}),
       });
       handlers = controller;
       void win.loadURL(STARTING_PAGE);
@@ -213,6 +248,11 @@ function main(): void {
         ),
       );
     }
+    if (testBuild) {
+      handlers = testBuild.wrapHandlers(handlers);
+      testBuild.registerIpc(ipcMain);
+    }
+    currentHandlers = handlers;
     registerBridge(ipcMain, handlers);
 
     Menu.setApplicationMenu(

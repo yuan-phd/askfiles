@@ -132,12 +132,17 @@ export function foreignPeFiles(appDir) {
   return bad;
 }
 
-/** The longest installed paths: INSTALL_PREFIX plus the path inside the app folder. */
-export function longestPaths(appDir, n = 5) {
+/** The install prefix for another app folder name: the test build installs into AskFiles Test. */
+export function installPrefix(name = 'AskFiles') {
+  return INSTALL_PREFIX.replace(/AskFiles\\$/, `${name}\\`);
+}
+
+/** The longest installed paths: the install prefix plus the path inside the app folder. */
+export function longestPaths(appDir, n = 5, prefix = INSTALL_PREFIX) {
   const rels = [];
   walk(appDir, (_, rel) => rels.push(rel));
   return rels
-    .map((rel) => ({ rel, length: INSTALL_PREFIX.length + rel.length }))
+    .map((rel) => ({ rel, length: prefix.length + rel.length }))
     .sort((a, b) => b.length - a.length)
     .slice(0, n);
 }
@@ -227,7 +232,26 @@ export function report({ rows, foreign, longest, failed }) {
   return lines.join('\n');
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href && process.argv.includes('--paths-only')) {
+  // The test build (docs/test-build.md): only the path length, for its longer folder name; its
+  // native modules are the release build's, which the full check already ran.
+  const args = process.argv.slice(2);
+  const i = args.indexOf('--install-name');
+  const prefix = installPrefix(i >= 0 ? args[i + 1] : 'AskFiles');
+  const appDir = path.resolve(args.find((a, j) => !a.startsWith('--') && args[j - 1] !== '--install-name') ?? '.');
+  const longest = longestPaths(appDir, 5, prefix);
+  const failed = !!longest[0] && longest[0].length >= MAX_PATH;
+  console.log(
+    [
+      `Longest installed paths under ${prefix} (limit ${MAX_PATH - 1} characters):`,
+      '',
+      ...longest.map((l) => `- ${l.length}: ${l.rel}`),
+      '',
+      failed ? 'Result: FAILED' : 'Result: ok',
+    ].join('\n'),
+  );
+  process.exit(failed ? 1 : 0);
+} else if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   if (os.platform() !== 'win32') {
     console.error('[check-windows-package] Windows only: it runs the packaged AskFiles.exe');
     process.exit(2);

@@ -2,7 +2,14 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { foreignPeFiles, INSTALL_PREFIX, longestPaths, NATIVE_MODULES, report } from './check-windows-package.mjs';
+import {
+  foreignPeFiles,
+  INSTALL_PREFIX,
+  installPrefix,
+  longestPaths,
+  NATIVE_MODULES,
+  report,
+} from './check-windows-package.mjs';
 
 let dir;
 beforeEach(() => {
@@ -53,6 +60,14 @@ describe('check-windows-package', () => {
     const rel = 'resources\\server\\node_modules\\deep\\er\\file.js';
     expect(first).toEqual({ rel, length: INSTALL_PREFIX.length + rel.length });
     expect(INSTALL_PREFIX).toBe('C:\\Users\\uuuuuuuuuuuuuuuuuuuu\\AppData\\Local\\Programs\\AskFiles\\');
+  });
+
+  it('measures the test build under its own, longer folder name (docs/test-build.md)', () => {
+    put('resources/a.js', '');
+    const prefix = installPrefix('AskFiles Test');
+    expect(prefix).toBe('C:\\Users\\uuuuuuuuuuuuuuuuuuuu\\AppData\\Local\\Programs\\AskFiles Test\\');
+    expect(installPrefix()).toBe(INSTALL_PREFIX);
+    expect(longestPaths(dir, 1, prefix)[0].length).toBe(longestPaths(dir, 1)[0].length + ' Test'.length);
   });
 
   it('lists every native module the brief names, and reports a failure', () => {

@@ -48,6 +48,8 @@ Some of these are created by Session B. Until then, the upstream commands still 
 - npm run lint                     eslint and prettier check
 - npm run build:upstream           scripts/build.sh: apply patches, build upstream frontend into upstream/server/public, install server and collector, prisma generate
 - npm run eval -- <corpus> <questions.csv>   evaluation harness from Session G
+- npm run build:main:test, npm run dev:test, npm run package:mac:test (after package:mac)   the test build with the local question record (docs/test-build.md); npm run build:main is the release flavour
+- node scripts/test-record/summarize.mjs <folder>   summary of the test records testers exported
 - bash scripts/measure-bundle.sh [resources-dir]   largest dependency folders of a packaged app, as Markdown for docs/bundle-report.md (Linux packaging: PACKAGE_TARGET=linux-x64 bash scripts/build.sh, then npx electron-builder --config electron-builder.yml --linux dir)
 - Upstream only: cd upstream/server && yarn install && npx prisma generate. Same with yarn for upstream/collector and upstream/frontend.
 
