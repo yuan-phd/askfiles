@@ -27,18 +27,29 @@ The kind only changes how documents are grouped and linked on the Graph page. Yo
 
 Type a question on the Ask page and press Enter. The answer cites its sources with numbers, and a card for each source shows the file, the section and the page. Click Read section to see the passage in the document, or Open file to open the original.
 
-Questions that name two or more files take longer, about 76 seconds (median): AskFiles reads the top sections of each named file once more to pick the ones that answer the question.
-
-How well questions about two files work depends on how you name the files:
-
-- If the question names both files, by file name or title, 9 of 10 answers in our test set cite the right sections of each file (90 percent).
-- If the question describes the files (the 2024 directive, the guidance) or names none, 2 of 8 did on our test set of such questions (25 percent). The main reason is that AskFiles does not recognise which files are meant, so it does not look in each file separately. Retrieval and the answer itself are less often the cause.
-
-For a question about two documents, name both files.
-
 A sentence with an asterisk (*) after it is shown in a lighter colour. The line under the answer says: Starred sentences have no word-for-word support in the sources. They may be a summary or conclusion drawn from the sources, or they may be inaccurate. Check them against the source cards. For an answer in Chinese it says: 带星号的句子在来源中没有逐字对应的原文，可能是根据来源归纳的结论，也可能不准确，请对照来源卡片核实。
 
 While AskFiles is reading new files, the question box is switched off and says Reading new files, and how many are left. It comes back as soon as they are read, so an answer never misses a file you just added.
+
+## How accurate is it
+
+These figures were measured on our own test documents: procurement regulations and guidance, one set in English and one in Chinese. Results on other documents may differ.
+
+- **Questions about one document, answer complete** (checked by hand): English 32 of 36 (89 percent)[^english], Chinese 19 of 20 (95 percent). Most answers state everything the question asks for, without mistakes.
+- **Comparing two documents, when the question names both files**: the right sources are cited in 9 of 10 (90 percent), and the answer is complete in 8 of 10 (80 percent). Naming both files lets AskFiles look in each one.
+- **Comparing two documents, when the question describes them or names neither** (for example the 2024 directive, the guidance): the right sources are cited in 2 of 8 (25 percent), and the answer is complete in 3 of 8 (38 percent). The main reason is that AskFiles did not recognise which two documents were meant.
+- **Questions with no answer in the documents**: AskFiles said it could not find the answer in 21 of 21 (100 percent), and made nothing up. When your documents do not hold the answer, it says so.
+- **Time**: about 14 seconds per question in English and about 7 seconds in Chinese. A question that names two documents takes about 76 seconds in all, because AskFiles looks through each named document once more. This was measured on a Mac with 64 GB of memory; it is slower on computers with less memory.
+
+## What it cannot do well
+
+- **Arithmetic on tables can be wrong.** AskFiles may misread a cell or add up wrongly. Check numbers it works out against the table itself.
+- **Comparing documents works best when you name both files.** Asking about each document in a question of its own is more reliable still.
+- **Poor-quality scans may be misread.** Text recognised from a blurred or faint scan can be wrong or missing.
+- **Spreadsheet formulas are not read**, only the values in the cells.
+- **Starred sentences (*) have no word-for-word support** in the sources. Check them against the source cards.
+- **On computers with 8 GB of memory, Ask is off.** Browse and Find, and the Graph, work there.
+- **The first launch has to be allowed** in the system's security settings: on a Mac in System Settings, Privacy & Security (Open Anyway); on Windows in the SmartScreen window (More info, then Run anyway).
 
 ## Browsing
 
@@ -83,8 +94,10 @@ Summaries use the model on this computer, so asking is slower while they are bei
 
 The Markdown export is the folder Open Markdown export in the library menu shows in Finder: <your home folder>/Library/Application Support/AskFiles/libraries/<library>/export, for the first library .../libraries/all-files/export. Open it in Obsidian as a vault.
 
-A computer with 8 GB of memory makes no summaries, and its Ask page is off. Browse, Find and Graph work there.
+A computer with 8 GB of memory makes no summaries (see What it cannot do well).
 
 ## Markdown export
 
 In the library menu, Open Markdown export opens a folder with one note per document: its summary, its section summaries, and links to the documents it mentions and to the headings it shares. Obsidian can open this folder as a vault. AskFiles keeps it up to date, and leaves alone any notes of your own that you put in it.
+
+[^english]: The 36 English questions are the 37 questions of our English test set that have an answer in the documents (questions about spreadsheet formulas left out), without one about a scanned page that AskFiles did not answer. They include two questions that compare two documents.
