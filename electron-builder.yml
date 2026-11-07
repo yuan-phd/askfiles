@@ -27,6 +27,10 @@ files:
   # The pages, served to the window as askfiles://app/... (src/main/app-protocol.ts).
   - src/renderer/**
   - '!src/renderer/**/*.test.js'
+  # The test UI pages never ship from here: the test build serves its copy in dist/main/test-record/ui
+  # (scripts/build-main.mjs --flavour test), and the release build has no dist/main/test-record.
+  # CI runs scripts/check-test-record.mjs on both (docs/test-build.md).
+  - '!src/renderer/test-record/**'
   # Shown on the About page.
   - THIRD-PARTY-NOTICES
   # OCR data is seeded from 4.0.0_best_int only (src/main/tesseract.ts); the 4.0.0 copies add 30 MB.

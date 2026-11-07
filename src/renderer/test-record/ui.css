@@ -1,0 +1,35 @@
+/* Test build only (docs/test-build.md): the notice dialog, the export choice and the Settings part. */
+.test-dialog {
+  max-width: 30rem;
+  padding: 1.25rem 1.5rem;
+  border: 1px solid var(--border, #e2dfd8);
+  border-radius: var(--radius, 10px);
+  background: var(--surface, #fff);
+  color: var(--text, #1f1e1c);
+  line-height: 1.5;
+}
+
+.test-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.test-dialog h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.test-dialog .test-actions,
+.test-record .test-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.test-dialog .test-actions {
+  justify-content: flex-end;
+}
+
+.test-build-note {
+  font-weight: 600;
+}

@@ -10,4 +10,6 @@
 - profiles.md: library profiles: types, colours, cues, bands and edge rules per profile.
 - summaries.md: document and section summaries, their queue, storage and the Markdown export; the Ask lockout during indexing.
 - user-guide.md: the app in plain language for its users.
+- test-build.md: the test build with its local question record: flavours, building, export, record format, the summary script.
+- tester-sheet.md: one page for testers of the test build, in English and Chinese.
 - reference/old-graph-code.txt: the owner's earlier wiki graph code, the source the Graph page ports.

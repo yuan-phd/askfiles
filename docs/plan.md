@@ -862,7 +862,7 @@ Verification-layer bugs surfaced by new corpora get a fixed small budget per rel
 Owner, 2026-11-07. In this order:
 
 1. Pre-test fixes: false unsupported markers, display-name format suffix (branch local/pretest-fixes).
-2. Test build with a local question log (next session). The logging code is compiled only into a test build; the release build contains no logging code and no setting for it; the release build deletes any log a test build left behind on first start.
+2. Test build with a local question log (next session). The logging code is compiled only into a test build; the release build contains no logging code and no setting for it; the release build deletes any log a test build left behind on first start. Built on branch local/test-build (docs/test-build.md, docs/tester-sheet.md), not merged.
 3. The user guide gets the final figures, after 1 and 2.
 4. User testing, plus one run on a 16 GB Mac.
 5. File-reference detection, its scope set from the real questions collected in testing; validated once on a fresh sealed holdout set; then the phase stops.

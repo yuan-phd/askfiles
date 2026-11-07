@@ -46,10 +46,15 @@ export function contentType(file: string): string {
  * Maps a request URL to a file under rendererDir, or to the notices file. Anything else, another
  * host, or a path that leaves rendererDir after decoding, is null.
  */
-export function resolveAppFile(
-  url: string,
-  o: { rendererDir: string; noticesFile: string; appDir?: string },
-): string | null {
+export interface AppFiles {
+  rendererDir: string;
+  noticesFile: string;
+  appDir?: string;
+  /** Files served outside rendererDir: the test build's pages (src/main/test-build.ts); null for any other path. */
+  extraFile?: (pathname: string) => string | null;
+}
+
+export function resolveAppFile(url: string, o: AppFiles): string | null {
   let u: URL;
   try {
     u = new URL(url);
@@ -64,6 +69,8 @@ export function resolveAppFile(
     return null;
   }
   if (rel === NOTICES_PATH) return o.noticesFile;
+  const extra = o.extraFile?.(rel);
+  if (extra) return extra;
   const vendor = VENDOR_FILES[rel];
   if (vendor) return path.join(o.appDir ?? path.resolve(o.rendererDir, '..', '..'), ...vendor);
   if (rel.includes('\0')) return null;
@@ -73,11 +80,7 @@ export function resolveAppFile(
 }
 
 /** The protocol.handle callback: 404 for anything resolveAppFile refuses or cannot read. */
-export function appProtocolHandler(o: {
-  rendererDir: string;
-  noticesFile: string;
-  appDir?: string;
-}): (request: { url: string }) => Promise<Response> {
+export function appProtocolHandler(o: AppFiles): (request: { url: string }) => Promise<Response> {
   return async (request) => {
     const file = resolveAppFile(request.url, o);
     if (!file) return new Response('Not found', { status: 404 });

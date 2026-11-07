@@ -34,3 +34,6 @@ coverage/
 # evaluation harness: data directory kept between runs, run folders
 /.eval-data/
 /eval-runs/
+
+# test build packages (scripts/package-test-build.sh)
+release-test/

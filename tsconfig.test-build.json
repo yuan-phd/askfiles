@@ -1,0 +1,6 @@
+// The test build (docs/test-build.md): tsconfig.json plus src/main/test-record, which the release
+// build never compiles. scripts/build-main.mjs --flavour test uses it.
+{
+  "extends": "./tsconfig.json",
+  "exclude": ["src/main/**/*.test.ts", "src/main/**/__fixtures__/**"]
+}

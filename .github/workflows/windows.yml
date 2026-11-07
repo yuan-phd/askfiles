@@ -30,8 +30,9 @@ env:
 jobs:
   package:
     runs-on: windows-latest
-    # A cold run installs three yarn trees and downloads Ollama (1.4 GB); warm runs reuse caches.
-    timeout-minutes: 75
+    # A cold run installs three yarn trees and downloads Ollama (1.4 GB); warm runs reuse caches. The
+    # test build (docs/test-build.md) adds a second installer.
+    timeout-minutes: 90
     defaults:
       run:
         shell: bash
@@ -129,6 +130,9 @@ jobs:
       # Native module prebuilds, PE machines and the installed path length (docs/windows.md).
       - name: Check the unpacked app
         run: bash .github/scripts/annotate-run.sh "Package check" node scripts/check-windows-package.mjs release/win-unpacked | tee -a "$GITHUB_STEP_SUMMARY"
+      # The release build is compiled without the test build's logging code (docs/test-build.md).
+      - name: Check the release app has no test record
+        run: bash .github/scripts/annotate-run.sh "Test record check" node scripts/check-test-record.mjs release/win-unpacked/resources | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Measure the installer, the zip and the app
         run: |
           ls -l release/*.exe release/*.zip
@@ -163,6 +167,26 @@ jobs:
         with:
           name: askfiles-windows-portable-${{ github.sha }}
           path: release/*-portable.zip
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      # The test build, AskFiles-Test-Setup.exe (docs/test-build.md): the same prepared tree with the
+      # test record compiled in, under its own name. Last, because it replaces dist/main with the
+      # test flavour; the smoke job tests the release installer only.
+      - name: Package the test build
+        run: bash .github/scripts/annotate-run.sh "Test build" npm run package:win:test
+      # Its folder, AskFiles Test, is 5 characters longer than the release's, so the path length is
+      # checked again; the native modules are the release build's, checked above.
+      - name: Check the test build
+        run: |
+          node scripts/check-test-record.mjs release-test/win-unpacked/resources --expect present | tee -a "$GITHUB_STEP_SUMMARY"
+          node scripts/check-windows-package.mjs release-test/win-unpacked --paths-only --install-name "AskFiles Test" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Upload the test build installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: askfiles-test-windows-installer-${{ github.sha }}
+          path: release-test/AskFiles-Test-Setup.exe
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
