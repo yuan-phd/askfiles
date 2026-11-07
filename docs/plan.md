@@ -922,7 +922,22 @@ Attribution of the kept configuration: 25 of 27 answers on the tuning set, 11 of
 
 The 16 GB model was measured in the quantization and context matrix (above) with the round 2' configuration, before enumerateWhenAsked, the hedge filter and the indexing and answer layer rounds: tuning and check sets together 91% (32/35) cited, 80% (33/41) attribution, 68% coverage, 3% false refusals, 6% (1/16) false answers, median 15.9 s, 7.45 GiB for the chat model in memory against 9.17 GiB for q4_K_M. It ran on the 64 GB Mac; it has not run on a 16 GB Mac.
 
-Completeness, graded by the owner from ~/AskFiles-eval/grading-all.md for v1 (round 8a answers as shown, the full expected section text and the key elements, formula questions left out): 28 of 35 complete: the sheet holds 37 entries (21 single_fact, 9 middle_of_long_doc, 5 table_number, 2 cross_document), and Q08 (OCR) and Q33 (retrieval miss) were left out of the grading. By category: single document and long document 25 of 28, tables 3 of 5, cross document 0 of 2. The kept configuration has not been graded by hand.
+Completeness, graded by the owner from ~/AskFiles-eval/grading-all.md for v1 (round 8a answers as shown, the full expected section text and the key elements, formula questions left out): 28 of 35 complete: the sheet holds 37 entries (21 single_fact, 9 middle_of_long_doc, 5 table_number, 2 cross_document), and Q08 (OCR) and Q33 (retrieval miss) were left out of the grading. By category: single document and long document 25 of 28, tables 3 of 5, cross document 0 of 2. The final configuration's grading is below.
+
+#### Hand grading, final configuration
+
+Graded by the owner, 2026-11-07, from the four grading packs in ~/AskFiles-eval (answers as shown to the user, the full expected section text and the key elements; complete means every fact asked for is stated and nothing wrong or unsupported is).
+
+| Pack | Complete | Incomplete | Not graded |
+| --- | --- | --- | --- |
+| English, grading-en-final.md | 32 of 36 | Q05 and Q40 (table arithmetic), Q15 (wrong paragraph range), Q34 (OCR misread) | Q08 (scanned page, not answered by the model); the 36 are the pack's 37 entries without Q08, the tuning set's cross-document Q04 and Q09 included |
+| Chinese, grading-zh-final.md | 19 of 20 | Q19 (one template answered, and wrongly) | - |
+| Cross-document, grading-crossdoc-final.md | 8 of 10 | Q57 (unrelated items listed as contract-management activities), Q60 (example part too general) | - |
+| Holdout, grading-holdout.md | 3 of 8 (complete: H01, H05, H06) | H02, H03, H07, H08, H10 | - |
+
+Source runs, as each pack's header names them: English, Chinese and cross-document from the final seeded run of round B before the merge (jbF, judgeRerank on, commit 10455721), rescored with ruleEchoRefusal and verifyStripQuestion (rounds V1 and V2, no model call): tuning set run 20261106T142543Z-T1-mac-32gb (folder ~/AskFiles-eval/runs/veq-v3, replies in jbF-v3), check set 20261106T143330Z-T1-mac-32gb (veq-check-v2, replies in jbF-check-v2), Chinese set 20261106T143838Z-ZH-mac-32gb (veq-zh, replies in jbF-zh), cross-document English half 20261106T142126Z-T1-mac-32gb (veq-crossdoc-en, replies in jbF-crossdoc-en) and Chinese half 20261106T142410Z-ZH-mac-32gb (veq-crossdoc-zh, replies in jbF-crossdoc-zh); holdout from the holdout run on main (commit 8b8c946d, judgeRerank on, seed 42), rescored the same way: English half 20261106T173547Z-T1-mac-32gb (veq-holdout-en, replies in hoA-holdout-en), Chinese half 20261106T173746Z-ZH-mac-32gb (veq-holdout-zh, replies in hoA-holdout-zh).
+
+The later pre-test fixes (rounds P1 to P3: leadInExempt, duplicateTextTiers with the format tier, verifyStemEnglish) changed markers and attribution only, not answer text, so this grading still holds for the released configuration. docs/user-guide.md (How accurate is it) quotes these figures.
 
 Known limits:
 

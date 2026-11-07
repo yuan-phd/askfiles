@@ -35,7 +35,7 @@ While AskFiles is reading new files, the question box is switched off and says R
 
 These figures were measured on our own test documents: procurement regulations and guidance, one set in English and one in Chinese. Results on other documents may differ.
 
-- **Questions about one document, answer complete** (checked by hand): English 32 of 36 (89 percent), Chinese 19 of 20 (95 percent). Most answers state everything the question asks for, without mistakes.
+- **Questions about one document, answer complete** (checked by hand): English 32 of 36 (89 percent)[^english], Chinese 19 of 20 (95 percent). Most answers state everything the question asks for, without mistakes.
 - **Comparing two documents, when the question names both files**: the right sources are cited in 9 of 10 (90 percent), and the answer is complete in 8 of 10 (80 percent). Naming both files lets AskFiles look in each one.
 - **Comparing two documents, when the question describes them or names neither** (for example the 2024 directive, the guidance): the right sources are cited in 2 of 8 (25 percent), and the answer is complete in 3 of 8 (38 percent). The main reason is that AskFiles did not recognise which two documents were meant.
 - **Questions with no answer in the documents**: AskFiles said it could not find the answer in 21 of 21 (100 percent), and made nothing up. When your documents do not hold the answer, it says so.
@@ -99,3 +99,5 @@ A computer with 8 GB of memory makes no summaries (see What it cannot do well).
 ## Markdown export
 
 In the library menu, Open Markdown export opens a folder with one note per document: its summary, its section summaries, and links to the documents it mentions and to the headings it shares. Obsidian can open this folder as a vault. AskFiles keeps it up to date, and leaves alone any notes of your own that you put in it.
+
+[^english]: The 36 English questions are the 37 questions of our English test set that have an answer in the documents (questions about spreadsheet formulas left out), without one about a scanned page that AskFiles did not answer. They include two questions that compare two documents.
