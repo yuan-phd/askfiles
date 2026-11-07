@@ -779,6 +779,7 @@ export function answerRow(o: {
             ...(x.unsupported ? { unsupported: true } : {}),
             ...(x.restatement ? { restatement: true } : {}),
             ...(x.contentFree ? { contentFree: true } : {}),
+            ...(x.leadIn ? { leadIn: true } : {}),
           })),
         )
       : '',

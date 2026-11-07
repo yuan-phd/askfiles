@@ -132,6 +132,8 @@ export interface VerifyStats {
   marginMoved?: number;
   /** contentFreeExempt: cited sentences with no content word of their own, their citations not counted. */
   contentFree?: number;
+  /** leadInExempt: uncited lead-ins ending with a colon, left uncited and not unsupported. */
+  leadIns?: number;
   /** duplicateTextAttribution: sentences that gained the sections holding the same text as one they cite. */
   duplicateShared?: number;
   /** duplicateTextTiers: citations decided by the sentence's name, the question's name, or shared with all. */
@@ -241,6 +243,13 @@ export interface VerifyOptions {
    * question texts (question), unless fewer than STRIP_MIN_TOKENS remain; then on all of them.
    */
   stripQuestion?: boolean;
+  /** verifyStripMin: the guard of stripQuestion, STRIP_MIN_TOKENS when absent. */
+  stripMin?: number;
+  /**
+   * leadInExempt (round P1, F1): an uncited sentence ending with a colon whose next sentence with
+   * words carries a citation is a structural lead-in: neither cited nor unsupported.
+   */
+  leadIn?: boolean;
 }
 
 /**
@@ -256,10 +265,33 @@ export const STRIP_MIN_TOKENS = 3;
  * whose first eleven pairs repeat the question) scores 0.27 on all its pairs against the section
  * that holds 不大于 45mm and 0.75 on the rest.
  */
-export function scoringTokens(tokens: string[], question: Set<string>, strip: boolean): string[] {
+export function scoringTokens(
+  tokens: string[],
+  question: Set<string>,
+  strip: boolean,
+  min = STRIP_MIN_TOKENS,
+): string[] {
   if (!strip) return tokens;
   const rest = tokens.filter((t) => !question.has(t));
-  return new Set(rest).size >= STRIP_MIN_TOKENS ? rest : tokens;
+  return new Set(rest).size >= min ? rest : tokens;
+}
+
+const HAS_WORDS = /[\p{L}\p{N}]{2}/u;
+
+/**
+ * leadInExempt: claim i is a structural lead-in when it carries no citation, ends with a colon
+ * (: or the full-width one), and the next claim with words carries a written citation. List
+ * markers on their own (1. ) have no words and are skipped. Chinese Q18 (要求如下：then two cited
+ * items) and holdout H01 (First, the order ...: then the cited steps) are the cases.
+ */
+export function isLeadIn(claims: Claim[], i: number): boolean {
+  const c = claims[i];
+  if (!c || c.citations.length || !/[:\uff1a]\s*$/u.test(c.text)) return false;
+  for (let j = i + 1; j < claims.length; j++) {
+    const n = claims[j]!;
+    if (HAS_WORDS.test(n.text)) return n.citations.length > 0;
+  }
+  return false;
 }
 
 /**
@@ -312,8 +344,12 @@ export function verifyClaims(
   const out = claims.map((c, i): Claim => {
     const allow = o.allowedFor?.[i] ?? o.allowed;
     const eligible = (n: number) => !allow || allow.has(n);
-    if (!/[\p{L}\p{N}]{2}/u.test(c.text)) return c;
+    if (!HAS_WORDS.test(c.text)) return c;
     stats.sentences++;
+    if (o.leadIn && isLeadIn(claims, i)) {
+      stats.leadIns = (stats.leadIns ?? 0) + 1;
+      return { ...c, citations: [], unsupported: false, leadIn: true };
+    }
     const byPairs = Boolean(o.cjk) && mainlyCjk(c.text);
     const min = byPairs ? (o.cjkMinOverlap ?? VERIFY_MIN_OVERLAP_CJK) : (o.minOverlap ?? VERIFY_MIN_OVERLAP);
     const sources = byPairs ? pairsOf() : wordSources;
@@ -339,6 +375,7 @@ export function verifyClaims(
       tokens,
       byPairs ? askedPairs : askedWords,
       Boolean(o.stripQuestion) && asked.length > 0,
+      o.stripMin,
     );
     const given = o.scores?.[i];
     const bySentence = o.sentenceLevel ? sentencesOf(byPairs) : null;

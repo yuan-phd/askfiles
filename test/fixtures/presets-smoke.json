@@ -83,7 +83,9 @@
         "duplicateTextTiers": false,
         "judgeRerank": false,
         "ruleEchoRefusal": false,
-        "verifyStripQuestion": false
+        "verifyStripQuestion": false,
+        "verifyStripMin": 3,
+        "leadInExempt": false
       }
     }
   ]

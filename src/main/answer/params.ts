@@ -248,6 +248,18 @@ export interface AnswerParams {
    * and as sent), unless fewer than three remain; then by all of them as before (verify.ts, round V2).
    */
   verifyStripQuestion: boolean;
+  /**
+   * verifyStripQuestion's guard: below this many distinct content words left after the question's
+   * are taken out, a sentence is scored on all its words (verify.ts STRIP_MIN_TOKENS, 3 from round
+   * V2; round P1 F3 measured 5).
+   */
+  verifyStripMin: number;
+  /**
+   * An uncited sentence that ends with a colon and whose next sentence with words carries a written
+   * citation is a structural lead-in (The requirements are as follows:): no marker, no attribution
+   * credit, no failure (verify.ts, docs/plan.md round P1, F1).
+   */
+  leadInExempt: boolean;
 }
 
 /** The crossDocument parts in effect: crossDocument's own, or the quota alone with crossDocQuota. */
@@ -311,6 +323,8 @@ export const DEFAULT_PARAMS: AnswerParams = {
   judgeRerank: false,
   ruleEchoRefusal: false,
   verifyStripQuestion: false,
+  verifyStripMin: 3,
+  leadInExempt: false,
 };
 
 /** Tokens kept free for the answer itself and for the instructions and the question. */
@@ -435,6 +449,8 @@ const CHECKS: Record<keyof AnswerParams, (v: unknown) => Problem> = {
   judgeRerank: bool,
   ruleEchoRefusal: bool,
   verifyStripQuestion: bool,
+  verifyStripMin: intAtLeast(1),
+  leadInExempt: bool,
 };
 
 /** Problems with an answer block, each prefixed with at; every key is required. */

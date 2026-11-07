@@ -974,7 +974,8 @@ export async function answer(
         ...(s.params.restatementExempt || s.params.contentFreeExempt || s.params.verifyStripQuestion
           ? { question: [question, asked], restatement: s.params.restatementExempt }
           : {}),
-        ...(s.params.verifyStripQuestion ? { stripQuestion: true } : {}),
+        ...(s.params.verifyStripQuestion ? { stripQuestion: true, stripMin: s.params.verifyStripMin } : {}),
+        ...(s.params.leadInExempt ? { leadIn: true } : {}),
         ...(s.params.contentFreeExempt ? { contentFree: true } : {}),
         ...(s.params.sentenceOverlap && !scores
           ? {
@@ -1010,6 +1011,7 @@ export async function answer(
         (v.stats.restated !== undefined ? `, ${v.stats.restated} restating the question` : '') +
         (v.stats.marginMoved !== undefined ? `, ${v.stats.marginMoved} moved by the margin` : '') +
         (v.stats.contentFree !== undefined ? `, ${v.stats.contentFree} content-free` : '') +
+        (v.stats.leadIns ? `, ${v.stats.leadIns} lead-ins` : '') +
         (verification.duplicateShared !== undefined
           ? `, ${verification.duplicateShared} shared with same-text sections`
           : '') +

@@ -78,6 +78,8 @@ export interface Claim {
   restatement?: boolean;
   /** contentFreeExempt: a cited sentence with nothing of its own; its citations are not counted. */
   contentFree?: boolean;
+  /** leadInExempt: an uncited lead-in ending with a colon before cited sentences; neither cited nor unsupported. */
+  leadIn?: boolean;
   /** After verification: each citation's score against its source, in citation order. */
   support?: number[];
   /** After verification: the score a citation needed (the threshold the sentence was held to). */
