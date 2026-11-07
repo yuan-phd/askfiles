@@ -48,6 +48,8 @@ describe('config/presets.json', () => {
       'questionFileNames',
       'sourceDisplayNames',
       'duplicateTextAttribution',
+      // Round P2 (2026-11-07): D4b with the format tier.
+      'duplicateTextTiers',
       // Round B (2026-11-06).
       'judgeRerank',
       // Rounds V1 and V2 (2026-11-06).

@@ -260,6 +260,13 @@ export interface AnswerParams {
    * credit, no failure (verify.ts, docs/plan.md round P1, F1).
    */
   leadInExempt: boolean;
+  /**
+   * Files of one library that give the same display name and differ in format get a format label
+   * (PDF版, Word版 after a Chinese name, (PDF), (Word) after another; other formats by extension)
+   * in source headers, the question as sent, source cards and the identical-text tiers
+   * (identifiers.ts libraryDisplayNames, docs/plan.md round P2).
+   */
+  displayFormatSuffix: boolean;
 }
 
 /** The crossDocument parts in effect: crossDocument's own, or the quota alone with crossDocQuota. */
@@ -325,6 +332,7 @@ export const DEFAULT_PARAMS: AnswerParams = {
   verifyStripQuestion: false,
   verifyStripMin: 3,
   leadInExempt: false,
+  displayFormatSuffix: false,
 };
 
 /** Tokens kept free for the answer itself and for the instructions and the question. */
@@ -451,6 +459,7 @@ const CHECKS: Record<keyof AnswerParams, (v: unknown) => Problem> = {
   verifyStripQuestion: bool,
   verifyStripMin: intAtLeast(1),
   leadInExempt: bool,
+  displayFormatSuffix: bool,
 };
 
 /** Problems with an answer block, each prefixed with at; every key is required. */

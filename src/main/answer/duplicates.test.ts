@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { duplicateGroups, nameMatcher, normalizedText, shareDuplicates, textHashOf } from './duplicates.js';
+import { libraryDisplayNames } from '../browse/identifiers.js';
+import {
+  duplicateGroups,
+  formatAsked,
+  nameMatcher,
+  normalizedText,
+  shareDuplicates,
+  textHashOf,
+} from './duplicates.js';
 import type { Claim } from './citations.js';
 
 const claim = (citations: number[], text = 'x'): Claim => ({ text, citations, unsupported: citations.length === 0 });
@@ -76,13 +84,13 @@ describe('duplicateTextAttribution (round D4)', () => {
         { question: [both] },
       );
       expect(r.claims.map((c) => c.citations)).toEqual([[3], [1]]);
-      expect(r.tiers).toEqual({ sentence: 2, question: 0, all: 0 });
+      expect(r.tiers).toEqual({ sentence: 2, question: 0, format: 0, all: 0 });
     });
 
     it('b. else the question names exactly one: its section', () => {
       const r = shareDuplicates([claim([1], '应在投标截止时间10日前提出。')], sources, { question: [one] });
       expect(r.claims[0]!.citations).toEqual([3]);
-      expect(r.tiers).toEqual({ sentence: 0, question: 1, all: 0 });
+      expect(r.tiers).toEqual({ sentence: 0, question: 1, format: 0, all: 0 });
     });
 
     it('c. else all sections with the equal hash; a sentence naming both falls through as well', () => {
@@ -94,7 +102,7 @@ describe('duplicateTextAttribution (round D4)', () => {
         question: [none],
       });
       expect(named.claims[0]!.citations).toEqual([1, 3]);
-      expect(named.tiers).toEqual({ sentence: 0, question: 0, all: 1 });
+      expect(named.tiers).toEqual({ sentence: 0, question: 0, format: 0, all: 1 });
     });
 
     it('a short form the display name does not contain is not a name (设备采购招标文件)', () => {
@@ -109,6 +117,64 @@ describe('duplicateTextAttribution (round D4)', () => {
       expect(m.sentence('Under the procurement regulations 2025, ...')).toBe(true);
       expect(m.sentence('Procurement Regulations 20251')).toBe(false);
       expect(m.question('Compare `01_Procurement_Regulations_2025.pdf` and ...')).toBe(true);
+    });
+  });
+
+  describe('format words (round P2), files that differ only in format', () => {
+    const article =
+      '第二条 全部或者部分使用国有资金投资或者国家融资的项目包括：使用预算资金200万元人民币以上，并且该资金占投资额10%以上的项目；使用国有企业事业单位资金，并且该资金占控股或者主导地位的项目。';
+    const word = '13_必须招标的工程项目规定.docx';
+    const pdf = '04_必须招标的工程项目规定.pdf';
+    const sources = [
+      { passage: article, file: word },
+      { passage: article, file: pdf },
+    ];
+    const names = libraryDisplayNames([word, pdf]);
+    const nameOf = (f: string) => names.get(f)!;
+    const said = '使用预算资金的项目须达到200万元人民币以上，并且该资金占投资额10%以上。';
+
+    it('Chinese Q02 (请从Word版本说明) cites only the Word copy, a PDF question only the PDF copy', () => {
+      const q02 = '请从Word版本说明：使用预算资金的项目须同时达到哪些规模条件？';
+      const r = shareDuplicates([claim([1], said)], sources, { question: [q02], nameOf });
+      expect(r.claims[0]!.citations).toEqual([1]);
+      expect(r.tiers).toEqual({ sentence: 0, question: 0, format: 1, all: 0 });
+      const p = shareDuplicates([claim([1], said)], sources, { question: ['按PDF版本回答：规模条件是什么？'], nameOf });
+      expect(p.claims[0]!.citations).toEqual([2]);
+    });
+
+    it('no format word, two format words, or the tiers off: both copies as before', () => {
+      for (const q of ['规模条件是什么？', '比较Word版本和PDF版本：规模条件是什么？']) {
+        expect(shareDuplicates([claim([1], said)], sources, { question: [q], nameOf }).claims[0]!.citations).toEqual([
+          1, 2,
+        ]);
+      }
+      expect(shareDuplicates([claim([1], said)], sources).claims[0]!.citations).toEqual([1, 2]);
+    });
+
+    it('a sentence naming one copy by its suffixed display name decides first (tier a)', () => {
+      const r = shareDuplicates([claim([1], `《必须招标的工程项目规定》PDF版规定${said}`)], sources, {
+        question: ['请从Word版本说明规模条件。'],
+        nameOf,
+      });
+      expect(r.claims[0]!.citations).toEqual([2]);
+      expect(r.tiers.sentence).toBe(1);
+    });
+
+    it('files with different names are no format copies, whatever the question says', () => {
+      const other = [
+        { passage: article, file: word },
+        { passage: article, file: '07_必须招标的基础设施和公用事业项目范围规定.pdf' },
+      ];
+      const r = shareDuplicates([claim([1], said)], other, { question: ['请从Word版本说明。'] });
+      expect(r.claims[0]!.citations).toEqual([1, 2]);
+    });
+
+    it('format words are a fixed list, matched without a letter beside them', () => {
+      expect(formatAsked(['请从Word版本说明'])).toBe('Word');
+      expect(formatAsked(['Answer from the PDF version.'])).toBe('PDF');
+      expect(formatAsked(['the file `10_Procurement_Plan_Template.docx`'])).toBe('Word');
+      expect(formatAsked(['in a word, what is it?', 'Wordy text', 'PDFs'])).toBeNull();
+      expect(formatAsked(['Word and PDF'])).toBeNull();
     });
   });
 });

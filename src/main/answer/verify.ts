@@ -137,7 +137,7 @@ export interface VerifyStats {
   /** duplicateTextAttribution: sentences that gained the sections holding the same text as one they cite. */
   duplicateShared?: number;
   /** duplicateTextTiers: citations decided by the sentence's name, the question's name, or shared with all. */
-  duplicateTiers?: { sentence: number; question: number; all: number };
+  duplicateTiers?: { sentence: number; question: number; format: number; all: number };
 }
 
 /**

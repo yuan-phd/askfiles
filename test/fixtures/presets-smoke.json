@@ -85,7 +85,8 @@
         "ruleEchoRefusal": false,
         "verifyStripQuestion": false,
         "verifyStripMin": 3,
-        "leadInExempt": false
+        "leadInExempt": false,
+        "displayFormatSuffix": false
       }
     }
   ]

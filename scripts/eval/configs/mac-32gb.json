@@ -68,12 +68,13 @@
     "sentenceOverlapMinCjk": 0.3,
     "contentFreeExempt": false,
     "duplicateTextAttribution": true,
-    "duplicateTextTiers": false,
+    "duplicateTextTiers": true,
     "judgeRerank": true,
     "ruleEchoRefusal": true,
     "verifyStripQuestion": true,
     "verifyStripMin": 3,
-    "leadInExempt": true
+    "leadInExempt": true,
+    "displayFormatSuffix": false
   },
   "contextTokens": 8192,
   "indexing": {
