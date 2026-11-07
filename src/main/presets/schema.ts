@@ -32,7 +32,7 @@ export interface Preset {
   /** Answer pipeline values (src/main/answer/params.ts); the reranker is fetched at first run. */
   answer: AnswerParams;
   /**
-   * Indexing switches (docs/plan.md, Indexing rounds I1 to I3); each is part of the split key, so
+   * Indexing switches (docs/plan.md, Measurement rounds and switches, I1 to I3); each is part of the split key, so
    * turning one on reindexes every library once. Missing means all off.
    */
   indexing?: IndexingOptions;

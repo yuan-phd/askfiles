@@ -18,7 +18,7 @@ export interface FileIdentity {
   identifiers: Identifier[];
   /**
    * identifiers plus the name forms this file shares with files of the same name in another
-   * format (必须招标的工程项目规定 for the .pdf and the .docx): crossDocument counts such a name
+   * format (差旅费管理办法 for the .pdf and the .docx): crossDocument counts such a name
    * as one mention of both files. Absent in identities built before round A2.
    */
   names?: Identifier[];
@@ -64,10 +64,10 @@ function isCjkName(text: string): boolean {
 }
 
 /**
- * 01_Procurement_Regulations_2025.pdf: Procurement Regulations 2025, and without the year. A CJK
+ * 01_Staff_Regulations_2025.pdf: Staff Regulations 2025, and without the year. A CJK
  * name has no spaces, so its title is the first part before an underscore with the number prefix
- * removed: 01_标准设备采购招标文件_2017年版.pdf is 标准设备采购招标文件, the form a question
- * writes in title marks (《标准设备采购招标文件》).
+ * removed: 01_员工手册_2024年版.pdf is 员工手册, the form a question writes in title marks
+ * (《员工手册》).
  */
 export function nameForms(file: string): string[] {
   const stem = file.replace(/\.[^.]+$/, '');
@@ -97,8 +97,8 @@ export const DERIVED_COPY_MARKERS = ['网页正文', '衍生', '副本', 'copy',
  * The name a source header shows for a file (sourceFileNames, docs/plan.md round N1): the file
  * name without its leading sequence number and its extension, derived-copy markers left out, year
  * and version markers kept (2025, 2017年版, 试行), underscores as spaces, spaces collapsed.
- * 01_Procurement_Regulations_2025.pdf is Procurement Regulations 2025; 01_标准设备采购招标文件_2017年版.pdf
- * is 标准设备采购招标文件 2017年版. Falls back to the file name when nothing is left.
+ * 01_Staff_Regulations_2025.pdf is Staff Regulations 2025; 01_员工手册_2024年版.pdf
+ * is 员工手册 2024年版. Falls back to the file name when nothing is left.
  */
 export function displayName(file: string): string {
   const markers = new Set(DERIVED_COPY_MARKERS.map((m) => m.toLowerCase()));
@@ -130,9 +130,9 @@ export function formatLabel(file: string, name: string): string {
 
 /**
  * displayFormatSuffix (docs/plan.md round P2): display names for the files of one library. When
- * two or more files give the same display name and their formats differ (04_必须招标的工程项目规定.pdf
- * and 13_必须招标的工程项目规定.docx), each gets its format label after a space: 必须招标的工程项目规定
- * PDF版 and 必须招标的工程项目规定 Word版; Procurement Plan (PDF) and Procurement Plan (Word). Files
+ * two or more files give the same display name and their formats differ (04_差旅费管理办法.pdf
+ * and 13_差旅费管理办法.docx), each gets its format label after a space: 差旅费管理办法
+ * PDF版 and 差旅费管理办法 Word版; Travel Plan (PDF) and Travel Plan (Word). Files
  * of one format with the same name keep it, since a label would not tell them apart.
  */
 export function libraryDisplayNames(files: string[]): Map<string, string> {

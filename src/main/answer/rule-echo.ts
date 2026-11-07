@@ -1,12 +1,12 @@
 /**
  * ruleEchoRefusal (docs/plan.md, round V1). qwen3:14b sometimes copies the not-found instruction
- * of the system prompt as its reply instead of writing the marker (holdout H03: The sources do not
+ * of the system prompt as its reply instead of writing the marker (for example: The sources do not
  * state the specific fact the question asks for, even though they discuss related material: do
  * not answer from related material or from placeholders [1]...[5]). isNotFound does not see a
  * refusal in that, so it was scored and shown as an answer citing nothing. Detection is per
  * sentence: a sentence is an echo when at least RULE_ECHO_SHARE of its distinct content words
  * occur in the rule's own text, the marker counting as one of the rule's words, so a bare
- * NOT_IN_SOURCES written after a partial answer (holdout H07) is an echo too.
+ * NOT_IN_SOURCES written after a partial answer is an echo too.
  */
 import type { Claim } from './citations.js';
 import { NOT_FOUND_MARKER, NOT_FOUND_RULE } from './prompt.js';

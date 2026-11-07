@@ -79,7 +79,7 @@ export interface DocumentSummaryView {
 
 /**
  * Until a few sections were timed: per section, batched up to 5 to a call. Measured on 2026-11-04
- * on the owner's M1 Max over 20 sections of the Procurement Regulations: 3.6 s with the Ask model
+ * on an M1 Max over 20 sections of one long English regulation: 3.6 s with the Ask model
  * qwen3 14B q4_K_M, which summaries use (docs/summaries.md, Batches).
  */
 export const DEFAULT_MS_PER_SECTION = 3600;

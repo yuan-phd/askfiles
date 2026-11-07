@@ -50,8 +50,8 @@ export interface ExpectedSection {
   path: string[];
   /**
    * Other sections that count as this one, written after | in the key: of the same file
-   * (4.2 交货前检验 | 4.1 监造, a key whose facts two sections hold alike; docs/plan.md, Q12), or of
-   * another file written file :: path (Chinese Q17: the values are only in the xlsx extract).
+   * (4.2 验收 | 4.1 检查, a key whose facts two sections hold alike), or of another file written
+   * file :: path (a key whose values are only in a spreadsheet extract of the document).
    */
   alternatives?: { file: string | null; path: string[] }[];
 }
@@ -91,7 +91,7 @@ export function sectionMatches(want: ExpectedSection, c: Pick<CitedRecord, 'file
   return at(want.file, want.path) || (want.alternatives ?? []).some((a) => at(a.file, a.path));
 }
 
-/** A file name without its number prefix and extension: 04_必须招标的工程项目规定.pdf and 13_必须招标的工程项目规定.docx are one document. */
+/** A file name without its number prefix and extension: 04_差旅费管理办法.pdf and 13_差旅费管理办法.docx are one document. */
 export function documentName(file: string): string {
   return baseName(file)
     .replace(/\.[^.]+$/, '')

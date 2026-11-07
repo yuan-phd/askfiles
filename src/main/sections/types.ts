@@ -16,7 +16,7 @@ export interface TableData {
 }
 
 /**
- * Indexing switches (docs/plan.md, Indexing rounds): each one changes the section records, so each
+ * Indexing switches (docs/plan.md, Measurement rounds and switches): each one changes the section records, so each
  * is part of the split key (splitKeyOf). All off gives the split of SPLITTER_VERSION 3.
  */
 export interface SplitOptions {

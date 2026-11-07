@@ -1,10 +1,10 @@
 /**
  * Names of files in answer text (docs/plan.md, round N2). The model copies the file names and
  * display names it reads in the question and the source headers into its sentences; these helpers
- * take whole names out, never single words (Procurement, Guidance, 采购 and 招标 stay).
+ * take whole names out, never single words (Regulations, Guidance, 管理 and 办法 stay).
  */
 
-/** A file name in backticks: `01_Procurement_Regulations_2025.pdf`. */
+/** A file name in backticks: `01_Staff_Regulations_2025.pdf`. */
 const BACKTICKED_FILE = /`[^`\s]+\.[A-Za-z0-9]{1,5}`/g;
 
 /** Spaces and brackets left behind after a name is taken out of a sentence. */
@@ -35,8 +35,8 @@ function escape(t: string): string {
 /**
  * The phrases verifyStripNames takes out of a sentence before its overlap is measured: every
  * display name whole, and for a Chinese one its title-mark forms 《display name》 and, when the
- * name carries a year or version after a space, 《name without it》 (《标准设备采购招标文件》
- * for 标准设备采购招标文件 2017年版), the form questions and answers write.
+ * name carries a year or version after a space, 《name without it》 (《员工手册》
+ * for 员工手册 2024年版), the form questions and answers write.
  */
 export function namePhrases(displayNames: string[]): RegExp[] {
   const out: RegExp[] = [BACKTICKED_FILE];

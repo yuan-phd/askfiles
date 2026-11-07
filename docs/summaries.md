@@ -26,7 +26,7 @@ The reply is cleaned: thinking, citation marks, a leading label (Summary:, æ‘˜è¦
 
 A dropped summary is stored with its reason and not asked for again until its source, the model or the prompt version changes. Its document shows no summary.
 
-Measured on the owner's corpora with qwen3 14B Q3_K_M (the 16 GB tier's model, local Ollama on the M1 Max): a document summary took 2 to 15 s, a section summary 2.5 to 7 s. Of 5 document summaries, 4 were kept and 1 was dropped as unsupported. The Value for Money Guidance summary claimed "effective purchasing practices", which its first pages do not say. Of 5 section summaries, 1 was dropped as too long.
+Measured on the owner's corpora with qwen3 14B Q3_K_M (the 16 GB tier's model, local Ollama on the M1 Max): a document summary took 2 to 15 s, a section summary 2.5 to 7 s. Of 5 document summaries, 4 were kept and 1 was dropped as unsupported. One guidance document's summary claimed a phrase its first pages do not say. Of 5 section summaries, 1 was dropped as too long.
 
 ## Queue
 
@@ -52,13 +52,13 @@ Summaries use the Ask model in server/.env (OLLAMA_MODEL_PREF) and the Settings 
 - **The 8 GB tier** (Ask off, chatModel null) makes no summaries. The pages show no summary and no pending state, and the library switch is hidden.
 - **A changed file** gets its document summary made again, and its section summaries only for sections whose text changed. Summaries of sections the file no longer has are removed.
 - **A removed file** loses its summaries, its export note and its node.
-- **Version key.** Every stored summary carries `<model tag>|p<prompt version>`: SUMMARY_PROMPT_VERSION (1) for English documents, SUMMARY_PROMPT_VERSION_CJK (2) for documents whose summary source is mainly Chinese. A new chat model (Settings, Answer model) or a prompt change marks the summaries stale, and they are queued again. The Chinese version moved to 2 with the Chinese caps of 2026-11-04 (owner request: 100 characters in up to two sentences for a document, 60 for a section), so only Chinese summaries were made again. With version 3 (two sentences asked for, the deeper source) the dev library's two Chinese documents got two verified sentences each, 61 and 59 Chinese characters; with version 2 they had one sentence of 35 and 38, and with the version 3 prompt on the old source 04's second sentence was dropped as unsupported, since that source held only the decree line.
+- **Version key.** Every stored summary carries `<model tag>|p<prompt version>`: SUMMARY_PROMPT_VERSION (1) for English documents, SUMMARY_PROMPT_VERSION_CJK (2) for documents whose summary source is mainly Chinese. A new chat model (Settings, Answer model) or a prompt change marks the summaries stale, and they are queued again. The Chinese version moved to 2 with the Chinese caps of 2026-11-04 (owner request: 100 characters in up to two sentences for a document, 60 for a section), so only Chinese summaries were made again. With version 3 (two sentences asked for, the deeper source) the dev library's two Chinese documents got two verified sentences each, 61 and 59 Chinese characters; with version 2 they had one sentence of 35 and 38, and with the version 3 prompt on the old source one document's second sentence was dropped as unsupported, since that source held only the decree line.
 
 ### Batches
 
 Section summaries of one document go to the model up to 5 at a time (BATCH_MAX_SECTIONS), as long as their text stays under about 4000 tokens (BATCH_MAX_TOKENS; one token per Chinese character, one per four other characters). The prompt numbers the sections and asks for one line per section starting with its number (sectionBatchPrompt); the reply is read back by number (parseBatchReply). Verification is unchanged: each sentence is cleaned, capped and checked against its own section alone, exactly as a single summary. A section the reply skips or runs over the cap for is asked again on its own, with the shorter retry, so a batch never keeps less than single calls would. In the queue each section stays its own job, so Summaries n of m still counts sections, and a pause puts the whole batch back at the front.
 
-Measured on 2026-11-04 on the owner's Mac over 20 sections of the Procurement Regulations (with more than 200 characters of text):
+Measured on 2026-11-04 on the owner's Mac over 20 sections of one long English regulation of the test corpus (with more than 200 characters of text):
 
 | Model | One section per call | Batched | Kept, one per call | Kept, batched |
 | --- | --- | --- | --- | --- |

@@ -240,8 +240,8 @@ function references(docs: BrowseDocument[], families: FamilyResult, clauses: boo
         const flat = hay.replace(/\s+/g, '');
         const cjk = cjkNames.find((x) => flat.includes(x));
         if (cjk) return cjk;
-        // A title in marks that is a name of b or holds one (《中华人民共和国标准施工招标文件》); a
-        // mark that is only part of a name (《商品包装》 in 商品包装政府采购需求标准) is not enough.
+        // A title in marks that is a name of b or holds one (《某市差旅费管理办法》); a
+        // mark that is only part of a name (《差旅费》 in 差旅费管理办法) is not enough.
         for (const t of marksOf[i]!) {
           if (t.length < 4) continue;
           const hit = cjkNames.find((x) => x === t || t.includes(x));

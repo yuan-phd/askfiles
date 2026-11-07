@@ -8,7 +8,7 @@ src/main/graph/service.ts (GraphService) builds the graph from the current libra
 
 The graph is stored as `<dataDir>/libraries/<id>/graph.json`, beside browse/. The smoke tests read it to check that the graph lists the test documents (scripts/smoke-mac.sh, scripts/smoke-windows.mjs).
 
-Build time, measured on the owner's corpora on an M1 Max: 270 ms for the 12 English documents, 50 ms for the 15 Chinese ones. Most of the time goes to the reference search.
+Build time, measured on the two test corpora on an M1 Max: 270 ms for the 12 English documents, 50 ms for the 15 Chinese ones. Most of the time goes to the reference search.
 
 ## Kinds
 
@@ -32,14 +32,9 @@ Every density is counted per thousand words, a CJK character counting as two thi
 
 The highest score wins. A best score below 0.25 (MIN_KIND_SCORE), or a tie, gives other.
 
-Calibration: corpus S and L in test/fixtures, and the owner's two corpora, English T1 (12 files) and Chinese ZH (15 files), read from the browse files the eval runs keep in ~/AskFiles-eval/runs. The owner corpora results:
+Calibration: corpus S and L in test/fixtures, and the two private test corpora (public procurement regulations and guidance, 12 English and 15 Chinese files), read from the browse files their eval runs keep. On those, regulations and procedures come out normative, guidance documents and policies explanatory, plan templates and bidding documents template, and spreadsheets and table-heavy standards data.
 
-- the Procurement Regulations, Procedure and the Chinese 规定 and 办法 come out normative;
-- the four guidances, the Policy and the Directive come out explanatory;
-- the plan template, the Request for Bids and the three 招标文件 come out template;
-- the spreadsheets and the table-heavy 台式计算机需求标准 come out data.
-
-src/main/graph/kinds.test.ts checks these where the files exist and skips otherwise.
+src/main/graph/kinds.test.ts checks these when ASKFILES_EVAL_RUNS points at the runs folder and skips otherwise.
 
 ## Families
 
@@ -52,7 +47,7 @@ src/main/graph/families.ts. Two documents are one family when their family keys 
 - a copy marker ((2), 副本);
 - every character that is not a letter or digit.
 
-Examples: the PDF and Word copy of 必须招标的工程项目规定, and Procurement Regulations 2024 and 2025. A key needs at least 4 letters, or 3 CJK characters.
+Examples: the PDF and Word copy of 差旅费管理办法, and Staff Regulations 2024 and 2025. A key needs at least 4 letters, or 3 CJK characters.
 
 A family's members are ordered oldest first:
 
@@ -75,18 +70,14 @@ src/main/graph/edges.ts. Each edge has a kind and a weight. A pair linked by the
 | Kind | Rule | Weight |
 | --- | --- | --- |
 | headings | At least 2 shared normalized headings (the browse heading key). The page parts of one long section (Title (page 2)) and (continued) count once. Headings that are only numbering (第一章, Chapter 3) are left out | Number of shared headings |
-| reference | One document's text names another. Names are the browse identifiers of several words or of 4 or more CJK characters: Procurement Regulations, 必须招标的工程项目规定. A 《title》 mark counts when it holds the name. With clauseReferences (legal-finance), a single type word counts after a clause reference: paragraph 5.9 of the Regulations. Documents of one family are not linked this way | Sections that mention it; up to 5 passages kept |
+| reference | One document's text names another. Names are the browse identifiers of several words or of 4 or more CJK characters: Staff Regulations, 差旅费管理办法. A 《title》 mark counts when it holds the name. With clauseReferences (legal-finance), a single type word counts after a clause reference: paragraph 5.9 of the Regulations. Documents of one family are not linked this way | Sections that mention it; up to 5 passages kept |
 | version | Consecutive members of a family. sameIssue marks two formats of one issue | 1 |
 | related | General profile only. Rare terms are content words of 4 or more letters and CJK character pairs found in at least 2 documents and at most 10 percent of them (2 in a small library). A pair needs 5 shared rare terms (RELATED_MIN_SHARED) and a set cosine of 0.08 (RELATED_MIN_SCORE: shared terms over the geometric mean of both sets), and must be among the 3 best pairs of both documents | Shared rare terms |
 | project | Team work. A title word of 3 or more letters, not a cue word, month or number, in at least 2 titles and at most 30 percent of them; Chinese titles by character pairs, two pairs making one name | Shared names |
 | ticket | Team work. The same ticket id (ABC-123) in two documents | Shared ids |
 | date | Team work. Two documents of one type, dated in the title or front matter, at most 31 days apart, next to each other in date order | 1 |
 
-On the owner's English corpus (legal-finance) this gives 7 shared-heading edges and 20 reference edges. The Chinese corpus gives:
-
-- 3 shared-heading edges between the three 招标文件;
-- 6 reference edges, from texts that cite 《必须招标的工程项目规定》 and 《商品包装政府采购需求标准（试行）》;
-- 1 version edge between the PDF and the Word copy.
+On the English test corpus (legal-finance) this gives 7 shared-heading edges and 20 reference edges. The Chinese test corpus gives 3 shared-heading edges between three bidding templates, 6 reference edges from texts that cite another document by its title in 《》 marks, and 1 version edge between the PDF and the Word copy of one document.
 
 Chinese relatedness works on character pairs and is rougher than English.
 

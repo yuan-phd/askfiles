@@ -522,7 +522,7 @@ export interface ChoiceSettings {
 
 /**
  * Sections selected for a question that names two or more files (documentAffinity): a cross-file
- * question needs a section of each, and the Balanced count of 5 left one file out (Q04, Q09).
+ * question needs a section of each, and the Balanced count of 5 left one file out on two questions.
  */
 export const AFFINITY_MULTI_SECTIONS = 6;
 

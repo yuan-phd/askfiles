@@ -15,7 +15,7 @@ Overview graph, document profiles and the summary layer. Start from main on a ne
 
 ## Part C: Overview page, fifth entry in the Browse sidebar
 
-Port the owner's earlier D3 graph (code supplied in ~/AskFiles-eval/old_wiki_code_answer.txt; read it first) with these changes and nothing else changed in its feel:
+Port the owner's earlier D3 graph (code supplied outside the repository in <eval-dir>; read it first) with these changes and nothing else changed in its feel:
 1. D3 v7 bundled locally, never loaded from a CDN.
 2. Force layout defaults as in the original: link distance 100, charge −300, collide 30; node radius from link count clamped 5 to 14; labels always visible; hover highlights the node and neighbours and fades the rest to 0.1; click opens the Document page; drag pins while dragging; search highlights matches and their neighbours; the legend stays fixed outside the zoom group.
 3. A layered layout toggle replacing the people ring: bands by type in the profile's band order, using forceY with band positions computed from the current height, not fixed pixels.
@@ -42,4 +42,4 @@ While the current library is indexing, the Ask question box is disabled and show
 - Smoke: add one check that the overview data exists after indexing and lists the test documents.
 - Docs: docs/graph.md, docs/profiles.md, docs/summaries.md, and the user guide updated with Overview and summaries in plain language.
 
-Unit tests and lint, git checkout -- upstream, push the branch, write the PR body to ~/AskFiles-eval/pr-overview.md, print the compare URL, and wait for the PR number; then watch the mac workflow until green. Stop.
+Unit tests and lint, git checkout -- upstream, push the branch, write the PR body to <eval-dir>/pr-overview.md, print the compare URL, and wait for the PR number; then watch the mac workflow until green. Stop.

@@ -273,9 +273,9 @@ export const STRIP_MIN_TOKENS = 3;
 
 /**
  * The tokens a sentence is scored on: with stripQuestion, those not in the question when at least
- * STRIP_MIN_TOKENS distinct ones remain; else all. Holdout H06 (寄递用的封口带宽度上限是不大于 45mm,
- * whose first eleven pairs repeat the question) scores 0.27 on all its pairs against the section
- * that holds 不大于 45mm and 0.75 on the rest.
+ * STRIP_MIN_TOKENS distinct ones remain; else all. A short Chinese sentence whose first pairs
+ * repeat the question scored 0.27 on all its pairs against the section that holds its fact, and
+ * 0.75 on the rest.
  */
 export function scoringTokens(
   tokens: string[],
@@ -293,8 +293,8 @@ const HAS_WORDS = /[\p{L}\p{N}]{2}/u;
 /**
  * leadInExempt: claim i is a structural lead-in when it carries no citation, ends with a colon
  * (: or the full-width one), and the next claim with words carries a written citation. List
- * markers on their own (1. ) have no words and are skipped. Chinese Q18 (要求如下：then two cited
- * items) and holdout H01 (First, the order ...: then the cited steps) are the cases.
+ * markers on their own (1. ) have no words and are skipped. The cases: 要求如下：then two cited
+ * items, and First, the order ...: then the cited steps.
  */
 export function isLeadIn(claims: Claim[], i: number): boolean {
   const c = claims[i];
