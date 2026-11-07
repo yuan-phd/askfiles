@@ -14,7 +14,12 @@ Thank you for testing AskFiles. This test version keeps a record of your questio
 
 **1. Install**
 
-- Mac: open AskFiles Test.dmg and drag AskFiles Test to Applications, then open it. If the Mac refuses, open System Settings, Privacy & Security, and click Open Anyway. On older macOS versions, right-click AskFiles Test in Applications and choose Open instead.
+- Mac: open AskFiles Test.dmg and drag AskFiles Test to Applications, then open it. If the Mac refuses, open System Settings, Privacy & Security, and click Open Anyway. On older macOS versions, right-click AskFiles Test in Applications and choose Open instead. If it still will not open, open Terminal, run the line below, then open the app again.
+
+  ```
+  xattr -dr com.apple.quarantine "/Applications/AskFiles Test.app"
+  ```
+- Work computers managed by your company may block the app. If so, use a personal computer.
 - Windows: double-click AskFiles-Test-Setup.exe. If a blue window says Windows protected your PC, click More info, then Run anyway.
 - On first start a short notice explains the record. Click Continue.
 
@@ -49,7 +54,12 @@ The person who invited you will send you the regular AskFiles. Install it: it ke
 
 **1. 安装**
 
-- Mac：打开 AskFiles Test.dmg，把 AskFiles Test 拖到“应用程序”，然后打开它。如果被阻止，请打开“系统设置”中的“隐私与安全性”，点按“仍要打开”。在较旧版本的 macOS 上，请改为在“应用程序”里右键点按 AskFiles Test，选择“打开”。
+- Mac：打开 AskFiles Test.dmg，把 AskFiles Test 拖到“应用程序”，然后打开它。如果被阻止，请打开“系统设置”中的“隐私与安全性”，点按“仍要打开”。在较旧版本的 macOS 上，请改为在“应用程序”里右键点按 AskFiles Test，选择“打开”。如果仍然无法打开，请打开“终端”，运行下面这一行，再重新打开应用。
+
+  ```
+  xattr -dr com.apple.quarantine "/Applications/AskFiles Test.app"
+  ```
+- 由公司管理的工作电脑可能会阻止这个应用。如果遇到这种情况，请使用个人电脑。
 - Windows：双击 AskFiles-Test-Setup.exe。如果出现蓝色窗口“Windows 已保护你的电脑”，请点击“更多信息”，再点击“仍要运行”。
 - 首次启动时会显示一段关于记录的简短说明，点击“继续”即可。
 
