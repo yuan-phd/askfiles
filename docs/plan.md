@@ -788,6 +788,19 @@ Owner, 2026-11-06. Any one of the following closes a phase:
 
 Verification-layer bugs surfaced by new corpora get a fixed small budget per release, two per release, outside the round rules.
 
+### Release plan
+
+Owner, 2026-11-07. In this order:
+
+1. Pre-test fixes: false unsupported markers, display-name format suffix (branch local/pretest-fixes).
+2. Test build with a local question log (next session). The logging code is compiled only into a test build; the release build contains no logging code and no setting for it; the release build deletes any log a test build left behind on first start.
+3. The user guide gets the final figures, after 1 and 2.
+4. User testing, plus one run on a 16 GB Mac.
+5. File-reference detection, its scope set from the real questions collected in testing; validated once on a fresh sealed holdout set; then the phase stops.
+6. Final figures into the user guide; release.
+
+Rule for findings from user testing: verification-layer bugs use the budget of two per release (Stopping conditions for a phase); anything the owner classes as a capability limit goes into the limits list; no new tuning round is opened from test findings.
+
 ### Phase 2 result
 
 Phase 2 closed on 2026-11-01 (owner decision) with v1; the indexing rounds and the answer layer rounds above changed it the same day. Rounds C1 and C2 kept nothing; round C3 (scopedQuotaV2) was kept, rounds S1 (keywordStemming) and X1 (perFileSubquery) were not, round X2 (headingPathBonus) was kept and confirmed seeded (S0b), X3 (namedFileQuota8) was not, also seeded (S0c), nor N1 (sourceFileNames) or N2 (display names in headers and question, name-stripping safeguards), round D1 (restatementExempt, new attribution definition) and N2a'' (N2a on D1: sourceDisplayNames, questionFileNames) were kept, D2 (marginReattribution, sentenceMatch) was tried and rolled back, D3 (sentenceOverlap, contentFreeExempt) not kept, round B (judgeRerank, with the identical-text hash of D4 fixed) kept under the amended cited_without_key rule, and cjkHeadings (round C4, not kept by the rules) is on by owner ruling, an exception recorded with round C4. The current kept configuration is round B: judgeRerank on round D4 (N2a'' (D1 and N2a on X2) with restatementExempt off and duplicateTextAttribution on, its hash fixed in round B), whose rows are in the round table under the attribution definition of round D1; the result table below was not rewritten and still shows round X2 under the old definition. The kept rows below are round X2, which ran with cjkHeadings on both corpora (the English split is the same with it on and off). The kept configuration is config/presets.json:
