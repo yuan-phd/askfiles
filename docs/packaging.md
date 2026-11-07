@@ -54,9 +54,9 @@ This runs, in order:
 2. `scripts/build.sh` with PACKAGE_TARGET=mac-arm64: checks resources/ollama, applies patches/, builds the upstream frontend into upstream/server/public (and records the frontend's packages in frontend/dist/.askfiles-notices.json), installs server and collector production dependencies, runs prisma generate, removes Prisma engines for every platform except darwin-arm64, checks that dev dependencies are gone, prunes for darwin-arm64 (scripts/prune.mjs), prints sizes
 3. `npm run notices -- --strict`: regenerates THIRD-PARTY-NOTICES from the pruned darwin trees (see Third-party notices below)
 4. `vitest run scripts/third-party-notices.test.mjs`: fails the packaging when a listed package that names a license has no text in the file, or when a package the prune step removes is still listed
-5. `electron-builder --mac dir --arm64`: creates release/mac-arm64/AskFiles.app without a DMG (layout below); THIRD-PARTY-NOTICES goes into app.asar here
+5. `electron-builder --mac dir --arm64 --publish never`: creates release/mac-arm64/AskFiles.app without a DMG (layout below); THIRD-PARTY-NOTICES goes into app.asar here
 6. `scripts/sign-adhoc.sh`: ad-hoc signs every Mach-O file under Contents/Resources, then the whole app, then verifies with `codesign --verify --deep --strict`
-7. `electron-builder --mac dmg --arm64 --prepackaged release/mac-arm64/AskFiles.app`: wraps the signed app into release/AskFiles-0.1.0-arm64.dmg
+7. `electron-builder --mac dmg --arm64 --prepackaged release/mac-arm64/AskFiles.app --publish never`: wraps the signed app into release/AskFiles-0.1.0-arm64.dmg. Every packaging command passes --publish never: on CI electron-builder otherwise publishes implicitly (on a push to main it asked for a GitHub token and failed, mac run #65); builds are distributed from the workflow artifacts only
 
 The DMG is built after signing on purpose: signing the app after the DMG exists would leave an unsigned copy inside the DMG.
 
