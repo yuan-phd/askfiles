@@ -35,3 +35,14 @@ describe('verifyStripQuestion (round V2)', () => {
     expect(scoringTokens(cjkTokens(sentence), q, false)).toEqual(cjkTokens(sentence));
   });
 });
+
+describe('verifyStripMin (round P1, F3, measured and not kept)', () => {
+  it('scores H06 on all its pairs when the guard is 5 (four remain)', () => {
+    const o = { cjk: true, question: [question], restatement: false, stripQuestion: true } as const;
+    expect(verifyClaims([claim(sentence, [2])], passages, o).claims[0]).toMatchObject({ citations: [2] });
+    expect(verifyClaims([claim(sentence, [2])], passages, { ...o, stripMin: 5 }).claims[0]).toMatchObject({
+      citations: [],
+      unsupported: true,
+    });
+  });
+});

@@ -113,18 +113,61 @@ export function displayName(file: string): string {
   return name || file;
 }
 
+/** The format of a file by its extension: PDF, Word (.doc, .docx), else the extension in capitals. */
+export function formatOf(file: string): string {
+  const ext = (/\.([^.\s]{1,5})$/.exec(file)?.[1] ?? '').toLowerCase();
+  if (ext === 'pdf') return 'PDF';
+  if (ext === 'doc' || ext === 'docx') return 'Word';
+  return ext.toUpperCase();
+}
+
+/** The format label a display name takes: PDF版, Word版 after a Chinese name, (PDF), (Word) after another. */
+export function formatLabel(file: string, name: string): string {
+  const f = formatOf(file);
+  if (!f) return '';
+  return isCjkName(name) ? `${f}版` : `(${f})`;
+}
+
+/**
+ * displayFormatSuffix (docs/plan.md round P2): display names for the files of one library. When
+ * two or more files give the same display name and their formats differ (04_必须招标的工程项目规定.pdf
+ * and 13_必须招标的工程项目规定.docx), each gets its format label after a space: 必须招标的工程项目规定
+ * PDF版 and 必须招标的工程项目规定 Word版; Procurement Plan (PDF) and Procurement Plan (Word). Files
+ * of one format with the same name keep it, since a label would not tell them apart.
+ */
+export function libraryDisplayNames(files: string[]): Map<string, string> {
+  const byName = new Map<string, string[]>();
+  for (const f of new Set(files)) {
+    const n = displayName(f);
+    byName.set(n, [...(byName.get(n) ?? []), f]);
+  }
+  const out = new Map<string, string>();
+  for (const [name, group] of byName) {
+    const differ = new Set(group.map(formatOf)).size > 1;
+    for (const f of group) {
+      const label = differ ? formatLabel(f, name) : '';
+      out.set(f, label ? `${name} ${label}` : name);
+    }
+  }
+  return out;
+}
+
 /**
  * questionFileNames (docs/plan.md round N2): in the question text sent to the model, every
  * indexed file name written whole with its extension (in backticks or not, on word boundaries)
  * becomes its display name. The retrieval query is not changed by this.
  */
-export function rewriteFileNames(question: string, files: string[]): string {
+export function rewriteFileNames(
+  question: string,
+  files: string[],
+  nameOf: (file: string) => string = displayName,
+): string {
   let out = question;
   // Longest first, so a file name inside another one is not replaced first.
   for (const file of [...new Set(files)].sort((a, b) => b.length - a.length)) {
     const name = file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const re = new RegExp(`\`${name}\`|(?<![\\p{L}\\p{N}_.])${name}(?![\\p{L}\\p{N}_])`, 'gu');
-    out = out.replace(re, () => displayName(file));
+    out = out.replace(re, () => nameOf(file));
   }
   return out;
 }

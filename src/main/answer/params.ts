@@ -248,6 +248,31 @@ export interface AnswerParams {
    * and as sent), unless fewer than three remain; then by all of them as before (verify.ts, round V2).
    */
   verifyStripQuestion: boolean;
+  /**
+   * verifyStripQuestion's guard: below this many distinct content words left after the question's
+   * are taken out, a sentence is scored on all its words (verify.ts STRIP_MIN_TOKENS, 3 from round
+   * V2; round P1 F3 measured 5).
+   */
+  verifyStripMin: number;
+  /**
+   * An uncited sentence that ends with a colon and whose next sentence with words carries a written
+   * citation is a structural lead-in (The requirements are as follows:): no marker, no attribution
+   * credit, no failure (verify.ts, docs/plan.md round P1, F1).
+   */
+  leadInExempt: boolean;
+  /**
+   * Files of one library that give the same display name and differ in format get a format label
+   * (PDF版, Word版 after a Chinese name, (PDF), (Word) after another; other formats by extension)
+   * in source headers, the question as sent, source cards and the identical-text tiers
+   * (identifiers.ts libraryDisplayNames, docs/plan.md round P2).
+   */
+  displayFormatSuffix: boolean;
+  /**
+   * Citation verification compares English content words by their Porter stems, sentence, sources
+   * and question alike (verify.ts stemTokens, docs/plan.md round P3); Chinese pairs unchanged.
+   * Retrieval and the keyword index are not affected (that was keywordStemming, round S1).
+   */
+  verifyStemEnglish: boolean;
 }
 
 /** The crossDocument parts in effect: crossDocument's own, or the quota alone with crossDocQuota. */
@@ -311,6 +336,10 @@ export const DEFAULT_PARAMS: AnswerParams = {
   judgeRerank: false,
   ruleEchoRefusal: false,
   verifyStripQuestion: false,
+  verifyStripMin: 3,
+  leadInExempt: false,
+  displayFormatSuffix: false,
+  verifyStemEnglish: false,
 };
 
 /** Tokens kept free for the answer itself and for the instructions and the question. */
@@ -435,6 +464,10 @@ const CHECKS: Record<keyof AnswerParams, (v: unknown) => Problem> = {
   judgeRerank: bool,
   ruleEchoRefusal: bool,
   verifyStripQuestion: bool,
+  verifyStripMin: intAtLeast(1),
+  leadInExempt: bool,
+  displayFormatSuffix: bool,
+  verifyStemEnglish: bool,
 };
 
 /** Problems with an answer block, each prefixed with at; every key is required. */

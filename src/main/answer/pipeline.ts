@@ -10,6 +10,7 @@
 import type { BrowseDocument, BrowseSection, DocumentRef, KeywordOptions, RankedSection } from '../browse/index.js';
 import {
   displayName,
+  libraryDisplayNames,
   mentionedDocuments,
   namedFileGroups,
   rewriteFileNames,
@@ -718,9 +719,14 @@ export async function answer(
   emit: (e: AnswerEvent) => void = () => {},
   signal?: AbortSignal,
 ): Promise<AnswerResult> {
+  // displayFormatSuffix: files of the library sharing a display name are told apart by format.
+  const libraryNames = s.params.displayFormatSuffix
+    ? libraryDisplayNames((deps.index?.identities?.() ?? []).map((f) => f.file))
+    : null;
+  const nameOf = (file: string) => libraryNames?.get(file) ?? displayName(file);
   // sourceDisplayNames: cards carry the same display name the prompt headers show.
   const card: typeof cardOf = s.params.sourceDisplayNames
-    ? (n, section, rerank, trimmed) => ({ ...cardOf(n, section, rerank, trimmed), display: displayName(section.file) })
+    ? (n, section, rerank, trimmed) => ({ ...cardOf(n, section, rerank, trimmed), display: nameOf(section.file) })
     : cardOf;
   const nearest = ranked(r)
     .slice(0, NEAREST_COUNT)
@@ -782,7 +788,7 @@ export async function answer(
     title: x.title,
     type: typeOf.get(x.documentId) ?? '',
     group: cross?.documentIds.includes(x.documentId) ? x.file : '',
-    ...(s.params.sourceFileNames || s.params.sourceDisplayNames ? { display: displayName(x.file) } : {}),
+    ...(s.params.sourceFileNames || s.params.sourceDisplayNames ? { display: nameOf(x.file) } : {}),
   }));
   const enumerate = s.params.enumerateWhenAsked && isSetQuestion(question);
   // questionFileNames: the model reads file names in the question as display name (file name);
@@ -791,6 +797,7 @@ export async function answer(
     ? rewriteFileNames(
         question,
         (deps.index?.identities?.() ?? []).map((f) => f.file),
+        nameOf,
       )
     : question;
   if (asked !== question) deps.log?.(`[answer] question file names: ${asked}`);
@@ -926,7 +933,7 @@ export async function answer(
     const own = named ? sources.filter((c) => c.documentId === named).map((c) => c.n) : [];
     // verifyStripNames: whole display names and backticked file names do not count as overlap.
     const phrases = s.params.verifyStripNames
-      ? namePhrases((deps.index?.identities?.() ?? []).map((f) => displayName(f.file)))
+      ? namePhrases((deps.index?.identities?.() ?? []).map((f) => nameOf(f.file)))
       : null;
     const scored = phrases
       ? claims.map((c) => {
@@ -974,7 +981,9 @@ export async function answer(
         ...(s.params.restatementExempt || s.params.contentFreeExempt || s.params.verifyStripQuestion
           ? { question: [question, asked], restatement: s.params.restatementExempt }
           : {}),
-        ...(s.params.verifyStripQuestion ? { stripQuestion: true } : {}),
+        ...(s.params.verifyStripQuestion ? { stripQuestion: true, stripMin: s.params.verifyStripMin } : {}),
+        ...(s.params.leadInExempt ? { leadIn: true } : {}),
+        ...(s.params.verifyStemEnglish ? { stem: true } : {}),
         ...(s.params.contentFreeExempt ? { contentFree: true } : {}),
         ...(s.params.sentenceOverlap && !scores
           ? {
@@ -996,7 +1005,7 @@ export async function answer(
       const d = shareDuplicates(
         claims,
         sources.map((c) => ({ passage: c.passage, file: c.file })),
-        s.params.duplicateTextTiers ? { question: [question, asked] } : undefined,
+        s.params.duplicateTextTiers ? { question: [question, asked], nameOf } : undefined,
       );
       claims = d.claims;
       verification = {
@@ -1010,11 +1019,12 @@ export async function answer(
         (v.stats.restated !== undefined ? `, ${v.stats.restated} restating the question` : '') +
         (v.stats.marginMoved !== undefined ? `, ${v.stats.marginMoved} moved by the margin` : '') +
         (v.stats.contentFree !== undefined ? `, ${v.stats.contentFree} content-free` : '') +
+        (v.stats.leadIns ? `, ${v.stats.leadIns} lead-ins` : '') +
         (verification.duplicateShared !== undefined
           ? `, ${verification.duplicateShared} shared with same-text sections`
           : '') +
         (verification.duplicateTiers
-          ? ` (by sentence ${verification.duplicateTiers.sentence}, by question ${verification.duplicateTiers.question}, all ${verification.duplicateTiers.all})`
+          ? ` (by sentence ${verification.duplicateTiers.sentence}, by question ${verification.duplicateTiers.question}, by format ${verification.duplicateTiers.format}, all ${verification.duplicateTiers.all})`
           : ''),
     );
   }

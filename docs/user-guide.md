@@ -36,6 +36,8 @@ How well questions about two files work depends on how you name the files:
 
 For a question about two documents, name both files.
 
+A sentence with an asterisk (*) after it is shown in a lighter colour. The line under the answer says: Starred sentences have no word-for-word support in the sources. They may be a summary or conclusion drawn from the sources, or they may be inaccurate. Check them against the source cards. For an answer in Chinese it says: 带星号的句子在来源中没有逐字对应的原文，可能是根据来源归纳的结论，也可能不准确，请对照来源卡片核实。
+
 While AskFiles is reading new files, the question box is switched off and says Reading new files, and how many are left. It comes back as soon as they are read, so an answer never misses a file you just added.
 
 ## Browsing

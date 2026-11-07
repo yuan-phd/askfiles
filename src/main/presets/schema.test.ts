@@ -48,11 +48,17 @@ describe('config/presets.json', () => {
       'questionFileNames',
       'sourceDisplayNames',
       'duplicateTextAttribution',
+      // Round P2 (2026-11-07): D4b with the format tier.
+      'duplicateTextTiers',
       // Round B (2026-11-06).
       'judgeRerank',
       // Rounds V1 and V2 (2026-11-06).
       'ruleEchoRefusal',
       'verifyStripQuestion',
+      // Round P1, F1 (2026-11-07).
+      'leadInExempt',
+      // Round P3 (2026-11-07).
+      'verifyStemEnglish',
     ];
     for (const t of p.tiers) {
       // Summaries use the Ask model on every tier (owner decision 2026-11-04).
@@ -67,6 +73,8 @@ describe('config/presets.json', () => {
       expect([t.answer.marginReattribution, t.answer.sentenceMatchMin, t.answer.sentenceMatchMinCjk]).toEqual([
         0, 0.5, 0.3,
       ]);
+      // Round P1 F3 (guard 5) not kept: the guard of round V2 stays.
+      expect(t.answer.verifyStripMin).toBe(3);
       // Indexing rounds 2026-11-01: tables kept (I1); Chinese headings on by owner ruling after C4; OCR upscaling (I3) not.
       expect(t.indexing).toEqual({ structuredTables: true, cjkHeadings: true, ocrUpscale: false });
     }

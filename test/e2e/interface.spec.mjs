@@ -234,7 +234,37 @@ test.describe('unsupported sentences', () => {
     expect(await color(starred)).not.toBe(await color(page.getByTestId('claim').first()));
     await expect(page.getByTestId('claim').first().getByTestId('unsupported-mark')).toHaveCount(0);
     await expect(page.getByTestId('answer-note')).toHaveText(
-      '* Starred sentences have no supporting passage in the library and may be inaccurate.',
+      '* Starred sentences have no word-for-word support in the sources. They may be a summary or conclusion drawn from the sources, or they may be inaccurate. Check them against the source cards.',
+    );
+  });
+
+  test('a Chinese answer gets the Chinese line, and a list lead-in no asterisk', async ({ page }) => {
+    const REQ = card(1, { title: '第五条', path: ['第五条'], passage: '施工单项合同估算价在400万元人民币以上。' });
+    const run = answerRun({
+      sources: [REQ],
+      deltas: [partsOf('门槛如下：\n- 施工400万元人民币以上 [1]\n两者一致。')],
+      result: {
+        claims: [
+          { text: '门槛如下：\n', citations: [], unsupported: false, leadIn: true },
+          { text: '- 施工400万元人民币以上 \n', citations: [1], unsupported: false },
+          { text: '两者一致。', citations: [], unsupported: true },
+        ],
+        cited: [REQ],
+      },
+    });
+    await mockLibrary(page);
+    await stubAnswer(page, { runs: { '门槛是多少？': run } });
+    await page.goto(pageUrl());
+    await page.getByTestId('query').fill('门槛是多少？');
+    await page.getByTestId('query').press('Enter');
+    await expect(page.getByTestId('unsupported-mark')).toHaveCount(1);
+    await expect(page.getByTestId('claim').first()).toHaveText('门槛如下：');
+    await expect(page.getByTestId('answer-note')).toHaveText(
+      '* 带星号的句子在来源中没有逐字对应的原文，可能是根据来源归纳的结论，也可能不准确，请对照来源卡片核实。',
+    );
+    await expect(page.getByTestId('unsupported-mark')).toHaveAttribute(
+      'title',
+      '带星号的句子在来源中没有逐字对应的原文，可能是根据来源归纳的结论，也可能不准确，请对照来源卡片核实。',
     );
   });
 
