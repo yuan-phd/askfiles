@@ -239,7 +239,7 @@ test.describe('unsupported sentences', () => {
   });
 
   test('a Chinese answer gets the Chinese line, and a list lead-in no asterisk', async ({ page }) => {
-    const REQ = card(1, { title: '第五条', path: ['第五条'], passage: '施工单项合同估算价在400万元人民币以上。' });
+    const REQ = card(1, { title: '第五条', path: ['第五条'], passage: '差旅单次报销申请额在400万元人民币以上。' });
     const run = answerRun({
       sources: [REQ],
       deltas: [partsOf('门槛如下：\n- 施工400万元人民币以上 [1]\n两者一致。')],

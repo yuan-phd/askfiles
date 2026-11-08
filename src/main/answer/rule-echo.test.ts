@@ -5,7 +5,7 @@ import { isRuleEcho, splitRuleEchoes } from './rule-echo.js';
 const claim = (text: string, citations: number[] = []): Claim => ({ text, citations, unsupported: !citations.length });
 
 describe('ruleEchoRefusal (round V1)', () => {
-  it('catches holdout H03, a copy of the not-found rule', () => {
+  it('catches a holdout reply that copies the not-found rule', () => {
     expect(
       isRuleEcho(
         'The sources do not state the specific fact the question asks for, even though they discuss related material: do not answer from related material or from placeholders .',
@@ -13,9 +13,9 @@ describe('ruleEchoRefusal (round V1)', () => {
     ).toBe(true);
   });
 
-  it('catches the bare marker (holdout H07) but not an answer sentence or a remark about the sources', () => {
+  it('catches the bare marker after a partial answer but not an answer sentence or a remark about the sources', () => {
     expect(isRuleEcho('NOT_IN_SOURCES')).toBe(true);
-    expect(isRuleEcho('The Standstill Period lasts ten Business Days.')).toBe(false);
+    expect(isRuleEcho('The Suspension Period lasts ten Calendar Days.')).toBe(false);
     expect(isRuleEcho('The sources do not specify the exact amount allocated per year.')).toBe(false);
     expect(isRuleEcho('因此，关于公示期的具体时长，资料中没有相关信息。')).toBe(false);
     expect(isRuleEcho('.')).toBe(false);

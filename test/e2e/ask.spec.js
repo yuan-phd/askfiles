@@ -98,8 +98,8 @@ test.describe('Ask page with the answer pipeline stubbed', () => {
 
   test('a card with a display name shows it first and the file name smaller beside it', async ({ page }) => {
     const named = card(1, {
-      file: '01_Procurement_Regulations_2025.pdf',
-      display: 'Procurement Regulations 2025',
+      file: '01_Maintenance_Regulations_2025.pdf',
+      display: 'Maintenance Regulations 2025',
       title: 'Thresholds',
       path: ['Thresholds'],
       passage: 'The threshold is 50,000.',
@@ -118,8 +118,8 @@ test.describe('Ask page with the answer pipeline stubbed', () => {
     await open(page, { runs: { [q]: run } });
     await askQuestion(page, q);
     const cards = page.getByTestId('sources').getByTestId('source-card');
-    await expect(cards.getByTestId('source-file')).toHaveText(['Procurement Regulations 2025']);
-    await expect(cards.getByTestId('source-filename')).toHaveText(['01_Procurement_Regulations_2025.pdf']);
+    await expect(cards.getByTestId('source-file')).toHaveText(['Maintenance Regulations 2025']);
+    await expect(cards.getByTestId('source-filename')).toHaveText(['01_Maintenance_Regulations_2025.pdf']);
   });
 
   test('shows the streamed text with citations before the answer is done', async ({ page }) => {

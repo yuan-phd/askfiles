@@ -37,7 +37,7 @@ These figures were measured on our own test documents: procurement regulations a
 
 - **Questions about one document, answer complete** (checked by hand): English 32 of 36 (89 percent)[^english], Chinese 19 of 20 (95 percent). Most answers state everything the question asks for, without mistakes.
 - **Comparing two documents, when the question names both files**: the right sources are cited in 9 of 10 (90 percent), and the answer is complete in 8 of 10 (80 percent). Naming both files lets AskFiles look in each one.
-- **Comparing two documents, when the question describes them or names neither** (for example the 2024 directive, the guidance): the right sources are cited in 2 of 8 (25 percent), and the answer is complete in 3 of 8 (38 percent). The main reason is that AskFiles did not recognise which two documents were meant.
+- **Comparing two documents, when the question describes them or names neither** (for example the travel policy, the 2023 handbook): the right sources are cited in 2 of 8 (25 percent), and the answer is complete in 3 of 8 (38 percent). The main reason is that AskFiles did not recognise which two documents were meant.
 - **Questions with no answer in the documents**: AskFiles said it could not find the answer in 21 of 21 (100 percent), and made nothing up. When your documents do not hold the answer, it says so.
 - **Time**: about 14 seconds per question in English and about 7 seconds in Chinese. A question that names two documents takes about 76 seconds in all, because AskFiles looks through each named document once more. This was measured on a Mac with 64 GB of memory; it is slower on computers with less memory.
 

@@ -6,9 +6,9 @@ import { cjkTokens, isContentFree, isRestatement, contentTokens, verifyClaims } 
 describe('sourceSentences', () => {
   it('splits English at .!? but not after abbreviations, initials, list markers or inside numbers', () => {
     const text =
-      'Under para. 5.88 the Borrower awards the contract. See e.g. Annex 1! Is it final?\n\ng. developing a framework; and\n1. Prepare the plan.';
+      'Under para. 5.88 the Employer awards the contract. See e.g. Annex 1! Is it final?\n\ng. developing a framework; and\n1. Prepare the plan.';
     expect(sourceSentences(text)).toEqual([
-      'Under para. 5.88 the Borrower awards the contract.',
+      'Under para. 5.88 the Employer awards the contract.',
       'See e.g. Annex 1!',
       'Is it final?',
       'g. developing a framework; and 1. Prepare the plan.',
@@ -16,11 +16,11 @@ describe('sourceSentences', () => {
   });
 
   it('splits Chinese at 。！？； and joins lines wrapped inside a sentence', () => {
-    const text = '违法行为记录公告期限为六个月。公告期满后，转\n\n入后台保存；依法限制的，从其决定！';
+    const text = '违规行为记录公示期限为六个月。公示期满后，转\n\n入档案保存；另有规定的，从其规定！';
     expect(sourceSentences(text)).toEqual([
-      '违法行为记录公告期限为六个月。',
-      '公告期满后，转入后台保存；',
-      '依法限制的，从其决定！',
+      '违规行为记录公示期限为六个月。',
+      '公示期满后，转入档案保存；',
+      '另有规定的，从其规定！',
     ]);
   });
 });

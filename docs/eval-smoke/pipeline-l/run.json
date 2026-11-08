@@ -11,17 +11,17 @@
   "gitCommit": "1d202e6154615b739cc08c65c3f9180620c69b5a",
   "corpus": {
     "label": "eval-l",
-    "path": "/home/user/askfiles/test/fixtures/eval-l/corpus"
+    "path": "<repo>/test/fixtures/eval-l/corpus"
   },
   "questions": {
-    "path": "/home/user/askfiles/test/fixtures/eval-l/questions.csv",
+    "path": "<repo>/test/fixtures/eval-l/questions.csv",
     "count": 6
   },
   "config": {
     "baseUrl": "",
     "apiKey": "",
     "storageDir": "",
-    "dataDir": "/home/user/askfiles/.eval-data",
+    "dataDir": "<repo>/.eval-data",
     "ollamaBin": "",
     "contextTokens": 4096,
     "workspace": "askfiles-eval",
@@ -57,7 +57,7 @@
       "promptVariant": "default"
     },
     "scope": "balanced",
-    "rerankerDir": "/home/user/askfiles/.eval-data/models/reranker",
+    "rerankerDir": "<repo>/.eval-data/models/reranker",
     "label": "smoke",
     "chatModel": "qwen3:0.6b",
     "embeddingModel": "all-minilm:latest"
@@ -73,8 +73,8 @@
   "server": {
     "mode": "managed",
     "baseUrl": "http://127.0.0.1:42789",
-    "dataDir": "/home/user/askfiles/.eval-data",
-    "logs": "/tmp/claude-0/-home-user-askfiles/cc187f10-20b7-5bab-a6af-c21aa63f4b3c/scratchpad/doc-eval-l/logs"
+    "dataDir": "<repo>/.eval-data",
+    "logs": "<scratch-dir>/doc-eval-l/logs"
   },
   "ollama": {
     "url": "http://127.0.0.1:44217",
@@ -144,7 +144,7 @@
     "embedMs": 205
   },
   "indexHash": "f380d743c1d4e696",
-  "retrievalCache": "/home/user/askfiles/.eval-data/retrieval-cache/f380d743c1d4e696",
+  "retrievalCache": "<repo>/.eval-data/retrieval-cache/f380d743c1d4e696",
   "stage1": {
     "questions": 6,
     "cached": 0,

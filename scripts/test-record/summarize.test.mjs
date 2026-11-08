@@ -69,7 +69,7 @@ function syntheticRecords() {
   const out = tmp();
   let t = Date.UTC(2026, 10, 10, 9, 0, 0);
   const at = () => new Date((t += 60_000));
-  const guidance = card('Contract Management Guidance.pdf', 'the Contract Management Guidance', ['4 Planning', 'Plan']);
+  const guidance = card('Building Management Guidance.pdf', 'the Building Management Guidance', ['4 Planning', 'Plan']);
   const handbook = card('staff-handbook.docx', 'Staff Handbook', ['Leave']);
 
   const anna = new TestRecord(tmp(), { now: () => new Date(2026, 10, 12, 9, 0, 0) });
@@ -78,7 +78,7 @@ function syntheticRecords() {
   );
   anna.append(
     questionRecord(
-      answered('What does the Contract Management Guidance say about the plan?', { cited: [guidance], starred: 2 }),
+      answered('What does the Building Management Guidance say about the plan?', { cited: [guidance], starred: 2 }),
       'Work',
       at(),
     ),
@@ -86,7 +86,7 @@ function syntheticRecords() {
   anna.append(
     questionRecord(
       answered('Compare the guidance and the handbook on reviews', {
-        named: ['Contract Management Guidance.pdf', 'staff-handbook.docx'],
+        named: ['Building Management Guidance.pdf', 'staff-handbook.docx'],
         cited: [guidance, handbook],
         starred: 1,
       }),
@@ -118,14 +118,14 @@ function syntheticRecords() {
 
 describe('referenceKind', () => {
   const names = {
-    files: new Set(['Contract Management Guidance.pdf', 'staff-handbook.docx']),
+    files: new Set(['Building Management Guidance.pdf', 'staff-handbook.docx']),
     displays: new Set(['the Staff Handbook']),
   };
   it.each([
     ['What is in budget-2026.xlsx?', 'file name'],
     ['How many days of leave are in staff-handbook.docx?', 'file name'],
     ['Leave rules in staff handbook', 'display name'],
-    ['What does Contract Management Guidance say?', 'file name'],
+    ['What does Building Management Guidance say?', 'file name'],
     ['What does the guidance say about plans?', 'description'],
     ['这份指南怎么说？', 'description'],
     ['《采购管理办法》第三条是什么？', 'description'],
@@ -148,7 +148,7 @@ describe('summarize', () => {
     });
     for (const q of [
       'How many days of leave are in staff-handbook.docx?',
-      'What does the Contract Management Guidance say about the plan?',
+      'What does the Building Management Guidance say about the plan?',
       'Compare the guidance and the handbook on reviews',
       'Who signs off?',
       '这份指南对合同管理计划有什么要求？',
@@ -157,7 +157,7 @@ describe('summarize', () => {
       expect(text).toContain(q);
     expect(text).toContain('3 exported files, 14 lines, 6 questions.');
     expect(text).toContain('## Named-file detection fired (1 of 6)');
-    expect(text).toContain('| Contract Management Guidance.pdf, staff-handbook.docx | 2 sections | no |');
+    expect(text).toContain('| Building Management Guidance.pdf, staff-handbook.docx | 2 sections | no |');
     expect(text).toContain('Refusals: 1.');
     expect(text).toContain('Starred sentences: 3 in 2 of 4 answers.');
     expect(text).toMatch(/\| library \| 3 \|\n\| document \| 2 \|\n\| find \| 1 \|/);

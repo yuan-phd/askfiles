@@ -44,18 +44,18 @@ test.beforeAll(() => {
     '/d/bank-procedure.pdf': [
       // The splitter folds the parent title into the first page part (its lead).
       [
-        'Operational Procurement Matters (page 4)',
+        'Operational Maintenance Matters (page 4)',
         3,
         4,
         'Prior review applies above the thresholds.',
-        ['Bank Procedure', 'Operational Procurement Matters'],
+        ['Firm Procedure', 'Operational Maintenance Matters'],
       ],
-      ['Operational Procurement Matters (page 5)', 3, 5, 'Post review covers the other contracts.'],
+      ['Operational Maintenance Matters (page 5)', 3, 5, 'Post review covers the other contracts.'],
       ['Fees', 2, 6, 'Fees before the table.'],
       ['Fees (continued)', 3, 7, 'Fees after the table.'],
     ],
     '/d/agency-guide.pdf': [
-      ['Operational Procurement Matters', 1, 2, 'The agency publishes its plan.'],
+      ['Operational Maintenance Matters', 1, 2, 'The agency publishes its plan.'],
       ['Fees', 1, 3, 'Agency fees are fixed.'],
     ],
   };
@@ -83,8 +83,8 @@ test('Compare merges a section cut by page into its parent and shows its full te
   );
   // Each heading appears once.
   await expect(page.getByTestId('compare-item')).toHaveCount(2);
-  await page.getByTestId('compare-item').filter({ hasText: 'Operational Procurement Matters' }).click();
-  await expect(page.getByTestId('compare-title')).toHaveText('Operational Procurement Matters');
+  await page.getByTestId('compare-item').filter({ hasText: 'Operational Maintenance Matters' }).click();
+  await expect(page.getByTestId('compare-title')).toHaveText('Operational Maintenance Matters');
   const cards = page.getByTestId('compare-card');
   await expect(cards).toHaveCount(2);
   const bank = cards.filter({ hasText: 'bank-procedure.pdf' });
@@ -112,7 +112,7 @@ test('the Document page shows the parent title once and a page marker at each pa
   const body = page.getByTestId('doc-sections');
   await expect(body).not.toContainText('(page');
   await expect(body).not.toContainText('(continued)');
-  await expect(body.locator('.doc-heading', { hasText: 'Operational Procurement Matters' })).toHaveCount(1);
+  await expect(body.locator('.doc-heading', { hasText: 'Operational Maintenance Matters' })).toHaveCount(1);
   await expect(body.locator('.doc-heading', { hasText: /^Fees$/ })).toHaveCount(1);
   const sections = page.getByTestId('doc-section');
   await expect(sections.nth(1).getByTestId('doc-section-title')).toHaveCount(0);

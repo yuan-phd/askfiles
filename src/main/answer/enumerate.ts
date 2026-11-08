@@ -16,7 +16,7 @@ const PLURAL = String.raw`[a-z][a-z-]*[a-hj-rt-z]s`;
 
 /**
  * A count before a plural noun, with at most one word between (three main groups, 3 weighted
- * scores). Four-digit years are not counts (the 2025 Procurement Regulations), nor decimals.
+ * scores). Four-digit years are not counts (the 2025 Staff Regulations), nor decimals.
  */
 const COUNT = new RegExp(
   String.raw`(?<![\p{L}\p{N}.,])(${NUMBER_WORDS}|\d{1,3})(?![\p{N}.,]\d)\s+(?:[a-z-]+\s+)?(?:${PLURAL})\b`,

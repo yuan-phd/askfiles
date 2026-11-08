@@ -159,8 +159,8 @@ describe('judgeRerank in the pipeline', () => {
     Array.from({ length: 7 }, (_, i) => ({ title: `Part ${i}`, parts: [`Approval and signing rule ${w} ${i}.`] }));
   function setup(reply: (text: string) => string) {
     const lib = fixtureLibrary([
-      { name: 'Procurement_Regulations.pdf', sections: sections('reg') },
-      { name: 'Contract_Management_Guidance.pdf', sections: sections('guide') },
+      { name: 'Maintenance_Regulations.pdf', sections: sections('reg') },
+      { name: 'Building_Management_Guidance.pdf', sections: sections('guide') },
       { name: 'Other_Notes.pdf', sections: [{ title: 'Note', parts: ['General remark.'] }] },
     ]);
     cleanups.push(lib.cleanup);
@@ -191,7 +191,7 @@ describe('judgeRerank in the pipeline', () => {
     return { deps, ids: [id(0), id(1)], queries, judged };
   }
   const q =
-    'Compare the Procurement Regulations and the Contract Management Guidance. When is approval due under the Regulations?';
+    'Compare the Maintenance Regulations and the Building Management Guidance. When is approval due under the Regulations?';
   const likes = (t: string) => (/rule \w+ 5\./.test(t) ? '3' : /rule \w+ 0\./.test(t) ? '0' : '1');
 
   it('reorders each named file by the judge before its quota of 5, the clause list as candidates', async () => {
@@ -229,7 +229,7 @@ describe('judgeRerank in the pipeline', () => {
     const mixed = (await retrieve(q, s, deps)).crossDocument!.judge!.files;
     expect(mixed.map((f) => f.query)).toEqual(['When is approval due under the Regulations?', q]);
     // No clause for either file: both fall back to the whole question.
-    const plain = 'Compare the Procurement Regulations and the Contract Management Guidance on approval and signing.';
+    const plain = 'Compare the Maintenance Regulations and the Building Management Guidance on approval and signing.';
     const none = (await retrieve(plain, s, deps)).crossDocument!.judge!.files;
     expect(none.map((f) => f.query)).toEqual([plain, plain]);
     expect(queries).toContain(plain);
@@ -244,7 +244,7 @@ describe('judgeRerank in the pipeline', () => {
   it('does not fire for a question naming one file, or with the switch off', async () => {
     const { deps, judged, queries } = setup(likes);
     const s = settingsWith({ crossDocQuota: true, scopedQuotaV2: true, judgeRerank: true });
-    const one = await retrieve('When is approval due under the Procurement Regulations?', s, deps);
+    const one = await retrieve('When is approval due under the Maintenance Regulations?', s, deps);
     expect(one.crossDocument).toBeUndefined();
     const off = await retrieve(q, settingsWith({ crossDocQuota: true, scopedQuotaV2: true }), deps);
     expect(off.crossDocument!.judge).toBeUndefined();

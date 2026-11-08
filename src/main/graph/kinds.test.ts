@@ -1,5 +1,4 @@
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parseFile } from '../sections/index.js';
@@ -37,7 +36,7 @@ describe('kind detection', () => {
   });
 
   it('tells regulation, guidance, template, record and data apart', () => {
-    expect(detectKind(text('Procurement Regulations.pdf', REGULATION_TEXT.repeat(3))).kind).toBe('normative');
+    expect(detectKind(text('Maintenance Regulations.pdf', REGULATION_TEXT.repeat(3))).kind).toBe('normative');
     expect(detectKind(text('Value guidance.pdf', `${PROSE_TEXT}\n\n${PROSE_TEXT}\n\n${PROSE_TEXT}`)).kind).toBe(
       'explanatory',
     );
@@ -68,7 +67,7 @@ describe('kind detection', () => {
   it('scores Chinese articles and obligations as normative', () => {
     const zh = Array.from(
       { length: 8 },
-      (_, i) => `第${'一二三四五六七八'[i]}条 招标人应当按照本规定发布公告，不得限制或者排斥潜在投标人。`,
+      (_, i) => `第${'一二三四五六七八'[i]}条 审核人应当按照本规定发布公示，不得限制或者排斥潜在申请人。`,
     ).join('\n');
     expect(detectKind(text('招标公告管理办法.pdf', zh)).kind).toBe('normative');
   });
@@ -83,12 +82,12 @@ describe('kind detection', () => {
     }
   });
 
-  // The owner's two corpora (English T1 and Chinese ZH), kept as browse files by the eval runs on the
-  // owner's Mac. They are not in the repository, so this runs only where they are.
-  const runs = path.join(os.homedir(), 'AskFiles-eval', 'runs');
+  // The two private test corpora (English and Chinese), kept as browse files by the eval runs. They
+  // are not in the repository, so this runs only where ASKFILES_EVAL_RUNS points at those runs.
+  const runs = process.env.ASKFILES_EVAL_RUNS ?? '';
   const corpus = (run: string) => path.join(runs, run, 'browse');
-  const haveOwnerCorpora = fs.existsSync(corpus('a2-crossdoc-en')) && fs.existsSync(corpus('a1-zh'));
-  it.skipIf(!haveOwnerCorpora)('matches the owner corpora (skipped where ~/AskFiles-eval is absent)', () => {
+  const haveOwnerCorpora = runs !== '' && fs.existsSync(corpus('a2-crossdoc-en')) && fs.existsSync(corpus('a1-zh'));
+  it.skipIf(!haveOwnerCorpora)('matches the private test corpora (skipped unless ASKFILES_EVAL_RUNS is set)', () => {
     const kinds = (run: string) => {
       const out: Record<string, string> = {};
       for (const f of fs.readdirSync(corpus(run)).filter((n) => n.endsWith('.json') && n !== 'identifiers.json')) {

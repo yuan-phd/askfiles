@@ -80,12 +80,12 @@ describe('Porter stemmer', () => {
     ['roll', 'roll'],
     ['generalizations', 'gener'],
     ['oscillators', 'oscil'],
-    // The words of the keyword diagnosis (Q60) and their neighbours.
+    // The words of a keyword diagnosis and their neighbours.
     ['planning', 'plan'],
     ['plan', 'plan'],
     ['planned', 'plan'],
     ['plans', 'plan'],
-    ['procurement', 'procur'],
+    ['maintenance', 'mainten'],
     ['policies', 'polici'],
     ['policy', 'polici'],
     ['regulations', 'regul'],
@@ -96,13 +96,13 @@ describe('Porter stemmer', () => {
 
   it('stems the English words of a folded text and leaves Chinese, digits and punctuation alone', () => {
     const m = (s: string) => `${WORD_MARK}${s}${WORD_MARK}`;
-    expect(stemFolded('procurement planning')).toBe(`${m('procur')} ${m('plan')}`);
-    expect(stemFolded('4.6 the procurement plan, 采购计划')).toBe(
-      `4.6 ${m('the')} ${m('procur')} ${m('plan')}, 采购计划`,
+    expect(stemFolded('maintenance planning')).toBe(`${m('mainten')} ${m('plan')}`);
+    expect(stemFolded('4.6 the maintenance plan, 维修计划')).toBe(
+      `4.6 ${m('the')} ${m('mainten')} ${m('plan')}, 维修计划`,
     );
     expect(stemFolded('iso-9001')).toBe(`${m('iso')}-9001`);
     // Whole words only: a stemmed term never matches inside a longer word.
     expect(stemFolded('the planet').includes(stemFolded('plan'))).toBe(false);
-    expect(stemFolded('the procurement plan').includes(stemFolded('procurement planning'))).toBe(true);
+    expect(stemFolded('the maintenance plan').includes(stemFolded('maintenance planning'))).toBe(true);
   });
 });

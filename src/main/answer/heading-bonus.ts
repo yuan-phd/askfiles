@@ -1,7 +1,7 @@
 /**
  * headingPathBonus (docs/plan.md, round X2): a fused section whose heading path holds one of the
  * question's keyword terms gets a fixed bonus on its fused score. English terms match by their
- * Porter stems as whole words (planning meets Procurement Plan); a CJK n-gram matches anywhere in
+ * Porter stems as whole words (planning meets Leave Plan); a CJK n-gram matches anywhere in
  * the path, spaces ignored. Only sections already in the fused list get it: a title alone does
  * not make a candidate.
  *

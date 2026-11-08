@@ -2,7 +2,7 @@
  * duplicateTextAttribution (docs/plan.md, round D4): two selected sections whose normalized texts
  * hash the same are one text; a sentence verification attributes to one of them is attributed to
  * both. Equality is by hash only, never by similarity, so no threshold is involved. The case it
- * fixes: two template editions holding a clause word for word (Chinese Q61, 2.4 of both
+ * fixes: two template editions holding a clause word for word (the same numbered clause in both
  * templates) tie in verification and the order of the sources picks one of them, so the other
  * file's identical clause goes uncited.
  */
@@ -68,14 +68,14 @@ export function nameMatcher(
   const res: RegExp[] = [];
   if (/[\u3400-\u9fff]/.test(name)) {
     // displayFormatSuffix: a format label (PDF版, Word版) belongs to the name, also after the title
-    // marks (《必须招标的工程项目规定》Word版); the bare 《...》 would name every format copy.
+    // marks (《差旅费管理办法》Word版); the bare 《...》 would name every format copy.
     const label = / ((?:PDF|Word|[A-Z]{2,5})版)$/u.exec(name)?.[1] ?? '';
     const base = label ? name.slice(0, -label.length - 1) : name;
     const head = base.split(' ')[0]!;
     const after = label ? `\\s*${esc(label)}` : '';
     for (const t of new Set([base, head])) res.push(new RegExp(`《\\s*${esc(t)}\\s*》${after}`, 'u'));
     if (label) res.push(new RegExp(`《\\s*${name.split(' ').map(esc).join('\\s*')}\\s*》`, 'u'));
-    // The space before a label or a year may be left out (必须招标的工程项目规定Word版).
+    // The space before a label or a year may be left out (差旅费管理办法Word版).
     res.push(
       new RegExp(
         name
@@ -149,7 +149,7 @@ export function formatAsked(texts: string[]): string | null {
  * b. else the question (as asked or as sent) names exactly one: only that document's sections;
  *    else, when the group's files differ only in format (one display name before any format label,
  *    each format once) and the question's format words name exactly one format that one of them
- *    has: only that file's sections (round P2; Chinese Q02 请从Word版本说明 cites the .docx alone);
+ *    has: only that file's sections (round P2; a question saying 请从Word版本说明 cites the .docx alone);
  * c. else all of them.
  * nameOf gives the display name each file is shown with (libraryDisplayNames); displayName when absent.
  */

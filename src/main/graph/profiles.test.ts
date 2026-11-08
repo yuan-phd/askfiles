@@ -55,9 +55,9 @@ describe('profiles', () => {
   });
 
   it('takes the cue that ends last in the title, so the head noun wins', () => {
-    expect(cueType(legal, '08_Contract_Management_Guidance.pdf')).toBe('guidance');
-    expect(cueType(legal, '08_招标投标违法行为记录公告暂行办法.pdf')).toBe('regulation');
-    expect(cueType(legal, '01_标准设备采购招标文件_2017年版.pdf')).toBe('template');
+    expect(cueType(legal, '08_Building_Management_Guidance.pdf')).toBe('guidance');
+    expect(cueType(legal, '08_报销申报违规行为记录公示暂行办法.pdf')).toBe('regulation');
+    expect(cueType(legal, '01_标准办公用品招标文件_2017年版.pdf')).toBe('template');
     expect(cueType(legal, 'Leave policy v2.md')).toBe('regulation');
     expect(cueType(legal, 'Supply contracts.docx')).toBe('contract');
     // A whole word only: contractor is not a contract.

@@ -54,9 +54,9 @@ export function doc(
 
 /** A paragraph of regulation text: numbered articles and obligation words. */
 export const REGULATION_TEXT = [
-  'Article 1 The Borrower shall carry out procurement in accordance with these Regulations.',
-  'Article 2 Bidders must submit their bids before the deadline and shall not alter them afterwards.',
-  'Article 3 The Borrower shall publish the contract award notice. Bidders must not collude.',
+  'Article 1 The Employer shall carry out maintenance in accordance with these Regulations.',
+  'Article 2 Members must submit their logs before the deadline and shall not alter them afterwards.',
+  'Article 3 The Employer shall publish the annual leave notice. Members must not collude.',
   '1.1 The procuring entity shall keep records. 1.2 It must make them available on request.',
 ].join('\n');
 

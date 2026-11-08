@@ -4,7 +4,7 @@ import { isLeadIn, verifyClaims } from './verify.js';
 
 const claim = (text: string, citations: number[] = []): Claim => ({ text, citations, unsupported: !citations.length });
 
-// Chinese Q18 of the kept configuration's replies: a lead-in, then two cited items.
+// A Chinese reply of the kept configuration: a lead-in, then two cited items.
 const q18 = [
   claim('从提供的资料中，屏幕刷新频率和响应耗时的要求如下：\n\n'),
   claim('- 屏幕刷新频率要求为 ≥75Hz \n', [2]),
@@ -16,7 +16,7 @@ describe('leadInExempt (round P1, F1)', () => {
   it('is a lead-in: uncited, ends with a colon, the next sentence with words cites', () => {
     expect(isLeadIn(q18, 0)).toBe(true);
     expect(isLeadIn(q18, 1)).toBe(false);
-    // A list marker on its own has no words and is skipped (crossdoc Q56: "...question:", "1. ", cited item).
+    // A list marker on its own has no words and is skipped (a cross-document reply: "...question:", "1. ", cited item).
     const list = [claim('There are 3 items:\n\n'), claim('1. '), claim('The plan is developed early.', [1])];
     expect(isLeadIn(list, 0)).toBe(true);
     // Not when the next sentence with words carries no citation, or there is none, or no colon.
@@ -35,7 +35,7 @@ describe('leadInExempt (round P1, F1)', () => {
     expect(on.claims.slice(1).map((c) => c.citations)).toEqual([[2], [2]]);
   });
 
-  it('gives a lead-in no attribution credit even where a source would support it (check Q33)', () => {
+  it('gives a lead-in no attribution credit even where a source would support it', () => {
     const c = [claim('The sources provide the following three activities:\n\n'), claim('Market research helps.', [1])];
     const p = ['The following three activities help: market research helps.'];
     expect(verifyClaims(c, p).claims[0]).toMatchObject({ citations: [1] });

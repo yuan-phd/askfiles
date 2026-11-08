@@ -40,7 +40,7 @@ export interface Profile {
    * Words in a file name or title that name a type and win over the kind: Template, 合同, Minutes.
    * Matched as whole words in Latin script (a plural s allowed), anywhere in Chinese. When several
    * match, the one ending last wins, then the longer: the head noun of a title comes last in both
-   * languages (Contract Management Guidance is guidance, 违法行为记录公告暂行办法 a regulation).
+   * languages (Records Management Guidance is guidance, 违法行为记录管理办法 a regulation).
    */
   cues: Record<string, string[]>;
   /** The layered layout's bands, top to bottom; types not listed go last. */

@@ -32,12 +32,12 @@ describe('splitQuestion', () => {
 
   it('splits Compare A and B into one part per member and drops the sentences after it', () => {
     const s = splitQuestion(
-      'Compare the Procurement Policy and the 2024 Directive: who must develop the Plan? Cite both documents.',
+      'Compare the Maintenance Policy and the 2024 Directive: who must develop the Plan? Cite both documents.',
     );
     expect(s).toEqual({
       how: 'set',
       parts: [
-        { text: 'In the Procurement Policy, who must develop the Plan?', label: 'The Procurement Policy' },
+        { text: 'In the Maintenance Policy, who must develop the Plan?', label: 'The Maintenance Policy' },
         { text: 'In the 2024 Directive, who must develop the Plan?', label: 'The 2024 Directive' },
       ],
     });
@@ -55,7 +55,7 @@ describe('splitQuestion', () => {
 
   it('leaves a question whole when a later ask points back or nothing resolves the former', () => {
     expect(
-      splitQuestion('Under paragraph 5.79, what starts the Standstill Period, and how long does it last?'),
+      splitQuestion('Under paragraph 5.79, what starts the Suspension Period, and how long does it last?'),
     ).toBeNull();
     expect(
       splitQuestion('In the Guidance, what is the risk owner, and for how long should that owner act?'),

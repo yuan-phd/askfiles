@@ -118,7 +118,7 @@ describe('answer metrics', () => {
   it('normalizes dashes, quotes, broken words and percent ranges, and ignores phrases copied from the question', () => {
     expect(squash('0%–15% and con- flicts, “quoted”')).toBe(squash('0-15% and conflicts, "quoted"'));
     const copied = q({ question: 'What does paragraph 5.88 say?', key_elements: 'paragraph 5.88; award the contract' });
-    const passage = { passage: '5.88 The Borrower shall award the contract.' };
+    const passage = { passage: '5.88 The Employer shall award the contract.' };
     expect(
       attributionOk(copied, {
         refused: false,

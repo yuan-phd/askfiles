@@ -49,24 +49,24 @@ describe('Compare groups (BrowseIndex.headings)', () => {
   it('merges page parts and (continued) parts into their parent section, its text in order', () => {
     const { index, add } = library();
     add('/d/bank.pdf', [
-      ['Operational Procurement Matters (page 4)', 2, 4, 'Page four text.'],
-      ['Operational Procurement Matters (page 5)', 2, 5, 'Page five text.'],
+      ['Operational Maintenance Matters (page 4)', 2, 4, 'Page four text.'],
+      ['Operational Maintenance Matters (page 5)', 2, 5, 'Page five text.'],
       ['Fees', 1, 6, 'Fees before the table.'],
       ['Table 1: Fees', 2, 6, 'Row A 10'],
       ['Fees (continued)', 2, 7, 'Fees after the table.'],
     ]);
     add('/d/agency.pdf', [
-      ['Operational Procurement Matters', 1, 2, 'The agency text.'],
+      ['Operational Maintenance Matters', 1, 2, 'The agency text.'],
       ['Fees', 1, 3, 'Agency fees.'],
     ]);
     const all = index.headings();
     expect(all.map((g) => [g.label, g.documents, g.entries.length])).toEqual([
       ['Fees', 2, 2],
-      ['Operational Procurement Matters', 2, 2],
+      ['Operational Maintenance Matters', 2, 2],
     ]);
-    const [opm] = index.headings({ key: 'operational procurement matters' });
+    const [opm] = index.headings({ key: 'operational maintenance matters' });
     const bank = opm!.entries.find((e) => e.documentTitle === 'bank.pdf')!;
-    expect(bank).toMatchObject({ title: 'Operational Procurement Matters', sectionIndex: 1, pageStart: 4, pageEnd: 5 });
+    expect(bank).toMatchObject({ title: 'Operational Maintenance Matters', sectionIndex: 1, pageStart: 4, pageEnd: 5 });
     expect(bank.text).toBe('Page four text.\n\nPage five text.');
     const [fees] = index.headings({ key: 'fees' });
     const bankFees = fees!.entries.find((e) => e.documentTitle === 'bank.pdf')!;

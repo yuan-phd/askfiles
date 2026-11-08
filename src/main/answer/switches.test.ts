@@ -44,18 +44,18 @@ afterEach(() => {
 
 describe('verifyCitations', () => {
   const passages = [
-    'The Standstill Period shall last ten (10) Business Days after the notification of award.',
-    'Bids are opened in public at the time and place stated in the bidding document.',
+    'The Suspension Period shall last ten (10) Calendar Days after the notification of leave.',
+    'Logs are opened in public at the time and place stated in the routing document.',
   ];
   const claims = (text: string) => claimsOf(parseCitations(text), passages.length);
 
   it('folds numbers and words and drops stopwords', () => {
-    expect(contentTokens('The Standstill Period lasts 10 Business Days, 1,000 USD.')).toEqual([
-      'standstill',
+    expect(contentTokens('The Suspension Period lasts 10 Calendar Days, 1,000 USD.')).toEqual([
+      'suspension',
       'period',
       'lasts',
       '10',
-      'business',
+      'calendar',
       'days',
       '1000',
       'usd',
@@ -65,7 +65,7 @@ describe('verifyCitations', () => {
 
   it('keeps a citation the sentence overlaps and moves a wrong one to the source that supports it', () => {
     const v = verifyClaims(
-      claims('The standstill period lasts ten Business Days [1]. Bids are opened in public at the stated place [1].'),
+      claims('The suspension period lasts ten Calendar Days [1]. Logs are opened in public at the stated place [1].'),
       passages,
     );
     expect(v.claims.map((c) => c.citations)).toEqual([[1], [2]]);
@@ -74,7 +74,7 @@ describe('verifyCitations', () => {
 
   it('cites an uncited sentence one source supports and marks the rest unsupported without citations', () => {
     const v = verifyClaims(
-      claims('Bids are opened in public. Late bids are rejected and returned unopened to the bidder [1].'),
+      claims('Logs are opened in public. Late logs are refused and handed back unread to the sender [1].'),
       passages,
     );
     expect(v.claims.map((c) => [c.citations, c.unsupported])).toEqual([
@@ -179,12 +179,12 @@ describe('paragraphSelection', () => {
   });
 
   it('sends the paragraphs closest to the question with one neighbour each, in document order', () => {
-    const paragraphs = ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6 standstill', 'p7', 'p8'];
+    const paragraphs = ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6 suspension', 'p7', 'p8'];
     const vectors = paragraphs.map((_, i) => new Float32Array(i === 2 ? [1, 0] : [0, 1]));
-    const out = selectParagraphs({ paragraphs, vectors }, [1, 0], ['standstill'], 10_000);
+    const out = selectParagraphs({ paragraphs, vectors }, [1, 0], ['suspension'], 10_000);
     // Top 3: p2 by cosine, p6 by keyword plus nothing, then the first tie; neighbours of each.
     expect(out.startsWith('p0\n\np1\n\np2\n\np3')).toBe(true);
-    expect(out).toContain('...\n\np5\n\np6 standstill\n\np7');
+    expect(out).toContain('...\n\np5\n\np6 suspension\n\np7');
     expect(out.endsWith('\n\n...')).toBe(true);
     // A tight cap keeps the best paragraph first.
     expect(selectParagraphs({ paragraphs, vectors }, [1, 0], [], 4)).toBe('...\n\np2\n\n...');
@@ -200,11 +200,11 @@ describe('paragraphSelection', () => {
       minSectionChars: 600,
       embed: async (texts) => {
         embedded += texts.length;
-        return texts.map((t) => (t.includes('standstill') ? [1, 0] : [0, 1]));
+        return texts.map((t) => (t.includes('suspension') ? [1, 0] : [0, 1]));
       },
     });
     const long = Array.from({ length: 8 }, (_, i) =>
-      i === 5 ? 'The standstill period is ten business days. '.repeat(6) : `Other clause ${i}. `.repeat(15),
+      i === 5 ? 'The suspension period is ten calendar days. '.repeat(6) : `Other clause ${i}. `.repeat(15),
     ).join('\n\n');
     const doc = {
       id: 'd1',
@@ -224,7 +224,7 @@ describe('paragraphSelection', () => {
     const sec = (index: number, text: string): AnswerSection =>
       ({ documentId: 'd1', sectionIndex: index, text, fullLength: text.length }) as AnswerSection;
     const out = await withParagraphs(
-      'How long is the standstill period?',
+      'How long is the suspension period?',
       [sec(1, long.slice(0, 900)), sec(2, 'Short section.')],
       {
         source: store,
@@ -235,7 +235,7 @@ describe('paragraphSelection', () => {
       },
     );
     expect(out.replaced).toBe(1);
-    expect(out.sections[0]!.text).toContain('The standstill period is ten business days.');
+    expect(out.sections[0]!.text).toContain('The suspension period is ten calendar days.');
     expect(out.sections[1]!.text).toBe('Short section.');
   });
 });
@@ -249,12 +249,12 @@ describe('documentAffinity', () => {
       outline: cover.map((c) => ({ title: c, level: 1, page: 1, sectionIndex: 1, pageLabel: null, children: [] })),
     }) as never;
   const library = [
-    doc('a', '01_Procurement_Regulations_2025.pdf'),
-    doc('b', '04_Procurement_Procedure_2026.pdf', ['Bank Procedure', 'Procurement in IPF and Other']),
-    doc('c', '03_Procurement_Directive_2024.pdf', ['Bank Directive', 'Procurement in IPF and Other']),
-    doc('d', '06_Procurement_Strategy_Guidance.pdf'),
-    doc('e', '08_Contract_Management_Guidance.pdf'),
-    doc('f', '10_Procurement_Plan_Template.docx'),
+    doc('a', '01_Maintenance_Regulations_2025.pdf'),
+    doc('b', '04_Maintenance_Procedure_2026.pdf', ['Firm Procedure', 'Maintenance in SME and Other']),
+    doc('c', '03_Maintenance_Directive_2024.pdf', ['Firm Directive', 'Maintenance in SME and Other']),
+    doc('d', '06_Maintenance_Strategy_Guidance.pdf'),
+    doc('e', '08_Building_Management_Guidance.pdf'),
+    doc('f', '10_Maintenance_Plan_Template.docx'),
   ];
   const ids = buildIdentities(library);
   const named = (q: string) => mentionedDocuments(q, ids).map((f) => f.documentId);
@@ -263,20 +263,20 @@ describe('documentAffinity', () => {
     const b = ids.find((f) => f.documentId === 'b')!;
     expect(b.type).toBe('Procedure');
     expect(b.identifiers.map((i) => i.text)).toEqual(
-      expect.arrayContaining(['Procurement Procedure 2026', 'Procurement Procedure', 'Bank Procedure', 'Procedure']),
+      expect.arrayContaining(['Maintenance Procedure 2026', 'Maintenance Procedure', 'Firm Procedure', 'Procedure']),
     );
-    expect(ids.flatMap((f) => f.identifiers.map((i) => i.text))).not.toContain('Procurement in IPF and Other');
+    expect(ids.flatMap((f) => f.identifiers.map((i) => i.text))).not.toContain('Maintenance in SME and Other');
     // Guidance is shared, so the word before it makes the name.
     expect(ids.find((f) => f.documentId === 'd')!.identifiers.map((i) => i.text)).toContain('Strategy Guidance');
     expect(ids.find((f) => f.documentId === 'd')!.identifiers.map((i) => i.text)).not.toContain('Guidance');
   });
 
   it('detects mentions, a bare type word only as a name', () => {
-    expect(named('Under paragraph 5.79 of the September 2025 Procurement Regulations, what starts it?')).toEqual(['a']);
-    expect(named('What is the effective date of the 2026 Bank Procedure?')).toEqual(['b']);
+    expect(named('Under paragraph 5.79 of the September 2025 Maintenance Regulations, what starts it?')).toEqual(['a']);
+    expect(named('What is the effective date of the 2026 Firm Procedure?')).toEqual(['b']);
     expect(named('In RFP Model 2: Streamlined procedure, what starts the period?')).toEqual([]);
-    expect(named('What does the Template say? And the Contract Management Guidance?')).toEqual(['e', 'f']);
-    expect(named('In 10_Procurement_Plan_Template.docx, who cleared it?')).toEqual(['f']);
+    expect(named('What does the Template say? And the Building Management Guidance?')).toEqual(['e', 'f']);
+    expect(named('In 10_Maintenance_Plan_Template.docx, who cleared it?')).toEqual(['f']);
     expect(named('What is the US threshold under the Federal Acquisition Regulation?')).toEqual([]);
   });
 
@@ -304,13 +304,16 @@ describe('documentAffinity', () => {
   it('verification keeps a named file only and chooses among same titles by overlap', () => {
     const passages = [
       'The price adjustment factor of 1.0 means no adjustment is made for the input.',
-      'Price adjustment factor of 1.0 means no adjustment is made on account of the given input.',
+      'Rates adjustment factor of 1.0 means no adjustment is made on account of the stated index.',
     ];
     const meta = [
       { file: 'a.pdf', title: 'Price Adjustment' },
       { file: 'b.pdf', title: 'Price Adjustment' },
     ];
-    const claim = claimsOf(parseCitations('A factor of 1.0 means no adjustment on account of the given input [1].'), 2);
+    const claim = claimsOf(
+      parseCitations('A factor of 1.0 means no adjustment on account of the stated index [1].'),
+      2,
+    );
     expect(verifyClaims(claim, passages).claims[0]!.citations).toEqual([1]);
     const v = verifyClaims(claim, passages, { meta });
     expect(v.claims[0]!.citations).toEqual([2]);
@@ -352,17 +355,17 @@ describe('documentAffinity', () => {
 
 describe('enumerateWhenAsked', () => {
   it('detects set questions and stated counts', () => {
-    expect(isSetQuestion('What three activities help the Borrower focus?')).toBe(true);
-    expect(statedCount('What three activities help the Borrower focus?')).toBe(3);
-    expect(statedCount('what are the three weighted scores other than Sustainability')).toBe(3);
+    expect(isSetQuestion('What three activities help the Employer focus?')).toBe(true);
+    expect(statedCount('What three activities help the Employer focus?')).toBe(3);
+    expect(statedCount('what are the three weighted scores other than Responsiveness')).toBe(3);
     expect(isSetQuestion('Which factors are considered when determining a rating?')).toBe(true);
     expect(statedCount('Which factors are considered?')).toBeNull();
-    expect(isSetQuestion('Under paragraph 5.79 of the September 2025 Procurement Regulations, what starts it?')).toBe(
+    expect(isSetQuestion('Under paragraph 5.79 of the September 2025 Maintenance Regulations, what starts it?')).toBe(
       false,
     );
     expect(statedCount('a weighting of 50% and a score of 2. What weighted score is displayed?')).toBe(null);
-    expect(isSetQuestion('What is the effective date of the 2026 Bank Procedure?')).toBe(false);
-    expect(isSetQuestion('采购计划需要哪些信息？')).toBe(true);
+    expect(isSetQuestion('What is the effective date of the 2026 Firm Procedure?')).toBe(false);
+    expect(isSetQuestion('维修计划需要哪些信息？')).toBe(true);
   });
 
   it('counts list lines, inline markers or cited sentences', () => {
@@ -481,7 +484,7 @@ describe('dropUnsupportedHedges', () => {
     expect(dropHedges([c('No information is provided. ', [])]).dropped).toEqual([]);
     expect(isHedge('The page number does not specify it.')).toBe(true);
     expect(isHedge('文件未说明页码。')).toBe(true);
-    expect(isHedge('The Borrower specifies the date.')).toBe(false);
+    expect(isHedge('The Employer specifies the date.')).toBe(false);
   });
 
   it('in the pipeline deletes the hedge after verification, logs it and returns the kept text', async () => {

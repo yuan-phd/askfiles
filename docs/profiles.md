@@ -28,7 +28,7 @@ legal-finance and team-work have a type `other` for documents the signals cannot
 
 - types: name in lower case letters, digits and -; colour #rrggbb, a mid tone readable on the light and the dark background.
 - kinds: the type of each structural kind (docs/graph.md, Kinds); all six are required.
-- cues: words in a file name that name a type, matched as whole words in Latin script (a plural s allowed) and anywhere in Chinese. When several match, the one ending last wins, then the longer one: a title's head noun comes last in both languages, so Contract Management Guidance is guidance and 招标投标违法行为记录公告暂行办法 is a regulation, not a record.
+- cues: words in a file name that name a type, matched as whole words in Latin script (a plural s allowed) and anywhere in Chinese. When several match, the one ending last wins, then the longer one: a title's head noun comes last in both languages, so Records Management Guidance is guidance and 违法行为记录管理办法 is a regulation, not a record.
 - bands: the layered layout's rows, top to bottom; types not listed go last.
 - edges: which rules run (docs/graph.md, Edges).
 - long (optional): a document of this kind with at least minWords words gets this type (general: a long explanatory text is a book).

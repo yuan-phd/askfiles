@@ -7,13 +7,13 @@ const D = (s: string) => Date.parse(`${s}T00:00:00Z`);
 
 describe('family keys and dates', () => {
   it('ignores the leading file number, years, versions and the format', () => {
-    expect(familyKey('04_必须招标的工程项目规定.pdf')).toBe(familyKey('13_必须招标的工程项目规定.docx'));
-    expect(familyKey('Procurement Regulations 2024.pdf')).toBe(familyKey('Procurement_Regulations_2025.pdf'));
+    expect(familyKey('04_必须审批的差旅事项规定.pdf')).toBe(familyKey('13_必须审批的差旅事项规定.docx'));
+    expect(familyKey('Maintenance Regulations 2024.pdf')).toBe(familyKey('Maintenance_Regulations_2025.pdf'));
     expect(familyKey('leave-policy-v1.md')).toBe(familyKey('leave-policy-v2.md'));
-    expect(familyKey('标准设备采购招标文件_2017年版.pdf')).toBe('标准设备采购招标文件');
+    expect(familyKey('标准办公用品招标文件_2017年版.pdf')).toBe('标准办公用品招标文件');
     expect(familyKey('Report (2).pdf')).toBe(familyKey('Report.pdf'));
     expect(familyKey('2024.pdf')).toBe('');
-    expect(familyKey('Procurement Policy.pdf')).not.toBe(familyKey('Procurement Procedure.pdf'));
+    expect(familyKey('Maintenance Policy.pdf')).not.toBe(familyKey('Maintenance Procedure.pdf'));
   });
 
   it('reads dates from titles and front matter', () => {
@@ -33,18 +33,18 @@ describe('family keys and dates', () => {
 
   it('asks about close titles only', () => {
     expect(closeKeys('leavepolicy', 'leavepolicies')).toBe(true);
-    expect(closeKeys('procurementplan', 'procurementplans')).toBe(true);
-    expect(closeKeys('procurementpolicy', 'procurementprocedure')).toBe(false);
+    expect(closeKeys('maintenanceplan', 'maintenanceplans')).toBe(true);
+    expect(closeKeys('maintenancepolicy', 'maintenanceprocedure')).toBe(false);
     expect(closeKeys('budget', 'budget')).toBe(false);
   });
 });
 
 describe('families', () => {
-  const pdf = doc('04_必须招标的工程项目规定.pdf', [['第一条', '为了确定必须招标的工程项目，制定本规定。']]);
-  const word = doc('13_必须招标的工程项目规定.docx', [['第一条', '为了确定必须招标的工程项目，制定本规定。']]);
-  const y24 = doc('Procurement Regulations 2024.pdf', [['Scope', 'a']], { mtimeMs: D('2026-05-01') });
-  const y25 = doc('Procurement Regulations 2025.pdf', [['Scope', 'b']], { mtimeMs: D('2025-01-01') });
-  const other = doc('Value for Money Guidance.pdf', [['Scope', 'c']]);
+  const pdf = doc('04_必须审批的差旅事项规定.pdf', [['第一条', '为了确定必须审批的差旅事项，制定本规定。']]);
+  const word = doc('13_必须审批的差旅事项规定.docx', [['第一条', '为了确定必须审批的差旅事项，制定本规定。']]);
+  const y24 = doc('Maintenance Regulations 2024.pdf', [['Scope', 'a']], { mtimeMs: D('2026-05-01') });
+  const y25 = doc('Maintenance Regulations 2025.pdf', [['Scope', 'b']], { mtimeMs: D('2025-01-01') });
+  const other = doc('Wages for Hours Guidance.pdf', [['Scope', 'c']]);
 
   it('groups the PDF and Word copy of one regulation, and the 2024 and 2025 issues, oldest first', () => {
     const r = detectFamilies([y25, other, pdf, y24, word]);

@@ -7,17 +7,17 @@
   "gitCommit": "613a2945d959634781d55280f34343a6de58e7c5",
   "corpus": {
     "label": "eval-l",
-    "path": "/home/user/askfiles/test/fixtures/eval-l/corpus"
+    "path": "<repo>/test/fixtures/eval-l/corpus"
   },
   "questions": {
-    "path": "/home/user/askfiles/test/fixtures/eval-l/questions.csv",
+    "path": "<repo>/test/fixtures/eval-l/questions.csv",
     "count": 6
   },
   "config": {
     "baseUrl": "",
     "apiKey": "",
     "storageDir": "",
-    "dataDir": "/home/user/askfiles/.eval-data",
+    "dataDir": "<repo>/.eval-data",
     "ollamaBin": "",
     "contextTokens": 4096,
     "workspace": "askfiles-eval",
@@ -46,8 +46,8 @@
   "server": {
     "mode": "managed",
     "baseUrl": "http://127.0.0.1:38091",
-    "dataDir": "/home/user/askfiles/.eval-data",
-    "logs": "/home/user/askfiles/docs/eval-smoke/eval-l/logs"
+    "dataDir": "<repo>/.eval-data",
+    "logs": "<repo>/docs/eval-smoke/eval-l/logs"
   },
   "ollama": {
     "url": "http://127.0.0.1:34747",

@@ -179,7 +179,7 @@ const cache = new Map<string, string>();
 /**
  * A folded text (browse fold: NFKC, lower case) with every run of ASCII letters replaced by its
  * marked Porter stem; everything else as it was. The index and the question terms both go through
- * this, so procurement planning and Procurement Plan meet at procur plan.
+ * this, so leave planning and Leave Plan meet at leav plan.
  */
 export function stemFolded(folded: string): string {
   return folded.replace(/[a-z]+/g, (w) => {
