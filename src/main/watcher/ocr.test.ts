@@ -280,7 +280,7 @@ describe('OCR of garbled pages in a PDF with a text layer', () => {
     expect(all).not.toContain('ACME Ltd');
     expect(logs).toEqual([
       expect.stringContaining(
-        'replaced with OCR: 1; kept (guard): 2 (OCR text (7 characters) is not longer than the layer',
+        'replaced with OCR: 1; kept (guard): 2 (OCR text (7 readable characters) is not longer than the layer',
       ),
     ]);
   });
@@ -292,8 +292,13 @@ describe('OCR of garbled pages in a PDF with a text layer', () => {
       replace: false,
       reason: 'the page was not judged unreadable',
     });
-    // Spaces and punctuation do not count: the layer below has 10 letters, the OCR text 9.
-    expect(ocrReplaces({ text: 'a b c d e f g h i j', reason: 'garbled' }, 'abc, def; ghi!!!!!!').replace).toBe(false);
+    // Only readable content counts: punctuation, spaces and junk tokens add nothing.
+    expect(ocrReplaces({ text: 'alpha beta gamma', reason: 'garbled' }, 'alpha, beta;!!!!!! ~|; x#@').replace).toBe(
+      false,
+    );
+    expect(ocrReplaces({ text: 'q@ #r ~| x#@ Cl@ agn:,e.111,rnt', reason: 'garbled' }, 'Train journeys').replace).toBe(
+      true,
+    );
     const junk = '~|; x9#@ !!q %% ^^ Cl@ #r 1-, agn:,e.111,rnt ~|; x9#@ !!q %% ^^ Cl@ #r 1-, agn:,e.111,rnt';
     expect(ocrReplaces({ text: 'ab', reason: 'garbled' }, junk)).toEqual({
       replace: false,
