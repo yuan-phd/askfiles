@@ -1,6 +1,8 @@
 import path from 'node:path';
 import {
   chunkSections,
+  isGarbled,
+  pageQuality,
   paragraphs,
   parseFile,
   splitKeyOf,
@@ -35,6 +37,31 @@ export function sectionsFromOcr(pages: OcrPage[], fileName: string): Section[] {
 /** OCR of a whole scanned PDF, or with pages of those pages only (collectorOcr). */
 export type OcrFn = (filePath: string, pages?: number[]) => Promise<OcrPage[]>;
 
+/** Letters, digits and CJK only: spaces, punctuation and symbols are left out of the comparison. */
+function contentLength(text: string): number {
+  return [...text.normalize('NFKC')].filter((c) => /[\p{L}\p{N}]/u.test(c)).length;
+}
+
+/**
+ * The replacement guard: a page's OCR text takes the place of its text layer only when the page
+ * was judged unreadable (garbled, or nearly empty on a scanned page), the OCR text is longer than
+ * the layer once both are reduced to letters, digits and CJK, and the OCR text itself passes the
+ * quality check. Otherwise the layer stays; reason says why, for the log. A readable page with a
+ * logo must never lose its text to the few words OCR finds in the logo.
+ */
+export function ocrReplaces(
+  layer: { text: string; reason: 'garbled' | 'sparse' } | undefined,
+  ocrText: string,
+): { replace: boolean; reason: string } {
+  if (!layer) return { replace: false, reason: 'the page was not judged unreadable' };
+  const ocrLen = contentLength(ocrText);
+  const layerLen = contentLength(layer.text);
+  if (ocrLen <= layerLen)
+    return { replace: false, reason: `OCR text (${ocrLen} characters) is not longer than the layer (${layerLen})` };
+  if (isGarbled(pageQuality(ocrText))) return { replace: false, reason: 'OCR text fails the quality check' };
+  return { replace: true, reason: `${layer.reason} layer (${layerLen} characters), OCR text ${ocrLen}` };
+}
+
 /** The parser switches of the indexing options (the OCR switch belongs to the ocr hook). */
 function splitOptions(o: IndexingOptions = {}) {
   return { structuredTables: Boolean(o.structuredTables), cjkHeadings: Boolean(o.cjkHeadings) };
@@ -63,12 +90,20 @@ export async function splitWithOcr(
       o.log?.(`${name}: garbled text layer on pages ${parsed.ocrPages.join(', ')}, kept (no OCR available)`);
     } else {
       const pages = await o.ocr(filePath, parsed.ocrPages);
-      const text = new Map(pages.filter((p) => p.page > 0 && p.text.trim()).map((p) => [p.page, p.text]));
-      ocrReplaced = [...text.keys()].sort((a, b) => a - b);
-      const kept = parsed.ocrPages.filter((p) => !text.has(p));
+      const found = new Map(pages.filter((p) => p.page > 0 && p.text.trim()).map((p) => [p.page, p.text]));
+      const text = new Map<number, string>();
+      const guarded: string[] = [];
+      for (const [page, ocrText] of [...found].sort(([a], [b]) => a - b)) {
+        const d = ocrReplaces(parsed.ocrLayer?.[page], ocrText);
+        if (d.replace) text.set(page, ocrText);
+        else guarded.push(`${page} (${d.reason})`);
+      }
+      ocrReplaced = [...text.keys()];
+      const kept = parsed.ocrPages.filter((p) => !found.has(p));
       o.log?.(
         `${name}: garbled text layer on pages ${parsed.ocrPages.join(', ')}; replaced with OCR: ${ocrReplaced.join(', ') || 'none'}` +
-          (kept.length ? `; kept (OCR found no text): ${kept.join(', ')}` : ''),
+          (kept.length ? `; kept (OCR found no text): ${kept.join(', ')}` : '') +
+          (guarded.length ? `; kept (guard): ${guarded.join(', ')}` : ''),
       );
       if (text.size) {
         parsed = { ...(await parseFile(filePath, { pageText: text, ...so })), ocrPages: parsed.ocrPages };

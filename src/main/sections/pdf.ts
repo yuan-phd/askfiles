@@ -384,14 +384,21 @@ export async function parsePdf(
     let lines: Line[] = [];
     const garbled: number[] = [];
     const sparse: number[] = [];
+    const layer: NonNullable<ParsedDocument['ocrLayer']> = {};
     for (let p = 1; p <= doc.numPages; p++) {
       const page = await doc.getPage(p);
       const items = (await page.getTextContent()).items as TextItem[];
       const pageLines = linesFromItems(items, p);
       lines.push(...(o.structuredTables ? withTables(items, p) : pageLines));
-      const q = pageQuality(pageLines.map((l) => l.text).join('\n'));
-      if (isGarbled(q)) garbled.push(p);
-      else if (q.chars < SPARSE_CHARS && (await drawsImage(page, pdfjs.OPS))) sparse.push(p);
+      const text = pageLines.map((l) => l.text).join('\n');
+      const q = pageQuality(text);
+      if (isGarbled(q)) {
+        garbled.push(p);
+        layer[p] = { text, reason: 'garbled' };
+      } else if (q.chars < SPARSE_CHARS && (await drawsImage(page, pdfjs.OPS))) {
+        sparse.push(p);
+        layer[p] = { text, reason: 'sparse' };
+      }
     }
     if (!lines.some((l) => /\S/.test(l.text)))
       return { sections: [], outline: 'none', pages: doc.numPages, needsOcr: true, ...(await pageLabelsOf(doc)) };
@@ -431,7 +438,7 @@ export async function parsePdf(
       outline,
       pages: doc.numPages,
       needsOcr: false,
-      ...(ocrPages.length ? { ocrPages } : {}),
+      ...(ocrPages.length ? { ocrPages, ocrLayer: Object.fromEntries(ocrPages.map((p) => [p, layer[p]!])) } : {}),
       ...(await pageLabelsOf(doc)),
     };
   } finally {
