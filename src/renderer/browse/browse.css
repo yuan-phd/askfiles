@@ -543,9 +543,9 @@ h6.doc-heading {
   margin-bottom: 0;
 }
 
-/* At most 8 lines (CLAMP_LINES in view.js) until Show more; the last lines fade out. */
+/* At most 10 lines (CLAMP_LINES in view.js) until Show more; the last lines fade out. */
 .compare-card.clampable:not(.expanded) .compare-text {
-  max-height: 8lh;
+  max-height: 10lh;
   overflow: hidden;
   -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 2.5lh), transparent);
   mask-image: linear-gradient(to bottom, #000 calc(100% - 2.5lh), transparent);

@@ -606,6 +606,12 @@ span.cite {
   font-weight: 600;
   color: var(--text-muted);
   margin-bottom: var(--space-3);
+  /* The title carries its own ▸ and ▾. */
+  list-style: none;
+}
+
+.considered summary::-webkit-details-marker {
+  display: none;
 }
 
 /* Developer panel (ASKFILES_DEVELOPER=1) */

@@ -101,6 +101,7 @@ const MARKUP = `
 `;
 
 import { createHistory, isBackKey } from '../shared/history.js';
+import { PAGE_PART, sectionTitle, withoutLeadingPageNumber } from '../shared/display.js';
 import { createGraphPage } from './graph.js';
 
 const bridge = window.askfiles?.browse;
@@ -108,11 +109,8 @@ const watcher = window.askfiles?.watcher;
 const graphBridge = window.askfiles?.graph;
 const summariesBridge = window.askfiles?.summaries;
 
-/** The splitter's suffix for the pages of a long section and the text after a table (src/main/browse/build.ts). */
-const PAGE_PART = /\s*\((?:page \d+|continued)\)\s*$/i;
-
-/** Lines of a Compare card's text shown before Show more; matches max-height: 8lh in browse.css. */
-const CLAMP_LINES = 8;
+/** Lines of a Compare card's text shown before Show more; matches max-height: 10lh in browse.css. */
+const CLAMP_LINES = 10;
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -790,13 +788,13 @@ export function createBrowseView(root, { history: shared = null } = {}) {
       const file = el('span', 'compare-file', e.documentTitle);
       file.dataset.testid = 'compare-file';
       file.title = e.relPath;
-      const as = el('span', 'compare-section', e.title);
+      const as = el('span', 'compare-section', sectionTitle(e.title));
       head.append(file, as);
       const place = placeLabel(e.pageStart, e.pageEnd, e.documentTitle, e.pageLabelStart, e.pageLabelEnd);
       if (place) head.append(el('span', 'compare-page', place));
       const body = el('div', 'compare-text');
       body.dataset.testid = 'compare-text';
-      body.append(...paragraphs(e.text || ''));
+      body.append(...paragraphs(withoutLeadingPageNumber(e.text || '')));
       const more = button('link compare-more', 'Show more', 'compare-more');
       more.hidden = true;
       more.setAttribute('aria-expanded', 'false');
@@ -834,7 +832,7 @@ export function createBrowseView(root, { history: shared = null } = {}) {
 
   let compareResize = null;
 
-  /** A card is clampable when its text is longer than the clamp (8 lines, CSS .compare-text). */
+  /** A card is clampable when its text is longer than the clamp (10 lines, CSS .compare-text). */
   function measureClamp(columns, all) {
     for (const card of columns.querySelectorAll('.compare-card')) {
       const body = card.querySelector('.compare-text');
@@ -903,7 +901,12 @@ export function createBrowseView(root, { history: shared = null } = {}) {
           const b = button('find-hit', '', 'find-hit');
           b.dataset.section = String(h.sectionIndex);
           const title = el('span', 'find-hit-title');
-          title.append(...highlighted(h.title, h.titleMarks));
+          // The part marker (page N, continued) goes; the page has its own line below.
+          const shownTitle = sectionTitle(h.title) || h.title;
+          const titleMarks = (h.titleMarks || [])
+            .filter(([a]) => a < shownTitle.length)
+            .map(([a, b]) => [a, Math.min(b, shownTitle.length)]);
+          title.append(...highlighted(shownTitle, titleMarks));
           const place = placeLabel(h.pageStart, h.pageEnd, g.document.title, h.pageLabelStart, h.pageLabelEnd);
           const snippet = el('span', 'find-snippet');
           snippet.dataset.testid = 'find-snippet';

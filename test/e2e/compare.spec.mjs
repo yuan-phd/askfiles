@@ -1,4 +1,4 @@
-// Compare page cards: at most 8 lines of text with Show more, Expand all, and columns that follow
+// Compare page cards: at most 10 lines of text with Show more, Expand all, and columns that follow
 // the window width. Seeded with Markdown files that share one heading, four long and one short.
 import fs from 'node:fs';
 import os from 'node:os';
@@ -64,15 +64,15 @@ async function columns(page) {
 const LINE = (l) => l.evaluate((b) => parseFloat(window.getComputedStyle(b).lineHeight));
 
 test.describe('Compare cards', () => {
-  test('clamps long text to 8 lines with a fade and Show more; short text has neither', async ({ page }) => {
+  test('clamps long text to 10 lines with a fade and Show more; short text has neither', async ({ page }) => {
     const cards = await openCompare(page, 1200);
     const long = cards.filter({ hasText: 'policy-a' });
     const short = cards.filter({ hasText: 'policy-c' });
     const text = long.getByTestId('compare-text');
     const line = await LINE(text);
     const h = (await text.boundingBox()).height;
-    expect(h).toBeLessThanOrEqual(line * 8 + 1);
-    expect(h).toBeGreaterThan(line * 7);
+    expect(h).toBeLessThanOrEqual(line * 10 + 1);
+    expect(h).toBeGreaterThan(line * 9);
     expect(await text.evaluate((b) => window.getComputedStyle(b).maskImage)).toContain('linear-gradient');
     await expect(long.getByTestId('compare-more')).toHaveText('Show more');
     await expect(short.getByTestId('compare-more')).toBeHidden();

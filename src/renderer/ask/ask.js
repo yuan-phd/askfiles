@@ -8,6 +8,8 @@ import { createBrowseView } from '../browse/view.js';
 import { createClient, generateApiKey } from '../api/client.js';
 import { createHistory, isBackKey } from '../shared/history.js';
 import { lockLine, mountTopBar } from '../shared/topbar.js';
+import { displayPath, withoutLeadingPageNumber } from '../shared/display.js';
+import { consideredTitle, sourceGroups } from './groups.js';
 
 const RECENT_LIMIT = 12;
 const RECENT_KEY = 'askfiles.recentQuestions';
@@ -29,6 +31,7 @@ const els = {
   drawn: $('drawn'),
   drawnList: $('drawn-list'),
   considered: $('considered'),
+  consideredTitle: $('considered-title'),
   consideredList: $('considered-list'),
   fallback: $('fallback'),
   fallbackLead: $('fallback-lead'),
@@ -193,8 +196,14 @@ function pageLabel(c) {
   return c.pageLabel && c.pageLabel !== String(c.pageStart) ? `${range} (printed ${c.pageLabel})` : range;
 }
 
+/** The section path as the index has it; the test record keeps this one. */
 function pathLabel(c) {
   return (c.path && c.path.length ? c.path : [c.title]).filter(Boolean).join(' > ');
+}
+
+/** The section path on screen: parts cut by page or continued shown once (shared/display.js). */
+function shownPath(c) {
+  return displayPath(c.path, c.title);
 }
 
 async function openSource(c) {
@@ -258,21 +267,22 @@ function setOptional(el, text) {
 }
 
 /** One card per source; every field comes from the section records the shell sent. */
-function cardNode(c, { numbered = true } = {}) {
+function cardNode(c) {
   const node = els.cardTemplate.content.firstElementChild.cloneNode(true);
-  node.id = numbered ? `source-${c.n}` : '';
+  // Every card carries its source number; each number is on exactly one card (groups.js).
+  node.id = `source-${c.n}`;
   node.dataset.n = String(c.n);
-  setOptional(node.querySelector('.card-number'), numbered ? `[${c.n}]` : null);
+  setOptional(node.querySelector('.card-number'), `[${c.n}]`);
   // sourceDisplayNames: the display name the prompt showed comes first, the file name smaller beside it.
   const shown = c.display && c.display !== c.file ? c.display : c.file;
   node.querySelector('.card-file').textContent = shown;
   setOptional(node.querySelector('.card-filename'), shown === c.file ? null : c.file);
-  setOptional(node.querySelector('.card-section'), pathLabel(c));
+  setOptional(node.querySelector('.card-section'), shownPath(c));
   setOptional(node.querySelector('.card-page'), pageLabel(c));
   const p = document.createElement('blockquote');
   p.className = 'passage';
   p.dataset.testid = 'source-passage';
-  p.textContent = c.passage;
+  p.textContent = withoutLeadingPageNumber(c.passage);
   node.querySelector('.card-passages').append(p);
   setOptional(node.querySelector('.card-count'), c.trimmed ? 'Shortened to fit' : null);
   node.querySelector('.open').addEventListener('click', () => {
@@ -288,20 +298,20 @@ function cardNode(c, { numbered = true } = {}) {
 
 /**
  * Cited sources, then the sections the model cited whose citations verification removed (drawn,
- * open), then the rest of the selected sections (collapsed). The pipeline keeps drawn sections in
- * considered too, so they are taken out of it here.
+ * open), then the rest of the sources sent to the model (collapsed). sourceGroups puts every
+ * source number sent in exactly one group.
  */
-function renderCards(cited, considered, drawn = []) {
-  els.sourceList.replaceChildren(...cited.map((c) => cardNode(c)));
-  els.sources.hidden = cited.length === 0;
-  els.drawnList.replaceChildren(...drawn.map((c) => cardNode(c, { numbered: false })));
-  els.drawn.hidden = drawn.length === 0;
+function renderCards({ sent, cited, considered, drawn }) {
+  const g = sourceGroups({ sent, cited, considered, drawn });
+  els.sourceList.replaceChildren(...g.cited.map((c) => cardNode(c)));
+  els.sources.hidden = g.cited.length === 0;
+  els.drawnList.replaceChildren(...g.drawn.map((c) => cardNode(c)));
+  els.drawn.hidden = g.drawn.length === 0;
   els.drawn.open = true;
-  const drawnN = new Set(drawn.map((c) => c.n));
-  considered = considered.filter((c) => !drawnN.has(c.n));
-  els.consideredList.replaceChildren(...considered.map((c) => cardNode(c, { numbered: false })));
-  els.considered.hidden = considered.length === 0;
+  els.consideredList.replaceChildren(...g.considered.map((c) => cardNode(c)));
+  els.considered.hidden = g.considered.length === 0;
   els.considered.open = false;
+  els.consideredTitle.textContent = consideredTitle(g.considered.length, false);
 }
 
 function preview(text) {
@@ -315,10 +325,10 @@ function renderFallback(nearest) {
   els.fallbackList.replaceChildren(
     ...nearest.map((c) => {
       const node = els.sectionTemplate.content.firstElementChild.cloneNode(true);
-      node.querySelector('.section-title').textContent = pathLabel(c);
+      node.querySelector('.section-title').textContent = shownPath(c);
       setOptional(node.querySelector('.section-file'), c.file);
       setOptional(node.querySelector('.section-page'), pageLabel(c));
-      node.querySelector('.section-preview').textContent = preview(c.passage);
+      node.querySelector('.section-preview').textContent = preview(withoutLeadingPageNumber(c.passage));
       node.querySelector('.open').addEventListener('click', () => {
         announceCard(c, 'open');
         void openSource(c);
@@ -485,6 +495,7 @@ function updateAskBox() {
 }
 
 function finish(result) {
+  const sent = state.run?.sources ?? [];
   endRun();
   showProgress(null);
   if (result.notFound) {
@@ -494,7 +505,7 @@ function finish(result) {
   }
   if (result.claims.length) renderClaims(result.claims);
   else els.answerText.textContent = 'The model returned an empty answer. The sections below may still help.';
-  renderCards(result.cited, result.considered, result.drawnFrom ?? []);
+  renderCards({ sent, cited: result.cited, considered: result.considered, drawn: result.drawnFrom ?? [] });
 }
 
 async function ask(question) {
@@ -667,6 +678,11 @@ async function initDeveloper() {
     }
   });
 }
+
+// The collapsed group says what opening it does: Show N other sections, Hide N other sections.
+els.considered.addEventListener('toggle', () => {
+  els.consideredTitle.textContent = consideredTitle(els.consideredList.children.length, els.considered.open);
+});
 
 els.form.addEventListener('submit', (e) => {
   e.preventDefault();

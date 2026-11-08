@@ -80,6 +80,7 @@ test.describe('Ask page with the answer pipeline stubbed', () => {
       const summary = g.considered.locator('summary');
       await expect(summary).toHaveCSS('font-weight', '600');
       await expect(summary).toHaveCSS('font-size', '14px');
+      await expect(summary).toHaveText('▸ Show 1 other section');
     });
 
     test('one starred sentence: its section is in the open group after the sources, the rest stays collapsed', async ({
@@ -120,10 +121,72 @@ test.describe('Ask page with the answer pipeline stubbed', () => {
       // The same card as a source, without a number.
       const cls = async (l) => l.getByTestId('source-card').first().getAttribute('class');
       expect(await cls(g.drawn)).toBe(await cls(g.sources));
-      await expect(g.drawn.getByTestId('source-number')).toBeHidden();
+      await expect(g.drawn.getByTestId('source-number')).toHaveText(['[4]']);
       await expect(g.considered).not.toHaveAttribute('open', '');
       await g.considered.locator('summary').click();
       await expect(g.considered.getByTestId('source-section')).toHaveText(['Facilities > Parking']);
+    });
+
+    test('every source number sent appears on exactly one card, in the same style in every group', async ({ page }) => {
+      const q = 'Where do hedgehogs sleep?';
+      const NEST = card(1, {
+        title: 'Nests (page 3)',
+        path: ['Garden Wildlife', 'Hedgehogs', 'Hedgehogs (continued)', 'Nests (page 3)'],
+        pageStart: 3,
+        pageEnd: 3,
+        passage: 'iv\nHedgehogs sleep in leaf piles under hedges.',
+      });
+      const POND = card(2, { title: 'Ponds', path: ['Ponds'], passage: 'xiiPonds\nFrogs spawn in shallow water.' });
+      const FEED = card(3, { title: 'Feeding', path: ['Feeding'], passage: 'Leave out water, never milk.' });
+      const SHED = card(4, { title: 'Sheds', path: ['Sheds'], passage: 'Check sheds before closing them.' });
+      const LEAF = card(5, { title: 'Leaves', path: ['Leaves'], passage: 'Keep a corner of leaves.' });
+      const run = answerRun({
+        sources: [NEST, POND, FEED, SHED, LEAF],
+        deltas: [partsOf('Hedgehogs sleep in leaf piles [1]. They hibernate in sheds [4].')],
+        result: {
+          text: 'Hedgehogs sleep in leaf piles [1]. They hibernate in sheds [4].',
+          claims: [
+            { text: 'Hedgehogs sleep in leaf piles . ', citations: [1], unsupported: false },
+            { text: 'They hibernate in sheds .', citations: [], unsupported: true },
+          ],
+          cited: [NEST],
+          // Source 5 is in no group of this result and source 2 is in two: the page shows each once.
+          considered: [POND, FEED, SHED],
+          drawnFrom: [SHED, POND],
+        },
+      });
+      await open(page, { runs: { [q]: run } });
+      await askQuestion(page, q);
+      const g = groups(page);
+      await g.considered.locator('summary').click();
+      const shown = await page.locator('#sources, #drawn, #considered').evaluateAll((sections) =>
+        sections.flatMap((s) =>
+          [...s.querySelectorAll('[data-testid="source-card"]')].map((c) => ({
+            group: s.id,
+            n: c.querySelector('[data-testid="source-number"]').textContent,
+            cls: c.querySelector('[data-testid="source-number"]').className,
+            visible: c.querySelector('[data-testid="source-number"]').checkVisibility(),
+          })),
+        ),
+      );
+      expect(shown.map((x) => x.n).sort()).toEqual(['[1]', '[2]', '[3]', '[4]', '[5]']);
+      expect(shown.map((x) => `${x.group} ${x.n}`)).toEqual([
+        'sources [1]',
+        'drawn [2]',
+        'drawn [4]',
+        'considered [3]',
+        'considered [5]',
+      ]);
+      expect(new Set(shown.map((x) => x.cls)).size).toBe(1);
+      expect(shown.every((x) => x.visible)).toBe(true);
+      await expect(g.considered.locator('summary')).toHaveText('▾ Hide 2 other sections');
+      // Display only: the path shows the logical section once, the page in its own line, and the
+      // printed page number at the start of a passage is not shown.
+      const nest = g.sources.getByTestId('source-card');
+      await expect(nest.getByTestId('source-section')).toHaveText('Garden Wildlife > Hedgehogs > Nests');
+      await expect(nest.getByTestId('source-page')).toHaveText('Page 3');
+      await expect(nest.getByTestId('source-passage')).toHaveText('Hedgehogs sleep in leaf piles under hedges.');
+      await expect(g.drawn.getByTestId('source-passage').first()).toHaveText('Ponds\nFrogs spawn in shallow water.');
     });
 
     test('no passing citation: only the new group and the other sections', async ({ page }) => {
@@ -186,10 +249,12 @@ test.describe('Ask page with the answer pipeline stubbed', () => {
     await expect(considered).toBeVisible();
     await expect(considered).not.toHaveAttribute('open', '');
     await expect(considered.getByTestId('source-card')).toBeHidden();
+    await expect(considered.locator('summary')).toHaveText('▸ Show 1 other section');
     await considered.locator('summary').click();
+    await expect(considered.locator('summary')).toHaveText('▾ Hide 1 other section');
     await expect(considered.getByTestId('source-card')).toHaveCount(1);
     await expect(considered.getByTestId('source-section')).toHaveText('Facilities > Parking');
-    await expect(considered.getByTestId('source-number')).toBeHidden();
+    await expect(considered.getByTestId('source-number')).toHaveText(['[3]']);
 
     await expect(page.getByTestId('answer')).toHaveAttribute('aria-busy', 'false');
     expect(await page.evaluate(() => window.__answerCalls)).toEqual([['ask', QUESTION]]);
