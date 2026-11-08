@@ -39,6 +39,11 @@
   max-width: calc(var(--measure) + 12rem);
 }
 
+/* Compare sets its own columns, each of reading width, so the page may use the whole window. */
+.browse-content > .browse-page[data-page='compare'] {
+  max-width: none;
+}
+
 .browse h1 {
   font-size: 1.5rem;
   font-weight: 600;
@@ -450,11 +455,52 @@ h6.doc-heading {
   color: var(--text);
 }
 
+/* Columns follow the width the cards get (the window less the heading list beside them): one
+   below 34rem, two to 56rem (the default 1200 px window gives 35rem), three to 76rem, four above
+   (a 1920 px window gives 80rem). A card is at least about 16.5rem wide, some 35 Latin or 17 CJK
+   characters a line, and at most 32rem, about 70 Latin characters, however wide the window. */
+.compare-detail {
+  container: compare / inline-size;
+}
+
+.compare-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.compare-top .compare-title {
+  margin-right: auto;
+}
+
+.compare-all-toggle {
+  flex: none;
+}
+
 .compare {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  grid-template-columns: minmax(0, 32rem);
   gap: var(--space-4);
   align-items: start;
+}
+
+@container compare (min-width: 34rem) {
+  .compare {
+    grid-template-columns: repeat(2, minmax(0, 32rem));
+  }
+}
+
+@container compare (min-width: 56rem) {
+  .compare {
+    grid-template-columns: repeat(3, minmax(0, 32rem));
+  }
+}
+
+@container compare (min-width: 76rem) {
+  .compare {
+    grid-template-columns: repeat(4, minmax(0, 32rem));
+  }
 }
 
 .compare-card {
@@ -483,8 +529,31 @@ h6.doc-heading {
   color: var(--text-muted);
 }
 
-.compare-text .doc-para {
+.compare-text {
   font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.compare-text .doc-para {
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.compare-text .doc-para:last-child {
+  margin-bottom: 0;
+}
+
+/* At most 8 lines (CLAMP_LINES in view.js) until Show more; the last lines fade out. */
+.compare-card.clampable:not(.expanded) .compare-text {
+  max-height: 8lh;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 2.5lh), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 2.5lh), transparent);
+}
+
+.compare-more {
+  justify-self: start;
+  margin-top: calc(-1 * var(--space-2));
 }
 
 @media (max-width: 900px) {

@@ -111,6 +111,9 @@ const summariesBridge = window.askfiles?.summaries;
 /** The splitter's suffix for the pages of a long section and the text after a table (src/main/browse/build.ts). */
 const PAGE_PART = /\s*\((?:page \d+|continued)\)\s*$/i;
 
+/** Lines of a Compare card's text shown before Show more; matches max-height: 8lh in browse.css. */
+const CLAMP_LINES = 8;
+
 function el(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -775,6 +778,10 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     }
     const title = el('h2', 'compare-title', group.label);
     title.dataset.testid = 'compare-title';
+    const all = button('link compare-all-toggle', 'Expand all', 'compare-expand-all');
+    all.hidden = true;
+    const top = el('div', 'compare-top');
+    top.append(title, all);
     const columns = el('div', 'compare');
     for (const e of group.entries) {
       const card = el('article', 'compare-card');
@@ -790,16 +797,68 @@ export function createBrowseView(root, { history: shared = null } = {}) {
       const body = el('div', 'compare-text');
       body.dataset.testid = 'compare-text';
       body.append(...paragraphs(e.text || ''));
+      const more = button('link compare-more', 'Show more', 'compare-more');
+      more.hidden = true;
+      more.setAttribute('aria-expanded', 'false');
+      more.addEventListener('click', () => {
+        setExpanded(card, !card.classList.contains('expanded'));
+        updateExpandAll(columns, all);
+      });
       const actions = el('div', 'card-actions');
       const read = button('link', 'Read in document', 'compare-read');
       read.addEventListener('click', () => openDocument({ id: e.documentId }, { sectionIndex: e.sectionIndex }));
       const open = button('open', 'Open original', 'compare-open');
       open.addEventListener('click', () => openOriginal({ title: e.documentTitle, url: e.url }));
       actions.append(read, open);
-      card.append(head, body, actions);
+      card.append(head, body, more, actions);
       columns.append(card);
     }
-    detail.replaceChildren(title, columns);
+    all.addEventListener('click', () => {
+      const expand = all.textContent === 'Expand all';
+      for (const card of columns.querySelectorAll('.compare-card.clampable')) setExpanded(card, expand);
+      updateExpandAll(columns, all);
+    });
+    detail.replaceChildren(top, columns);
+    // Which cards are longer than the clamp depends on the column width, so it is measured again
+    // whenever the width changes (window resize, a hidden page shown again).
+    compareResize?.disconnect();
+    let width = -1;
+    compareResize = new window.ResizeObserver(([entry]) => {
+      if (entry.contentRect.width === width) return;
+      width = entry.contentRect.width;
+      measureClamp(columns, all);
+    });
+    compareResize.observe(columns);
+    measureClamp(columns, all);
+  }
+
+  let compareResize = null;
+
+  /** A card is clampable when its text is longer than the clamp (8 lines, CSS .compare-text). */
+  function measureClamp(columns, all) {
+    for (const card of columns.querySelectorAll('.compare-card')) {
+      const body = card.querySelector('.compare-text');
+      const line = parseFloat(window.getComputedStyle(body).lineHeight) || 24;
+      const over = body.scrollHeight > line * CLAMP_LINES + 2;
+      card.classList.toggle('clampable', over);
+      card.querySelector('.compare-more').hidden = !over;
+    }
+    updateExpandAll(columns, all);
+  }
+
+  function setExpanded(card, on) {
+    card.classList.toggle('expanded', on);
+    const more = card.querySelector('.compare-more');
+    more.textContent = on ? 'Show less' : 'Show more';
+    more.setAttribute('aria-expanded', String(on));
+  }
+
+  /** Expand all while any long card is collapsed, Collapse all once every one is open; hidden when none is long. */
+  function updateExpandAll(columns, all) {
+    const long = [...columns.querySelectorAll('.compare-card.clampable')];
+    all.hidden = long.length === 0;
+    all.textContent =
+      long.length && long.every((c) => c.classList.contains('expanded')) ? 'Collapse all' : 'Expand all';
   }
 
   // --- find ----------------------------------------------------------------------------------
