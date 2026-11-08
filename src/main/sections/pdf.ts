@@ -207,51 +207,117 @@ export function joinPageTables(lines: Line[]): Line[] {
 
 /** Text quality of one page's text layer, both shares from 0 to 1. */
 export interface PageQuality {
-  /** Letters, digits and CJK over all non-space characters, runs of three or more of one punctuation mark left out. */
+  /**
+   * Letters and CJK over all non-space characters that are not neutral (NEUTRAL_* below), runs of
+   * three or more of one punctuation mark left out.
+   */
   charShare: number;
   /** Plausible words over all words that are not pure numbers or punctuation. */
   wordShare: number;
-  /** Non-space characters on the page. */
+  /** Non-space characters on the page, neutral ones included. */
   chars: number;
 }
 
 const CJK = /[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uac00-\ud7af]/u;
-const WORD_CHAR = /[\p{L}\p{N}]/u;
+const LETTER = /\p{L}/u;
+const DIGIT = /\p{N}/u;
+/**
+ * Punctuation written in figures: amounts, percentages, ratios, ranges, times, multiples (2.5x),
+ * reference numbers in brackets ((44-386)) and placeholders in tables (a lone dash). Neutral inside a token that holds a digit, and as a
+ * lone dash; elsewhere it counts as before. Full-width forms included.
+ */
+export const NEUTRAL_FIGURE_PUNCTUATION = '.,%$€£¥￥—–-/:％＄，．：／+±×‰()';
+/**
+ * Ordinary Chinese punctuation, neutral anywhere: clean Chinese pages (forms, contract clauses)
+ * were judged garbled only for it (owner decision 2026-11-08).
+ */
+export const NEUTRAL_CJK_PUNCTUATION = '、，。：；（）“”‘’《》？！';
+const FIGURE_PUNCT = new Set([...NEUTRAL_FIGURE_PUNCTUATION]);
+const CJK_PUNCT = new Set([...NEUTRAL_CJK_PUNCTUATION]);
+/** Figure words: 12.5x, FY2031E, Q4, 2026E, H1, 10bn, 4.5%. */
+const FIGURE_WORD = /^\p{L}{0,3}\p{N}[\p{N}.,]*(?:\p{L}{1,2}|%)?$/u;
+/** Short ratios written with a slash (P/B); longer ones such as EV/EBITDA stay implausible. */
+const RATIO = /^\p{L}{1,3}\/\p{L}{1,3}$/u;
+
+const NUMBER = /^[\p{N}.,:/%-]+$/u;
+const trimWord = (raw: string) => raw.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
+const isPlausible = (w: string) =>
+  CJK.test(w) || /^\p{L}+(?:['’.-]\p{L}+)*\.?$/u.test(w) || FIGURE_WORD.test(w) || RATIO.test(w);
 
 /**
- * A word is plausible when it holds any CJK, or when, with punctuation trimmed from both ends, it
- * is two or more letters with at most an apostrophe, hyphen or period between them (don't,
- * e-mail, U.S.). Numbers and punctuation-only tokens count for neither side: tables of figures
- * and dotted contents lines are not garbage.
+ * The readable content of a text: the characters of its plausible words and numbers (as in
+ * pageQuality), punctuation trimmed from their ends; spaces and junk tokens count for nothing. The
+ * OCR replacement guard compares OCR text with a text layer by it, so a garbled layer's stray
+ * letters do not make it look as long as a real reading of the page.
+ */
+export function readableLength(text: string): number {
+  let n = 0;
+  for (const raw of text.normalize('NFKC').split(/\s+/)) {
+    const w = trimWord(raw);
+    if (w && (NUMBER.test(w) || isPlausible(w))) n += [...w].length;
+  }
+  return n;
+}
+
+/**
+ * A character counts for the page when it is a letter or CJK, against it when it is anything else,
+ * and for neither when it is neutral: a digit, figure punctuation inside a token with a digit or a
+ * lone dash, an x right after a digit (2.5x), or Chinese punctuation. Figures then neither lift a
+ * page nor sink it. A word is plausible when it holds any CJK, when, with punctuation trimmed from
+ * both ends, it is two or more letters with at most an apostrophe, hyphen or period between them
+ * (don't, e-mail, U.S.), or when it is a figure word or a short ratio (12.5x, FY2031E, Q4, P/B).
+ * Numbers and punctuation-only tokens count for neither side: tables of figures and dotted
+ * contents lines are not garbage.
  */
 export function pageQuality(text: string): PageQuality {
   // Dot leaders and rules in contents pages and forms (....., . . . ., ____) are layout, not text.
-  const chars = [...text.replace(/([^\p{L}\p{N}\s])(?:\s*\1){2,}/gu, '').replace(/\s+/g, '')];
-  const good = chars.filter((c) => WORD_CHAR.test(c) || CJK.test(c)).length;
+  const kept = text.replace(/([^\p{L}\p{N}\s])(?:\s*\1){2,}/gu, '');
+  let chars = 0;
+  let good = 0;
+  let neutral = 0;
+  for (const token of kept.split(/\s+/)) {
+    if (!token) continue;
+    const figure = DIGIT.test(token) || /^[—–-]$/u.test(token);
+    const cs = [...token];
+    cs.forEach((c, i) => {
+      chars++;
+      if (
+        DIGIT.test(c) ||
+        CJK_PUNCT.has(c) ||
+        (figure && FIGURE_PUNCT.has(c)) ||
+        ((c === 'x' || c === 'X') && i > 0 && DIGIT.test(cs[i - 1]!))
+      )
+        neutral++;
+      else if (LETTER.test(c) || CJK.test(c)) good++;
+    });
+  }
   let words = 0;
   let plausible = 0;
   for (const raw of text.split(/\s+/)) {
-    const w = raw.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
-    if (!w || /^[\p{N}.,:/%-]+$/u.test(w)) continue;
+    const w = trimWord(raw);
+    if (!w || NUMBER.test(w)) continue;
     words++;
-    if (CJK.test(w) || /^\p{L}+(?:['’.-]\p{L}+)*\.?$/u.test(w)) plausible++;
+    if (isPlausible(w)) plausible++;
   }
+  const judged = chars - neutral;
   return {
-    charShare: chars.length ? good / chars.length : 1,
+    charShare: judged ? good / judged : 1,
     wordShare: words ? plausible / words : 1,
-    chars: chars.length,
+    chars,
   };
 }
 
 /**
- * Thresholds for a garbled text layer, measured on the owner's first corpus (docs/eval.md, Garbled
- * text layers): on its eight digital PDFs (599 pages) no page went below 0.92 for characters or
- * 0.88 for words; the scanned one has pages down to 0.52 and 0.55. A page is garbled when either
- * share is below 0.85. Pages with fewer than GARBLED_MIN_CHARS characters are too short to judge
- * by share; see SPARSE_CHARS.
+ * Thresholds for a garbled text layer, recalibrated on 2026-11-08 with the neutral characters and
+ * figure words above, on the owner's English and Chinese corpora (997 PDF pages) and the owner's
+ * table PDF (docs/app.md, OCR in the watcher). A page is garbled when either share is below its
+ * threshold. Word share does the separating: every page of the English scanned file judged garbled
+ * before is at most 0.864, every readable page at least 0.876. Character share only has to stay
+ * below the lowest readable page, 0.851. Pages with fewer than GARBLED_MIN_CHARS characters are
+ * too short to judge by share; see SPARSE_CHARS.
  */
-export const GARBLED_CHAR_SHARE = 0.85;
-export const GARBLED_WORD_SHARE = 0.85;
+export const GARBLED_CHAR_SHARE = 0.84;
+export const GARBLED_WORD_SHARE = 0.87;
 export const GARBLED_MIN_CHARS = 40;
 /**
  * In a PDF that has at least one garbled page, a page with fewer characters than this that draws
