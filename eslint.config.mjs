@@ -30,7 +30,7 @@ const browserGlobals = {
 };
 
 export default tseslint.config(
-  { ignores: ['upstream/**', 'dist/**', 'out/**', 'release/**', 'node_modules/**', 'coverage/**'] },
+  { ignores: ['upstream/**', 'dist/**', 'out/**', 'release/**', 'release-test/**', 'node_modules/**', 'coverage/**'] },
   js.configs.recommended,
   {
     files: ['**/*.mjs', '**/*.js'],
