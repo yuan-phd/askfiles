@@ -623,6 +623,16 @@ export function cardOf(n: number, section: AnswerSection, rerank: number | null,
   };
 }
 
+/** The drawnFrom field: cited by the model, not cited after verification; omitted when empty. */
+export function drawnFromOf(
+  modelCited: Set<number>,
+  order: number[],
+  sources: SourceCard[],
+): { drawnFrom?: SourceCard[] } {
+  const drawn = sources.filter((c) => modelCited.has(c.n) && !order.includes(c.n));
+  return drawn.length ? { drawnFrom: drawn } : {};
+}
+
 export interface AnswerResult {
   /** The reply as written, think blocks removed. */
   text: string;
@@ -632,6 +642,12 @@ export interface AnswerResult {
   cited: SourceCard[];
   /** Selected but not cited. */
   considered: SourceCard[];
+  /**
+   * verifyCitations only: sources the model cited that verification left uncited, in source order;
+   * also in considered, which keeps its meaning for the eval and the test record. The Ask page shows
+   * them apart, as Drawn from, not word for word. Absent when there are none.
+   */
+  drawnFrom?: SourceCard[];
   /** For the not-found state: the best reranked sections. */
   nearest: SourceCard[];
   /** For the not-found state: the sources the reply cites as checked, in citation order. */
@@ -924,6 +940,8 @@ export async function answer(
       parts = [];
     } else claims = e.rest;
   }
+  // What the model cited in the sentences it keeps, before verification moves or removes citations.
+  const modelCited = new Set(claims.flatMap((c) => c.citations));
   let namesStripped = 0;
   let verification: VerifyStats | undefined;
   let sentenceMatch: AnswerResult['sentenceMatch'];
@@ -1053,6 +1071,7 @@ export async function answer(
     claims,
     cited: order.map((n) => sources[n - 1]!),
     considered: sources.filter((c) => !order.includes(c.n)),
+    ...drawnFromOf(verification && !notFound ? modelCited : new Set(), order, sources),
     nearest,
     checked:
       notFound && verdict === null

@@ -580,6 +580,22 @@ span.cite {
   color: var(--accent);
 }
 
+/* Drawn from, not word for word: cited by the model, citation removed by verification. Its title
+   reads like the Sources heading, since it is a group of sources, not a hidden extra. */
+.drawn {
+  margin-top: var(--space-5);
+}
+
+.drawn summary {
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: var(--space-3);
+}
+
 .considered {
   margin-top: var(--space-5);
 }
@@ -587,6 +603,7 @@ span.cite {
 .considered summary {
   cursor: pointer;
   font-size: 0.875rem;
+  font-weight: 600;
   color: var(--text-muted);
   margin-bottom: var(--space-3);
 }

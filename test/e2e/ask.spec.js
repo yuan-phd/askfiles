@@ -60,6 +60,105 @@ async function askQuestion(page, q = QUESTION) {
 }
 
 test.describe('Ask page with the answer pipeline stubbed', () => {
+  test.describe('Drawn from, not word for word', () => {
+    const TRAVEL = card(4, { title: 'Travel', path: ['Travel'], passage: 'Travel is booked through the portal.' });
+    const groups = (page) => ({
+      sources: page.getByTestId('sources'),
+      drawn: page.getByTestId('drawn'),
+      considered: page.getByTestId('considered'),
+    });
+
+    test('all citations pass: no new group, the page looks as before', async ({ page }) => {
+      await open(page);
+      await askQuestion(page);
+      const g = groups(page);
+      await expect(g.sources.getByTestId('source-card')).toHaveCount(2);
+      await expect(g.drawn).toBeHidden();
+      await expect(g.considered).toBeVisible();
+      await expect(g.considered).not.toHaveAttribute('open', '');
+      // Only the title of the collapsed group is bold; its size is unchanged.
+      const summary = g.considered.locator('summary');
+      await expect(summary).toHaveCSS('font-weight', '600');
+      await expect(summary).toHaveCSS('font-size', '14px');
+    });
+
+    test('one starred sentence: its section is in the open group after the sources, the rest stays collapsed', async ({
+      page,
+    }) => {
+      const q = 'Who books travel?';
+      const run = answerRun({
+        sources: [LEAVE, TRAVEL, PARKING],
+        deltas: [partsOf('Employees get 27 days a year [1]. Managers book all travel [2].')],
+        result: {
+          text: 'Employees get 27 days a year [1]. Managers book all travel [2].',
+          claims: [
+            { text: 'Employees get 27 days a year . ', citations: [1], unsupported: false },
+            { text: 'Managers book all travel .', citations: [], unsupported: true },
+          ],
+          cited: [LEAVE],
+          // The pipeline keeps a drawn section in considered as well; the page shows it once.
+          considered: [TRAVEL, PARKING],
+          drawnFrom: [TRAVEL],
+        },
+      });
+      await open(page, { runs: { [q]: run } });
+      await askQuestion(page, q);
+      const g = groups(page);
+      await expect(page.getByTestId('claim-unsupported')).toHaveCount(1);
+      await expect(g.sources.getByTestId('source-card')).toHaveCount(1);
+      await expect(g.drawn).toBeVisible();
+      await expect(g.drawn).toHaveAttribute('open', '');
+      await expect(g.drawn.locator('summary')).toHaveText('Drawn from, not word for word');
+      await expect(g.drawn.getByTestId('source-card')).toHaveCount(1);
+      await expect(g.drawn.getByTestId('source-section')).toHaveText('Travel');
+      await expect(g.drawn.getByTestId('source-passage')).toHaveText(TRAVEL.passage);
+      // Directly after the source cards, before the other sections.
+      const order = await page.evaluate(() =>
+        [...document.querySelectorAll('#sources, #drawn, #considered')].map((e) => e.id),
+      );
+      expect(order).toEqual(['sources', 'drawn', 'considered']);
+      // The same card as a source, without a number.
+      const cls = async (l) => l.getByTestId('source-card').first().getAttribute('class');
+      expect(await cls(g.drawn)).toBe(await cls(g.sources));
+      await expect(g.drawn.getByTestId('source-number')).toBeHidden();
+      await expect(g.considered).not.toHaveAttribute('open', '');
+      await g.considered.locator('summary').click();
+      await expect(g.considered.getByTestId('source-section')).toHaveText(['Facilities > Parking']);
+    });
+
+    test('no passing citation: only the new group and the other sections', async ({ page }) => {
+      const q = 'What does the handbook say about pets?';
+      const run = answerRun({
+        sources: [LEAVE, TRAVEL, PARKING],
+        deltas: [partsOf('Pets are allowed on Fridays [1]. They travel free [2].')],
+        result: {
+          text: 'Pets are allowed on Fridays [1]. They travel free [2].',
+          claims: [
+            { text: 'Pets are allowed on Fridays . ', citations: [], unsupported: true },
+            { text: 'They travel free .', citations: [], unsupported: true },
+          ],
+          cited: [],
+          considered: [LEAVE, TRAVEL, PARKING],
+          drawnFrom: [LEAVE, TRAVEL],
+        },
+      });
+      await open(page, { runs: { [q]: run } });
+      await askQuestion(page, q);
+      const g = groups(page);
+      await expect(page.getByTestId('claim-unsupported')).toHaveCount(2);
+      await expect(g.sources).toBeHidden();
+      await expect(g.drawn).toBeVisible();
+      await expect(g.drawn.getByTestId('source-section')).toHaveText([
+        'Employee handbook > Leave > Annual leave',
+        'Travel',
+      ]);
+      await expect(g.considered).toBeVisible();
+      await g.considered.locator('summary').click();
+      await expect(g.considered.getByTestId('source-card')).toHaveCount(1);
+      await expect(page.getByTestId('fallback')).toBeHidden();
+    });
+  });
+
   test('streams the answer with citations, cards in citation order and the other sections collapsed', async ({
     page,
   }) => {

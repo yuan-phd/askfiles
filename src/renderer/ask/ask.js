@@ -26,6 +26,8 @@ const els = {
   answerNote: $('answer-note'),
   sources: $('sources'),
   sourceList: $('source-list'),
+  drawn: $('drawn'),
+  drawnList: $('drawn-list'),
   considered: $('considered'),
   consideredList: $('considered-list'),
   fallback: $('fallback'),
@@ -284,9 +286,19 @@ function cardNode(c, { numbered = true } = {}) {
   return node;
 }
 
-function renderCards(cited, considered) {
+/**
+ * Cited sources, then the sections the model cited whose citations verification removed (drawn,
+ * open), then the rest of the selected sections (collapsed). The pipeline keeps drawn sections in
+ * considered too, so they are taken out of it here.
+ */
+function renderCards(cited, considered, drawn = []) {
   els.sourceList.replaceChildren(...cited.map((c) => cardNode(c)));
   els.sources.hidden = cited.length === 0;
+  els.drawnList.replaceChildren(...drawn.map((c) => cardNode(c, { numbered: false })));
+  els.drawn.hidden = drawn.length === 0;
+  els.drawn.open = true;
+  const drawnN = new Set(drawn.map((c) => c.n));
+  considered = considered.filter((c) => !drawnN.has(c.n));
   els.consideredList.replaceChildren(...considered.map((c) => cardNode(c, { numbered: false })));
   els.considered.hidden = considered.length === 0;
   els.considered.open = false;
@@ -330,6 +342,8 @@ function resetResult() {
   els.progress.hidden = true;
   els.sources.hidden = true;
   els.sourceList.replaceChildren();
+  els.drawn.hidden = true;
+  els.drawnList.replaceChildren();
   els.considered.hidden = true;
   els.consideredList.replaceChildren();
   els.fallback.hidden = true;
@@ -480,7 +494,7 @@ function finish(result) {
   }
   if (result.claims.length) renderClaims(result.claims);
   else els.answerText.textContent = 'The model returned an empty answer. The sections below may still help.';
-  renderCards(result.cited, result.considered);
+  renderCards(result.cited, result.considered, result.drawnFrom ?? []);
 }
 
 async function ask(question) {
