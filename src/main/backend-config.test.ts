@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { bundledBackendConfig, presetServerEnv } from './backend-config.js';
+import { bundledBackendConfig, bundledOllamaEnv, presetServerEnv } from './backend-config.js';
 import { fakeConfig, fakeTreeKill, readRecord, tmpDir } from './process-manager/__fixtures__/helpers.js';
 import { ProcessManager } from './process-manager/index.js';
 
@@ -51,7 +51,12 @@ describe('bundledBackendConfig', () => {
 
   it('keeps models and all writable data in the data directory', () => {
     expect(cfg.ollama!.command).toBe(`${res}/ollama/ollama`);
-    expect(cfg.ollama!.env).toEqual({ OLLAMA_MODELS: '/Users/u/Library/Application Support/AskFiles/ollama' });
+    expect(cfg.ollama!.env).toEqual({
+      OLLAMA_MODELS: '/Users/u/Library/Application Support/AskFiles/ollama',
+      OLLAMA_NO_CLOUD: '1',
+      OLLAMA_REMOTES: '127.0.0.1',
+      HOME: '/Users/u/Library/Application Support/AskFiles/ollama-home',
+    });
     expect(cfg.dataDir).toBe('/Users/u/Library/Application Support/AskFiles');
     expect(cfg.logDir).toBe('/Users/u/Library/Logs/AskFiles');
     expect(cfg.killProcessGroup).toBe(true);
@@ -72,7 +77,13 @@ describe('bundledBackendConfig', () => {
       command: `${wres}\\ollama\\ollama.exe`,
       args: ['serve'],
       cwd: data,
-      env: { OLLAMA_MODELS: `${data}\\ollama` },
+      env: {
+        OLLAMA_MODELS: `${data}\\ollama`,
+        OLLAMA_NO_CLOUD: '1',
+        OLLAMA_REMOTES: '127.0.0.1',
+        HOME: `${data}\\ollama-home`,
+        USERPROFILE: `${data}\\ollama-home`,
+      },
     });
     expect(w.server.args).toEqual([`${wres}\\server\\index.js`]);
     expect(w.server.cwd).toBe(`${wres}\\server`);
@@ -109,6 +120,49 @@ describe('bundledBackendConfig', () => {
         .map((r) => r.pid),
     ).toEqual([s.processes.server.pid, s.processes.collector.pid, s.processes.ollama.pid]);
   });
+
+  // The offline test of 2026-11-08 saw the bundled Ollama call ollama.com at every start and write
+  // ~/.ollama/cache. A parent environment that says otherwise must not win.
+  for (const platform of ['darwin', 'win32'] as const) {
+    it(`gives the bundled Ollama no cloud and a home inside the data directory on ${platform}`, async () => {
+      const dir = tmpDir();
+      const data = path.join(dir, 'data');
+      const spec = bundledBackendConfig({
+        platform,
+        resourcesPath: dir,
+        dataDir: data,
+        logDir: dir,
+        nodePath: 'x',
+      }).ollama!;
+      const fakeOllama = fakeConfig(dir).ollama!;
+      const m = new ProcessManager(
+        fakeConfig(dir, {
+          ollama: { ...fakeOllama, env: spec.env },
+          baseEnv: {
+            ...process.env,
+            OLLAMA_NO_CLOUD: '0',
+            OLLAMA_REMOTES: 'ollama.com',
+            HOME: '/Users/someone',
+            USERPROFILE: 'C:\\Users\\someone',
+          },
+          ...(platform === 'win32' ? { killProcessGroup: false, treeKill: fakeTreeKill(dir) } : {}),
+        }),
+      );
+      winManagers.push(m);
+      await m.start();
+      const env = readRecord(dir).find((r) => r.event === 'start' && r.name === 'ollama')!.env!;
+      const join = platform === 'win32' ? path.win32.join : path.posix.join;
+      expect(env).toMatchObject({
+        OLLAMA_NO_CLOUD: '1',
+        OLLAMA_REMOTES: '127.0.0.1',
+        OLLAMA_MODELS: join(data, 'ollama'),
+        HOME: join(data, 'ollama-home'),
+      });
+      expect(env.USERPROFILE).toBe(platform === 'win32' ? join(data, 'ollama-home') : 'C:\\Users\\someone');
+      expect(bundledOllamaEnv(data, platform === 'win32')).toEqual(spec.env);
+      await m.stop();
+    });
+  }
 
   it('matches the folder names electron-builder.yml puts under Resources', () => {
     const yml = fs.readFileSync(path.join(__dirname, '..', '..', 'electron-builder.yml'), 'utf8');

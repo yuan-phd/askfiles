@@ -265,6 +265,18 @@ Indexing switches (the preset's indexing block; docs/eval.md, Indexing switches)
 
 The language data never downloads: @tesseract.js-data/eng and @tesseract.js-data/chi_sim (4.0.0_best_int) are runtime dependencies of the shell and ship in app.asar; at every launch src/main/tesseract.ts copies any missing language, unpacked, to `<dataDir>/storage/models/tesseract`, where the collector's tesseract.js looks first. Session B had not shipped these files, so Session H added the packages.
 
+## Privacy: no outside requests
+
+Documents and questions never leave the machine, and after the first run nothing else does either. What enforces it:
+
+- Server, collector and the bundled Ollama listen on 127.0.0.1 only (patch 001, OLLAMA_HOST).
+- The server: DISABLE_TELEMETRY=true and CHECKPOINT_DISABLE=1; patch 006 skips its two boot fetches (models.dev, raw.githubusercontent.com) unless ANYTHING_LLM_ALLOW_REMOTE_MODEL_DATA=true, which the process manager always sets to false.
+- The bundled Ollama (src/main/backend-config.ts, bundledOllamaEnv), checked against the source of the bundled v0.40.4: OLLAMA_NO_CLOUD=1 stops the model recommendations refresh and the cloud model cache that `ollama serve` otherwise fetches from ollama.com at every start and on a retry timer, and refuses cloud models and web search; OLLAMA_REMOTES=127.0.0.1 keeps remote-host models on this machine. Ollama has no setting for its own folder and writes its signing key, server.json and cache under ~/.ollama, so HOME (and USERPROFILE on Windows) points at `<dataDir>/ollama-home`; the user's own Ollama installation is never read or written. Before 2026-11-08 the bundled Ollama called ollama.com at every start and wrote ~/.ollama/cache/model-recommendations.json. Ollama's update check belongs to its desktop app, which is not bundled.
+- OCR language data ships in the app (see OCR in the watcher); the reranker is off on every tier and nothing is fetched for it.
+- Downloads happen only for models: the first-run wizard and the models or settings pages pull through Ollama (registry.ollama.ai, and huggingface.co for the 16 GB tier's pinned file). Nothing is downloaded while indexing or answering.
+
+How to check it on a Mac: start the packaged app with the network on and sample `lsof -nP -i -a -p <pid>` for every AskFiles process (the app, its helpers, server, collector, ollama and its runners) for longer than Ollama's retry interval; only 127.0.0.1 and ::1 may appear. ~/.ollama must not change. Unit test: backend-config.test.ts, "gives the bundled Ollama no cloud and a home inside the data directory", on both platforms.
+
 ## Smoke test
 
 scripts/smoke-mac.sh starts the packaged app on an emptied data directory (the model cache is kept) with ASKFILES_PRESETS_FILE=test/fixtures/presets-smoke.json (qwen3:0.6b, all-minilm, threshold 0) and ASKFILES_LIBRARY_FOLDER set to a temp folder holding test/fixtures/handbook.pdf and the two-page test/fixtures/scanned.pdf. The first run asks for no folder; once it is done the app links that folder into All files without the bridge. The script waits for the first run, for the Ask page's ready line in main.log and for both PDFs in libraries/all-files/index.json, then checks the workspace, the OCR pages (1 and 2), the browse index (both PDFs listed in libraries/all-files/browse), then waits for the `[answer] smoke` line with a [1] citation: the app is started with ASKFILES_SMOKE_QUESTION and asks that question through the answer pipeline once the Ask page is ready and the library indexed. It also checks the reranker files the first run fetched.
