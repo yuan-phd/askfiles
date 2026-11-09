@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { fakeApi, manualWatch } from './__fixtures__/fakes.js';
 import { collectorOcr } from './ocr.js';
-import { sectionSplitter, splitWithOcr } from './splitter.js';
+import { ocrReplaces, sectionSplitter, splitWithOcr } from './splitter.js';
 import type { IndexData, OcrApi } from './types.js';
 import { FolderWatcher } from './watcher.js';
 
@@ -247,6 +247,64 @@ describe('OCR of garbled pages in a PDF with a text layer', () => {
     expect(all).not.toContain('agn:,e');
     expect(all).toContain('Alcohol is never refunded');
     expect(logs).toEqual([expect.stringContaining('garbled text layer on pages 1; replaced with OCR: 1')]);
+  });
+
+  // A readable price table with a small logo above it: OCR of the logo finds two words.
+  const TABLE = ['Item Price Unit', 'Tea 2.50 EUR', 'Coffee 3.00 EUR', 'Water 1.20 EUR', 'Juice 2.80 EUR'];
+
+  it('keeps a readable table layer when OCR of its small image finds only a few words', async () => {
+    const { buildScannedPdfWithText } = await import('../../../test/fixtures/make-scanned-pdf.mjs');
+    const dir = path.dirname(SCANNED);
+    const file = path.join(tmp, 'prices.pdf');
+    fs.writeFileSync(
+      file,
+      buildScannedPdfWithText([
+        { jpg: fs.readFileSync(path.join(dir, 'scanned-page.jpg')), text: GARBAGE },
+        { jpg: fs.readFileSync(path.join(dir, 'scanned-page-2.jpg')), text: TABLE },
+      ]),
+    );
+    const api = fakeCollector({ 1: PAGE_TEXT[1]!, 2: 'ACME Ltd' });
+    const logs: string[] = [];
+    const { chunks, ocrReplaced, parsed } = await splitWithOcr(file, {
+      maxChars: 2000,
+      ocr: collectorOcr({ api, cacheDir: path.join(tmp, 'ocr-cache-table') }),
+      log: (m) => logs.push(m),
+    });
+    // Page 2 reached OCR as a nearly empty page with an image beside a garbled one.
+    expect(parsed.ocrPages).toEqual([1, 2]);
+    expect(parsed.ocrLayer?.[2]?.reason).toBe('sparse');
+    expect(api.images).toEqual(['prices-page-1-1.png', 'prices-page-2-1.png']);
+    expect(ocrReplaced).toEqual([1]);
+    const all = chunks.map((c) => c.text).join('\n');
+    for (const line of TABLE) expect(all).toContain(line);
+    expect(all).not.toContain('ACME Ltd');
+    expect(logs).toEqual([
+      expect.stringContaining(
+        'replaced with OCR: 1; kept (guard): 2 (OCR text (7 readable characters) is not longer than the layer',
+      ),
+    ]);
+  });
+
+  it('the guard: judged pages only, longer OCR text only, readable OCR text only', () => {
+    const table = { text: TABLE.join('\n'), reason: 'garbled' as const };
+    expect(ocrReplaces(table, 'ACME Ltd')).toMatchObject({ replace: false });
+    expect(ocrReplaces(undefined, 'A long and perfectly readable page of text.')).toEqual({
+      replace: false,
+      reason: 'the page was not judged unreadable',
+    });
+    // Only readable content counts: punctuation, spaces and junk tokens add nothing.
+    expect(ocrReplaces({ text: 'alpha beta gamma', reason: 'garbled' }, 'alpha, beta;!!!!!! ~|; x#@').replace).toBe(
+      false,
+    );
+    expect(ocrReplaces({ text: 'q@ #r ~| x#@ Cl@ agn:,e.111,rnt', reason: 'garbled' }, 'Train journeys').replace).toBe(
+      true,
+    );
+    const junk = '~|; x9#@ !!q %% ^^ Cl@ #r 1-, agn:,e.111,rnt ~|; x9#@ !!q %% ^^ Cl@ #r 1-, agn:,e.111,rnt';
+    expect(ocrReplaces({ text: 'ab', reason: 'garbled' }, junk)).toEqual({
+      replace: false,
+      reason: 'OCR text fails the quality check',
+    });
+    expect(ocrReplaces({ text: GARBAGE.join('\n'), reason: 'garbled' }, PAGE_TEXT[1]!).replace).toBe(true);
   });
 
   it('keeps the text layer without an OCR hook, and when OCR finds nothing', async () => {

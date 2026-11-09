@@ -189,7 +189,8 @@ test.describe('browse view', () => {
     await expect(page.getByTestId('compare-title')).toHaveText('Annual leave');
     const cards = page.getByTestId('compare-card');
     await expect(cards).toHaveCount(2);
-    await expect(cards.getByTestId('compare-file')).toHaveText(['leave-policy-v1.md', 'leave-policy-v2.md']);
+    await expect(cards.getByTestId('compare-file')).toHaveText(['leave-policy-v1', 'leave-policy-v2']);
+    await expect(cards.getByTestId('compare-filename')).toHaveText(['leave-policy-v1.md', 'leave-policy-v2.md']);
     await expect(cards.nth(0).getByTestId('compare-text')).toContainText('25 days of paid annual leave');
     await expect(cards.nth(1).getByTestId('compare-text')).toContainText('27 days of paid annual leave');
     const [a, b] = [await cards.nth(0).boundingBox(), await cards.nth(1).boundingBox()];

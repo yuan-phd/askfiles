@@ -46,7 +46,8 @@ export async function seedBrowse({ files = SEED_FILES, mtimes = {} } = {}) {
   for (const f of files) {
     const to = path.join(root, path.basename(f));
     fs.mkdirSync(path.dirname(to), { recursive: true });
-    fs.copyFileSync(path.join(FIXTURES, f), to);
+    // Absolute paths are files a spec wrote itself; the rest are fixtures.
+    fs.copyFileSync(path.isAbsolute(f) ? f : path.join(FIXTURES, f), to);
     const t = mtimes[path.basename(f)];
     if (t) fs.utimesSync(to, t / 1000, t / 1000);
   }

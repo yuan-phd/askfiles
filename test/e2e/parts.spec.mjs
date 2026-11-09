@@ -88,10 +88,11 @@ test('Compare merges a section cut by page into its parent and shows its full te
   const cards = page.getByTestId('compare-card');
   await expect(cards).toHaveCount(2);
   const bank = cards.filter({ hasText: 'bank-procedure.pdf' });
+  // One card, each part starting with its own page.
+  await expect(bank.getByTestId('compare-part-page')).toHaveText(['Page 4', 'Page 5']);
   await expect(bank.getByTestId('compare-text')).toHaveText(
-    /Prior review applies above the thresholds\.\s*Post review covers the other contracts\./,
+    /Page 4\s*Prior review applies above the thresholds\.\s*Page 5\s*Post review covers the other contracts\./,
   );
-  await expect(bank).toContainText('Pages 4 to 5');
   await expect(
     page.locator(
       '[data-testid="compare-card"] .doc-section-summary, [data-testid="compare-card"] [data-testid*="summary"]',
@@ -100,7 +101,7 @@ test('Compare merges a section cut by page into its parent and shows its full te
 
   await page.getByTestId('compare-item').filter({ hasText: 'Fees' }).click();
   await expect(cards.filter({ hasText: 'bank-procedure.pdf' }).getByTestId('compare-text')).toHaveText(
-    /Fees before the table\.\s*Fees after the table\./,
+    /Page 6\s*Fees before the table\.\s*Page 7\s*Fees after the table\./,
   );
 });
 

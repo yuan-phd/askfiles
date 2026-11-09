@@ -402,16 +402,28 @@ h2 {
 }
 
 .card-actions {
+  /* One row at every card width: Read section on the left, Open file on the right. */
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: var(--space-3);
 }
 
+.card-actions > button {
+  white-space: nowrap;
+}
+
+/* Shortened to fit: under the passage, so the action row holds only the two actions. */
 .card-count {
-  margin-right: auto;
+  display: block;
+  margin: calc(-1 * var(--space-2)) 0 var(--space-3);
   font-size: 0.8rem;
   color: var(--text-muted);
+}
+
+.card-count[hidden] {
+  display: none;
 }
 
 .open {
@@ -580,6 +592,22 @@ span.cite {
   color: var(--accent);
 }
 
+/* Drawn from, not word for word: cited by the model, citation removed by verification. Its title
+   reads like the Sources heading, since it is a group of sources, not a hidden extra. */
+.drawn {
+  margin-top: var(--space-5);
+}
+
+.drawn summary {
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: var(--space-3);
+}
+
 .considered {
   margin-top: var(--space-5);
 }
@@ -587,8 +615,15 @@ span.cite {
 .considered summary {
   cursor: pointer;
   font-size: 0.875rem;
+  font-weight: 600;
   color: var(--text-muted);
   margin-bottom: var(--space-3);
+  /* The title carries its own ▸ and ▾. */
+  list-style: none;
+}
+
+.considered summary::-webkit-details-marker {
+  display: none;
 }
 
 /* Developer panel (ASKFILES_DEVELOPER=1) */

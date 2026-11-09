@@ -503,6 +503,36 @@ describe('pageQuality', () => {
     expect(pageQuality('员工每年享有带薪年假二十七天。').charShare).toBeGreaterThan(0.9);
   });
 
+  it('counts figures as neutral and figure words as plausible, so a table of figures is readable', () => {
+    // A made-up budget table (labels, units, amounts, multiples, period codes); no real document.
+    const table = [
+      '第一部分 预算',
+      '项目编号 XK7 币种 EUR',
+      '单价 每件 €48.20 P/B 来源 内部',
+      '方案 甲 乙 丙 合计',
+      '金额 每月 €210 €265 €330 €805',
+      '增幅 % 1.25% 2.75% 4.25%',
+      '比重 % 12.5% 18.5% 26.5%',
+      '乘数 x 6.5x 8.5x 9.5x',
+      '运输 FY2031E 4.5% 7.5% —',
+      '仓储 FY2032E -2.5% -0.5% 1.25% 52,118',
+      '维护 Q2 1.75% 3.25% —',
+    ].join('\n');
+    const q = pageQuality(table);
+    expect(q.wordShare).toBe(1);
+    expect(q.charShare).toBeGreaterThan(0.95);
+    expect(isGarbled(q)).toBe(false);
+    // Neutral characters do not raise a page either: digits alone leave nothing to judge.
+    expect(pageQuality('12.5% 1,200 3/4 2026').charShare).toBe(1);
+    // Clause numbers and Chinese punctuation on a made-up Chinese form page.
+    const form =
+      '1.1.2 招标人\n名称：\n地址：\n（1）资质要求（应分别列出）：\n（2）财务要求：\n联系人：\n电话：\n'.repeat(3);
+    expect(isGarbled(pageQuality(form))).toBe(false);
+    // A garbage layer is still garbage with figures neutral.
+    const garbage = '\'\'. C"D7.I21C ...,,-omr<-l - .... --("-38rl(*l =--, ~|; x9#@ !!q %% ^^ Cl@ #r';
+    expect(isGarbled(pageQuality(garbage.repeat(2)))).toBe(true);
+  });
+
   it('finds no garbled page in a clean PDF', async () => {
     const doc = await parseFile(path.join(FIXTURES, 'eval-s/corpus/it-handbook.pdf'));
     expect(doc.ocrPages).toBeUndefined();

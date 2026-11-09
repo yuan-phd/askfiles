@@ -52,8 +52,13 @@
             <ol class="cards" id="source-list"></ol>
           </section>
 
+          <details class="drawn" id="drawn" data-testid="drawn" open hidden>
+            <summary>Drawn from, not word for word</summary>
+            <ol class="cards" id="drawn-list" data-testid="drawn-list"></ol>
+          </details>
+
           <details class="considered" id="considered" data-testid="considered" hidden>
-            <summary>Other sections considered</summary>
+            <summary id="considered-title" data-testid="considered-title">▸ Show 0 more sections</summary>
             <ol class="cards" id="considered-list"></ol>
           </details>
 
@@ -105,8 +110,8 @@
           <span class="card-page" data-testid="source-page" hidden></span>
         </div>
         <div class="card-passages" data-testid="source-passages"></div>
+        <span class="card-count" data-testid="source-count" hidden></span>
         <div class="card-actions">
-          <span class="card-count" data-testid="source-count" hidden></span>
           <button type="button" class="link read" data-testid="source-read">Read section</button>
           <button type="button" class="open" data-testid="source-open">Open file</button>
         </div>

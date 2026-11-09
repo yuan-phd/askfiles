@@ -101,6 +101,7 @@ const MARKUP = `
 `;
 
 import { createHistory, isBackKey } from '../shared/history.js';
+import { PAGE_PART, sectionTitle, withoutLeadingPageNumber } from '../shared/display.js';
 import { createGraphPage } from './graph.js';
 
 const bridge = window.askfiles?.browse;
@@ -108,8 +109,12 @@ const watcher = window.askfiles?.watcher;
 const graphBridge = window.askfiles?.graph;
 const summariesBridge = window.askfiles?.summaries;
 
-/** The splitter's suffix for the pages of a long section and the text after a table (src/main/browse/build.ts). */
-const PAGE_PART = /\s*\((?:page \d+|continued)\)\s*$/i;
+/** The toggle under a clamped Compare card's text. */
+const MORE = 'Show more ▾';
+const LESS = 'Show less ▴';
+
+/** Lines of a Compare card's text shown before Show more; matches max-height: 10lh in browse.css. */
+const CLAMP_LINES = 10;
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -775,31 +780,107 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     }
     const title = el('h2', 'compare-title', group.label);
     title.dataset.testid = 'compare-title';
+    const all = button('link compare-all-toggle', 'Expand all', 'compare-expand-all');
+    all.hidden = true;
+    const top = el('div', 'compare-top');
+    top.append(title, all);
     const columns = el('div', 'compare');
     for (const e of group.entries) {
       const card = el('article', 'compare-card');
       card.dataset.testid = 'compare-card';
       const head = el('header', 'compare-head');
-      const file = el('span', 'compare-file', e.documentTitle);
+      // As the Ask cards: the display name in bold, the file name small below it; both one line,
+      // cut with an ellipsis, the whole name on hover.
+      const shown = e.display || e.documentTitle;
+      const file = el('span', 'compare-file', shown);
       file.dataset.testid = 'compare-file';
-      file.title = e.relPath;
-      const as = el('span', 'compare-section', e.title);
-      head.append(file, as);
-      const place = placeLabel(e.pageStart, e.pageEnd, e.documentTitle, e.pageLabelStart, e.pageLabelEnd);
-      if (place) head.append(el('span', 'compare-page', place));
+      file.title = shown;
+      const fileName = el('span', 'compare-filename', e.documentTitle);
+      fileName.dataset.testid = 'compare-filename';
+      fileName.title = e.relPath || e.documentTitle;
+      const as = el('span', 'compare-section', sectionTitle(e.title));
+      head.append(file, fileName, as);
+      // One part: one page line under the header. Several parts: each starts with its own pages.
+      const parts = e.parts?.length ? e.parts : [{ ...e, text: e.text || '' }];
+      const place = (x) => placeLabel(x.pageStart, x.pageEnd, e.documentTitle, x.pageLabelStart, x.pageLabelEnd);
+      if (parts.length === 1 && place(parts[0])) {
+        const page = el('span', 'compare-page', place(parts[0]));
+        page.dataset.testid = 'compare-page';
+        head.append(page);
+      }
       const body = el('div', 'compare-text');
       body.dataset.testid = 'compare-text';
-      body.append(...paragraphs(e.text || ''));
+      for (const part of parts) {
+        if (parts.length > 1 && place(part)) {
+          const label = el('p', 'compare-part-page', place(part));
+          label.dataset.testid = 'compare-part-page';
+          body.append(label);
+        }
+        body.append(...paragraphs(withoutLeadingPageNumber(part.text || '')));
+      }
+      const more = button('compare-more', MORE, 'compare-more');
+      more.hidden = true;
+      more.setAttribute('aria-expanded', 'false');
+      more.addEventListener('click', () => {
+        setExpanded(card, !card.classList.contains('expanded'));
+        updateExpandAll(columns, all);
+      });
+      // The same actions as an Ask source card: Read section on the left, Open file on the right.
       const actions = el('div', 'card-actions');
-      const read = button('link', 'Read in document', 'compare-read');
+      const read = button('link read', 'Read section', 'compare-read');
       read.addEventListener('click', () => openDocument({ id: e.documentId }, { sectionIndex: e.sectionIndex }));
-      const open = button('open', 'Open original', 'compare-open');
+      const open = button('open', 'Open file', 'compare-open');
       open.addEventListener('click', () => openOriginal({ title: e.documentTitle, url: e.url }));
       actions.append(read, open);
-      card.append(head, body, actions);
+      card.append(head, body, more, actions);
       columns.append(card);
     }
-    detail.replaceChildren(title, columns);
+    all.addEventListener('click', () => {
+      const expand = all.textContent === 'Expand all';
+      for (const card of columns.querySelectorAll('.compare-card.clampable')) setExpanded(card, expand);
+      updateExpandAll(columns, all);
+    });
+    detail.replaceChildren(top, columns);
+    // Which cards are longer than the clamp depends on the column width, so it is measured again
+    // whenever the width changes (window resize, a hidden page shown again).
+    compareResize?.disconnect();
+    let width = -1;
+    compareResize = new window.ResizeObserver(([entry]) => {
+      if (entry.contentRect.width === width) return;
+      width = entry.contentRect.width;
+      measureClamp(columns, all);
+    });
+    compareResize.observe(columns);
+    measureClamp(columns, all);
+  }
+
+  let compareResize = null;
+
+  /** A card is clampable when its text is longer than the clamp (10 lines, CSS .compare-text). */
+  function measureClamp(columns, all) {
+    for (const card of columns.querySelectorAll('.compare-card')) {
+      const body = card.querySelector('.compare-text');
+      const line = parseFloat(window.getComputedStyle(body).lineHeight) || 24;
+      const over = body.scrollHeight > line * CLAMP_LINES + 2;
+      card.classList.toggle('clampable', over);
+      card.querySelector('.compare-more').hidden = !over;
+    }
+    updateExpandAll(columns, all);
+  }
+
+  function setExpanded(card, on) {
+    card.classList.toggle('expanded', on);
+    const more = card.querySelector('.compare-more');
+    more.textContent = on ? LESS : MORE;
+    more.setAttribute('aria-expanded', String(on));
+  }
+
+  /** Expand all while any long card is collapsed, Collapse all once every one is open; hidden when none is long. */
+  function updateExpandAll(columns, all) {
+    const long = [...columns.querySelectorAll('.compare-card.clampable')];
+    all.hidden = long.length === 0;
+    all.textContent =
+      long.length && long.every((c) => c.classList.contains('expanded')) ? 'Collapse all' : 'Expand all';
   }
 
   // --- find ----------------------------------------------------------------------------------
@@ -844,7 +925,12 @@ export function createBrowseView(root, { history: shared = null } = {}) {
           const b = button('find-hit', '', 'find-hit');
           b.dataset.section = String(h.sectionIndex);
           const title = el('span', 'find-hit-title');
-          title.append(...highlighted(h.title, h.titleMarks));
+          // The part marker (page N, continued) goes; the page has its own line below.
+          const shownTitle = sectionTitle(h.title) || h.title;
+          const titleMarks = (h.titleMarks || [])
+            .filter(([a]) => a < shownTitle.length)
+            .map(([a, b]) => [a, Math.min(b, shownTitle.length)]);
+          title.append(...highlighted(shownTitle, titleMarks));
           const place = placeLabel(h.pageStart, h.pageEnd, g.document.title, h.pageLabelStart, h.pageLabelEnd);
           const snippet = el('span', 'find-snippet');
           snippet.dataset.testid = 'find-snippet';

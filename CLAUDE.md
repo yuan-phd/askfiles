@@ -29,6 +29,7 @@ Read docs/plan.md before starting any task. It records the decisions, the phases
 7. Do not add a dependency without a one-line reason in the PR. Prefer Node built-ins.
 8. Ask before changing a decision listed in docs/plan.md. Anything else: decide, note the decision in the PR.
 9. Retrieval splits documents by section, not by fixed length; see docs/plan.md.
+10. The owner's data never enters the repository. Content of files in the owner's libraries (the app's data directory), in test records, or in ~/AskFiles-eval (file names, text, figures, table cells, metadata) must never be written into code, tests, fixtures, comments, docs, commit messages or PR bodies, not even rearranged or as an example. Test data is always invented. A diagnosis of one of the owner's own files is reported in chat and archived only in ~/AskFiles-eval/private-notes; the repository describes such a file only in general terms. Before every push, check the staged changes and the commit messages against the files read in the session. A local pre-push hook (not committed) refuses pushes that contain a line of ~/AskFiles-eval/private-notes/denylist.txt; never bypass it.
 
 ## Working in a session
 

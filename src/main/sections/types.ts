@@ -77,6 +77,11 @@ export interface ParsedDocument {
    * isGarbled): the splitter OCRs them and parses again with their OCR text. Absent when none.
    */
   ocrPages?: number[];
+  /**
+   * The text layer of each page in ocrPages and why the page is there (garbled, or nearly empty on
+   * a scanned page): the splitter's replacement guard compares OCR text against it.
+   */
+  ocrLayer?: Record<number, { text: string; reason: 'garbled' | 'sparse' }>;
   /** Printed page label per PDF page (pdfjs getPageLabels), index 0 for page 1; absent when none. */
   pageLabels?: string[];
 }

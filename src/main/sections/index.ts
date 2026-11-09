@@ -12,7 +12,7 @@ export * from './types.js';
 export { chunkSections, foldEmptySections, pageTitle, splitLongByPage, splitToFit, withPaths } from './chunk.js';
 export { findPdfTables, formatRow, headerLine, looksLikeHeader, tableSections } from './tables.js';
 export { cjkHeading, cjkMarks, cjkSectionsFromBlocks, cleanCjkLines, despace, isCjkText } from './cjk.js';
-export { isGarbled, pageQuality, GARBLED_CHAR_SHARE, GARBLED_WORD_SHARE, SPARSE_CHARS } from './pdf.js';
+export { isGarbled, pageQuality, readableLength, GARBLED_CHAR_SHARE, GARBLED_WORD_SHARE, SPARSE_CHARS } from './pdf.js';
 export { isAcceptableHeading, stripNumbering, MAX_HEADING_CHARS } from './headings.js';
 export { docTitleOf, paragraphs, parsePlainText } from './text.js';
 
@@ -22,8 +22,10 @@ export { docTitleOf, paragraphs, parsePlainText } from './text.js';
  * headings from styles and outline levels, OCR page by page. The bump makes every library
  * reindex once on the first launch after the update.
  * 3: long sections without sub-headings split by page (splitLongByPage); garbled PDF pages OCRed.
+ * 4: garbled pages judged with figures and Chinese punctuation neutral and figure words plausible,
+ *    thresholds recalibrated; OCR text replaces a layer only past the replacement guard.
  */
-export const SPLITTER_VERSION = 3;
+export const SPLITTER_VERSION = 4;
 
 export const SUPPORTED_EXTENSIONS = [
   '.pdf',

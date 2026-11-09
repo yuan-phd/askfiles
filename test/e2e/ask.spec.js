@@ -1,5 +1,15 @@
 import { test, expect } from '@playwright/test';
-import { mockLibrary, pageUrl, stubBridge, stubAnswer, watcherStatus, card, answerRun, partsOf } from './mocks.js';
+import {
+  cardActionsLayout,
+  mockLibrary,
+  pageUrl,
+  stubBridge,
+  stubAnswer,
+  watcherStatus,
+  card,
+  answerRun,
+  partsOf,
+} from './mocks.js';
 
 const QUESTION = 'How many days of annual leave do employees get?';
 
@@ -60,6 +70,168 @@ async function askQuestion(page, q = QUESTION) {
 }
 
 test.describe('Ask page with the answer pipeline stubbed', () => {
+  test.describe('Drawn from, not word for word', () => {
+    const TRAVEL = card(4, { title: 'Travel', path: ['Travel'], passage: 'Travel is booked through the portal.' });
+    const groups = (page) => ({
+      sources: page.getByTestId('sources'),
+      drawn: page.getByTestId('drawn'),
+      considered: page.getByTestId('considered'),
+    });
+
+    test('all citations pass: no new group, the page looks as before', async ({ page }) => {
+      await open(page);
+      await askQuestion(page);
+      const g = groups(page);
+      await expect(g.sources.getByTestId('source-card')).toHaveCount(2);
+      await expect(g.drawn).toBeHidden();
+      await expect(g.considered).toBeVisible();
+      await expect(g.considered).not.toHaveAttribute('open', '');
+      // Only the title of the collapsed group is bold; its size is unchanged.
+      const summary = g.considered.locator('summary');
+      await expect(summary).toHaveCSS('font-weight', '600');
+      await expect(summary).toHaveCSS('font-size', '14px');
+      await expect(summary).toHaveText('▸ Show 1 more section');
+    });
+
+    test('one starred sentence: its section is in the open group after the sources, the rest stays collapsed', async ({
+      page,
+    }) => {
+      const q = 'Who books travel?';
+      const run = answerRun({
+        sources: [LEAVE, TRAVEL, PARKING],
+        deltas: [partsOf('Employees get 27 days a year [1]. Managers book all travel [2].')],
+        result: {
+          text: 'Employees get 27 days a year [1]. Managers book all travel [2].',
+          claims: [
+            { text: 'Employees get 27 days a year . ', citations: [1], unsupported: false },
+            { text: 'Managers book all travel .', citations: [], unsupported: true },
+          ],
+          cited: [LEAVE],
+          // The pipeline keeps a drawn section in considered as well; the page shows it once.
+          considered: [TRAVEL, PARKING],
+          drawnFrom: [TRAVEL],
+        },
+      });
+      await open(page, { runs: { [q]: run } });
+      await askQuestion(page, q);
+      const g = groups(page);
+      await expect(page.getByTestId('claim-unsupported')).toHaveCount(1);
+      await expect(g.sources.getByTestId('source-card')).toHaveCount(1);
+      await expect(g.drawn).toBeVisible();
+      await expect(g.drawn).toHaveAttribute('open', '');
+      await expect(g.drawn.locator('summary')).toHaveText('Drawn from, not word for word');
+      await expect(g.drawn.getByTestId('source-card')).toHaveCount(1);
+      await expect(g.drawn.getByTestId('source-section')).toHaveText('Travel');
+      await expect(g.drawn.getByTestId('source-passage')).toHaveText(TRAVEL.passage);
+      // Directly after the source cards, before the other sections.
+      const order = await page.evaluate(() =>
+        [...document.querySelectorAll('#sources, #drawn, #considered')].map((e) => e.id),
+      );
+      expect(order).toEqual(['sources', 'drawn', 'considered']);
+      // The same card as a source, without a number.
+      const cls = async (l) => l.getByTestId('source-card').first().getAttribute('class');
+      expect(await cls(g.drawn)).toBe(await cls(g.sources));
+      await expect(g.drawn.getByTestId('source-number')).toHaveText(['[4]']);
+      await expect(g.considered).not.toHaveAttribute('open', '');
+      await g.considered.locator('summary').click();
+      await expect(g.considered.getByTestId('source-section')).toHaveText(['Facilities > Parking']);
+    });
+
+    test('every source number sent appears on exactly one card, in the same style in every group', async ({ page }) => {
+      const q = 'Where do hedgehogs sleep?';
+      const NEST = card(1, {
+        title: 'Nests (page 3)',
+        path: ['Garden Wildlife', 'Hedgehogs', 'Hedgehogs (continued)', 'Nests (page 3)'],
+        pageStart: 3,
+        pageEnd: 3,
+        passage: 'iv\nHedgehogs sleep in leaf piles under hedges.',
+      });
+      const POND = card(2, { title: 'Ponds', path: ['Ponds'], passage: 'xiiPonds\nFrogs spawn in shallow water.' });
+      const FEED = card(3, { title: 'Feeding', path: ['Feeding'], passage: 'Leave out water, never milk.' });
+      const SHED = card(4, { title: 'Sheds', path: ['Sheds'], passage: 'Check sheds before closing them.' });
+      const LEAF = card(5, { title: 'Leaves', path: ['Leaves'], passage: 'Keep a corner of leaves.' });
+      const run = answerRun({
+        sources: [NEST, POND, FEED, SHED, LEAF],
+        deltas: [partsOf('Hedgehogs sleep in leaf piles [1]. They hibernate in sheds [4].')],
+        result: {
+          text: 'Hedgehogs sleep in leaf piles [1]. They hibernate in sheds [4].',
+          claims: [
+            { text: 'Hedgehogs sleep in leaf piles . ', citations: [1], unsupported: false },
+            { text: 'They hibernate in sheds .', citations: [], unsupported: true },
+          ],
+          cited: [NEST],
+          // Source 5 is in no group of this result and source 2 is in two: the page shows each once.
+          considered: [POND, FEED, SHED],
+          drawnFrom: [SHED, POND],
+        },
+      });
+      await open(page, { runs: { [q]: run } });
+      await askQuestion(page, q);
+      const g = groups(page);
+      await g.considered.locator('summary').click();
+      const shown = await page.locator('#sources, #drawn, #considered').evaluateAll((sections) =>
+        sections.flatMap((s) =>
+          [...s.querySelectorAll('[data-testid="source-card"]')].map((c) => ({
+            group: s.id,
+            n: c.querySelector('[data-testid="source-number"]').textContent,
+            cls: c.querySelector('[data-testid="source-number"]').className,
+            visible: c.querySelector('[data-testid="source-number"]').checkVisibility(),
+          })),
+        ),
+      );
+      expect(shown.map((x) => x.n).sort()).toEqual(['[1]', '[2]', '[3]', '[4]', '[5]']);
+      expect(shown.map((x) => `${x.group} ${x.n}`)).toEqual([
+        'sources [1]',
+        'drawn [2]',
+        'drawn [4]',
+        'considered [3]',
+        'considered [5]',
+      ]);
+      expect(new Set(shown.map((x) => x.cls)).size).toBe(1);
+      expect(shown.every((x) => x.visible)).toBe(true);
+      await expect(g.considered.locator('summary')).toHaveText('▾ Hide 2 sections');
+      // Display only: the path shows the logical section once, the page in its own line, and the
+      // printed page number at the start of a passage is not shown.
+      const nest = g.sources.getByTestId('source-card');
+      await expect(nest.getByTestId('source-section')).toHaveText('Garden Wildlife > Hedgehogs > Nests');
+      await expect(nest.getByTestId('source-page')).toHaveText('Page 3');
+      await expect(nest.getByTestId('source-passage')).toHaveText('Hedgehogs sleep in leaf piles under hedges.');
+      await expect(g.drawn.getByTestId('source-passage').first()).toHaveText('Ponds\nFrogs spawn in shallow water.');
+    });
+
+    test('no passing citation: only the new group and the other sections', async ({ page }) => {
+      const q = 'What does the handbook say about pets?';
+      const run = answerRun({
+        sources: [LEAVE, TRAVEL, PARKING],
+        deltas: [partsOf('Pets are allowed on Fridays [1]. They travel free [2].')],
+        result: {
+          text: 'Pets are allowed on Fridays [1]. They travel free [2].',
+          claims: [
+            { text: 'Pets are allowed on Fridays . ', citations: [], unsupported: true },
+            { text: 'They travel free .', citations: [], unsupported: true },
+          ],
+          cited: [],
+          considered: [LEAVE, TRAVEL, PARKING],
+          drawnFrom: [LEAVE, TRAVEL],
+        },
+      });
+      await open(page, { runs: { [q]: run } });
+      await askQuestion(page, q);
+      const g = groups(page);
+      await expect(page.getByTestId('claim-unsupported')).toHaveCount(2);
+      await expect(g.sources).toBeHidden();
+      await expect(g.drawn).toBeVisible();
+      await expect(g.drawn.getByTestId('source-section')).toHaveText([
+        'Employee handbook > Leave > Annual leave',
+        'Travel',
+      ]);
+      await expect(g.considered).toBeVisible();
+      await g.considered.locator('summary').click();
+      await expect(g.considered.getByTestId('source-card')).toHaveCount(1);
+      await expect(page.getByTestId('fallback')).toBeHidden();
+    });
+  });
+
   test('streams the answer with citations, cards in citation order and the other sections collapsed', async ({
     page,
   }) => {
@@ -87,14 +259,44 @@ test.describe('Ask page with the answer pipeline stubbed', () => {
     await expect(considered).toBeVisible();
     await expect(considered).not.toHaveAttribute('open', '');
     await expect(considered.getByTestId('source-card')).toBeHidden();
+    await expect(considered.locator('summary')).toHaveText('▸ Show 1 more section');
     await considered.locator('summary').click();
+    await expect(considered.locator('summary')).toHaveText('▾ Hide 1 section');
     await expect(considered.getByTestId('source-card')).toHaveCount(1);
     await expect(considered.getByTestId('source-section')).toHaveText('Facilities > Parking');
-    await expect(considered.getByTestId('source-number')).toBeHidden();
+    await expect(considered.getByTestId('source-number')).toHaveText(['[3]']);
 
     await expect(page.getByTestId('answer')).toHaveAttribute('aria-busy', 'false');
     expect(await page.evaluate(() => window.__answerCalls)).toEqual([['ask', QUESTION]]);
   });
+
+  for (const width of [360, 1200]) {
+    test(`card actions keep their labels on one line in a ${width} px window`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      // The first cited card is shortened, so its row also holds the Shortened to fit note.
+      const trimmed = ANSWERED.map((e) =>
+        e.type === 'done' ? { ...e, result: { ...e.result, cited: [{ ...CARRY, trimmed: true }, LEAVE] } } : e,
+      );
+      await open(page, { runs: { [QUESTION]: trimmed } });
+      await askQuestion(page);
+      await page.getByTestId('considered').locator('summary').click();
+      const actions = await cardActionsLayout(page.locator('#result'));
+      expect(actions).toHaveLength(3);
+      for (const a of actions) {
+        expect(a).toMatchObject({
+          oneLine: true,
+          layout: 'one row',
+          edges: true,
+          labels: ['Read section', 'Open file'],
+        });
+      }
+      // Shortened to fit sits under the passage, outside the action row.
+      const note = page.getByTestId('source-count').first();
+      await expect(note).toBeVisible();
+      expect(await note.evaluate((n) => n.closest('.card-actions'))).toBeNull();
+      console.log(`[ask] ${width} px: cards ${actions.map((a) => `${a.card}px`).join(', ')}, actions one row`);
+    });
+  }
 
   test('a card with a display name shows it first and the file name smaller beside it', async ({ page }) => {
     const named = card(1, {

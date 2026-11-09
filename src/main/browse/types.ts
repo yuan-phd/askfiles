@@ -94,9 +94,20 @@ export interface DocumentRef {
   title?: string | null;
 }
 
+/** One part of a section as Compare shows it: its own page range and text. */
+export interface HeadingPart {
+  pageStart: number | null;
+  pageEnd: number | null;
+  pageLabelStart: string | null;
+  pageLabelEnd: string | null;
+  text: string;
+}
+
 export interface HeadingEntry {
   documentId: string;
   documentTitle: string;
+  /** The name the Ask cards show for the file (identifiers.ts displayName). */
+  display: string;
   relPath: string;
   url: string;
   sectionIndex: number;
@@ -108,6 +119,11 @@ export interface HeadingEntry {
   pageLabelEnd: string | null;
   /** The section text; only when one group is asked for by its key. */
   text?: string;
+  /**
+   * The parts in document order, each with its own pages; only with the text. Neighbouring parts
+   * on the same pages are one part, so a page label never repeats back to back.
+   */
+  parts?: HeadingPart[];
 }
 
 export interface HeadingGroup {

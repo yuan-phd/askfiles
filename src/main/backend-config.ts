@@ -39,6 +39,33 @@ export function presetServerEnv(presetsFile: string, totalMemBytes: number): Rec
 }
 
 /**
+ * The bundled Ollama's environment. Read from the source of the bundled version (v0.40.4):
+ * - OLLAMA_NO_CLOUD=1 stops the two requests `ollama serve` makes to ollama.com at every start and
+ *   on a retry timer (model recommendations, server/model_recommendations.go; cloud model show
+ *   cache, server/model_show_cache.go) and refuses cloud models and web search. The other way to
+ *   set it, disable_ollama_cloud in ~/.ollama/server.json, is a user's file we must not rely on.
+ * - OLLAMA_REMOTES=127.0.0.1: models whose config names a remote host may only point at this
+ *   machine; the default allows ollama.com.
+ * - HOME (and USERPROFILE on Windows, which Go's os.UserHomeDir reads there) points into the data
+ *   directory. Ollama has no setting for its own folder: everything outside OLLAMA_MODELS goes to
+ *   ~/.ollama (the signing key id_ed25519, server.json, cache/model-recommendations.json). Without
+ *   this the bundled Ollama shared the user's own Ollama key and files.
+ * Model pulls (the wizard, the models page) still reach the registry; nothing else in `serve` does,
+ * and the app updater lives only in Ollama's desktop app, which is not bundled.
+ */
+export function bundledOllamaEnv(dataDir: string, windows: boolean): Record<string, string> {
+  const path = windows ? nodePath.win32 : nodePath.posix;
+  const home = path.join(dataDir, 'ollama-home');
+  return {
+    OLLAMA_MODELS: path.join(dataDir, 'ollama'),
+    OLLAMA_NO_CLOUD: '1',
+    OLLAMA_REMOTES: '127.0.0.1',
+    HOME: home,
+    ...(windows ? { USERPROFILE: home } : {}),
+  };
+}
+
+/**
  * Process manager config for the packaged app. Folder names follow extraResources in
  * electron-builder.yml (server, collector and ollama directly under Resources).
  */
@@ -59,7 +86,7 @@ export function bundledBackendConfig(p: BundlePaths): ProcessManagerConfig {
             command: path.join(p.resourcesPath, 'ollama', windows ? 'ollama.exe' : 'ollama'),
             args: ['serve'],
             cwd: p.dataDir,
-            env: { OLLAMA_MODELS: path.join(p.dataDir, 'ollama') },
+            env: bundledOllamaEnv(p.dataDir, windows),
           },
         }),
     collector: { command: p.nodePath, args: [path.join(collector, 'index.js')], cwd: collector, env: asNode },

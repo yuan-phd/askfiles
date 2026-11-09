@@ -16,6 +16,7 @@ import {
   contextBudget,
   cutSection,
   DEFAULT_PARAMS,
+  drawnFromOf,
   ensureReranker,
   extractTerms,
   fuse,
@@ -42,6 +43,7 @@ import {
   type Ranked,
   type Reranker,
   type RunSettings,
+  type SourceCard,
   type TermStats,
   NO_RERANKER,
   setFloor,
@@ -566,6 +568,37 @@ describe('pipeline', () => {
     expect(result.notFound).toBe(true);
     expect(result.cited).toEqual([]);
     expect(events.some((e) => e.type === 'delta')).toBe(false);
+  });
+
+  it('lists a section the model cited but verification left uncited as drawnFrom, and still in considered', async () => {
+    const verify: RunSettings = { ...settings, params: { ...DEFAULT_PARAMS, verifyCitations: true } };
+    const { deps } = setup({
+      reranker: { score: async (_q, t) => t.map((x) => (/27 days/.test(x) ? 0.9 : /portal/.test(x) ? 0.8 : 0)) },
+      reply: ['Employees get 27 days of paid annual leave [1]. Pigs can fly over the moon on Fridays [2].'],
+    });
+    const r = await retrieve('How many days of annual leave?', verify, deps);
+    const sel = choose(r, verify);
+    expect(sel.selected.length).toBeGreaterThanOrEqual(2);
+    const result = await answer('How many days of annual leave?', r, sel, verify, deps);
+    expect(result.cited.map((c) => c.n)).toEqual([1]);
+    expect(result.claims.map((c) => c.unsupported)).toEqual([false, true]);
+    expect(result.drawnFrom?.map((c) => c.n)).toEqual([2]);
+    expect(result.considered.map((c) => c.n)).toContain(2);
+
+    const passing = await answer(
+      'How many days of annual leave?',
+      r,
+      sel,
+      verify,
+      setup({ reply: ['Employees get 27 days of paid annual leave [1].'] }).deps,
+    );
+    expect(passing.drawnFrom).toBeUndefined();
+  });
+
+  it('drawnFromOf keeps source order and leaves out what is still cited', () => {
+    const cards = [1, 2, 3].map((n) => ({ n }) as SourceCard);
+    expect(drawnFromOf(new Set([3, 1, 2]), [2], cards).drawnFrom?.map((c) => c.n)).toEqual([1, 3]);
+    expect(drawnFromOf(new Set([2]), [2], cards)).toEqual({});
   });
 
   describe('ruleEchoRefusal (round V1)', () => {

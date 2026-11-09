@@ -202,3 +202,32 @@ export async function stubAnswer(
     { runs, fallback, developer },
   );
 }
+
+// Checks the two actions of every card in scope: no label overflows or breaks, and either both sit
+// side by side on one line or the second is under the first with both at the row's full width.
+export async function cardActionsLayout(scope) {
+  return scope.locator('.card-actions').evaluateAll((rows) =>
+    rows.map((row) => {
+      const buttons = [...row.querySelectorAll('button')].filter((b) => b.checkVisibility());
+      const r = row.getBoundingClientRect();
+      const card = row.closest('.card, .compare-card').getBoundingClientRect();
+      const boxes = buttons.map((b) => b.getBoundingClientRect());
+      const lineHeight = (b) => parseFloat(window.getComputedStyle(b).lineHeight) || 20;
+      const oneLine = buttons.every(
+        (b, i) => b.scrollWidth <= b.clientWidth + 1 && boxes[i].height < lineHeight(b) * 1.9 + 16,
+      );
+      // One row: buttons of different heights share it when their vertical centres line up.
+      const mid = (b) => (b.top + b.bottom) / 2;
+      const oneRow = boxes.length === 2 && Math.abs(mid(boxes[0]) - mid(boxes[1])) < 2;
+      return {
+        card: Math.round(card.width),
+        width: Math.round(r.width),
+        labels: buttons.map((b) => b.textContent),
+        oneLine,
+        layout: oneRow && boxes[0].right <= boxes[1].left ? 'one row' : 'other',
+        // Read section at the left edge of the row, Open file at the right edge.
+        edges: Math.abs(boxes[0]?.left - r.left) < 2 && Math.abs(boxes[1]?.right - r.right) < 2,
+      };
+    }),
+  );
+}

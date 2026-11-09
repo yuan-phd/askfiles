@@ -108,7 +108,7 @@ src/main/backend-config.ts builds it from process.resourcesPath, app.getPath('us
 
 | Process | Command | cwd |
 | --- | --- | --- |
-| ollama | Resources/ollama/ollama serve, OLLAMA_MODELS=<userData>/ollama | <userData> |
+| ollama | Resources/ollama/ollama serve, OLLAMA_MODELS=<userData>/ollama, OLLAMA_NO_CLOUD=1, OLLAMA_REMOTES=127.0.0.1, HOME=<userData>/ollama-home (docs/app.md, Privacy) | <userData> |
 | collector | Contents/MacOS/AskFiles Resources/collector/index.js, ELECTRON_RUN_AS_NODE=1 | Resources/collector |
 | migrate | Contents/MacOS/AskFiles Resources/server/node_modules/prisma/build/index.js migrate deploy | Resources/server |
 | server | Contents/MacOS/AskFiles Resources/server/index.js, ELECTRON_RUN_AS_NODE=1 | Resources/server |
@@ -121,7 +121,7 @@ The same function with platform win32 (process.platform, injected so tests build
 
 | Process | Command | cwd |
 | --- | --- | --- |
-| ollama | resources\ollama\ollama.exe serve, OLLAMA_MODELS=%LOCALAPPDATA%\AskFiles\ollama | %LOCALAPPDATA%\AskFiles |
+| ollama | resources\ollama\ollama.exe serve, OLLAMA_MODELS=%LOCALAPPDATA%\AskFiles\ollama, OLLAMA_NO_CLOUD=1, OLLAMA_REMOTES=127.0.0.1, HOME and USERPROFILE=%LOCALAPPDATA%\AskFiles\ollama-home | %LOCALAPPDATA%\AskFiles |
 | collector, migrate, server | AskFiles.exe with ELECTRON_RUN_AS_NODE=1, as on the Mac | resources\collector, resources\server |
 
 No killProcessGroup; treeKill is %SystemRoot%\System32\taskkill.exe /PID {pid} /T /F. The host stays 127.0.0.1, so Windows Firewall never asks on first launch. DATABASE_URL carries the Windows path with forward slashes (file:C:/Users/...). The unit tests cover this path with fake processes and a fake taskkill (__fixtures__/fake-taskkill.mjs, which finds the descendants with ps first, as taskkill /T does); the real taskkill runs in the Windows smoke job (.github/workflows/windows.yml), which checks that no process from the install folder is left after quit.

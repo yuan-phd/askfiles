@@ -73,4 +73,44 @@ describe('Compare groups (BrowseIndex.headings)', () => {
     expect(bankFees).toMatchObject({ sectionIndex: 3, pageStart: 6, pageEnd: 7 });
     expect(bankFees.text).toBe('Fees before the table.\n\nFees after the table.');
   });
+
+  it('gives a document one card per heading: a table section titled like its heading, and the heading used twice', () => {
+    const { index, add } = library();
+    // As structuredTables writes a section with a table: the heading, its text after the table as
+    // (continued), the table as a section titled like the heading, then (continued) again.
+    add('/d/club.pdf', [
+      ['Garden Words', 2, 3, 'Members are people who paid the fee.'],
+      ['Garden Words (continued)', 2, 3, 'Guests are invited by members.'],
+      ['Garden Words', 2, 4, 'Term | Meaning'],
+      ['Garden Words (continued)', 2, 5, 'Trustees are elected yearly.'],
+      ['Meetings', 1, 6, 'Meetings are held monthly.'],
+      ['Garden Words', 2, 9, 'A quorum is five members.'],
+    ]);
+    add('/d/league.pdf', [['Garden Words', 1, 1, 'Teams are clubs that play.']]);
+    const [group] = index.headings({ key: 'garden words' });
+    expect(group!.documents).toBe(2);
+    expect(group!.entries.map((e) => e.documentTitle)).toEqual(['club.pdf', 'league.pdf']);
+    const club = group!.entries[0]!;
+    expect(club).toMatchObject({ title: 'Garden Words', sectionIndex: 1, pageStart: 3, pageEnd: 9 });
+    expect(club.text).toBe(
+      [
+        'Members are people who paid the fee.',
+        'Guests are invited by members.',
+        'Term | Meaning',
+        'Trustees are elected yearly.',
+        'A quorum is five members.',
+      ].join('\n\n'),
+    );
+    // Each part with its own pages; the two parts on page 3 are one.
+    expect(club.parts!.map((p) => [p.pageStart, p.pageEnd, p.text])).toEqual([
+      [3, 3, 'Members are people who paid the fee.\n\nGuests are invited by members.'],
+      [4, 4, 'Term | Meaning'],
+      [5, 5, 'Trustees are elected yearly.'],
+      [9, 9, 'A quorum is five members.'],
+    ]);
+    expect(club.display).toBe('club');
+    expect(group!.entries[1]!.parts).toHaveLength(1);
+    expect(index.headings().find((g) => g.key === 'garden words')).toMatchObject({ documents: 2 });
+    expect(index.headings().find((g) => g.key === 'garden words')!.entries).toHaveLength(2);
+  });
 });
