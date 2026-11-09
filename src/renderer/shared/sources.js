@@ -54,6 +54,24 @@ export function sourceMenuText(s) {
   return mark ? `${sourceKindText(s)}, ${mark.toLowerCase()}` : sourceKindText(s);
 }
 
+/**
+ * The parent folder's name of each listed file or copy whose file name (ignoring case) another
+ * listed file or copy shares, by source id; files with a name of their own get none, so their
+ * rows stay as they are.
+ */
+export function sameNameFolders(rows) {
+  const singles = rows.filter((s) => s.kind !== 'folder');
+  const count = new Map();
+  for (const s of singles) count.set(s.name.toLowerCase(), (count.get(s.name.toLowerCase()) || 0) + 1);
+  const out = new Map();
+  for (const s of singles) {
+    if (count.get(s.name.toLowerCase()) < 2) continue;
+    const parts = s.path.split(/[\\/]/).filter(Boolean);
+    out.set(s.id, parts.length > 1 ? parts[parts.length - 2] : s.path);
+  }
+  return out;
+}
+
 /** Sources whose name or path holds the query, ignoring case; all of them for an empty query. */
 export function filterSources(sources, query) {
   const q = (query || '').trim().toLowerCase();

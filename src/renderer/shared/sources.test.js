@@ -4,6 +4,7 @@ import {
   menuSources,
   missingText,
   moreText,
+  sameNameFolders,
   sourceKindText,
   sourceMenuText,
   sourceStatusText,
@@ -55,6 +56,26 @@ describe('library menu rows', () => {
     expect(moreText({ folders: 2, files: 3 })).toBe('5 more folders and files');
     expect(moreText({ folders: 1, files: 0 })).toBe('1 more folder');
     expect(moreText(null)).toBe('');
+  });
+});
+
+describe('folder of same-name files in the menu', () => {
+  it('names the parent folder only for listed files and copies that share a name, ignoring case', () => {
+    const rows = [
+      folder(1),
+      { ...file(1), name: 'agenda.md', path: '/Users/sam/Board/agenda.md' },
+      { ...file(2), name: 'Agenda.md', path: '/Users/sam/Team/Agenda.md' },
+      { id: 'file:agenda.md', kind: 'copy', path: '/data/files/agenda.md', name: 'agenda.md', available: true },
+      { ...file(3), name: 'budget.md', path: '/Users/sam/Board/budget.md' },
+    ];
+    expect([...sameNameFolders(rows)]).toEqual([
+      ['file-1', 'Board'],
+      ['file-2', 'Team'],
+      ['file:agenda.md', 'files'],
+    ]);
+    // A folder of the same name as a file does not count; one file of a name gets nothing.
+    expect(sameNameFolders([{ ...folder(1), name: 'agenda.md' }, rows[1]]).size).toBe(0);
+    expect(sameNameFolders(files(5)).size).toBe(0);
   });
 });
 

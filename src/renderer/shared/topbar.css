@@ -356,6 +356,20 @@ body {
   white-space: nowrap;
 }
 
+.source-kind {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 12rem;
+  white-space: nowrap;
+}
+
+/* The folder of a file whose name another listed file shares: cut short, the full path on hover. */
+.source-folder {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .source-more {
   padding: var(--space-1) 0;
   color: var(--text-muted);

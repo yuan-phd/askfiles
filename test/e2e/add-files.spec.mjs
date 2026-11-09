@@ -342,6 +342,41 @@ test.describe('library menu sources', () => {
     await expect(page.getByTestId('source-more')).toHaveText('900 more files · Manage');
   });
 
+  test('two listed files of one name show their folder, cut short, the full path on hover', async ({ page }) => {
+    const long = 'Minutes of the regional water board meetings and their appendices';
+    await open(page, {
+      libraries: libraries([
+        folder(1),
+        { ...file(1), name: 'agenda.md', path: '/Users/sam/Board/agenda.md' },
+        { ...file(2), name: 'Agenda.md', path: `/Users/sam/${long}/Agenda.md` },
+        { ...file(3), name: 'budget.md', path: '/Users/sam/Board/budget.md' },
+      ]),
+    });
+    await page.getByTestId('library-switcher').click();
+    const items = page.getByTestId('source-item');
+    await expect(items.locator('.source-kind')).toHaveText(['Folder', 'File · Board', `File · ${long}`, 'File']);
+    const where = page.getByTestId('source-folder');
+    await expect(where).toHaveCount(2);
+    await expect(where.nth(0)).toHaveAttribute('title', '/Users/sam/Board/agenda.md');
+    await expect(where.nth(1)).toHaveAttribute('title', `/Users/sam/${long}/Agenda.md`);
+    // The long folder name is cut with an ellipsis and the row stays one line inside the menu.
+    const cut = await where
+      .nth(1)
+      .evaluate((n) => ({ over: n.scrollWidth > n.clientWidth, ellipsis: window.getComputedStyle(n).textOverflow }));
+    expect(cut).toEqual({ over: true, ellipsis: 'ellipsis' });
+    const menu = await page.getByTestId('library-menu').boundingBox();
+    const row = await items.nth(2).boundingBox();
+    expect(row.x + row.width).toBeLessThanOrEqual(menu.x + menu.width);
+    expect(row.height).toBeLessThan(40);
+  });
+
+  test('files with names of their own keep their rows as they are', async ({ page }) => {
+    await open(page, { libraries: libraries([folder(1), file(1), file(2)]) });
+    await page.getByTestId('library-switcher').click();
+    await expect(page.getByTestId('source-item').locator('.source-kind')).toHaveText(['Folder', 'File', 'File']);
+    await expect(page.getByTestId('source-folder')).toHaveCount(0);
+  });
+
   test('everything that fits is listed without a Manage row', async ({ page }) => {
     await open(page, { libraries: libraries([...range(3, folder), ...range(2, file)]) });
     await page.getByTestId('library-switcher').click();
@@ -480,6 +515,23 @@ for (const scheme of ['light', 'dark']) {
     await open(eight, { libraries: libraries([...range(8, folder), ...range(900, file)]) });
     await eight.getByTestId('library-switcher').click();
     await eight.screenshot({ path: `${shots}/menu-8-folders-${scheme}.png` });
+
+    const same = await page.context().newPage();
+    await same.emulateMedia({ colorScheme: scheme });
+    await open(same, {
+      libraries: libraries([
+        folder(1),
+        { ...file(1), name: 'agenda.md', path: '/Users/sam/Board/agenda.md' },
+        {
+          ...file(2),
+          name: 'Agenda.md',
+          path: '/Users/sam/Minutes of the regional water board meetings/Agenda.md',
+        },
+        { ...file(3), name: 'budget.md', path: '/Users/sam/Board/budget.md' },
+      ]),
+    });
+    await same.getByTestId('library-switcher').click();
+    await same.screenshot({ path: `${shots}/menu-same-name-${scheme}.png` });
 
     const manage = await page.context().newPage();
     await manage.emulateMedia({ colorScheme: scheme });

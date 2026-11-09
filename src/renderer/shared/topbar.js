@@ -5,7 +5,7 @@
 // by drag and drop anywhere in the window. Everything goes through window.askfiles (the preload
 // bridge); without it (a plain browser) the bar shows the status counts only.
 
-import { menuSources, moreText, sourceMenuText, sourceStatus } from './sources.js';
+import { menuSources, moreText, sameNameFolders, sourceMenuText, sourceStatus } from './sources.js';
 
 const MARKUP = `
 <div class="view-switch" role="group" aria-label="View">
@@ -285,6 +285,8 @@ export function mountTopBar(
     const sources = lib?.sources || [];
     q('source-empty').hidden = sources.length > 0;
     const { rows, more } = menuSources(sources);
+    // Two listed files of one name are told apart by their folder; other rows stay as they are.
+    const folders = sameNameFolders(rows);
     q('source-list').replaceChildren(
       ...rows.map((s) => {
         const li = document.createElement('li');
@@ -298,6 +300,14 @@ export function mountTopBar(
         const kind = document.createElement('span');
         kind.className = 'source-kind';
         kind.textContent = sourceMenuText(s);
+        if (folders.has(s.id)) {
+          const where = document.createElement('span');
+          where.className = 'source-folder';
+          where.dataset.testid = 'source-folder';
+          where.textContent = folders.get(s.id);
+          where.title = s.path;
+          kind.append('\u00a0\u00b7\u00a0', where);
+        }
         li.dataset.status = sourceStatus(s);
         const remove = document.createElement('button');
         remove.type = 'button';
