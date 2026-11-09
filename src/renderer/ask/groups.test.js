@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { consideredChevron, consideredTitle, sourceGroups } from './groups.js';
+import { CHEVRON, chevronClass, consideredTitle, sourceGroups } from './groups.js';
 
 const card = (n) => ({ n, file: `garden-${n}.md`, title: `Section ${n}`, passage: `Text ${n}.` });
 const numbers = (g) => ({
@@ -62,7 +62,8 @@ describe('consideredTitle', () => {
     expect(consideredTitle(3, true)).toBe('Hide 3 sections');
     expect(consideredTitle(1, false)).toBe('Show 1 more section');
     expect(consideredTitle(1, true)).toBe('Hide 1 section');
-    expect(consideredChevron(false)).toBe('⌄');
-    expect(consideredChevron(true)).toBe('⌃');
+    expect(CHEVRON).toBe('⌃');
+    expect(chevronClass(false)).toBe('chevron down');
+    expect(chevronClass(true)).toBe('chevron');
   });
 });

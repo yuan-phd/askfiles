@@ -9,7 +9,7 @@ import { createClient, generateApiKey } from '../api/client.js';
 import { createHistory, isBackKey } from '../shared/history.js';
 import { lockLine, mountTopBar } from '../shared/topbar.js';
 import { displayPath, withoutLeadingPageNumber } from '../shared/display.js';
-import { consideredChevron, consideredTitle, sourceGroups } from './groups.js';
+import { CHEVRON, chevronClass, consideredTitle, sourceGroups } from './groups.js';
 
 const RECENT_LIMIT = 12;
 const RECENT_KEY = 'askfiles.recentQuestions';
@@ -317,9 +317,9 @@ function renderCards({ sent, cited, considered, drawn }) {
 /** The words, then the chevron in its own span so it can stand a little taller than them. */
 function setConsideredTitle(count, open) {
   const chevron = document.createElement('span');
-  chevron.className = 'chevron';
+  chevron.className = chevronClass(open);
   chevron.setAttribute('aria-hidden', 'true');
-  chevron.textContent = consideredChevron(open);
+  chevron.textContent = CHEVRON;
   els.consideredTitle.replaceChildren(document.createTextNode(`${consideredTitle(count, open)} `), chevron);
 }
 

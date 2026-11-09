@@ -618,7 +618,7 @@ span.cite {
   font-weight: 600;
   color: var(--text-muted);
   margin-bottom: var(--space-3);
-  /* The title carries its own chevron, ⌄ closed and ⌃ open, as Compare's Show more. */
+  /* The title carries its own chevron, pointing down closed and up open, as Compare's Show more. */
   list-style: none;
 }
 
@@ -627,11 +627,14 @@ span.cite {
   /* Kept equal to Compare's Show more chevron (browse.css .compare-more .chevron). */
   font-size: calc(0.875rem * 1.3);
   line-height: 0;
-  transform: translateY(-0.18em);
+  transform: translateY(0.3em);
 }
 
-.considered[open] summary .chevron {
-  transform: translateY(0.3em);
+/* Closed: the same glyph turned about the middle of its ink (transform-origin from the top of the
+   zero-height box, found by measuring), so it sits where the open one does. */
+.considered summary .chevron.down {
+  transform-origin: 50% -0.145em;
+  transform: translateY(0.3em) rotate(180deg);
 }
 
 .considered summary::-webkit-details-marker {

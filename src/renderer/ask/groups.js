@@ -30,7 +30,14 @@ export function consideredTitle(count, open) {
   return open ? `Hide ${count} ${noun}` : `Show ${count} more ${noun}`;
 }
 
-/** The chevron after the title, as on Compare's Show more: ⌄ closed, ⌃ open. */
-export function consideredChevron(open) {
-  return open ? '⌃' : '⌄';
+/**
+ * The chevron after the title, as on Compare's Show more. One glyph for both states, turned 180
+ * degrees by the class down when closed: ⌄ is not in the system font and came from a fallback
+ * font about two thirds the size of ⌃, so a closed chevron looked smaller than an open one.
+ */
+export const CHEVRON = '⌃';
+
+/** The chevron's class: down (pointing down, the group closed) or up (open). */
+export function chevronClass(open) {
+  return open ? 'chevron' : 'chevron down';
 }

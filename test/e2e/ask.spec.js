@@ -90,12 +90,22 @@ test.describe('Ask page with the answer pipeline stubbed', () => {
       const summary = g.considered.locator('summary');
       await expect(summary).toHaveCSS('font-weight', '600');
       await expect(summary).toHaveCSS('font-size', '14px');
-      await expect(summary).toHaveText('Show 1 more section ⌄');
+      await expect(summary).toHaveText('Show 1 more section ⌃');
       // The same chevron as Compare's Show more: its own span, 1.3 times the text, the text's colour.
       const chevron = summary.locator('.chevron');
       await expect(chevron).toHaveAttribute('aria-hidden', 'true');
       await expect(chevron).toHaveCSS('font-size', '18.2px');
       await expect(chevron).toHaveCSS('font-weight', '600');
+      // The same glyph open and closed, turned when closed, so both are the same size.
+      await expect(chevron).toHaveText('⌃');
+      await expect(chevron).toHaveClass('chevron down');
+      const closedBox = await chevron.boundingBox();
+      await summary.click();
+      await expect(chevron).toHaveClass('chevron');
+      await expect(summary).toHaveText('Hide 1 section ⌃');
+      const openBox = await chevron.boundingBox();
+      expect(openBox.width).toBeCloseTo(closedBox.width, 1);
+      expect(openBox.height).toBeCloseTo(closedBox.height, 1);
       expect(await chevron.evaluate((c) => window.getComputedStyle(c).color)).toBe(
         await summary.evaluate((s) => window.getComputedStyle(s).color),
       );
@@ -267,7 +277,7 @@ test.describe('Ask page with the answer pipeline stubbed', () => {
     await expect(considered).toBeVisible();
     await expect(considered).not.toHaveAttribute('open', '');
     await expect(considered.getByTestId('source-card')).toBeHidden();
-    await expect(considered.locator('summary')).toHaveText('Show 1 more section ⌄');
+    await expect(considered.locator('summary')).toHaveText('Show 1 more section ⌃');
     await considered.locator('summary').click();
     await expect(considered.locator('summary')).toHaveText('Hide 1 section ⌃');
     await expect(considered.getByTestId('source-card')).toHaveCount(1);

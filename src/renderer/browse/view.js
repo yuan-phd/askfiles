@@ -115,12 +115,15 @@ const summariesBridge = window.askfiles?.summaries;
 /** The toggle under a clamped Compare card's text: its words, and a chevron that turns when open. */
 const MORE = 'Show more';
 const LESS = 'Show less';
-const CHEVRON_DOWN = '⌄';
-const CHEVRON_UP = '⌃';
+/**
+ * One glyph for both states, turned 180 degrees by the class down when closed, as on the Ask page
+ * (ask/groups.js CHEVRON): ⌄ comes from a smaller fallback font.
+ */
+const CHEVRON = '⌃';
 
-/** Show more ⌄ or Show less ⌃: the words keep the button's text style, the chevron is its own span. */
+/** Show more (chevron down) or Show less (chevron up): the words keep the button's text style, the chevron is its own span. */
 export function setMoreLabel(node, open) {
-  const chevron = el('span', 'chevron', open ? CHEVRON_UP : CHEVRON_DOWN);
+  const chevron = el('span', open ? 'chevron' : 'chevron down', CHEVRON);
   chevron.setAttribute('aria-hidden', 'true');
   node.replaceChildren(document.createTextNode(`${open ? LESS : MORE} `), chevron);
 }

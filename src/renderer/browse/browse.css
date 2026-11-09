@@ -599,7 +599,7 @@ h6.doc-heading {
   margin-top: 0;
 }
 
-/* Show more ⌄ and Show less ⌃: muted, right under the faded text, only for the body. */
+/* Show more and Show less with their chevron: muted, right under the faded text, only for the body. */
 .compare-more {
   align-self: flex-start;
   margin-top: calc(-1 * var(--space-2));
@@ -615,8 +615,8 @@ h6.doc-heading {
   color: var(--text);
 }
 
-/* The chevron keeps the words' colour and weight and stands a little taller than them. ⌄ sits low
-   in its em box and ⌃ high, so each is nudged back to the middle of the line. */
+/* The chevron keeps the words' colour and stands a little taller than them; one glyph, turned when
+   closed (.down), so both states are the same size. */
 .compare-more .chevron {
   display: inline-block;
   /* The same chevron as the Ask page's Show N more sections (ask.css): its size and weight, a
@@ -624,14 +624,14 @@ h6.doc-heading {
   font-size: calc(0.875rem * 1.3);
   font-weight: 600;
   line-height: 0;
-}
-
-.compare-more[aria-expanded='false'] .chevron {
-  transform: translateY(-0.18em);
-}
-
-.compare-more[aria-expanded='true'] .chevron {
   transform: translateY(0.3em);
+}
+
+/* Closed: the same glyph turned about the middle of its ink (transform-origin from the top of the
+   zero-height box, found by measuring), so it sits where the open one does. */
+.compare-more .chevron.down {
+  transform-origin: 50% -0.145em;
+  transform: translateY(0.3em) rotate(180deg);
 }
 
 @media (max-width: 900px) {
