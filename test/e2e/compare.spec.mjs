@@ -5,6 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { test, expect } from '@playwright/test';
 import { seedBrowse, stubBrowseBridge } from './browse-seed.mjs';
+import { splitHeadingPdf } from './split-pdf.mjs';
+import { cardActionsLayout } from './mocks.js';
 
 const LONG = Array.from(
   { length: 6 },
@@ -141,7 +143,60 @@ test.describe('Compare cards', () => {
         expect(w / rem).toBeGreaterThanOrEqual(expected === 1 ? 20 : 16.5);
         expect(w / rem).toBeLessThanOrEqual(32);
       }
+      // The two actions never break their labels: side by side, or stacked at full card width.
+      const actions = await cardActionsLayout(page);
+      expect(actions).toHaveLength(5);
+      for (const a of actions) {
+        expect(a.oneLine).toBe(true);
+        expect(['side by side', 'stacked']).toContain(a.layout);
+      }
+      console.log(`[compare] ${width} px: actions ${actions.map((a) => `${a.width}px ${a.layout}`).join(', ')}`);
       if (shots) await page.screenshot({ path: `${shots}/compare-${width}.png`, fullPage: true });
     });
   }
+});
+
+// One document, one card: a heading the splitter cut into page parts is one card with both parts.
+test.describe('Compare merges the parts of a split section', () => {
+  let splitSeed;
+  let splitDir;
+
+  test.beforeAll(async () => {
+    splitDir = fs.mkdtempSync(path.join(os.tmpdir(), 'askfiles-compare-split-'));
+    const pdf = path.join(splitDir, 'club-handbook.pdf');
+    fs.writeFileSync(pdf, splitHeadingPdf());
+    const md = path.join(splitDir, 'club-rules.md');
+    fs.writeFileSync(md, '# Club rules\n\n## Notice period\n\nOne month, in writing, to the secretary.\n');
+    splitSeed = await seedBrowse({ files: [pdf, md] });
+  });
+
+  test.afterAll(() => {
+    splitSeed?.cleanup();
+    if (splitDir) fs.rmSync(splitDir, { recursive: true, force: true });
+  });
+
+  test('a heading split across two pages is one card with both parts in order and one page range', async ({ page }) => {
+    await stubBrowseBridge(page, splitSeed.index);
+    await page.goto(`${process.env.ASKFILES_PAGE_URL}/browse/index.html`);
+    await page.getByTestId('browse-tab-compare').click();
+    const item = page.getByTestId('compare-item').filter({ hasText: 'Notice period' });
+    await expect(item).toHaveCount(1);
+    await expect(item).toContainText('2 documents');
+    await item.click();
+    const cards = page.getByTestId('compare-card');
+    await expect(cards).toHaveCount(2);
+    const handbook = cards.filter({ hasText: 'club-handbook.pdf' });
+    await expect(handbook).toHaveCount(1);
+    await expect(handbook.locator('.compare-section')).toHaveText('Notice period');
+    await expect(handbook.locator('.compare-page')).toHaveText('Pages 1 to 2');
+    // Both parts, page 1 before page 2, in the one card's text.
+    const text = await handbook.getByTestId('compare-text').textContent();
+    expect(text).toContain('Page 1 line 1:');
+    expect(text).toContain('Page 2 line 30:');
+    expect(text.indexOf('Page 1 line 38:')).toBeLessThan(text.indexOf('Page 2 line 1:'));
+    // The clamp and Show more act on the merged text.
+    await expect(handbook.getByTestId('compare-more')).toHaveText('Show more');
+    await page.getByTestId('compare-expand-all').click();
+    await expect(handbook.getByTestId('compare-more')).toHaveText('Show less');
+  });
 });

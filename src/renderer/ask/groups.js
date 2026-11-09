@@ -9,7 +9,8 @@
  */
 export function sourceGroups({ sent = [], cited = [], considered = [], drawn = [] }) {
   const byN = new Map();
-  for (const c of [...sent, ...cited, ...drawn, ...considered]) if (!byN.has(c.n)) byN.set(c.n, c);
+  // The result's cards are final; the sources event only fills in a source the result left out.
+  for (const c of [...cited, ...drawn, ...considered, ...sent]) if (!byN.has(c.n)) byN.set(c.n, c);
   const used = new Set();
   const take = (list) =>
     list.filter((c) => {
@@ -23,8 +24,8 @@ export function sourceGroups({ sent = [], cited = [], considered = [], drawn = [
   return { cited: citedOut, drawn: drawnOut, considered: rest };
 }
 
-/** The collapsed title of the other sections: ▸ Show 3 other sections, ▾ Hide 1 other section. */
+/** The title of the other sections: ▸ Show 3 more sections when closed, ▾ Hide 3 sections when open. */
 export function consideredTitle(count, open) {
-  const noun = count === 1 ? 'other section' : 'other sections';
-  return `${open ? '▾ Hide' : '▸ Show'} ${count} ${noun}`;
+  const noun = count === 1 ? 'section' : 'sections';
+  return open ? `▾ Hide ${count} ${noun}` : `▸ Show ${count} more ${noun}`;
 }

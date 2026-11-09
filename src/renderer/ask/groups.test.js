@@ -44,6 +44,12 @@ describe('sourceGroups', () => {
     everyOnce(g, sent);
   });
 
+  it("takes a card's details from the result, the sources event only for a source the result left out", () => {
+    const g = sourceGroups({ sent: [card(1), card(2)], cited: [{ ...card(1), trimmed: true }], considered: [] });
+    expect(g.cited[0].trimmed).toBe(true);
+    expect(g.considered.map((c) => c.n)).toEqual([2]);
+  });
+
   it('works without the sources event, from the result alone', () => {
     const g = sourceGroups({ cited: [card(2)], considered: [card(1), card(3)], drawn: [card(3)] });
     expect(numbers(g)).toEqual({ cited: [2], drawn: [3], considered: [1] });
@@ -52,8 +58,9 @@ describe('sourceGroups', () => {
 
 describe('consideredTitle', () => {
   it('says what opening or closing does, with the count', () => {
-    expect(consideredTitle(3, false)).toBe('▸ Show 3 other sections');
-    expect(consideredTitle(3, true)).toBe('▾ Hide 3 other sections');
-    expect(consideredTitle(1, false)).toBe('▸ Show 1 other section');
+    expect(consideredTitle(3, false)).toBe('▸ Show 3 more sections');
+    expect(consideredTitle(3, true)).toBe('▾ Hide 3 sections');
+    expect(consideredTitle(1, false)).toBe('▸ Show 1 more section');
+    expect(consideredTitle(1, true)).toBe('▾ Hide 1 section');
   });
 });

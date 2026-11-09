@@ -1,5 +1,15 @@
 import { test, expect } from '@playwright/test';
-import { mockLibrary, pageUrl, stubBridge, stubAnswer, watcherStatus, card, answerRun, partsOf } from './mocks.js';
+import {
+  cardActionsLayout,
+  mockLibrary,
+  pageUrl,
+  stubBridge,
+  stubAnswer,
+  watcherStatus,
+  card,
+  answerRun,
+  partsOf,
+} from './mocks.js';
 
 const QUESTION = 'How many days of annual leave do employees get?';
 
@@ -80,7 +90,7 @@ test.describe('Ask page with the answer pipeline stubbed', () => {
       const summary = g.considered.locator('summary');
       await expect(summary).toHaveCSS('font-weight', '600');
       await expect(summary).toHaveCSS('font-size', '14px');
-      await expect(summary).toHaveText('▸ Show 1 other section');
+      await expect(summary).toHaveText('▸ Show 1 more section');
     });
 
     test('one starred sentence: its section is in the open group after the sources, the rest stays collapsed', async ({
@@ -179,7 +189,7 @@ test.describe('Ask page with the answer pipeline stubbed', () => {
       ]);
       expect(new Set(shown.map((x) => x.cls)).size).toBe(1);
       expect(shown.every((x) => x.visible)).toBe(true);
-      await expect(g.considered.locator('summary')).toHaveText('▾ Hide 2 other sections');
+      await expect(g.considered.locator('summary')).toHaveText('▾ Hide 2 sections');
       // Display only: the path shows the logical section once, the page in its own line, and the
       // printed page number at the start of a passage is not shown.
       const nest = g.sources.getByTestId('source-card');
@@ -249,9 +259,9 @@ test.describe('Ask page with the answer pipeline stubbed', () => {
     await expect(considered).toBeVisible();
     await expect(considered).not.toHaveAttribute('open', '');
     await expect(considered.getByTestId('source-card')).toBeHidden();
-    await expect(considered.locator('summary')).toHaveText('▸ Show 1 other section');
+    await expect(considered.locator('summary')).toHaveText('▸ Show 1 more section');
     await considered.locator('summary').click();
-    await expect(considered.locator('summary')).toHaveText('▾ Hide 1 other section');
+    await expect(considered.locator('summary')).toHaveText('▾ Hide 1 section');
     await expect(considered.getByTestId('source-card')).toHaveCount(1);
     await expect(considered.getByTestId('source-section')).toHaveText('Facilities > Parking');
     await expect(considered.getByTestId('source-number')).toHaveText(['[3]']);
@@ -259,6 +269,27 @@ test.describe('Ask page with the answer pipeline stubbed', () => {
     await expect(page.getByTestId('answer')).toHaveAttribute('aria-busy', 'false');
     expect(await page.evaluate(() => window.__answerCalls)).toEqual([['ask', QUESTION]]);
   });
+
+  for (const width of [360, 1200]) {
+    test(`card actions keep their labels on one line in a ${width} px window`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      // The first cited card is shortened, so its row also holds the Shortened to fit note.
+      const trimmed = ANSWERED.map((e) =>
+        e.type === 'done' ? { ...e, result: { ...e.result, cited: [{ ...CARRY, trimmed: true }, LEAVE] } } : e,
+      );
+      await open(page, { runs: { [QUESTION]: trimmed } });
+      await askQuestion(page);
+      await page.getByTestId('considered').locator('summary').click();
+      const actions = await cardActionsLayout(page.locator('#result'));
+      expect(actions).toHaveLength(3);
+      for (const a of actions) {
+        expect(a.oneLine).toBe(true);
+        expect(['side by side', 'stacked']).toContain(a.layout);
+      }
+      await expect(page.getByTestId('source-count').first()).toBeVisible();
+      console.log(`[ask] ${width} px: actions ${actions.map((a) => `${a.width}px ${a.layout}`).join(', ')}`);
+    });
+  }
 
   test('a card with a display name shows it first and the file name smaller beside it', async ({ page }) => {
     const named = card(1, {

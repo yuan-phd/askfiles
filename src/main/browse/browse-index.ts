@@ -215,22 +215,25 @@ export class BrowseIndex {
   headings(o: { key?: string | null; minDocuments?: number } = {}): HeadingGroup[] {
     const groups = new Map<string, HeadingEntry[]>();
     for (const d of this.docs.values()) {
-      // Parts the splitter cut from one section (T (page N), T (continued)) merge into the entry of
-      // T, so a heading appears once per section and its card holds every part's text in order.
-      const open = new Map<string, HeadingEntry>();
+      // One card per document under a heading, by logical identity: the document and the heading
+      // without the splitter's part marker. Parts it cut by page or after a table (T (page N),
+      // T (continued), and a table section titled T between them) and a heading the document uses
+      // more than once all go into that card, text in document order, one page range over them.
+      const mine = new Map<string, HeadingEntry>();
       for (const s of d.sections) {
         const part = PAGE_PART.test(s.title);
         const title = part ? s.title.replace(PAGE_PART, '').trim() : s.title;
         const key = part ? normalizeHeading(title) : s.heading;
         if (!key || (o.key && key !== o.key)) continue;
-        const owner = part ? open.get(key) : undefined;
+        const owner = mine.get(key);
         if (owner) {
-          if (s.pageStart !== null && owner.pageStart === null) {
+          if (s.pageStart !== null && (owner.pageStart === null || s.pageStart < owner.pageStart)) {
             owner.pageStart = s.pageStart;
             owner.pageLabelStart = s.pageLabelStart;
           }
-          if (s.pageEnd !== null || s.pageStart !== null) {
-            owner.pageEnd = s.pageEnd ?? s.pageStart;
+          const end = s.pageEnd ?? s.pageStart;
+          if (end !== null && (owner.pageEnd === null || end > owner.pageEnd)) {
+            owner.pageEnd = end;
             owner.pageLabelEnd = s.pageLabelEnd ?? s.pageLabelStart;
           }
           if (o.key) owner.text = [owner.text, s.text].filter(Boolean).join('\n\n');
@@ -249,7 +252,7 @@ export class BrowseIndex {
           pageLabelEnd: s.pageLabelEnd,
           ...(o.key ? { text: s.text } : {}),
         };
-        open.set(key, entry);
+        mine.set(key, entry);
         groups.set(key, [...(groups.get(key) ?? []), entry]);
       }
     }
