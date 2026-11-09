@@ -882,8 +882,12 @@ export class AppController implements BridgeHandlers {
   }
 
   private saveState(next: ShellState): void {
+    // Every way the current library changes (select, create, remove) passes here: an answer still
+    // running belongs to the library being left, so it is cancelled and none of its events follow.
+    const switched = next.currentLibrary !== this.state.currentLibrary;
     saveShellState(this.dataDir, next);
     this.state = { ...next };
+    if (switched) this.answers?.cancelCurrent(`the library changed to ${next.currentLibrary}`);
   }
 
   private libraryApi() {

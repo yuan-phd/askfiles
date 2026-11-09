@@ -12,7 +12,7 @@
 //
 // Three views (docs/graph.md, Large libraries): Local (one document and what it links to), Folders
 // (one node per first-level subfolder, expanded in place) and All. A library of LARGE_LIBRARY or
-// fewer documents opens on All, which draws exactly the graph above; a larger one opens on Local,
+// fewer documents opens on All, which draws exactly the graph above; a larger one opens on Folders,
 // and its All view shows only the labels of the most linked documents until hovered, searched or
 // zoomed in. What each view holds comes from graph-model.js; this file only draws it.
 

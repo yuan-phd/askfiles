@@ -40,7 +40,7 @@ describe('threshold and default view', () => {
     expect(isLarge({ large: false, nodes: many })).toBe(false);
     expect(isLarge({ nodes: many })).toBe(true);
     expect(isLarge({ nodes: many.slice(0, 50) })).toBe(false);
-    expect(defaultView({ large: true, nodes: many })).toBe('local');
+    expect(defaultView({ large: true, nodes: many })).toBe('folders');
     expect(defaultView({ large: false, nodes: many.slice(0, 50) })).toBe('all');
   });
 });

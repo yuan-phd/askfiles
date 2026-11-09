@@ -95,6 +95,7 @@ test.describe('Ask page with the answer pipeline stubbed', () => {
       const chevron = summary.locator('.chevron');
       await expect(chevron).toHaveAttribute('aria-hidden', 'true');
       await expect(chevron).toHaveCSS('font-size', '18.2px');
+      await expect(chevron).toHaveCSS('font-weight', '600');
       expect(await chevron.evaluate((c) => window.getComputedStyle(c).color)).toBe(
         await summary.evaluate((s) => window.getComputedStyle(s).color),
       );

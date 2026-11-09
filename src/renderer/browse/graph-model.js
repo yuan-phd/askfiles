@@ -23,9 +23,9 @@ export function isLarge(data) {
   return typeof data.large === 'boolean' ? data.large : data.nodes.length > LARGE_LIBRARY;
 }
 
-/** The view a library opens on: Local for a large one, All for a small one. */
+/** The view a library opens on: Folders for a large one, All for a small one. */
 export function defaultView(data) {
-  return isLarge(data) ? 'local' : 'all';
+  return isLarge(data) ? 'folders' : 'all';
 }
 
 /** The name a node's label and tooltip use: the display name, the file name for older graph files. */

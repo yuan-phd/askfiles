@@ -624,7 +624,8 @@ span.cite {
 
 .considered summary .chevron {
   display: inline-block;
-  font-size: 1.3em;
+  /* Kept equal to Compare's Show more chevron (browse.css .compare-more .chevron). */
+  font-size: calc(0.875rem * 1.3);
   line-height: 0;
   transform: translateY(-0.18em);
 }

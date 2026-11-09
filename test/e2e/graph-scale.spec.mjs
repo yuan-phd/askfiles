@@ -181,8 +181,15 @@ async function zoomPast(page, k) {
 }
 
 test.describe('large library graph', () => {
-  test('opens on Local with a search box; choosing a result centres on it; a click recentres', async ({ page }) => {
+  test('opens on Folders; Local asks for a document, choosing a result centres on it; a double click recentres', async ({
+    page,
+  }) => {
     await openGraph(page, large);
+    // More than 50 documents: Folders first; the other views stay a click away.
+    await expect(root(page)).toHaveAttribute('data-view', 'folders');
+    await expect(page.getByTestId('graph-view-folders')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('graph-group')).toHaveCount(16);
+    await page.getByTestId('graph-view-local').click();
     await expect(root(page)).toHaveAttribute('data-view', 'local');
     await expect(page.getByTestId('graph-view-local')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId('graph-pick')).toBeVisible();

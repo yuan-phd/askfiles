@@ -93,6 +93,18 @@ export class AnswerService {
     return { id };
   }
 
+  /**
+   * Cancels the question being answered, whatever its id (the current library changed). Its model
+   * request is aborted and send() lets no further event of it through.
+   */
+  cancelCurrent(reason: string): boolean {
+    if (!this.current) return false;
+    this.d.log(`[answer] cancelled: ${reason}`);
+    this.current.controller.abort();
+    this.current = null;
+    return true;
+  }
+
   cancel(id: string): void {
     if (this.current?.id === id) {
       this.current.controller.abort();

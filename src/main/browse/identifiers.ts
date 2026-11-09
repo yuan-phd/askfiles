@@ -268,11 +268,17 @@ function escape(t: string): string {
 }
 
 /**
- * Where the question names the identifier as a whole word sequence, -1 when it does not; a CJK
- * name anywhere, spaces ignored (the position is then in the text without spaces).
+ * A name's matcher, built once per identifier: the CJK form without spaces, or the regular
+ * expression of its words. Kept in a WeakMap keyed by the identifier, so it lives as long as the
+ * identity list that holds it: BrowseIndex compiles every matcher when it builds the list
+ * in the background (warmMatchers), and an identity list made elsewhere (tests, the eval) compiles on
+ * first use or with compileMatchers.
  */
-function mentionAt(question: string, id: Identifier): number {
-  if (isCjkName(id.text)) return fold(question).replace(/\s+/g, '').indexOf(fold(id.text).replace(/\s+/g, ''));
+type Matcher = { cjk: string } | { re: RegExp; nfkc: boolean };
+const matchers = new WeakMap<Identifier, Matcher>();
+
+function compile(id: Identifier): Matcher {
+  if (isCjkName(id.text)) return { cjk: fold(id.text).replace(/\s+/g, '') };
   const words = id.text
     .trim()
     .split(/[\s_]+/)
@@ -281,18 +287,94 @@ function mentionAt(question: string, id: Identifier): number {
   if (id.caseSensitive) {
     // Capitalized or all capitals, never lower case.
     const upper = id.text.toUpperCase().split(/\s+/).map(escape).join('\\s+');
-    return question.search(new RegExp(`(?<![\\p{L}\\p{N}])(?:${words}|${upper})(?![\\p{L}\\p{N}])`, 'u'));
+    return { re: new RegExp(`(?<![\\p{L}\\p{N}])(?:${words}|${upper})(?![\\p{L}\\p{N}])`, 'u'), nfkc: false };
   }
-  return question.normalize('NFKC').search(new RegExp(`(?<![\\p{L}\\p{N}])${words}(?![\\p{L}\\p{N}])`, 'iu'));
+  return { re: new RegExp(`(?<![\\p{L}\\p{N}])${words}(?![\\p{L}\\p{N}])`, 'iu'), nfkc: true };
 }
 
-function mentions(question: string, id: Identifier): boolean {
-  return mentionAt(question, id) >= 0;
+function matcherOf(id: Identifier): Matcher {
+  let m = matchers.get(id);
+  if (!m) {
+    m = compile(id);
+    matchers.set(id, m);
+  }
+  return m;
+}
+
+/**
+ * Builds the matcher of every name in an identity list now, so no question pays for it. V8 turns
+ * a regular expression into code only when it first runs, so each one is also run once here.
+ */
+export function compileMatchers(identities: FileIdentity[]): void {
+  const warm = (id: Identifier) => {
+    const m = matcherOf(id);
+    if ('re' in m) WARM_UP.search(m.re);
+  };
+  for (const f of identities) {
+    for (const id of f.identifiers) warm(id);
+    for (const id of f.names ?? []) warm(id);
+  }
+}
+
+/**
+ * compileMatchers in slices of about sliceMs, yielding to the event loop between them, so a large
+ * library's names are made ready in the background without holding the main process. Stops when
+ * stillWanted() turns false (the identity list was replaced). A question that comes first is still
+ * answered the same: matcherOf builds what it needs.
+ */
+export async function warmMatchers(
+  identities: FileIdentity[],
+  stillWanted: () => boolean = () => true,
+  sliceMs = 20,
+): Promise<void> {
+  const all = identities.flatMap((f) => [...f.identifiers, ...(f.names ?? [])]);
+  let i = 0;
+  while (i < all.length) {
+    if (!stillWanted()) return;
+    const t0 = performance.now();
+    while (i < all.length && performance.now() - t0 < sliceMs) {
+      const m = matcherOf(all[i++]!);
+      if ('re' in m) WARM_UP.search(m.re);
+    }
+    await new Promise<void>((r) => setImmediate(r));
+  }
+}
+
+/** A text no name matches whole, long enough that the search runs the compiled expression. */
+const WARM_UP = 'warm up the name matchers once: a b c d e f g h i j k l m n o p q r s t u v w x y z 0 1 2 3';
+
+/** A question prepared once for all names: its NFKC form and, for CJK names, its folded form without spaces. */
+class Prepared {
+  private nfkcText: string | null = null;
+  private flat: string | null = null;
+  constructor(readonly text: string) {}
+  get nfkc(): string {
+    return (this.nfkcText ??= this.text.normalize('NFKC'));
+  }
+  get cjkFlat(): string {
+    return (this.flat ??= fold(this.text).replace(/\s+/g, ''));
+  }
+}
+
+/**
+ * Where the question names the identifier as a whole word sequence, -1 when it does not; a CJK
+ * name anywhere, spaces ignored (the position is then in the text without spaces). The regular
+ * expressions have no g or y flag, so search() on a shared one keeps no state between questions.
+ */
+function mentionAt(q: Prepared, id: Identifier): number {
+  const m = matcherOf(id);
+  if ('cjk' in m) return q.cjkFlat.indexOf(m.cjk);
+  return (m.nfkc ? q.nfkc : q.text).search(m.re);
+}
+
+function mentions(q: Prepared, id: Identifier): boolean {
+  return mentionAt(q, id) >= 0;
 }
 
 /** The documents the question names, in library order. */
 export function mentionedDocuments(question: string, identities: FileIdentity[]): FileIdentity[] {
-  return identities.filter((f) => f.identifiers.some((id) => mentions(question, id)));
+  const q = new Prepared(question);
+  return identities.filter((f) => f.identifiers.some((id) => mentions(q, id)));
 }
 
 /**
@@ -304,9 +386,10 @@ export function mentionedDocuments(question: string, identities: FileIdentity[])
  */
 export function namedFileGroups(text: string, identities: FileIdentity[]): FileIdentity[][] {
   const byName = new Map<string, { docs: Set<string>; at: number }>();
+  const q = new Prepared(text);
   for (const f of identities)
     for (const id of f.names ?? f.identifiers) {
-      const at = mentionAt(text, id);
+      const at = mentionAt(q, id);
       if (at < 0) continue;
       const k = fold(id.text);
       const g = byName.get(k) ?? { docs: new Set<string>(), at };

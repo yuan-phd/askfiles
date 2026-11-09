@@ -619,7 +619,10 @@ h6.doc-heading {
    in its em box and ⌃ high, so each is nudged back to the middle of the line. */
 .compare-more .chevron {
   display: inline-block;
-  font-size: 1.3em;
+  /* The same chevron as the Ask page's Show N more sections (ask.css): its size and weight, a
+     little taller than either text; the words of Show more keep their own size and weight. */
+  font-size: calc(0.875rem * 1.3);
+  font-weight: 600;
   line-height: 0;
 }
 

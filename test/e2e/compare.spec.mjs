@@ -129,7 +129,7 @@ test.describe('Compare cards', () => {
     expect((await text.boundingBox()).height).toBeCloseTo(before, 0);
   });
 
-  test('Show more keeps its text style and ends in a chevron a little taller than the words, turned when open', async ({
+  test('Show more keeps its text style and ends in the Ask page chevron, taller than the words, turned when open', async ({
     page,
   }) => {
     const cards = await openCompare(page, 1200);
@@ -154,12 +154,15 @@ test.describe('Compare cards', () => {
     const closed = await style();
     expect(closed.chevron).toBe('⌄');
     expect(closed.hidden).toBe('true');
-    // The words keep the button's colour, size (0.8rem) and weight; the chevron the same colour and weight.
-    expect(closed.color[1]).toBe(closed.color[0]);
-    expect(closed.weight[1]).toBe(closed.weight[0]);
+    // The words keep the button's colour, size (0.8rem) and normal weight.
     expect(closed.size[0]).toBeCloseTo(12.8, 1);
-    expect(closed.size[1] / closed.size[0]).toBeGreaterThan(1.1);
-    expect(closed.size[1] / closed.size[0]).toBeLessThan(1.5);
+    expect(closed.weight[0]).toBe('400');
+    // The chevron has the text's colour, and the size and weight of the Ask page's chevron after
+    // Show N more sections (18.2 px, 600; checked on that page in ask.spec.js): taller than the words.
+    expect(closed.color[1]).toBe(closed.color[0]);
+    expect(closed.size[1]).toBeCloseTo(18.2, 1);
+    expect(closed.weight[1]).toBe('600');
+    expect(closed.size[1]).toBeGreaterThan(closed.size[0]);
     await more.click();
     expect((await style()).chevron).toBe('⌃');
   });
