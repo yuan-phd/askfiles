@@ -5,7 +5,7 @@ import type { FileRecord } from '../watcher/index.js';
 import { detectKind } from '../graph/kinds.js';
 import { buildDocument, buildOutline, documentId, PAGE_PART, type StoredChunk } from './build.js';
 import { normalizeHeading } from './normalize.js';
-import { buildIdentities, type FileIdentity } from './identifiers.js';
+import { buildIdentities, displayName, type FileIdentity } from './identifiers.js';
 import { rankSections, sectionFrequency, type FoldedSection, type KeywordOptions, type RankedSection } from './rank.js';
 import { stemFolded } from './stem.js';
 import { fold, markRanges, matchesOf, matchTier, queryTerms, snippetOf } from './search.js';
@@ -236,12 +236,16 @@ export class BrowseIndex {
             owner.pageEnd = end;
             owner.pageLabelEnd = s.pageLabelEnd ?? s.pageLabelStart;
           }
-          if (o.key) owner.text = [owner.text, s.text].filter(Boolean).join('\n\n');
+          if (o.key) {
+            owner.text = [owner.text, s.text].filter(Boolean).join('\n\n');
+            addPart(owner, s);
+          }
           continue;
         }
         const entry: HeadingEntry = {
           documentId: d.id,
           documentTitle: d.title,
+          display: displayName(d.title),
           relPath: d.relPath,
           url: d.url,
           sectionIndex: s.index,
@@ -250,8 +254,9 @@ export class BrowseIndex {
           pageEnd: s.pageEnd,
           pageLabelStart: s.pageLabelStart,
           pageLabelEnd: s.pageLabelEnd,
-          ...(o.key ? { text: s.text } : {}),
+          ...(o.key ? { text: s.text, parts: [] } : {}),
         };
+        if (o.key) addPart(entry, s);
         mine.set(key, entry);
         groups.set(key, [...(groups.get(key) ?? []), entry]);
       }
@@ -458,6 +463,33 @@ function summary(d: BrowseDocument): DocumentSummary {
     sectionCount: d.sections.length,
     ...(d.kind ? { kind: d.kind } : {}),
   };
+}
+
+/** Adds a section's text to an entry's parts; a part on the same pages as the last one joins it. */
+function addPart(
+  e: HeadingEntry,
+  s: {
+    pageStart: number | null;
+    pageEnd: number | null;
+    pageLabelStart: string | null;
+    pageLabelEnd: string | null;
+    text: string;
+  },
+): void {
+  const parts = (e.parts ??= []);
+  const last = parts[parts.length - 1];
+  const end = s.pageEnd ?? s.pageStart;
+  if (last && last.pageStart === s.pageStart && (last.pageEnd ?? last.pageStart) === end) {
+    last.text = [last.text, s.text].filter(Boolean).join('\n\n');
+    return;
+  }
+  parts.push({
+    pageStart: s.pageStart,
+    pageEnd: end,
+    pageLabelStart: s.pageLabelStart,
+    pageLabelEnd: s.pageLabelEnd ?? s.pageLabelStart,
+    text: s.text,
+  });
 }
 
 function distinct(entries: HeadingEntry[]): number {

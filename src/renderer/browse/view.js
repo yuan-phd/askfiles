@@ -109,6 +109,10 @@ const watcher = window.askfiles?.watcher;
 const graphBridge = window.askfiles?.graph;
 const summariesBridge = window.askfiles?.summaries;
 
+/** The toggle under a clamped Compare card's text. */
+const MORE = 'Show more ▾';
+const LESS = 'Show less ▴';
+
 /** Lines of a Compare card's text shown before Show more; matches max-height: 10lh in browse.css. */
 const CLAMP_LINES = 10;
 
@@ -785,27 +789,47 @@ export function createBrowseView(root, { history: shared = null } = {}) {
       const card = el('article', 'compare-card');
       card.dataset.testid = 'compare-card';
       const head = el('header', 'compare-head');
-      const file = el('span', 'compare-file', e.documentTitle);
+      // As the Ask cards: the display name in bold, the file name small below it; both one line,
+      // cut with an ellipsis, the whole name on hover.
+      const shown = e.display || e.documentTitle;
+      const file = el('span', 'compare-file', shown);
       file.dataset.testid = 'compare-file';
-      file.title = e.relPath;
+      file.title = shown;
+      const fileName = el('span', 'compare-filename', e.documentTitle);
+      fileName.dataset.testid = 'compare-filename';
+      fileName.title = e.relPath || e.documentTitle;
       const as = el('span', 'compare-section', sectionTitle(e.title));
-      head.append(file, as);
-      const place = placeLabel(e.pageStart, e.pageEnd, e.documentTitle, e.pageLabelStart, e.pageLabelEnd);
-      if (place) head.append(el('span', 'compare-page', place));
+      head.append(file, fileName, as);
+      // One part: one page line under the header. Several parts: each starts with its own pages.
+      const parts = e.parts?.length ? e.parts : [{ ...e, text: e.text || '' }];
+      const place = (x) => placeLabel(x.pageStart, x.pageEnd, e.documentTitle, x.pageLabelStart, x.pageLabelEnd);
+      if (parts.length === 1 && place(parts[0])) {
+        const page = el('span', 'compare-page', place(parts[0]));
+        page.dataset.testid = 'compare-page';
+        head.append(page);
+      }
       const body = el('div', 'compare-text');
       body.dataset.testid = 'compare-text';
-      body.append(...paragraphs(withoutLeadingPageNumber(e.text || '')));
-      const more = button('link compare-more', 'Show more', 'compare-more');
+      for (const part of parts) {
+        if (parts.length > 1 && place(part)) {
+          const label = el('p', 'compare-part-page', place(part));
+          label.dataset.testid = 'compare-part-page';
+          body.append(label);
+        }
+        body.append(...paragraphs(withoutLeadingPageNumber(part.text || '')));
+      }
+      const more = button('compare-more', MORE, 'compare-more');
       more.hidden = true;
       more.setAttribute('aria-expanded', 'false');
       more.addEventListener('click', () => {
         setExpanded(card, !card.classList.contains('expanded'));
         updateExpandAll(columns, all);
       });
+      // The same actions as an Ask source card: Read section on the left, Open file on the right.
       const actions = el('div', 'card-actions');
-      const read = button('link', 'Read in document', 'compare-read');
+      const read = button('link read', 'Read section', 'compare-read');
       read.addEventListener('click', () => openDocument({ id: e.documentId }, { sectionIndex: e.sectionIndex }));
-      const open = button('open', 'Open original', 'compare-open');
+      const open = button('open', 'Open file', 'compare-open');
       open.addEventListener('click', () => openOriginal({ title: e.documentTitle, url: e.url }));
       actions.append(read, open);
       card.append(head, body, more, actions);
@@ -847,7 +871,7 @@ export function createBrowseView(root, { history: shared = null } = {}) {
   function setExpanded(card, on) {
     card.classList.toggle('expanded', on);
     const more = card.querySelector('.compare-more');
-    more.textContent = on ? 'Show less' : 'Show more';
+    more.textContent = on ? LESS : MORE;
     more.setAttribute('aria-expanded', String(on));
   }
 

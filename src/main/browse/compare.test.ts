@@ -101,6 +101,15 @@ describe('Compare groups (BrowseIndex.headings)', () => {
         'A quorum is five members.',
       ].join('\n\n'),
     );
+    // Each part with its own pages; the two parts on page 3 are one.
+    expect(club.parts!.map((p) => [p.pageStart, p.pageEnd, p.text])).toEqual([
+      [3, 3, 'Members are people who paid the fee.\n\nGuests are invited by members.'],
+      [4, 4, 'Term | Meaning'],
+      [5, 5, 'Trustees are elected yearly.'],
+      [9, 9, 'A quorum is five members.'],
+    ]);
+    expect(club.display).toBe('club');
+    expect(group!.entries[1]!.parts).toHaveLength(1);
     expect(index.headings().find((g) => g.key === 'garden words')).toMatchObject({ documents: 2 });
     expect(index.headings().find((g) => g.key === 'garden words')!.entries).toHaveLength(2);
   });

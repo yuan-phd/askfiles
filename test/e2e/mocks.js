@@ -210,22 +210,23 @@ export async function cardActionsLayout(scope) {
     rows.map((row) => {
       const buttons = [...row.querySelectorAll('button')].filter((b) => b.checkVisibility());
       const r = row.getBoundingClientRect();
+      const card = row.closest('.card, .compare-card').getBoundingClientRect();
       const boxes = buttons.map((b) => b.getBoundingClientRect());
       const lineHeight = (b) => parseFloat(window.getComputedStyle(b).lineHeight) || 20;
       const oneLine = buttons.every(
         (b, i) => b.scrollWidth <= b.clientWidth + 1 && boxes[i].height < lineHeight(b) * 1.9 + 16,
       );
-      // Buttons of different heights share a row when their vertical centres line up.
+      // One row: buttons of different heights share it when their vertical centres line up.
       const mid = (b) => (b.top + b.bottom) / 2;
-      const sideBySide = boxes.length === 2 && Math.abs(mid(boxes[0]) - mid(boxes[1])) < 2;
-      const stacked =
-        boxes.length === 2 &&
-        boxes[1].top >= boxes[0].bottom - 1 &&
-        boxes.every((b) => Math.abs(b.width - r.width) < 2);
+      const oneRow = boxes.length === 2 && Math.abs(mid(boxes[0]) - mid(boxes[1])) < 2;
       return {
+        card: Math.round(card.width),
         width: Math.round(r.width),
+        labels: buttons.map((b) => b.textContent),
         oneLine,
-        layout: sideBySide ? 'side by side' : stacked ? 'stacked' : 'other',
+        layout: oneRow && boxes[0].right <= boxes[1].left ? 'one row' : 'other',
+        // Read section at the left edge of the row, Open file at the right edge.
+        edges: Math.abs(boxes[0]?.left - r.left) < 2 && Math.abs(boxes[1]?.right - r.right) < 2,
       };
     }),
   );

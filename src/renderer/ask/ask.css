@@ -402,12 +402,11 @@ h2 {
 }
 
 .card-actions {
-  /* A size container, so a narrow card stacks its actions instead of breaking their labels. */
-  container: card-actions / inline-size;
+  /* One row at every card width: Read section on the left, Open file on the right. */
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: var(--space-3);
 }
 
@@ -415,37 +414,16 @@ h2 {
   white-space: nowrap;
 }
 
-/* When the actions do not fit side by side, each takes the full width, the second under the
-   first. Measured label widths at 16 px root size: Compare's Read in document and Open original
-   need about 241 px with the gap, Ask's Read section and Open file 180 px, 286 px with the
-   Shortened to fit note; the thresholds are those plus a small margin, in rem so they follow the
-   font size. */
-@container card-actions (max-width: 15.5rem) {
-  .compare-card .card-actions > * {
-    flex: 1 1 100%;
-  }
-}
-
-@container card-actions (max-width: 12rem) {
-  .card .card-actions > * {
-    flex: 1 1 100%;
-  }
-}
-
-@container card-actions (max-width: 18.5rem) {
-  .card .card-actions:has(> .card-count:not([hidden])) > * {
-    flex: 1 1 100%;
-  }
-
-  .card .card-actions:has(> .card-count:not([hidden])) > .card-count {
-    margin-right: 0;
-  }
-}
-
+/* Shortened to fit: under the passage, so the action row holds only the two actions. */
 .card-count {
-  margin-right: auto;
+  display: block;
+  margin: calc(-1 * var(--space-2)) 0 var(--space-3);
   font-size: 0.8rem;
   color: var(--text-muted);
+}
+
+.card-count[hidden] {
+  display: none;
 }
 
 .open {

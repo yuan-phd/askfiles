@@ -482,7 +482,8 @@ h6.doc-heading {
   display: grid;
   grid-template-columns: minmax(0, 32rem);
   gap: var(--space-4);
-  align-items: start;
+  /* Cards in a row are as tall as the tallest, so their action rows line up at the bottom. */
+  align-items: stretch;
 }
 
 @container compare (min-width: 34rem) {
@@ -504,7 +505,9 @@ h6.doc-heading {
 }
 
 .compare-card {
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
   gap: var(--space-3);
   padding: var(--space-4);
   background: var(--surface);
@@ -516,12 +519,29 @@ h6.doc-heading {
 .compare-head {
   display: grid;
   gap: 2px;
+  min-width: 0;
   font-size: 0.875rem;
+}
+
+/* Display name and file name: one line each, cut with an ellipsis; the title attribute has the rest. */
+.compare-file,
+.compare-filename {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .compare-file {
   font-weight: 600;
-  overflow-wrap: anywhere;
+}
+
+.compare-filename {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.compare-card .card-actions {
+  margin-top: auto;
 }
 
 .compare-section,
@@ -551,9 +571,33 @@ h6.doc-heading {
   mask-image: linear-gradient(to bottom, #000 calc(100% - 2.5lh), transparent);
 }
 
+/* Each part of a merged card starts with its own pages. */
+.compare-part-page {
+  margin: var(--space-3) 0 var(--space-1);
+  font-family: var(--font-sans, inherit);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.compare-part-page:first-child {
+  margin-top: 0;
+}
+
+/* Show more ▾ and Show less ▴: muted, right under the faded text, only for the body. */
 .compare-more {
-  justify-self: start;
+  align-self: flex-start;
   margin-top: calc(-1 * var(--space-2));
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.compare-more:hover {
+  color: var(--text);
 }
 
 @media (max-width: 900px) {

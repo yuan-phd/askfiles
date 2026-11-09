@@ -180,7 +180,10 @@ function main(): void {
       (upstreamUiEnabled(process.env) && origin === (external ?? controller?.upstreamOrigin() ?? null));
 
     const windows = new Map<string, BrowserWindow>();
-    const createWindow = (key: string, o: { width: number; height: number }): BrowserWindow => {
+    const createWindow = (
+      key: string,
+      o: { width: number; height: number; minWidth?: number; minHeight?: number },
+    ): BrowserWindow => {
       const win = new BrowserWindow({
         ...o,
         title: windowTitle,
@@ -215,7 +218,8 @@ function main(): void {
       for (const w of windows.values()) if (!w.isDestroyed()) w.webContents.send(channel, payload);
     };
 
-    const win = createWindow('main', { width: 1200, height: 800 });
+    // Below 640 px the Browse sidebar leaves Compare cards narrower than their two actions.
+    const win = createWindow('main', { width: 1200, height: 800, minWidth: 640, minHeight: 480 });
     let handlers: BridgeHandlers;
     if (configError) {
       handlers = externalHandlers(null, log);

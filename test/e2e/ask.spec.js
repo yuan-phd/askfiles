@@ -283,11 +283,18 @@ test.describe('Ask page with the answer pipeline stubbed', () => {
       const actions = await cardActionsLayout(page.locator('#result'));
       expect(actions).toHaveLength(3);
       for (const a of actions) {
-        expect(a.oneLine).toBe(true);
-        expect(['side by side', 'stacked']).toContain(a.layout);
+        expect(a).toMatchObject({
+          oneLine: true,
+          layout: 'one row',
+          edges: true,
+          labels: ['Read section', 'Open file'],
+        });
       }
-      await expect(page.getByTestId('source-count').first()).toBeVisible();
-      console.log(`[ask] ${width} px: actions ${actions.map((a) => `${a.width}px ${a.layout}`).join(', ')}`);
+      // Shortened to fit sits under the passage, outside the action row.
+      const note = page.getByTestId('source-count').first();
+      await expect(note).toBeVisible();
+      expect(await note.evaluate((n) => n.closest('.card-actions'))).toBeNull();
+      console.log(`[ask] ${width} px: cards ${actions.map((a) => `${a.card}px`).join(', ')}, actions one row`);
     });
   }
 
