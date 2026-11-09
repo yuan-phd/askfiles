@@ -29,11 +29,29 @@ export function moreText(more) {
   return plural(n, 'more file', 'more files');
 }
 
-/** What a source is, as the menu and the Sources section say it. */
+/** ok, missing or unavailable (src/main/libraries.ts SourceView.status); older views only had available. */
+export function sourceStatus(s) {
+  if (s.status) return s.status;
+  if (s.available !== false) return 'ok';
+  return s.kind === 'folder' ? 'unavailable' : 'missing';
+}
+
+/** What a source is: Folder, File or Copy. */
 export function sourceKindText(s) {
-  if (s.kind === 'folder') return s.available ? 'Folder' : 'Folder, not available';
+  if (s.kind === 'folder') return 'Folder';
   if (s.kind === 'copy') return 'Copy';
-  return s.available ? 'File' : 'File, original missing';
+  return 'File';
+}
+
+/** The mark of a source that is not ok: Not available (kept, answerable) or Original missing (leaving). */
+export function sourceStatusText(s) {
+  return { unavailable: 'Not available', missing: 'Original missing' }[sourceStatus(s)] || '';
+}
+
+/** The menu's one label: the type, and its mark after a comma. */
+export function sourceMenuText(s) {
+  const mark = sourceStatusText(s);
+  return mark ? `${sourceKindText(s)}, ${mark.toLowerCase()}` : sourceKindText(s);
 }
 
 /** Sources whose name or path holds the query, ignoring case; all of them for an empty query. */
@@ -55,7 +73,7 @@ export function sourcesCountText(sources) {
 
 /** The note over the Sources list when added files lost their originals and are about to leave. */
 export function missingText(sources) {
-  const n = sources.filter((s) => s.kind === 'file' && !s.available).length;
+  const n = sources.filter((s) => s.kind === 'file' && sourceStatus(s) === 'missing').length;
   if (!n) return '';
   return n === 1
     ? '1 original is missing. It leaves the library once AskFiles has checked it.'

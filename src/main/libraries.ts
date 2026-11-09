@@ -23,8 +23,14 @@ export interface SourceView {
   kind: 'folder' | 'file' | 'copy';
   path: string;
   name: string;
-  /** False for a folder that cannot be read, and for an added file whose original is gone. */
+  /** False for a folder that cannot be reached, and for an added file that is gone or out of reach. */
   available: boolean;
+  /**
+   * ok; unavailable: the folder (a linked one, or an added file's) cannot be reached, as on an
+   * unplugged drive, and the documents are kept, answerable; missing: an added file is gone while
+   * its folder is there, and it is about to leave the library.
+   */
+  status: 'ok' | 'missing' | 'unavailable';
 }
 
 export interface LibraryView {
@@ -49,11 +55,14 @@ export interface LibrariesView {
 /** Watcher status of the current library as the pages show it. */
 export type LibraryStatus = WatcherStatus & { libraryId: string; error?: string };
 
-/** An added file with the name of a file already added on its own: the page asks Replace or Keep both. */
+/**
+ * An added file with the name of files already added on its own: the page lists every one of
+ * them and asks which to replace, or to keep all.
+ */
 export interface AddConflict {
   path: string;
   name: string;
-  existing: { id: string; path: string; kind: 'file' | 'copy' };
+  existing: { id: string; path: string; kind: 'file' | 'copy' }[];
 }
 
 /** The answer to an AddConflict, by the added file's path. */
@@ -164,7 +173,15 @@ function fileRoot(f: FileSource): WatchRoot {
  * cannot be read (an unplugged drive) keeps the file, as it keeps a linked folder's files.
  */
 function isGone(p: string): boolean {
-  return !fs.existsSync(p) && fs.existsSync(path.dirname(p));
+  return !fs.existsSync(p) && isFolder(path.dirname(p));
+}
+
+function isFolder(p: string): boolean {
+  try {
+    return fs.statSync(p, { throwIfNoEntry: false })?.isDirectory() ?? false;
+  } catch {
+    return false;
+  }
 }
 
 function nativeRealOrResolved(p: string): string {
@@ -292,7 +309,7 @@ export class LibraryManager {
     const n = base.unavailable.length;
     const error =
       this.startError ??
-      (n ? (n === 1 ? `${base.unavailable[0]} is not available` : `${n} folders are not available`) : null);
+      (n ? (n === 1 ? `${base.unavailable[0]} is not available` : `${n} sources are not available`) : null);
     return { ...base, libraryId: lib.id, ...(error ? { error } : {}) };
   }
 
@@ -318,20 +335,21 @@ export class LibraryManager {
   }
 
   private sourcesOf(lib: LibraryRecord): SourceView[] {
-    const folders: SourceView[] = lib.folders.map((f) => ({
-      id: f.id,
-      kind: 'folder',
-      path: f.path,
-      name: path.basename(f.path),
-      available: fs.existsSync(f.path),
-    }));
-    const files: SourceView[] = (lib.files ?? []).map((f) => ({
-      id: f.id,
-      kind: 'file',
-      path: f.path,
-      name: path.basename(f.path),
-      available: fs.existsSync(f.path),
-    }));
+    const folders: SourceView[] = lib.folders.map((f) => {
+      const status = isFolder(f.path) ? 'ok' : 'unavailable';
+      return {
+        id: f.id,
+        kind: 'folder',
+        path: f.path,
+        name: path.basename(f.path),
+        available: status === 'ok',
+        status,
+      };
+    });
+    const files: SourceView[] = (lib.files ?? []).map((f) => {
+      const status = fs.existsSync(f.path) ? 'ok' : isFolder(path.dirname(f.path)) ? 'missing' : 'unavailable';
+      return { id: f.id, kind: 'file', path: f.path, name: path.basename(f.path), available: status === 'ok', status };
+    });
     let names: string[] = [];
     try {
       names = fs
@@ -348,6 +366,7 @@ export class LibraryManager {
       path: path.join(filesDir(this.d.dataDir, lib.id), name),
       name,
       available: true,
+      status: 'ok',
     }));
     const single = [...files, ...copies].sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path));
     return [...folders, ...single];
@@ -397,7 +416,16 @@ export class LibraryManager {
       docsFolder: docsFolderOf(lib.id),
       workspaceSlug: lib.workspaceSlug,
     });
-    watcher.on('status', () => this.d.onStatus(this.status()));
+    let unavailable = '';
+    watcher.on('status', (st) => {
+      this.d.onStatus(this.status());
+      // A source going out of reach or coming back changes what the Sources section shows.
+      const now = st.unavailable.join('\u0000');
+      if (now !== unavailable) {
+        unavailable = now;
+        this.changed();
+      }
+    });
     watcher.on('file', (e) => this.onFileEvent(lib.id, e));
     // Loaded before the watcher starts, so the browse pages list the library during a long reconcile.
     const browse = this.d.createBrowse({ dir: path.join(dir, 'browse'), libraryId: lib.id });
@@ -628,8 +656,11 @@ export class LibraryManager {
     );
     if (sameName.length) {
       if (!decision) {
-        const first = sameName[0]!;
-        result.conflicts.push({ path: file, name, existing: { id: first.id, path: first.path, kind: first.kind } });
+        result.conflicts.push({
+          path: file,
+          name,
+          existing: sameName.map((x) => ({ id: x.id, path: x.path, kind: x.kind })),
+        });
         return null;
       }
       if (decision.action === 'replace') {

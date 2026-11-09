@@ -324,7 +324,7 @@ describe('LibraryManager', () => {
       added: 0,
       skipped: [],
       already: [],
-      conflicts: [{ path: fresh, name: 'minutes.md', existing: { id: 'file-1', path: old, kind: 'file' } }],
+      conflicts: [{ path: fresh, name: 'minutes.md', existing: [{ id: 'file-1', path: old, kind: 'file' }] }],
       kept: [],
     });
     expect(t.state().libraries[0]!.files).toHaveLength(1);
@@ -384,6 +384,84 @@ describe('LibraryManager', () => {
     await t.manager.stop();
   });
 
+  it('lists every file of the same name in the question, and replaces the one picked', async () => {
+    const t = setup();
+    await t.manager.start();
+    const a = put(path.join(tmp, 'A', 'agenda.md'), '# Agenda\n\nFirst.');
+    const b = put(path.join(tmp, 'B', 'Agenda.md'), '# Agenda\n\nSecond.');
+    const c = put(path.join(tmp, 'C', 'AGENDA.md'), '# Agenda\n\nThird.');
+    const d = put(path.join(tmp, 'D', 'agenda.md'), '# Agenda\n\nFourth.');
+    await t.manager.addPaths([a]);
+    await t.manager.addPaths([b], { [b]: { action: 'keep' } });
+    await t.manager.addPaths([c], { [c]: { action: 'keep' } });
+    await until(() => docTitles(t.manager).length === 3);
+
+    const asked = await t.manager.addPaths([d]);
+    expect(asked.conflicts).toEqual([
+      {
+        path: d,
+        name: 'agenda.md',
+        existing: expect.arrayContaining([
+          { id: 'file-1', path: a, kind: 'file' },
+          { id: 'file-2', path: b, kind: 'file' },
+          { id: 'file-3', path: c, kind: 'file' },
+        ]),
+      },
+    ]);
+    expect(asked.conflicts[0]!.existing).toHaveLength(3);
+
+    // The middle one is picked: only it goes, the other two stay.
+    await t.manager.addPaths([d], { [d]: { action: 'replace', replaces: 'file-2' } });
+    await until(() => !t.manager.watcherOf()!.file(b) && !!t.manager.watcherOf()!.file(d));
+    await t.manager.watcherOf()!.whenIdle();
+    expect(
+      t
+        .state()
+        .libraries[0]!.files!.map((f) => f.path)
+        .sort(),
+    ).toEqual([a, c, d].sort());
+    expect(docTitles(t.manager)).toEqual(['AGENDA.md', 'agenda.md', 'agenda.md']);
+    await t.manager.stop();
+  });
+
+  it('keeps sources whose folder is out of reach, marked not available, and clears the mark when back', async () => {
+    const t = setup();
+    await t.manager.start();
+    const drive = path.join(tmp, 'Drive');
+    const linked = path.join(drive, 'Shared');
+    put(path.join(linked, 'policy.md'), '# Policy\n\nText.');
+    const added = put(path.join(drive, 'Loose', 'loose.md'), '# Loose\n\nText.');
+    await t.manager.addPaths([linked, added]);
+    await until(() => docTitles(t.manager).length === 2);
+    await t.manager.watcherOf()!.whenIdle();
+    const embedded = t.api.embedded.size;
+
+    // The drive is unplugged (here: renamed away) while AskFiles runs.
+    fs.renameSync(drive, path.join(tmp, 'Unplugged'));
+    const s = await t.manager.checkUpdates();
+    await t.manager.watcherOf()!.whenIdle();
+    await new Promise((r) => setTimeout(r, 300));
+    expect(s.unavailable.sort()).toEqual([added, linked].sort());
+    expect(docTitles(t.manager)).toEqual(['loose.md', 'policy.md']);
+    expect(t.api.embedded.size).toBe(embedded);
+    const sources = () => t.manager.view().libraries[0]!.sources.map((x) => [x.name, x.status, x.available]);
+    expect(sources()).toEqual([
+      ['Shared', 'unavailable', false],
+      ['loose.md', 'unavailable', false],
+    ]);
+    expect(t.state().libraries[0]!.files).toHaveLength(1);
+
+    fs.renameSync(path.join(tmp, 'Unplugged'), drive);
+    expect((await t.manager.checkUpdates()).unavailable).toEqual([]);
+    await t.manager.watcherOf()!.whenIdle();
+    expect(sources()).toEqual([
+      ['Shared', 'ok', true],
+      ['loose.md', 'ok', true],
+    ]);
+    expect(docTitles(t.manager)).toEqual(['loose.md', 'policy.md']);
+    await t.manager.stop();
+  });
+
   it('lists a copy made by an earlier version as Copy, and replaces it when the original is added again', async () => {
     const copies = filesDir(dataDir, 'all-files');
     const copy = put(path.join(copies, 'handbook.md'), '# Handbook\n\nThe copied text.');
@@ -396,7 +474,7 @@ describe('LibraryManager', () => {
     const original = put(path.join(tmp, 'Docs', 'Handbook.md'), '# Handbook\n\nThe current text.');
     const asked = await t.manager.addPaths([original]);
     expect(asked.conflicts).toEqual([
-      { path: original, name: 'Handbook.md', existing: { id: 'file:handbook.md', path: copy, kind: 'copy' } },
+      { path: original, name: 'Handbook.md', existing: [{ id: 'file:handbook.md', path: copy, kind: 'copy' }] },
     ]);
     await t.manager.addPaths([original], { [original]: { action: 'replace', replaces: 'file:handbook.md' } });
     expect(fs.existsSync(copy)).toBe(false);

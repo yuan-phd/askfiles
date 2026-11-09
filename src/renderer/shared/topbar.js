@@ -5,7 +5,7 @@
 // by drag and drop anywhere in the window. Everything goes through window.askfiles (the preload
 // bridge); without it (a plain browser) the bar shows the status counts only.
 
-import { menuSources, moreText, sourceKindText } from './sources.js';
+import { menuSources, moreText, sourceMenuText, sourceStatus } from './sources.js';
 
 const MARKUP = `
 <div class="view-switch" role="group" aria-label="View">
@@ -18,10 +18,12 @@ const MARKUP = `
     <span class="library-name" data-testid="library-name">Library</span>
     <span class="library-status">
       <span data-testid="status-count">Connecting</span>
-      <span class="status-state" data-testid="status-state" data-state="connecting"><span class="dot" aria-hidden="true"></span><span class="status-state-text">Connecting</span></span>
     </span>
   </button>
-  <button type="button" class="check-updates" data-testid="check-updates" title="Check for updates" aria-label="Check for updates">&#x21bb;</button>
+  <button type="button" class="status-check" data-testid="check-updates" title="Check for updates">
+    <span class="status-state" data-testid="status-state" data-state="connecting"><span class="dot" aria-hidden="true"></span><span class="status-state-text">Connecting</span></span>
+    <span class="check-icon" aria-hidden="true">&#x21bb;</span>
+  </button>
   <span class="status-failed" data-testid="status-failed" hidden></span>
   <span class="summaries-status" data-testid="summaries-status" role="status" hidden>
     <span class="summaries-text" data-testid="summaries-text"></span>
@@ -85,6 +87,9 @@ const EMPTY_MARKUP = `
 const DIALOG_MARKUP = `
 <form method="dialog" class="replace-form">
   <p class="replace-text" data-testid="replace-text"></p>
+  <fieldset class="replace-choices" data-testid="replace-choices" hidden>
+    <legend class="visually-hidden">File to replace</legend>
+  </fieldset>
   <div class="replace-actions">
     <button value="cancel" class="link" data-testid="replace-cancel">Cancel</button>
     <button value="keep" data-testid="replace-keep">Keep both</button>
@@ -118,9 +123,17 @@ export function addResultText(r) {
   return parts.join(' ') || 'Nothing was added.';
 }
 
-/** The question for a file whose name matches a file added on its own (AddResult.conflicts). */
+/** The files a conflict names (AddResult.conflicts): every file of the library with that name. */
+export function conflictMatches(c) {
+  return Array.isArray(c.existing) ? c.existing : [c.existing];
+}
+
+/** The question for a file whose name matches files added on their own. */
 export function replaceQuestion(c) {
-  return `A file named ${c.name} is already in this library (${c.existing.path}). Replace it, or keep both?`;
+  const matches = conflictMatches(c);
+  if (matches.length === 1)
+    return `A file named ${c.name} is already in this library (${matches[0].path}). Replace it, or keep both?`;
+  return `${matches.length} files named ${c.name} are already in this library. Pick the one to replace, or keep all.`;
 }
 
 /** Least time Checking… shows, so a quick check is still seen. */
@@ -212,7 +225,8 @@ export function mountTopBar(
     const node = q('status-state');
     node.dataset.state = line ? line.kind : 'connecting';
     node.querySelector('.status-state-text').textContent = line ? line.text : 'Connecting';
-    node.title = s?.error || '';
+    // One tooltip for the one control: what it does, and why the library is not available.
+    q('check-updates').title = s?.error ? `${s.error}. Check for updates` : 'Check for updates';
     const n = s ? s.indexed : state.fallbackCount;
     if (n !== null && n !== undefined)
       q('status-count').textContent = plural(n, 'document indexed', 'documents indexed');
@@ -283,7 +297,8 @@ export function mountTopBar(
         label.title = s.path;
         const kind = document.createElement('span');
         kind.className = 'source-kind';
-        kind.textContent = sourceKindText(s);
+        kind.textContent = sourceMenuText(s);
+        li.dataset.status = sourceStatus(s);
         const remove = document.createElement('button');
         remove.type = 'button';
         remove.className = 'link';
@@ -524,14 +539,58 @@ export function mountTopBar(
     resultTimer = setTimeout(() => (node.hidden = true), 8000);
   }
 
-  /** Replace, keep or cancel for one name conflict; the dialog stays until it is answered. */
+  /**
+   * Replace, keep or cancel for one name conflict; the dialog stays until it is answered. With
+   * several files of that name it lists each with its path, and Replace waits for one to be picked.
+   * Resolves to { action: 'replace', id }, { action: 'keep' } or null.
+   */
   function askReplace(conflict) {
-    dialog.querySelector('[data-testid="replace-text"]').textContent = replaceQuestion(conflict);
+    const d = (id) => dialog.querySelector(`[data-testid="${id}"]`);
+    const matches = conflictMatches(conflict);
+    const many = matches.length > 1;
+    d('replace-text').textContent = replaceQuestion(conflict);
+    d('replace-keep').textContent = many ? 'Keep all' : 'Keep both';
+    const choices = d('replace-choices');
+    choices.hidden = !many;
+    choices.replaceChildren(
+      choices.querySelector('legend'),
+      ...(many
+        ? matches.map((m) => {
+            const label = document.createElement('label');
+            label.className = 'replace-choice';
+            label.dataset.testid = 'replace-choice';
+            const radio = document.createElement('input');
+            radio.type = 'radio';
+            radio.name = 'replace-target';
+            radio.value = m.id;
+            radio.addEventListener('change', () => (d('replace-confirm').disabled = false));
+            const name = document.createElement('span');
+            name.className = 'replace-choice-name';
+            name.textContent = m.path.split(/[\\/]/).pop();
+            const where = document.createElement('span');
+            where.className = 'replace-choice-path';
+            where.textContent = m.kind === 'copy' ? `${m.path} (copy)` : m.path;
+            label.append(radio, name, where);
+            return label;
+          })
+        : []),
+    );
+    d('replace-confirm').disabled = many;
     dialog.returnValue = '';
     return new Promise((resolve) => {
-      dialog.addEventListener('close', () => resolve(dialog.returnValue || 'cancel'), { once: true });
+      dialog.addEventListener(
+        'close',
+        () => {
+          const v = dialog.returnValue;
+          const picked = many ? choices.querySelector('input:checked')?.value : matches[0].id;
+          if (v === 'replace' && picked) resolve({ action: 'replace', id: picked });
+          else if (v === 'keep') resolve({ action: 'keep' });
+          else resolve(null);
+        },
+        { once: true },
+      );
       dialog.showModal();
-      dialog.querySelector('[data-testid="replace-keep"]').focus();
+      (many ? choices.querySelector('input') : d('replace-keep')).focus();
     });
   }
 
@@ -543,8 +602,8 @@ export function mountTopBar(
     const decisions = {};
     for (const c of conflicts) {
       const answer = await askReplace(c);
-      if (answer === 'replace') decisions[c.path] = { action: 'replace', replaces: c.existing.id };
-      else if (answer === 'keep') decisions[c.path] = { action: 'keep' };
+      if (answer?.action === 'replace') decisions[c.path] = { action: 'replace', replaces: answer.id };
+      else if (answer?.action === 'keep') decisions[c.path] = { action: 'keep' };
     }
     const paths = Object.keys(decisions);
     const next = paths.length ? await bridge.addPaths(paths, decisions) : null;
@@ -570,10 +629,12 @@ export function mountTopBar(
 
   // --- check for updates ----------------------------------------------------------------------
 
+  // The status and its ↻ are one button: clicking the status checks. While checking it stays
+  // focusable (aria-disabled, not disabled), so a keyboard user keeps their place.
   q('check-updates').addEventListener('click', async () => {
     if (!bridge?.checkUpdates || state.checking) return;
     state.checking = true;
-    q('check-updates').disabled = true;
+    q('check-updates').setAttribute('aria-disabled', 'true');
     renderStatus();
     const t0 = Date.now();
     let s = null;
@@ -584,7 +645,7 @@ export function mountTopBar(
     }
     await new Promise((r) => setTimeout(r, Math.max(0, CHECK_MIN_MS - (Date.now() - t0))));
     state.checking = false;
-    q('check-updates').disabled = false;
+    q('check-updates').removeAttribute('aria-disabled');
     if (s) applyStatus(s);
     else renderStatus();
   });
@@ -648,7 +709,9 @@ export function mountTopBar(
   if (!bridge) {
     q('library-switcher').disabled = true;
     q('add-button').hidden = true;
-    q('check-updates').hidden = true;
+    // A plain browser cannot check: the status shows, not as a control.
+    q('check-updates').disabled = true;
+    q('check-updates').removeAttribute('title');
   } else {
     bridge.onChange(applyLibraries);
     bridge.list().then(applyLibraries, (e) => console.warn('[topbar] libraries failed', e.message));

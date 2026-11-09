@@ -1424,7 +1424,15 @@ h6.doc-heading {
   font-size: 0.85rem;
 }
 
-.library-sources-item[data-available='false'] .library-sources-kind {
+.library-sources-status {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--busy);
+}
+
+.library-sources-item[data-status='missing'] .library-sources-status {
   color: var(--bad);
 }
 

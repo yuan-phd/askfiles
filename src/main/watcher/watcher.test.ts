@@ -36,6 +36,7 @@ function make(
     debounceMs?: number;
     roots?: WatchRoot[];
     api?: LibraryApi;
+    availabilityPollMs?: number;
   } = {},
 ) {
   const events: FileEvent[] = [];
@@ -51,6 +52,7 @@ function make(
     debounceMs: opts.debounceMs ?? 30,
     stableMs: 30,
     retryDelaysMs: opts.retryDelaysMs ?? [10, 20, 40],
+    availabilityPollMs: opts.availabilityPollMs ?? 0,
     log: (m) => logs.push(m),
   });
   w.on('file', (e) => events.push(e));
@@ -649,6 +651,125 @@ describe('FolderWatcher', () => {
       }
       expect(splitter.calls.every((c) => c === a)).toBe(true);
       expect(api.embedded.size).toBe(0);
+    });
+  });
+
+  describe('sources out of reach', () => {
+    const wait = async (check: () => boolean, ms = 10_000) => {
+      const t0 = Date.now();
+      while (!check()) {
+        if (Date.now() - t0 > ms) throw new Error('timed out');
+        await new Promise((r) => setTimeout(r, 20));
+      }
+    };
+    const indexed = () => Object.keys(readIndex().files).sort();
+
+    it('keeps a linked folder that goes out of reach while running, and takes it back when it returns', async () => {
+      const a = write('a.md', '# A\n\nOne.');
+      const b = write('b.md', '# B\n\nTwo.');
+      const watch = manualWatch();
+      const splitter = countingSplitter();
+      const { w, events } = make({ watch, splitter, availabilityPollMs: 30 });
+      await w.start();
+      await w.whenIdle();
+      expect(indexed()).toEqual([a, b]);
+
+      // The drive goes: the watch reports each file as deleted.
+      const away = path.join(tmp, 'Away');
+      fs.renameSync(root, away);
+      watch.emit('unlink', a);
+      watch.emit('unlink', b);
+      await new Promise((r) => setTimeout(r, 120));
+      await w.whenIdle();
+      expect(indexed()).toEqual([a, b]);
+      expect(api.embedded.size).toBe(2);
+      expect(w.status().unavailable).toEqual([root]);
+      expect(events.filter((e) => e.outcome === 'removed')).toEqual([]);
+      // Check for updates while it is away keeps everything too.
+      await w.checkNow();
+      await w.whenIdle();
+      expect(indexed()).toEqual([a, b]);
+
+      // Back, with one file changed meanwhile: the poll sees it, the changed file alone is indexed.
+      fs.writeFileSync(path.join(away, 'b.md'), '# B\n\nTwo, changed while away.');
+      fs.renameSync(away, root);
+      const calls = splitter.calls.length;
+      await wait(() => w.status().unavailable.length === 0);
+      await w.whenIdle();
+      expect(splitter.calls.slice(calls)).toEqual([b]);
+      expect(indexed()).toEqual([a, b]);
+    });
+
+    it('keeps an added file whose folder is out of reach, removes one deleted from a reachable folder', async () => {
+      const drive = path.join(tmp, 'Drive');
+      const desk = path.join(tmp, 'Desk');
+      fs.mkdirSync(drive);
+      fs.mkdirSync(desk);
+      const onDrive = path.join(drive, 'far.md');
+      const onDesk = path.join(desk, 'near.md');
+      fs.writeFileSync(onDrive, '# Far\n\nText.');
+      fs.writeFileSync(onDesk, '# Near\n\nText.');
+      const watch = manualWatch();
+      const { w } = make({
+        watch,
+        roots: [
+          { id: 'file-1', path: onDrive, label: '', file: true },
+          { id: 'file-2', path: onDesk, label: '', file: true },
+        ],
+      });
+      await w.start();
+      await w.whenIdle();
+
+      fs.renameSync(drive, path.join(tmp, 'DriveAway'));
+      fs.rmSync(onDesk);
+      watch.emit('unlink', onDrive);
+      watch.emit('unlink', onDesk);
+      await new Promise((r) => setTimeout(r, 120));
+      await w.whenIdle();
+      expect(indexed()).toEqual([onDrive]);
+      expect(w.status().unavailable).toEqual([onDrive]);
+
+      // Back on Check for updates (no poll here): the mark goes, nothing is indexed again.
+      fs.renameSync(path.join(tmp, 'DriveAway'), drive);
+      await w.checkNow();
+      await w.whenIdle();
+      expect(w.status().unavailable).toEqual([]);
+      expect(indexed()).toEqual([onDrive]);
+    });
+
+    it('keeps a folder out of reach at start, and reconciles it once it is back', async () => {
+      const a = write('a.md', '# A\n\nOne.');
+      const first = make({ watch: manualWatch() });
+      await first.w.start();
+      await first.w.whenIdle();
+      await first.w.stop();
+      fs.renameSync(root, path.join(tmp, 'Away'));
+      const second = make({ watch: manualWatch(), availabilityPollMs: 30 });
+      await second.w.start();
+      await second.w.whenIdle();
+      expect(indexed()).toEqual([a]);
+      expect(second.w.status().unavailable).toEqual([root]);
+      fs.rmSync(path.join(tmp, 'Away', 'a.md'));
+      fs.renameSync(path.join(tmp, 'Away'), root);
+      // Back, without the file that was deleted meanwhile: now it goes.
+      await wait(() => indexed().length === 0);
+      expect(second.w.status().unavailable).toEqual([]);
+    });
+
+    it('keeps a linked folder renamed away under the real chokidar watch', async () => {
+      const a = write('a.md', '# A\n\nOne.');
+      const { w } = make({ watch: chokidarWatch, availabilityPollMs: 50 });
+      await w.start();
+      await w.whenIdle();
+      fs.renameSync(root, path.join(tmp, 'Away'));
+      await wait(() => w.status().unavailable.length === 1);
+      await new Promise((r) => setTimeout(r, 300));
+      await w.whenIdle();
+      expect(indexed()).toEqual([a]);
+      fs.renameSync(path.join(tmp, 'Away'), root);
+      await wait(() => w.status().unavailable.length === 0);
+      await w.whenIdle();
+      expect(indexed()).toEqual([a]);
     });
   });
 });

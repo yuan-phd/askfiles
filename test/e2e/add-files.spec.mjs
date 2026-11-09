@@ -47,7 +47,7 @@ async function open(page, options) {
 const conflict = {
   path: '/Users/sam/Desktop/minutes.md',
   name: 'minutes.md',
-  existing: { id: 'file-1', path: '/Users/sam/Archive/Minutes.md', kind: 'file' },
+  existing: [{ id: 'file-1', path: '/Users/sam/Archive/Minutes.md', kind: 'file' }],
 };
 const asking = { added: 0, skipped: [], already: [], conflicts: [conflict], kept: [] };
 
@@ -139,6 +139,99 @@ test.describe('add files', () => {
   });
 });
 
+test.describe('several files of one name', () => {
+  const three = {
+    path: '/Users/sam/Desktop/agenda.md',
+    name: 'agenda.md',
+    existing: [
+      { id: 'file-1', path: '/Users/sam/Board/agenda.md', kind: 'file' },
+      { id: 'file-2', path: '/Users/sam/Team/Agenda.md', kind: 'file' },
+      { id: 'file:agenda.md', path: '/data/files/agenda.md', kind: 'copy' },
+    ],
+  };
+
+  test('lists every file of that name with its path; Replace waits for a pick', async ({ page }) => {
+    await open(page, {
+      libraries: libraries([file(1)]),
+      addResult: { added: 0, skipped: [], already: [], conflicts: [three], kept: [] },
+      resolvedResult: { added: 1, skipped: [], already: [], conflicts: [], kept: [] },
+    });
+    await page.getByTestId('add-button').click();
+    await page.getByTestId('add-files').click();
+    await expect(page.getByTestId('replace-text')).toHaveText(
+      '3 files named agenda.md are already in this library. Pick the one to replace, or keep all.',
+    );
+    const choices = page.getByTestId('replace-choice');
+    await expect(choices).toHaveCount(3);
+    await expect(choices.locator('.replace-choice-path')).toHaveText([
+      '/Users/sam/Board/agenda.md',
+      '/Users/sam/Team/Agenda.md',
+      '/data/files/agenda.md (copy)',
+    ]);
+    await expect(page.getByTestId('replace-keep')).toHaveText('Keep all');
+    await expect(page.getByTestId('replace-confirm')).toBeDisabled();
+    await choices.nth(1).click();
+    await expect(page.getByTestId('replace-confirm')).toBeEnabled();
+    await page.getByTestId('replace-confirm').click();
+    await expect
+      .poll(() => calls(page))
+      .toEqual([['addFiles'], ['addPaths', [three.path], { [three.path]: { action: 'replace', replaces: 'file-2' } }]]);
+  });
+
+  test('Keep all adds it beside the others', async ({ page }) => {
+    await open(page, {
+      libraries: libraries([file(1)]),
+      addResult: { added: 0, skipped: [], already: [], conflicts: [three], kept: [] },
+      resolvedResult: { added: 1, skipped: [], already: [], conflicts: [], kept: [] },
+    });
+    await page.getByTestId('add-button').click();
+    await page.getByTestId('add-files').click();
+    await page.getByTestId('replace-keep').click();
+    await expect
+      .poll(() => calls(page))
+      .toEqual([['addFiles'], ['addPaths', [three.path], { [three.path]: { action: 'keep' } }]]);
+  });
+
+  test('one file of that name keeps the short question without a list', async ({ page }) => {
+    await open(page, { libraries: libraries([file(1)]), addResult: asking });
+    await page.getByTestId('add-button').click();
+    await page.getByTestId('add-files').click();
+    await expect(page.getByTestId('replace-choices')).toBeHidden();
+    await expect(page.getByTestId('replace-keep')).toHaveText('Keep both');
+    await expect(page.getByTestId('replace-confirm')).toBeEnabled();
+  });
+});
+
+test.describe('sources out of reach', () => {
+  test('a folder and an added file on an unplugged drive are marked Not available, and stay listed', async ({
+    page,
+  }) => {
+    const away = [
+      { ...folder(1, 'Archive'), path: '/Volumes/Backup/Archive', available: false, status: 'unavailable' },
+      { ...file(1, 'Desktop') },
+      { ...file(2), path: '/Volumes/Backup/memo-002.md', available: false, status: 'unavailable' },
+    ];
+    await open(page, { libraries: libraries(away) });
+    await page.getByTestId('library-switcher').click();
+    await expect(page.getByTestId('source-item').locator('.source-kind')).toHaveText([
+      'Folder, not available',
+      'File',
+      'File, not available',
+    ]);
+    await page.keyboard.press('Escape');
+    await page.getByTestId('view-browse').click();
+    await expect(page.getByTestId('library-sources-status')).toHaveText(['Not available', 'Not available']);
+    await expect(page.getByTestId('library-sources-missing')).toBeHidden();
+
+    // The drive is back: the main process sends the view without the marks.
+    await page.evaluate(
+      (v) => window.__librariesEvent(v),
+      libraries(away.map((x) => ({ ...x, available: true, status: 'ok' }))),
+    );
+    await expect(page.getByTestId('library-sources-status')).toHaveCount(0);
+  });
+});
+
 test.describe('check for updates', () => {
   test('the control says Checking, then Up to date', async ({ page }) => {
     await open(page, {
@@ -147,18 +240,66 @@ test.describe('check for updates', () => {
       checkGate: true,
       checkResult: watcherStatus({ indexed: 4 }),
     });
+    // The status and its ↻ are one control: "Up to date ↻", with the tooltip Check for updates.
     const control = page.getByTestId('check-updates');
+    await expect(control).toHaveText('Up to date ↻');
     await expect(control).toHaveAttribute('title', 'Check for updates');
-    await expect(control).toHaveAccessibleName('Check for updates');
-    await expect(page.getByTestId('status-state')).toHaveText('Up to date');
-    await control.click();
-    await expect(page.getByTestId('status-state')).toHaveText('Checking…');
+    await expect(control).toHaveAccessibleName('Up to date');
+    await expect(control).toHaveAccessibleDescription('Check for updates');
+    await expect(page.getByTestId('library-switcher')).not.toContainText('Up to date');
+    await page.getByText('Up to date').click();
+    await expect(control).toHaveText('Checking… ↻');
     await expect(page.getByTestId('status-state')).toHaveAttribute('data-state', 'checking');
-    await expect(control).toBeDisabled();
+    await expect(control).toHaveAttribute('aria-disabled', 'true');
+    // A second click while checking does nothing (Playwright waits on aria-disabled; send it anyway).
+    await control.dispatchEvent('click');
     await page.evaluate(() => window.__finishCheck());
-    await expect(page.getByTestId('status-state')).toHaveText('Up to date');
-    await expect(control).toBeEnabled();
+    await expect(control).toHaveText('Up to date ↻');
+    await expect(control).not.toHaveAttribute('aria-disabled');
     expect(await calls(page)).toEqual([['checkUpdates']]);
+  });
+
+  test('works from the keyboard, with a focus ring for keyboard focus only', async ({ page }) => {
+    await open(page, {
+      libraries: libraries([folder(1)]),
+      status: watcherStatus({ indexed: 4 }),
+      checkResult: watcherStatus({ indexed: 4 }),
+    });
+    const control = page.getByTestId('check-updates');
+    const ring = () => control.evaluate((el) => window.getComputedStyle(el).outlineStyle);
+    await control.click();
+    await expect(control).toBeFocused();
+    expect(await ring()).toBe('none');
+    await expect(control).toHaveText('Up to date ↻');
+
+    // Tab to it from the library switcher, then Enter and Space each check.
+    await page.getByTestId('library-switcher').focus();
+    await page.keyboard.press('Tab');
+    await expect(control).toBeFocused();
+    expect(await ring()).toBe('solid');
+    await page.keyboard.press('Enter');
+    await expect(control).toHaveText('Checking… ↻');
+    await expect(control).toBeFocused();
+    await expect(control).toHaveText('Up to date ↻');
+    await page.keyboard.press('Space');
+    await expect(control).toHaveText('Checking… ↻');
+    await expect(control).toHaveText('Up to date ↻');
+    expect(await calls(page)).toEqual([['checkUpdates'], ['checkUpdates'], ['checkUpdates']]);
+  });
+
+  test('a library that cannot be read says why in the same tooltip', async ({ page }) => {
+    await open(page, {
+      libraries: libraries([folder(1)]),
+      status: watcherStatus({
+        indexed: 4,
+        unavailable: ['/Volumes/Archive'],
+        error: '/Volumes/Archive is not available',
+      }),
+    });
+    await expect(page.getByTestId('check-updates')).toHaveAttribute(
+      'title',
+      '/Volumes/Archive is not available. Check for updates',
+    );
   });
 
   test('a changed file found by the check shows the usual indexing status', async ({ page }) => {
@@ -238,9 +379,10 @@ test.describe('Sources section', () => {
     await expect(page.getByTestId('library-sources-kind')).toHaveText([
       'Folder',
       'File',
-      'File, original missing',
+      'FileOriginal missing',
       'Copy',
     ]);
+    await expect(page.getByTestId('library-sources-status')).toHaveText(['Original missing']);
     await expect(page.getByTestId('library-sources-path').first()).toHaveText('/Users/sam/Work/Contracts');
     await expect(page.getByTestId('library-sources-missing')).toHaveText(
       '1 original is missing. It leaves the library once AskFiles has checked it.',
@@ -302,6 +444,36 @@ for (const scheme of ['light', 'dark']) {
     await expect(page.getByTestId('status-state')).toHaveText('Up to date');
     await page.getByTestId('check-updates').hover();
     await page.getByTestId('status-bar').screenshot({ path: `${shots}/up-to-date-${scheme}.png` });
+    await page.getByTestId('library-switcher').focus();
+    await page.keyboard.press('Tab');
+    await page.getByTestId('status-bar').screenshot({ path: `${shots}/up-to-date-keyboard-focus-${scheme}.png` });
+
+    const many = await page.context().newPage();
+    await many.emulateMedia({ colorScheme: scheme });
+    await open(many, {
+      libraries: libraries([file(1)]),
+      addResult: {
+        added: 0,
+        skipped: [],
+        already: [],
+        kept: [],
+        conflicts: [
+          {
+            path: '/Users/sam/Desktop/agenda.md',
+            name: 'agenda.md',
+            existing: [
+              { id: 'file-1', path: '/Users/sam/Board/agenda.md', kind: 'file' },
+              { id: 'file-2', path: '/Users/sam/Team/Agenda.md', kind: 'file' },
+              { id: 'file:agenda.md', path: '/data/files/agenda.md', kind: 'copy' },
+            ],
+          },
+        ],
+      },
+    });
+    await many.getByTestId('add-button').click();
+    await many.getByTestId('add-files').click();
+    await many.getByTestId('replace-choice').nth(1).click();
+    await many.screenshot({ path: `${shots}/replace-dialog-three-${scheme}.png` });
 
     const eight = await page.context().newPage();
     await eight.emulateMedia({ colorScheme: scheme });
@@ -315,9 +487,11 @@ for (const scheme of ['light', 'dark']) {
       libraries: libraries([
         folder(1, 'Contracts'),
         folder(2, 'Minutes'),
+        { ...folder(3, 'Archive'), path: '/Volumes/Backup/Archive', available: false, status: 'unavailable' },
         file(1, 'Desktop'),
         { ...file(2, 'Downloads'), available: false },
         file(3, 'Desktop'),
+        { ...file(4), path: '/Volumes/Backup/memo-004.md', available: false, status: 'unavailable' },
         { id: 'file:handbook.md', kind: 'copy', path: '/data/files/handbook.md', name: 'handbook.md', available: true },
       ]),
     });

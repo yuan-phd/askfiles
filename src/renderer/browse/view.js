@@ -117,7 +117,14 @@ const MARKUP = `
 
 import { createHistory, isBackKey } from '../shared/history.js';
 import { PAGE_PART, sectionTitle, withoutLeadingPageNumber } from '../shared/display.js';
-import { filterSources, missingText, sourceKindText, sourcesCountText } from '../shared/sources.js';
+import {
+  filterSources,
+  missingText,
+  sourceKindText,
+  sourceStatus,
+  sourceStatusText,
+  sourcesCountText,
+} from '../shared/sources.js';
 import { createGraphPage } from './graph.js';
 
 const bridge = window.askfiles?.browse;
@@ -562,10 +569,17 @@ export function createBrowseView(root, { history: shared = null } = {}) {
         const li = el('li', 'library-sources-item');
         li.dataset.testid = 'library-sources-item';
         li.dataset.kind = src.kind;
-        li.dataset.available = String(src.available);
+        li.dataset.status = sourceStatus(src);
         const name = el('span', 'library-sources-name', src.name);
         const kind = el('span', 'library-sources-kind', sourceKindText(src));
         kind.dataset.testid = 'library-sources-kind';
+        const mark = sourceStatusText(src);
+        if (mark) {
+          // Not available: kept and still answered from; Original missing: about to leave.
+          const badge = el('span', 'library-sources-status', mark);
+          badge.dataset.testid = 'library-sources-status';
+          kind.append(badge);
+        }
         const where = el('span', 'library-sources-path', src.path);
         where.dataset.testid = 'library-sources-path';
         where.title = src.path;

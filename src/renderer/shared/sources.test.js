@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { filterSources, menuSources, missingText, moreText, sourceKindText, sourcesCountText } from './sources.js';
+import {
+  filterSources,
+  menuSources,
+  missingText,
+  moreText,
+  sourceKindText,
+  sourceMenuText,
+  sourceStatusText,
+  sourcesCountText,
+} from './sources.js';
 import { addResultText, replaceQuestion } from './topbar.js';
 
 // Invented sources, shaped like src/main/libraries.ts SourceView.
@@ -63,9 +72,20 @@ describe('Sources section', () => {
     },
   ];
 
-  it('names each kind of source', () => {
-    expect(all.map(sourceKindText)).toEqual(['Folder', 'File', 'File, original missing', 'Copy']);
-    expect(sourceKindText({ ...folder(1), available: false })).toBe('Folder, not available');
+  it('names each kind of source and marks those not ok', () => {
+    expect(all.map(sourceKindText)).toEqual(['Folder', 'File', 'File', 'Copy']);
+    expect(all.map(sourceStatusText)).toEqual(['', '', 'Original missing', '']);
+    expect(all.map(sourceMenuText)).toEqual(['Folder', 'File', 'File, original missing', 'Copy']);
+    // Out of reach (an unplugged drive): kept and marked Not available, folder or added file.
+    const away = [
+      { ...folder(1), available: false, status: 'unavailable' },
+      { ...file(3), available: false, status: 'unavailable' },
+    ];
+    expect(away.map(sourceStatusText)).toEqual(['Not available', 'Not available']);
+    expect(away.map(sourceMenuText)).toEqual(['Folder, not available', 'File, not available']);
+    expect(missingText(away)).toBe('');
+    // A view without status (older shape): a folder not available, a file missing.
+    expect(sourceStatusText({ ...folder(1), available: false })).toBe('Not available');
   });
 
   it('searches by name and path, ignoring case', () => {
