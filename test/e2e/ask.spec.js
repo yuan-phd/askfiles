@@ -137,7 +137,7 @@ test.describe('Ask page with the answer pipeline stubbed', () => {
       await expect(g.sources.getByTestId('source-card')).toHaveCount(1);
       await expect(g.drawn).toBeVisible();
       await expect(g.drawn).toHaveAttribute('open', '');
-      await expect(g.drawn.locator('summary')).toHaveText('Drawn from, not word for word');
+      await expect(g.drawn.locator('summary')).toHaveText('Drawn from, not word for word ⌃');
       await expect(g.drawn.getByTestId('source-card')).toHaveCount(1);
       await expect(g.drawn.getByTestId('source-section')).toHaveText('Travel');
       await expect(g.drawn.getByTestId('source-passage')).toHaveText(TRAVEL.passage);
@@ -270,7 +270,7 @@ test.describe('Ask page with the answer pipeline stubbed', () => {
 
     // The citation markers in the text, in the order written.
     await expect(page.getByTestId('answer-text').getByTestId('cite')).toHaveText(['[2]', '[1]']);
-    await expect(page.getByTestId('claim-unsupported')).toHaveText('Ask your manager first.*');
+    await expect(page.getByTestId('claim-unsupported')).toHaveText('Ask your manager first.†');
     await expect(page.getByTestId('answer-note')).toBeVisible();
 
     const considered = page.getByTestId('considered');

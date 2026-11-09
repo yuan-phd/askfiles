@@ -9,6 +9,8 @@ import { createClient, generateApiKey } from '../api/client.js';
 import { createHistory, isBackKey } from '../shared/history.js';
 import { lockLine, mountTopBar } from '../shared/topbar.js';
 import { displayPath, withoutLeadingPageNumber } from '../shared/display.js';
+import { renderMarkdown } from '../shared/markdown.js';
+import { claimsSource, MARKER, streamingSource } from './answer-source.js';
 import { CHEVRON, chevronClass, consideredTitle, sourceGroups } from './groups.js';
 import { progressText } from './progress.js';
 
@@ -309,10 +311,17 @@ function renderCards({ sent, cited, considered, drawn }) {
   els.drawnList.replaceChildren(...g.drawn.map((c) => cardNode(c)));
   els.drawn.hidden = g.drawn.length === 0;
   els.drawn.open = true;
+  setDrawnChevron(true);
   els.consideredList.replaceChildren(...g.considered.map((c) => cardNode(c)));
   els.considered.hidden = g.considered.length === 0;
   els.considered.open = false;
   setConsideredTitle(g.considered.length, false);
+}
+
+/** The Drawn from heading keeps its words; its chevron turns with the group, as on Show N more sections. */
+function setDrawnChevron(open) {
+  const chevron = $('drawn-title').querySelector('.chevron');
+  if (chevron) chevron.className = chevronClass(open);
 }
 
 /** The words, then the chevron in its own span so it can stand a little taller than them. */
@@ -397,21 +406,20 @@ function citeNode(n, valid) {
   return a;
 }
 
-/** The answer while it streams: text and citation markers in arrival order. */
+/** The answer while it streams: Markdown with the citation markers in arrival order. */
 function renderStreaming(parts, max) {
-  els.answerText.replaceChildren(
-    ...parts.map((p) => (p.type === 'cite' ? citeNode(p.n, p.n >= 1 && p.n <= max) : document.createTextNode(p.text))),
-  );
+  const { src, nodes } = streamingSource(parts, (n) => citeNode(n, n >= 1 && n <= max));
+  els.answerText.replaceChildren(renderMarkdown(document, src, { streaming: true, nodes }));
 }
 
 /**
- * What the asterisk means (owner's wording, round P1 follow-up), in the language of the answer:
- * Chinese when at least 30 percent of its letters are CJK (as mainlyCjk in verify.ts), else
- * English. The page has no other locale, so the answer's own language decides.
+ * What the dagger means (owner's wording), in the language of the answer: Chinese when at least
+ * 30 percent of its letters are CJK (as mainlyCjk in verify.ts), else English. The page has no
+ * other locale, so the answer's own language decides.
  */
 const MARKER_NOTE = {
-  en: 'Starred sentences have no word-for-word support in the sources. They may be a summary or conclusion drawn from the sources, or they may be inaccurate. Check them against the source cards.',
-  zh: '带星号的句子在来源中没有逐字对应的原文，可能是根据来源归纳的结论，也可能不准确，请对照来源卡片核实。',
+  en: 'Sentences marked \u2020 have no word-for-word support in the sources. They may be a summary or conclusion drawn from the sources, or they may be inaccurate. Check them against the source cards.',
+  zh: '带 \u2020 标记的句子在来源中没有逐字对应的原文，可能是根据来源归纳的结论，也可能不准确，请对照来源卡片核实。',
 };
 
 function markerNote(answerText) {
@@ -422,33 +430,34 @@ function markerNote(answerText) {
 }
 
 /**
- * The finished answer, sentence by sentence. A sentence no source supports stays muted and gets
- * an asterisk; the note under the answer says what the asterisk means.
+ * The finished answer, sentence by sentence, rendered from the Markdown the model wrote
+ * (claim.markdown, else its text). A sentence no source supports stays muted and gets a dagger
+ * after its last word, inside its list item or bold text; the note under the answer says what the
+ * dagger means. A sentence cut by bold or a list becomes several spans; the first carries its test id.
  */
 function renderClaims(claims) {
   const note = markerNote(claims.map((c) => c.text).join(''));
-  els.answerText.replaceChildren(
-    ...claims.map((c) => {
+  const { src, nodes, spans } = claimsSource(claims, {
+    cite: (n) => citeNode(n, true),
+    mark: () => {
+      const mark = document.createElement('span');
+      mark.className = 'unsupported-mark';
+      mark.dataset.testid = 'unsupported-mark';
+      mark.textContent = MARKER;
+      mark.title = note.text;
+      return mark;
+    },
+    span: (c, i, first) => {
       const span = document.createElement('span');
       span.className = c.unsupported ? 'claim unsupported' : 'claim';
-      span.dataset.testid = c.unsupported ? 'claim-unsupported' : 'claim';
-      span.append(document.createTextNode(c.text.replace(/\s+$/, '')));
-      for (const n of c.citations) span.append(citeNode(n, true));
-      if (c.unsupported) {
-        const mark = document.createElement('span');
-        mark.className = 'unsupported-mark';
-        mark.dataset.testid = 'unsupported-mark';
-        mark.textContent = '*';
-        mark.title = note.text;
-        span.append(mark);
-      }
-      const trailing = /\s+$/.exec(c.text)?.[0] ?? ' ';
-      span.append(document.createTextNode(trailing));
+      span.dataset.claim = String(i);
+      if (first) span.dataset.testid = c.unsupported ? 'claim-unsupported' : 'claim';
       return span;
-    }),
-  );
+    },
+  });
+  els.answerText.replaceChildren(renderMarkdown(document, src, { nodes, spans }));
   els.answerNote.hidden = !claims.some((c) => c.unsupported);
-  els.answerNote.textContent = `* ${note.text}`;
+  els.answerNote.textContent = note.text;
   els.answerNote.lang = note.lang;
 }
 
@@ -695,6 +704,8 @@ async function initDeveloper() {
 }
 
 // The collapsed group says what opening it does: Show N other sections, Hide N other sections.
+els.drawn.addEventListener('toggle', () => setDrawnChevron(els.drawn.open));
+
 els.considered.addEventListener('toggle', () => {
   setConsideredTitle(els.consideredList.children.length, els.considered.open);
 });

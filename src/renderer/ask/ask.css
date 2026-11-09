@@ -323,8 +323,32 @@ h2 {
 
 .answer-text p {
   margin: 0 0 var(--space-3);
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* The answer's Markdown (src/renderer/shared/markdown.js): lists, bold, italic, inline code. */
+.answer-text ul,
+.answer-text ol {
+  margin: 0 0 var(--space-3);
+  padding-left: 1.5em;
+}
+
+.answer-text li {
+  margin: 0.25em 0;
+}
+
+.answer-text li > ul,
+.answer-text li > ol,
+.answer-text li > p {
+  margin: 0.25em 0 0;
+}
+
+.answer-text code {
+  padding: 0.05em 0.3em;
+  border-radius: 4px;
+  background: var(--surface-sunken);
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.9em;
 }
 
 .sources,
@@ -551,12 +575,15 @@ button:focus-visible {
 /* Citations and unsupported sentences */
 
 .answer-text {
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
+.answer-text > :last-child {
+  margin-bottom: 0;
+}
+
 .cite {
-  margin-left: 0.15em;
+  /* Right against the punctuation before it: Water weekly.[2] */
   font-size: 0.8em;
   vertical-align: super;
   line-height: 0;
@@ -572,13 +599,16 @@ span.cite {
   color: var(--text-muted);
 }
 
-.claim.unsupported {
-  color: var(--text-muted);
-}
-
+/* The dagger after an unsupported sentence, its only mark (the sentence keeps the text colour): a
+   little larger than the text, muted, never bold or italic from the Markdown around it, right
+   against the punctuation or citation before it. */
 .unsupported-mark {
-  margin-left: 0.1em;
-  font-weight: 600;
+  font-size: 1.15em;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--text-muted);
+  cursor: help;
 }
 
 .answer-note {
@@ -600,6 +630,8 @@ span.cite {
 
 .drawn summary {
   cursor: pointer;
+  /* Its own chevron after the words, as Show N more sections and Compare's Show more. */
+  list-style: none;
   font-size: 0.8rem;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -622,6 +654,7 @@ span.cite {
   list-style: none;
 }
 
+.drawn summary .chevron,
 .considered summary .chevron {
   display: inline-block;
   /* Kept equal to Compare's Show more chevron (browse.css .compare-more .chevron). */
@@ -632,11 +665,13 @@ span.cite {
 
 /* Closed: the same glyph turned about the middle of its ink (transform-origin from the top of the
    zero-height box, found by measuring), so it sits where the open one does. */
+.drawn summary .chevron.down,
 .considered summary .chevron.down {
   transform-origin: 50% -0.145em;
   transform: translateY(0.3em) rotate(180deg);
 }
 
+.drawn summary::-webkit-details-marker,
 .considered summary::-webkit-details-marker {
   display: none;
 }

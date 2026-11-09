@@ -741,17 +741,19 @@ export function answerRow(o: {
             : ''
         }`
       : '',
-    // The answer as the Ask page renders it: each claim, its [n], a muted mark when unsupported.
+    // The answer as the Ask page renders it: each claim with its Markdown, its [n], a muted mark when unsupported.
     shown:
       r && !r.notFound
         ? r.claims
-            .map(
-              (x) =>
-                x.text.replace(/\s+$/, '') +
+            .map((x) => {
+              const t = x.markdown ?? x.text;
+              return (
+                t.replace(/\s+$/, '') +
                 x.citations.map((n) => `[${n}]`).join('') +
                 (x.unsupported ? ' (no source supports this sentence)' : '') +
-                (/\s+$/.exec(x.text)?.[0] ?? ' '),
-            )
+                (/\s+$/.exec(t)?.[0] ?? ' ')
+              );
+            })
             .join('')
             .trim()
         : '',
@@ -774,6 +776,7 @@ export function answerRow(o: {
       ? JSON.stringify(
           r.claims.map((x) => ({
             text: x.text,
+            ...(x.markdown ? { markdown: x.markdown } : {}),
             citations: x.citations,
             ...(x.support ? { support: x.support.map((v) => Math.round(v * 1000) / 1000), min: x.minSupport } : {}),
             ...(x.unsupported ? { unsupported: true } : {}),

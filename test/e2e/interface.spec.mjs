@@ -1,5 +1,5 @@
 // Interface fixes from the owner's tests: Find ranking and snippets, the page history (Back and
-// Cmd+[), the asterisk on unsupported sentences, the top bar layout at two widths, and the Ask
+// Cmd+[), the dagger on unsupported sentences, the top bar layout at two widths, and the Ask
 // off notice of the 8 GB tier only.
 import { test, expect } from '@playwright/test';
 import { seedBrowse, stubBrowseBridge } from './browse-seed.mjs';
@@ -203,7 +203,7 @@ test.describe('Back after a library change', () => {
 });
 
 test.describe('unsupported sentences', () => {
-  test('stay muted, get an asterisk, and one line under the answer explains it', async ({ page }) => {
+  test('keep the text colour, get a dagger, and one line under the answer explains it', async ({ page }) => {
     const LEAVE = card(1, {
       title: '1 Annual leave',
       path: ['1 Annual leave'],
@@ -226,19 +226,19 @@ test.describe('unsupported sentences', () => {
     await page.getByTestId('query').fill('How much leave?');
     await page.getByTestId('query').press('Enter');
     const starred = page.getByTestId('claim-unsupported');
-    await expect(starred).toHaveText('Plan leave early.*');
+    await expect(starred).toHaveText('Plan leave early.†');
     await expect(starred).toHaveClass(/unsupported/);
-    await expect(starred.getByTestId('unsupported-mark')).toHaveText('*');
-    // Muted like before: the sentence takes the muted text colour, the supported one does not.
+    await expect(starred.getByTestId('unsupported-mark')).toHaveText('†');
+    // Only the dagger marks it: the sentence has the colour of a supported one.
     const color = (l) => l.evaluate((el) => window.getComputedStyle(el).color);
-    expect(await color(starred)).not.toBe(await color(page.getByTestId('claim').first()));
+    expect(await color(starred)).toBe(await color(page.getByTestId('claim').first()));
     await expect(page.getByTestId('claim').first().getByTestId('unsupported-mark')).toHaveCount(0);
     await expect(page.getByTestId('answer-note')).toHaveText(
-      '* Starred sentences have no word-for-word support in the sources. They may be a summary or conclusion drawn from the sources, or they may be inaccurate. Check them against the source cards.',
+      'Sentences marked † have no word-for-word support in the sources. They may be a summary or conclusion drawn from the sources, or they may be inaccurate. Check them against the source cards.',
     );
   });
 
-  test('a Chinese answer gets the Chinese line, and a list lead-in no asterisk', async ({ page }) => {
+  test('a Chinese answer gets the Chinese line, and a list lead-in no dagger', async ({ page }) => {
     const REQ = card(1, { title: '第五条', path: ['第五条'], passage: '差旅单次报销申请额在400万元人民币以上。' });
     const run = answerRun({
       sources: [REQ],
@@ -260,15 +260,15 @@ test.describe('unsupported sentences', () => {
     await expect(page.getByTestId('unsupported-mark')).toHaveCount(1);
     await expect(page.getByTestId('claim').first()).toHaveText('门槛如下：');
     await expect(page.getByTestId('answer-note')).toHaveText(
-      '* 带星号的句子在来源中没有逐字对应的原文，可能是根据来源归纳的结论，也可能不准确，请对照来源卡片核实。',
+      '带 † 标记的句子在来源中没有逐字对应的原文，可能是根据来源归纳的结论，也可能不准确，请对照来源卡片核实。',
     );
     await expect(page.getByTestId('unsupported-mark')).toHaveAttribute(
       'title',
-      '带星号的句子在来源中没有逐字对应的原文，可能是根据来源归纳的结论，也可能不准确，请对照来源卡片核实。',
+      '带 † 标记的句子在来源中没有逐字对应的原文，可能是根据来源归纳的结论，也可能不准确，请对照来源卡片核实。',
     );
   });
 
-  test('without an unsupported sentence there is no asterisk and no note', async ({ page }) => {
+  test('without an unsupported sentence there is no dagger and no note', async ({ page }) => {
     const LEAVE = card(1, {
       title: '1 Annual leave',
       path: ['1 Annual leave'],

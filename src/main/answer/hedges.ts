@@ -30,12 +30,13 @@ export function dropHedges(claims: Claim[]): { claims: Claim[]; dropped: string[
   return { claims: kept, dropped };
 }
 
-/** The claims as one text with their citations, as the Ask page renders them. */
+/** The claims as one text with their citations, as the Ask page renders them (with their Markdown). */
 export function claimsText(claims: Claim[]): string {
   return claims
-    .map(
-      (c) => c.text.replace(/\s+$/, '') + c.citations.map((n) => `[${n}]`).join('') + (/\s+$/.exec(c.text)?.[0] ?? ' '),
-    )
+    .map((c) => {
+      const t = c.markdown ?? c.text;
+      return t.replace(/\s+$/, '') + c.citations.map((n) => `[${n}]`).join('') + (/\s+$/.exec(t)?.[0] ?? ' ');
+    })
     .join('')
     .trim();
 }

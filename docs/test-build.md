@@ -118,7 +118,7 @@ One per question, written when it ends.
 | error | the message the page showed, for error only |
 | answer | the answer text as shown (after unsupported hedges are dropped), or the refusal text; null for error and cancelled |
 | cited | the cited sources in citation order: `file`, `display` (the display name the source card showed first, null when it showed the file name), `section` (heading path joined with " > "), `page` (first page, null without pages) |
-| starred | sentences of the answer shown with the asterisk (no source found); 0 for a refusal |
+| starred | sentences of the answer shown with the dagger † (no source found; an asterisk until the Markdown answers change, the name kept so older records still read); 0 for a refusal |
 | totalMs | time from the question to its end, in milliseconds |
 
 ### type add
