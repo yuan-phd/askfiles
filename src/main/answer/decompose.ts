@@ -160,6 +160,9 @@ export async function answerSplit(
       if (e.type === 'stage') {
         if (e.stage === 'answering' && !staged) emit(e);
         staged ||= e.stage === 'answering';
+      } else if (e.type === 'progress') {
+        // Each part's progress as it comes; the page shows it only until the first words.
+        emit(e);
       } else if (e.type === 'sources') {
         for (const c of e.sources) {
           let n = union.findIndex((u) => keyOf(u) === keyOf(c)) + 1;

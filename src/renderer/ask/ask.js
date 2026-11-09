@@ -9,7 +9,8 @@ import { createClient, generateApiKey } from '../api/client.js';
 import { createHistory, isBackKey } from '../shared/history.js';
 import { lockLine, mountTopBar } from '../shared/topbar.js';
 import { displayPath, withoutLeadingPageNumber } from '../shared/display.js';
-import { consideredTitle, sourceGroups } from './groups.js';
+import { CHEVRON, chevronClass, consideredTitle, sourceGroups } from './groups.js';
+import { progressText } from './progress.js';
 
 const RECENT_LIMIT = 12;
 const RECENT_KEY = 'askfiles.recentQuestions';
@@ -311,7 +312,16 @@ function renderCards({ sent, cited, considered, drawn }) {
   els.consideredList.replaceChildren(...g.considered.map((c) => cardNode(c)));
   els.considered.hidden = g.considered.length === 0;
   els.considered.open = false;
-  els.consideredTitle.textContent = consideredTitle(g.considered.length, false);
+  setConsideredTitle(g.considered.length, false);
+}
+
+/** The words, then the chevron in its own span so it can stand a little taller than them. */
+function setConsideredTitle(count, open) {
+  const chevron = document.createElement('span');
+  chevron.className = chevronClass(open);
+  chevron.setAttribute('aria-hidden', 'true');
+  chevron.textContent = CHEVRON;
+  els.consideredTitle.replaceChildren(document.createTextNode(`${consideredTitle(count, open)} `), chevron);
 }
 
 function preview(text) {
@@ -451,8 +461,13 @@ function handleEvent(e) {
   }
   if (e.id !== run.id) return;
   switch (e.type) {
+    // The progress line until the first words: searching, checking a named file's sections (n of
+    // N), writing. Stage events from a pipeline without progress events say the same in short.
+    case 'progress':
+      if (!run.parts.length) showProgress(progressText(e.progress) ?? els.progress.textContent);
+      break;
     case 'stage':
-      showProgress(e.stage === 'answering' ? 'Reading the matching sections' : 'Searching your documents');
+      if (!run.parts.length) showProgress(e.stage === 'answering' ? 'Writing the answer' : 'Searching your documents');
       break;
     case 'sources':
       run.sources = e.sources;
@@ -681,7 +696,7 @@ async function initDeveloper() {
 
 // The collapsed group says what opening it does: Show N other sections, Hide N other sections.
 els.considered.addEventListener('toggle', () => {
-  els.consideredTitle.textContent = consideredTitle(els.consideredList.children.length, els.considered.open);
+  setConsideredTitle(els.consideredList.children.length, els.considered.open);
 });
 
 els.form.addEventListener('submit', (e) => {

@@ -104,6 +104,8 @@ export interface JudgeDeps {
   section(key: string): { section: BrowseSection } | null;
   log?: (msg: string) => void;
   signal?: AbortSignal;
+  /** Called before each candidate's call: n of total (display only). */
+  onCandidate?: (n: number, total: number) => void;
 }
 
 /** Scores the first JUDGE_WINDOW sections of one file's fused list, sequentially, and reorders them. */
@@ -118,6 +120,7 @@ export async function judgeFile(
   const window = fused.slice(0, JUDGE_WINDOW);
   const candidates: JudgedCandidate[] = [];
   for (const [i, f] of window.entries()) {
+    d.onCandidate?.(i + 1, window.length);
     const found = d.section(f.key);
     const path = found ? (found.section.path.length ? found.section.path : [found.section.title]) : [];
     const text = found ? judgeText(found.section, f) : '';

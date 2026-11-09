@@ -122,6 +122,8 @@ export class SummaryQueue {
         const front = -1 - this.seq - this.running.jobs.length;
         this.running.jobs.forEach((job, i) => this.jobs.set(jobKey(job), { job, seq: front + i }));
         this.seq += this.running.jobs.length;
+        // The abort cancels the model request itself (the signal reaches the chat call's fetch).
+        this.d.log?.(`aborted ${this.running.jobs.map(jobKey).join(', ')} for ${gate}; back at the front of the queue`);
         this.running.controller.abort();
         this.running = null;
       }

@@ -93,6 +93,18 @@ export class AnswerService {
     return { id };
   }
 
+  /**
+   * Cancels the question being answered, whatever its id (the current library changed). Its model
+   * request is aborted and send() lets no further event of it through.
+   */
+  cancelCurrent(reason: string): boolean {
+    if (!this.current) return false;
+    this.d.log(`[answer] cancelled: ${reason}`);
+    this.current.controller.abort();
+    this.current = null;
+    return true;
+  }
+
   cancel(id: string): void {
     if (this.current?.id === id) {
       this.current.controller.abort();
@@ -176,9 +188,10 @@ export class AnswerService {
       if (!deps) throw new Error('The library is not ready yet. Try again in a moment.');
       const s = this.effectiveSettings();
       send({ type: 'stage', stage: 'retrieving' });
+      send({ type: 'progress', progress: { stage: 'searching' } });
       // The trace and the log line describe the first part of a split question.
       const one = async (q: string, emit: (e: AnswerEvent) => void) => {
-        const r = await retrieve(q, s, deps, signal);
+        const r = await retrieve(q, s, deps, signal, (progress) => emit({ type: 'progress', progress }));
         const sel = choose(r, s);
         if (!first) {
           const trace = buildTrace(r, sel, {

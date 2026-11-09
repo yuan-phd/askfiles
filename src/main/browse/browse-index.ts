@@ -5,7 +5,7 @@ import type { FileRecord } from '../watcher/index.js';
 import { detectKind } from '../graph/kinds.js';
 import { buildDocument, buildOutline, documentId, PAGE_PART, type StoredChunk } from './build.js';
 import { normalizeHeading } from './normalize.js';
-import { buildIdentities, displayName, type FileIdentity } from './identifiers.js';
+import { buildIdentities, warmMatchers, displayName, type FileIdentity } from './identifiers.js';
 import { rankSections, sectionFrequency, type FoldedSection, type KeywordOptions, type RankedSection } from './rank.js';
 import { stemFolded } from './stem.js';
 import { fold, markRanges, matchesOf, matchTier, queryTerms, snippetOf } from './search.js';
@@ -343,6 +343,10 @@ export class BrowseIndex {
     if (this.identityList) return this.identityList;
     const docs = [...this.docs.values()].sort((a, b) => a.relPath.localeCompare(b.relPath));
     this.identityList = buildIdentities(docs);
+    // Every name's matcher is built here, once per identity list, not per question; in the
+    // background, so a large library does not hold the main process.
+    const list = this.identityList;
+    void warmMatchers(list, () => this.identityList === list);
     const file = path.join(this.o.dir, IDENTITIES_FILE);
     try {
       // An empty library leaves no file behind, as it leaves no documents.

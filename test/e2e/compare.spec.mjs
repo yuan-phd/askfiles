@@ -76,7 +76,7 @@ test.describe('Compare cards', () => {
     expect(h).toBeLessThanOrEqual(line * 10 + 1);
     expect(h).toBeGreaterThan(line * 9);
     expect(await text.evaluate((b) => window.getComputedStyle(b).maskImage)).toContain('linear-gradient');
-    await expect(long.getByTestId('compare-more')).toHaveText('Show more ▾');
+    await expect(long.getByTestId('compare-more')).toHaveText('Show more ⌃');
     // Muted, small, right under the faded text, and only about the body.
     const more = await long.getByTestId('compare-more').evaluate((m) => {
       const cs = window.getComputedStyle(m);
@@ -118,15 +118,63 @@ test.describe('Compare cards', () => {
     const before = (await text.boundingBox()).height;
     const otherBefore = (await other.getByTestId('compare-text').boundingBox()).height;
     await long.getByTestId('compare-more').click();
-    await expect(long.getByTestId('compare-more')).toHaveText('Show less ▴');
+    await expect(long.getByTestId('compare-more')).toHaveText('Show less ⌃');
     await expect(long.getByTestId('compare-more')).toHaveAttribute('aria-expanded', 'true');
     expect((await text.boundingBox()).height).toBeGreaterThan(before + 20);
     await expect(text).toContainText('Paragraph 6.');
     expect((await other.getByTestId('compare-text').boundingBox()).height).toBe(otherBefore);
     if (shots) await page.screenshot({ path: `${shots}/compare-one-expanded.png`, fullPage: true });
     await long.getByTestId('compare-more').click();
-    await expect(long.getByTestId('compare-more')).toHaveText('Show more ▾');
+    await expect(long.getByTestId('compare-more')).toHaveText('Show more ⌃');
     expect((await text.boundingBox()).height).toBeCloseTo(before, 0);
+  });
+
+  test('Show more keeps its text style and ends in the Ask page chevron, taller than the words, turned when open', async ({
+    page,
+  }) => {
+    const cards = await openCompare(page, 1200);
+    const more = cards.filter({ hasText: 'policy-a' }).getByTestId('compare-more');
+    const style = () =>
+      more.evaluate((b) => {
+        const c = b.querySelector('.chevron');
+        const cs = window.getComputedStyle(b);
+        const ch = window.getComputedStyle(c);
+        // The words alone, measured with a range over the text node.
+        const r = document.createRange();
+        r.selectNodeContents(b.firstChild);
+        return {
+          chevron: c.textContent,
+          down: c.classList.contains('down'),
+          box: [c.getBoundingClientRect().width, c.getBoundingClientRect().height],
+          hidden: c.getAttribute('aria-hidden'),
+          color: [cs.color, ch.color],
+          weight: [cs.fontWeight, ch.fontWeight],
+          size: [parseFloat(cs.fontSize), parseFloat(ch.fontSize)],
+          heights: [r.getBoundingClientRect().height, c.getBoundingClientRect().height],
+        };
+      });
+    const closed = await style();
+    // One glyph for both states, turned when closed, so closed and open are the same size.
+    expect(closed.chevron).toBe('⌃');
+    expect(closed.down).toBe(true);
+    expect(closed.hidden).toBe('true');
+    // The words keep the button's colour, size (0.8rem) and normal weight.
+    expect(closed.size[0]).toBeCloseTo(12.8, 1);
+    expect(closed.weight[0]).toBe('400');
+    // The chevron has the text's colour, and the size and weight of the Ask page's chevron after
+    // Show N more sections (18.2 px, 600; checked on that page in ask.spec.js): taller than the words.
+    expect(closed.color[1]).toBe(closed.color[0]);
+    expect(closed.size[1]).toBeCloseTo(18.2, 1);
+    expect(closed.weight[1]).toBe('600');
+    expect(closed.size[1]).toBeGreaterThan(closed.size[0]);
+    await more.click();
+    const open = await style();
+    expect(open.chevron).toBe('⌃');
+    expect(open.down).toBe(false);
+    expect(open.size[1]).toBe(closed.size[1]);
+    expect(open.weight[1]).toBe(closed.weight[1]);
+    expect(open.box[0]).toBeCloseTo(closed.box[0], 1);
+    expect(open.box[1]).toBeCloseTo(closed.box[1], 1);
   });
 
   test('Expand all opens every long card, Collapse all closes them', async ({ page }) => {
@@ -135,14 +183,14 @@ test.describe('Compare cards', () => {
     await expect(all).toHaveText('Expand all');
     await all.click();
     await expect(all).toHaveText('Collapse all');
-    await expect(cards.getByTestId('compare-more').filter({ visible: true })).toHaveText(Array(4).fill('Show less ▴'));
+    await expect(cards.getByTestId('compare-more').filter({ visible: true })).toHaveText(Array(4).fill('Show less ⌃'));
     // Cards in a row stay aligned at the top when their heights differ.
     const tops = await cards.evaluateAll((cs) => cs.slice(0, 2).map((c) => Math.round(c.getBoundingClientRect().top)));
     expect(tops[0]).toBe(tops[1]);
     if (shots) await page.screenshot({ path: `${shots}/compare-expanded-all.png`, fullPage: true });
     await all.click();
     await expect(all).toHaveText('Expand all');
-    await expect(cards.getByTestId('compare-more').filter({ visible: true })).toHaveText(Array(4).fill('Show more ▾'));
+    await expect(cards.getByTestId('compare-more').filter({ visible: true })).toHaveText(Array(4).fill('Show more ⌃'));
     // Opening the last long card by hand makes every one open, so the control offers Collapse all.
     for (const name of ['policy-a', 'policy-b', 'policy-d', 'policy-e'])
       await cards.filter({ hasText: name }).getByTestId('compare-more').click();
@@ -258,9 +306,9 @@ test.describe('Compare merges the parts of a split section', () => {
     expect(text).toContain('Page 2 line 30:');
     expect(text.indexOf('Page 1 line 38:')).toBeLessThan(text.indexOf('Page 2 line 1:'));
     // The clamp and Show more act on the merged text.
-    await expect(handbook.getByTestId('compare-more')).toHaveText('Show more ▾');
+    await expect(handbook.getByTestId('compare-more')).toHaveText('Show more ⌃');
     await page.getByTestId('compare-expand-all').click();
-    await expect(handbook.getByTestId('compare-more')).toHaveText('Show less ▴');
+    await expect(handbook.getByTestId('compare-more')).toHaveText('Show less ⌃');
   });
 });
 

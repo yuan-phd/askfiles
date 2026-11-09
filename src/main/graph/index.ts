@@ -21,5 +21,6 @@ export {
   profileInfo,
 } from './profiles.js';
 export type { EdgeRule, Profile, ProfileInfo, ProfileType } from './profiles.js';
+export { capEdges, isLargeLibrary, LARGE_LIBRARY, LARGE_MIN_SHARED_HEADINGS, MAX_EDGES_PER_DOCUMENT } from './scale.js';
 export { GraphService } from './service.js';
 export type { GraphServiceDeps } from './service.js';

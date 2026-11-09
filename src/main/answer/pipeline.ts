@@ -337,6 +337,8 @@ export async function retrieve(
   s: Pick<RunSettings, 'params' | 'chunkMaxChars'> & Partial<Pick<RunSettings, 'chatModel' | 'contextLength'>>,
   deps: PipelineDeps,
   signal?: AbortSignal,
+  /** Progress for the Ask page (judge calls); never changes what is retrieved. */
+  onProgress?: (p: Progress) => void,
 ): Promise<Retrieval> {
   const p = s.params;
   const t0 = performance.now();
@@ -402,7 +404,11 @@ export async function retrieve(
           const sectionOf = (key: string) =>
             deps.index.section(key.slice(0, key.lastIndexOf('#')), Number(key.slice(key.lastIndexOf('#') + 1)));
           reorder = async (documentId, query, list) => {
+            const name = displayName(files.find((f) => f.documentId === documentId)?.file ?? documentId);
             const { ordered, record } = await judgeFile(question, documentId, query, list, {
+              ...(onProgress
+                ? { onCandidate: (n, total) => onProgress({ stage: 'judging', file: name, n, total }) }
+                : {}),
               chat: deps.chat,
               model: s.chatModel!,
               contextLength: s.contextLength!,
@@ -680,8 +686,17 @@ export interface AnswerResult {
   sentenceMatch?: { embedMs: number; sectionsEmbedded: number; sentencesEmbedded: number; error?: string };
 }
 
+/**
+ * What the Ask page says while an answer is prepared (display only): searching, then for a
+ * question that runs judgeRerank each named file's candidates as they are scored (n of total, the
+ * call in progress), then writing until the first words arrive.
+ */
+export type Progress =
+  { stage: 'searching' } | { stage: 'judging'; file: string; n: number; total: number } | { stage: 'writing' };
+
 export type AnswerEvent =
   | { type: 'stage'; stage: 'retrieving' | 'answering' }
+  | { type: 'progress'; progress: Progress }
   | { type: 'sources'; sources: SourceCard[] }
   | { type: 'delta'; parts: Part[] }
   | { type: 'done'; result: AnswerResult };
@@ -794,6 +809,7 @@ export async function answer(
     return result;
   }
   emit({ type: 'stage', stage: 'answering' });
+  emit({ type: 'progress', progress: { stage: 'writing' } });
   const verdictLine = s.params.verdictLine;
   const affinity = s.params.documentAffinity;
   const typeOf = new Map((affinity ? (deps.index?.identities?.() ?? []) : []).map((f) => [f.documentId, f.type]));

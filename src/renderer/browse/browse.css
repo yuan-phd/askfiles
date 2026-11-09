@@ -263,6 +263,21 @@ button.link:hover {
   margin-left: auto;
 }
 
+.library-show-graph {
+  font-size: 0.85rem;
+}
+
+.doc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.doc-actions [hidden] {
+  display: none;
+}
+
 /* Outline lists, in the library and in the document rail */
 
 .outline {
@@ -584,7 +599,7 @@ h6.doc-heading {
   margin-top: 0;
 }
 
-/* Show more ▾ and Show less ▴: muted, right under the faded text, only for the body. */
+/* Show more and Show less with their chevron: muted, right under the faded text, only for the body. */
 .compare-more {
   align-self: flex-start;
   margin-top: calc(-1 * var(--space-2));
@@ -598,6 +613,25 @@ h6.doc-heading {
 
 .compare-more:hover {
   color: var(--text);
+}
+
+/* The chevron keeps the words' colour and stands a little taller than them; one glyph, turned when
+   closed (.down), so both states are the same size. */
+.compare-more .chevron {
+  display: inline-block;
+  /* The same chevron as the Ask page's Show N more sections (ask.css): its size and weight, a
+     little taller than either text; the words of Show more keep their own size and weight. */
+  font-size: calc(0.875rem * 1.3);
+  font-weight: 600;
+  line-height: 0;
+  transform: translateY(0.3em);
+}
+
+/* Closed: the same glyph turned about the middle of its ink (transform-origin from the top of the
+   zero-height box, found by measuring), so it sits where the open one does. */
+.compare-more .chevron.down {
+  transform-origin: 50% -0.145em;
+  transform: translateY(0.3em) rotate(180deg);
 }
 
 @media (max-width: 900px) {
@@ -918,6 +952,17 @@ h6.doc-heading {
   box-shadow: 0 0 0 3px var(--focus);
 }
 
+.graph-tools [hidden] {
+  display: none;
+}
+
+.graph-search-box {
+  position: relative;
+  margin-right: auto;
+}
+
+/* Local, Folders, All: a small segmented control, like the layout switch. */
+.graph-views,
 .graph-layout {
   display: inline-flex;
   border: 1px solid var(--border);
@@ -926,6 +971,7 @@ h6.doc-heading {
   background: var(--surface);
 }
 
+.graph-views button,
 .graph-layout button {
   padding: 6px 12px;
   border: 0;
@@ -936,14 +982,139 @@ h6.doc-heading {
   cursor: pointer;
 }
 
+.graph-views button + button {
+  border-left: 1px solid var(--border);
+}
+
+.graph-views button[aria-pressed='true'],
 .graph-layout button[aria-pressed='true'] {
   background: var(--accent-soft);
   color: var(--accent);
 }
 
+.graph-results {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  width: 340px;
+  max-width: calc(100vw - 48px);
+  margin: 0;
+  padding: var(--space-1) 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.graph-result {
+  display: block;
+  width: 100%;
+  padding: 6px 12px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.graph-result:hover,
+.graph-result.first {
+  background: var(--accent-soft);
+}
+
+.graph-result span {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.graph-result-path {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Under the tools: Local's centre and its controls, or the folders opened in place. */
+.graph-bar {
+  position: absolute;
+  top: calc(var(--space-4) + 44px);
+  left: var(--space-4);
+  right: var(--space-4);
+  z-index: 9;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.graph-bar[hidden] {
+  display: none;
+}
+
+.graph-bar > * {
+  pointer-events: auto;
+}
+
+.graph-bar-label {
+  color: var(--text-muted);
+}
+
+.graph-center-name {
+  max-width: 320px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+
+.graph-hop {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.graph-chip {
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.graph-chip:hover {
+  border-color: var(--accent);
+}
+
+.graph-pick {
+  position: absolute;
+  top: 40%;
+  left: 0;
+  right: 0;
+  text-align: center;
+}
+
 .graph .link {
   stroke: var(--text-muted);
   fill: none;
+}
+
+/* Folders: one link stands for every link between two groups; it grows with them. */
+.graph .link.kind-aggregate {
+  stroke: var(--text-muted);
+}
+
+.graph .link.kind-more {
+  stroke-dasharray: 2 4;
 }
 
 /* Edge style by kind: solid shared headings, dashed references, dotted version chains. */
@@ -998,6 +1169,47 @@ h6.doc-heading {
   stroke-dasharray: 2 2;
 }
 
+.graph .node.role-group {
+  fill: var(--accent-soft);
+  stroke: var(--accent);
+  stroke-width: 1.5px;
+}
+
+.graph .node.role-more {
+  fill: var(--surface);
+  stroke: var(--text-muted);
+  stroke-dasharray: 3 2;
+}
+
+/* Local's centre. */
+.graph .node.center {
+  stroke: var(--text);
+  stroke-width: 2.5px;
+}
+
+.graph .label.off {
+  display: none;
+}
+
+/* A label with no free spot beside its node waits until there is room. */
+.graph .label.crowded {
+  display: none;
+}
+
+/* The selected document. */
+.graph .node.selected {
+  stroke: var(--accent);
+  stroke-width: 3px;
+}
+
+.graph .link.lit {
+  stroke: var(--accent);
+}
+
+.graph .label.role-group {
+  font-weight: 600;
+}
+
 .graph .node.match {
   stroke: var(--text);
   stroke-width: 2px;
@@ -1033,6 +1245,53 @@ h6.doc-heading {
 
 .graph-tooltip {
   pointer-events: none;
+}
+
+/* The selected document's card stays put at the top right, under the tools. */
+.graph-card {
+  position: absolute;
+  z-index: 15;
+  top: calc(var(--space-4) + 76px);
+  right: var(--space-4);
+  width: 280px;
+  max-width: calc(100% - 2 * var(--space-4));
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.graph-card[hidden] {
+  display: none;
+}
+
+.graph-card span,
+.graph-card strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.graph-card .tip-meta {
+  color: var(--text-muted);
+}
+
+.graph-card .tip-summary {
+  margin-top: var(--space-1);
+}
+
+.graph-card .tip-summary.pending {
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+.graph-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
 }
 
 .graph-tooltip span,

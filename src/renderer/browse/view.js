@@ -52,7 +52,10 @@ const MARKUP = `
     <header class="doc-head">
       <h1 class="doc-title" data-testid="doc-title"></h1>
       <p class="doc-path" data-testid="doc-path"></p>
-      <button type="button" class="open" data-testid="doc-open">Open original</button>
+      <div class="doc-actions">
+        <button type="button" class="open" data-testid="doc-open">Open original</button>
+        <button type="button" class="link doc-show-graph" data-testid="doc-show-graph">Show in graph</button>
+      </div>
       <p class="doc-summary" data-testid="doc-summary" hidden></p>
       <div class="doc-summary-actions" data-testid="doc-summary-actions" hidden>
         <span class="has-tip">
@@ -109,9 +112,21 @@ const watcher = window.askfiles?.watcher;
 const graphBridge = window.askfiles?.graph;
 const summariesBridge = window.askfiles?.summaries;
 
-/** The toggle under a clamped Compare card's text. */
-const MORE = 'Show more ▾';
-const LESS = 'Show less ▴';
+/** The toggle under a clamped Compare card's text: its words, and a chevron that turns when open. */
+const MORE = 'Show more';
+const LESS = 'Show less';
+/**
+ * One glyph for both states, turned 180 degrees by the class down when closed, as on the Ask page
+ * (ask/groups.js CHEVRON): ⌄ comes from a smaller fallback font.
+ */
+const CHEVRON = '⌃';
+
+/** Show more (chevron down) or Show less (chevron up): the words keep the button's text style, the chevron is its own span. */
+export function setMoreLabel(node, open) {
+  const chevron = el('span', open ? 'chevron' : 'chevron down', CHEVRON);
+  chevron.setAttribute('aria-hidden', 'true');
+  node.replaceChildren(document.createTextNode(`${open ? LESS : MORE} `), chevron);
+}
 
 /** Lines of a Compare card's text shown before Show more; matches max-height: 10lh in browse.css. */
 const CLAMP_LINES = 10;
@@ -275,6 +290,7 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     if (state.page === 'compare') entry.headingKey = state.headingKey;
     if (state.page === 'find') entry.query = state.findQuery ?? '';
     if (state.page === 'document') Object.assign(entry, { ref: state.docRef, target: state.docTarget ?? {} });
+    if (state.page === 'graph') entry.graph = graphPage.place();
     return entry;
   }
 
@@ -282,6 +298,7 @@ export function createBrowseView(root, { history: shared = null } = {}) {
   async function restore(entry) {
     if (entry.page === 'document') await openDocument(entry.ref, entry.target, { record: false });
     else {
+      if (entry.page === 'graph') graphPage.setPlace(entry.graph);
       show(entry.page);
       if (entry.page === 'compare' && entry.headingKey && entry.headingKey !== state.headingKey)
         await showHeading(entry.headingKey);
@@ -373,6 +390,11 @@ export function createBrowseView(root, { history: shared = null } = {}) {
         row.append(open, meta);
         const node = state.graph?.nodes.find((n) => n.id === d.id);
         if (node) row.append(typeControl(node));
+        if (node) {
+          const graph = button('link library-show-graph', 'Show in graph', 'library-show-graph');
+          graph.addEventListener('click', () => showInGraph(d.id));
+          row.append(graph);
+        }
         li.append(row);
         const sum = summaryLine(d.id);
         if (sum) li.append(sum);
@@ -717,6 +739,20 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     scrollToSection(target);
   }
 
+  /** Show in graph: the Graph page in Local, centred on the document. */
+  function showInGraph(id) {
+    history.navigate(() => {
+      graphPage.showDocument(id);
+      show('graph');
+      return current();
+    });
+  }
+
+  q('doc-show-graph').addEventListener('click', () => {
+    if (state.doc) showInGraph(state.doc.id);
+  });
+  q('doc-show-graph').hidden = !graphBridge;
+
   q('doc-open').addEventListener('click', async () => {
     if (state.doc && (await openOriginal(state.doc)) === false) {
       q('doc-error').textContent = `${state.doc.title} is no longer in your documents folder.`;
@@ -818,7 +854,8 @@ export function createBrowseView(root, { history: shared = null } = {}) {
         }
         body.append(...paragraphs(withoutLeadingPageNumber(part.text || '')));
       }
-      const more = button('compare-more', MORE, 'compare-more');
+      const more = button('compare-more', '', 'compare-more');
+      setMoreLabel(more, false);
       more.hidden = true;
       more.setAttribute('aria-expanded', 'false');
       more.addEventListener('click', () => {
@@ -871,7 +908,7 @@ export function createBrowseView(root, { history: shared = null } = {}) {
   function setExpanded(card, on) {
     card.classList.toggle('expanded', on);
     const more = card.querySelector('.compare-more');
-    more.textContent = on ? LESS : MORE;
+    setMoreLabel(more, on);
     more.setAttribute('aria-expanded', String(on));
   }
 
@@ -976,6 +1013,10 @@ export function createBrowseView(root, { history: shared = null } = {}) {
       return state.graph;
     },
     onOpenDocument: (id, target) => openDocument({ id }, target || {}),
+    // A new view or centre updates the Graph entry, so Back to it finds the same place.
+    onPlace: (place) => {
+      if (state.page === 'graph') history.replace({ graph: place });
+    },
     onOpenHeading: (key) =>
       history.navigate(() => {
         show('compare');
