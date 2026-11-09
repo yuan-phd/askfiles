@@ -188,9 +188,10 @@ export class AnswerService {
       if (!deps) throw new Error('The library is not ready yet. Try again in a moment.');
       const s = this.effectiveSettings();
       send({ type: 'stage', stage: 'retrieving' });
+      send({ type: 'progress', progress: { stage: 'searching' } });
       // The trace and the log line describe the first part of a split question.
       const one = async (q: string, emit: (e: AnswerEvent) => void) => {
-        const r = await retrieve(q, s, deps, signal);
+        const r = await retrieve(q, s, deps, signal, (progress) => emit({ type: 'progress', progress }));
         const sel = choose(r, s);
         if (!first) {
           const trace = buildTrace(r, sel, {

@@ -352,6 +352,69 @@ test.describe('Ask page with the answer pipeline stubbed', () => {
     await expect(page.getByTestId('submit')).toBeDisabled();
   });
 
+  test('the progress line follows the stages: searching, each judge call per file, writing; gone when the words stream', async ({
+    page,
+  }) => {
+    // Invented files. What the pipeline sends for a question naming two files (judgeRerank).
+    const judging = (file, total) =>
+      Array.from({ length: total }, (_, i) => ({
+        type: 'progress',
+        progress: { stage: 'judging', file, n: i + 1, total },
+      }));
+    const [stage, sources, answering, ...rest] = ANSWERED;
+    const run = [
+      stage,
+      { type: 'progress', progress: { stage: 'searching' } },
+      ...judging('Pump Station Procedure 2025', 3),
+      ...judging('Valve Exercising Guidance', 2),
+      sources,
+      answering,
+      { type: 'progress', progress: { stage: 'writing' } },
+      rest[0],
+      // A late progress event (a split question's next part) does not bring the line back.
+      { type: 'progress', progress: { stage: 'searching' } },
+      ...rest.slice(1),
+    ];
+    await open(page, { runs: { [QUESTION]: run, 'Half way?': run.slice(0, 10) } });
+    await page.evaluate(() => {
+      const node = document.querySelector('[data-testid="answer-progress"]');
+      window.__progress = [];
+      const record = () => {
+        const text = node.hidden ? null : node.textContent;
+        if (window.__progress.at(-1) !== text) window.__progress.push(text);
+      };
+      new window.MutationObserver(record).observe(node, {
+        attributes: true,
+        childList: true,
+        characterData: true,
+        subtree: true,
+      });
+    });
+    await askQuestion(page);
+    await expect(page.getByTestId('answer')).toHaveAttribute('aria-busy', 'false');
+    const seen = (await page.evaluate(() => window.__progress)).filter((t, i, all) => i === 0 || t !== all[i - 1]);
+    expect(seen).toEqual([
+      'Searching your documents',
+      'Checking sections in Pump Station Procedure 2025 (1 of 3)',
+      'Checking sections in Pump Station Procedure 2025 (2 of 3)',
+      'Checking sections in Pump Station Procedure 2025 (3 of 3)',
+      'Checking sections in Valve Exercising Guidance (1 of 2)',
+      'Checking sections in Valve Exercising Guidance (2 of 2)',
+      'Writing the answer',
+      null,
+    ]);
+    await expect(page.getByTestId('answer-progress')).toBeHidden();
+
+    // A run that has not streamed yet keeps the last line, muted, under the question.
+    await askQuestion(page, 'Half way?');
+    await expect(page.getByTestId('answer-progress')).toHaveText('Writing the answer');
+    await expect(page.getByTestId('answer-progress')).toBeVisible();
+    await expect(page.getByTestId('answer-progress')).toHaveCSS(
+      'color',
+      await page.getByTestId('answer-note').evaluate((n) => window.getComputedStyle(n).color),
+    );
+  });
+
   test('the not-found marker shows the nothing-found state with the nearest sections', async ({ page }) => {
     const run = answerRun({
       sources: [LEAVE],

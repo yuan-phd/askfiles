@@ -222,6 +222,8 @@ Switches that change the single mode, each off in the presets until an eval roun
 
 The main log gets one line per question, without the question text: `[answer] 2 cited of 3 selected, 12 candidates, vector 45 ms, keyword 2 ms, rerank 640 ms, first token 900 ms, total 4100 ms`.
 
+Progress line (display only, 2026-11-09). While an answer is prepared the Ask page shows one muted line under the question, replaced as the stages change: Searching your documents; for a question that runs judgeRerank, Checking sections in <display name> (n of N) for each named file, n being the judge call in progress (judge.ts judgeFile onCandidate); then Writing the answer until the first words arrive, when the line goes. The pipeline sends these as progress events (pipeline.ts Progress, from AnswerService.run, retrieve and answer; split questions forward each part's); a cancelled answer sends none after the cancel, since every event passes the run's abort check. The page shows a progress event only until the answer streams (src/renderer/ask/progress.js). Nothing about retrieval, the judge or the answer changes. Tests: src/main/answer-progress.test.ts with a fake model, test/e2e/ask.spec.js.
+
 ## Indexing time
 
 The watcher logs one line per indexed file with the time per stage, and the browse follower one for the browse index:

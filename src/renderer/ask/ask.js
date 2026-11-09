@@ -10,6 +10,7 @@ import { createHistory, isBackKey } from '../shared/history.js';
 import { lockLine, mountTopBar } from '../shared/topbar.js';
 import { displayPath, withoutLeadingPageNumber } from '../shared/display.js';
 import { CHEVRON, chevronClass, consideredTitle, sourceGroups } from './groups.js';
+import { progressText } from './progress.js';
 
 const RECENT_LIMIT = 12;
 const RECENT_KEY = 'askfiles.recentQuestions';
@@ -460,8 +461,13 @@ function handleEvent(e) {
   }
   if (e.id !== run.id) return;
   switch (e.type) {
+    // The progress line until the first words: searching, checking a named file's sections (n of
+    // N), writing. Stage events from a pipeline without progress events say the same in short.
+    case 'progress':
+      if (!run.parts.length) showProgress(progressText(e.progress) ?? els.progress.textContent);
+      break;
     case 'stage':
-      showProgress(e.stage === 'answering' ? 'Reading the matching sections' : 'Searching your documents');
+      if (!run.parts.length) showProgress(e.stage === 'answering' ? 'Writing the answer' : 'Searching your documents');
       break;
     case 'sources':
       run.sources = e.sources;
