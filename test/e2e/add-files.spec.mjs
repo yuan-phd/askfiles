@@ -350,13 +350,21 @@ test.describe('library menu sources', () => {
         { ...file(1), name: 'agenda.md', path: '/Users/sam/Board/agenda.md' },
         { ...file(2), name: 'Agenda.md', path: `/Users/sam/${long}/Agenda.md` },
         { ...file(3), name: 'budget.md', path: '/Users/sam/Board/budget.md' },
+        { id: 'file:agenda.md', kind: 'copy', path: '/data/files/agenda.md', name: 'agenda.md', available: true },
       ]),
     });
     await page.getByTestId('library-switcher').click();
     const items = page.getByTestId('source-item');
-    await expect(items.locator('.source-kind')).toHaveText(['Folder', 'File · Board', `File · ${long}`, 'File']);
+    await expect(items.locator('.source-kind')).toHaveText([
+      'Folder',
+      'File · Board',
+      `File · ${long}`,
+      'File',
+      'Copy · AskFiles',
+    ]);
     const where = page.getByTestId('source-folder');
-    await expect(where).toHaveCount(2);
+    await expect(where).toHaveCount(3);
+    await expect(where.nth(2)).toHaveAttribute('title', '/data/files/agenda.md');
     await expect(where.nth(0)).toHaveAttribute('title', '/Users/sam/Board/agenda.md');
     await expect(where.nth(1)).toHaveAttribute('title', `/Users/sam/${long}/Agenda.md`);
     // The long folder name is cut with an ellipsis and the row stays one line inside the menu.
@@ -528,6 +536,7 @@ for (const scheme of ['light', 'dark']) {
           path: '/Users/sam/Minutes of the regional water board meetings/Agenda.md',
         },
         { ...file(3), name: 'budget.md', path: '/Users/sam/Board/budget.md' },
+        { id: 'file:agenda.md', kind: 'copy', path: '/data/files/agenda.md', name: 'agenda.md', available: true },
       ]),
     });
     await same.getByTestId('library-switcher').click();

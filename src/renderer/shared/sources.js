@@ -56,8 +56,8 @@ export function sourceMenuText(s) {
 
 /**
  * The parent folder's name of each listed file or copy whose file name (ignoring case) another
- * listed file or copy shares, by source id; files with a name of their own get none, so their
- * rows stay as they are.
+ * listed file or copy shares, by source id (AskFiles for a copy, which lives in the library's own
+ * folder); files with a name of their own get none, so their rows stay as they are.
  */
 export function sameNameFolders(rows) {
   const singles = rows.filter((s) => s.kind !== 'folder');
@@ -66,6 +66,11 @@ export function sameNameFolders(rows) {
   const out = new Map();
   for (const s of singles) {
     if (count.get(s.name.toLowerCase()) < 2) continue;
+    // A copy sits in the library's own folder of copies, whose name tells the user nothing.
+    if (s.kind === 'copy') {
+      out.set(s.id, 'AskFiles');
+      continue;
+    }
     const parts = s.path.split(/[\\/]/).filter(Boolean);
     out.set(s.id, parts.length > 1 ? parts[parts.length - 2] : s.path);
   }

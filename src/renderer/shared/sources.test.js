@@ -71,7 +71,7 @@ describe('folder of same-name files in the menu', () => {
     expect([...sameNameFolders(rows)]).toEqual([
       ['file-1', 'Board'],
       ['file-2', 'Team'],
-      ['file:agenda.md', 'files'],
+      ['file:agenda.md', 'AskFiles'],
     ]);
     // A folder of the same name as a file does not count; one file of a name gets nothing.
     expect(sameNameFolders([{ ...folder(1), name: 'agenda.md' }, rows[1]]).size).toBe(0);
