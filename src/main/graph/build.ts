@@ -7,7 +7,9 @@
 import type { BrowseDocument } from '../browse/types.js';
 import { detectKind, type DocumentKind, type KindScores } from './kinds.js';
 import { documentDate, type FoundDate } from './dates.js';
-import { buildEdges, type GraphEdge } from './edges.js';
+import { libraryDisplayNames } from '../browse/identifiers.js';
+import { buildEdges, MIN_SHARED_HEADINGS, type GraphEdge } from './edges.js';
+import { isLargeLibrary, LARGE_MIN_SHARED_HEADINGS, MAX_EDGES_PER_DOCUMENT } from './scale.js';
 import { detectFamilies, type FamilyQuestion } from './families.js';
 import { initialPositions, type Positions } from './layout.js';
 import { detectedType, EDGE_RULES, type EdgeRule, type Profile, type ProfileType } from './profiles.js';
@@ -16,6 +18,8 @@ export interface GraphNode {
   id: string;
   title: string;
   relPath: string;
+  /** The name the labels show: the file's display name (browse/identifiers.ts libraryDisplayNames). */
+  displayName: string;
   /** The type shown: the user's choice when overridden, else detected. */
   type: string;
   detectedType: string;
@@ -32,6 +36,10 @@ export interface GraphNode {
 export interface GraphData {
   version: 1;
   profile: { id: string; name: string; types: ProfileType[]; bands: string[]; edges: EdgeRule[] };
+  /** More than LARGE_LIBRARY documents: the stricter edge rules ran and the page opens on Local. */
+  large: boolean;
+  /** The edge rules this build used (scale.ts). maxEdgesPerDocument is null when there is no cap. */
+  rules: { minSharedHeadings: number; maxEdgesPerDocument: number | null };
   nodes: GraphNode[];
   edges: GraphEdge[];
   families: { id: string; members: string[] }[];
@@ -55,6 +63,8 @@ export function buildGraph(docs: BrowseDocument[], o: GraphOptions): GraphData {
   const { profile } = o;
   const typeNames = new Set(profile.types.map((t) => t.name));
   const sorted = [...docs].sort((a, b) => a.relPath.localeCompare(b.relPath) || a.id.localeCompare(b.id));
+  const large = isLargeLibrary(sorted.length);
+  const names = libraryDisplayNames(sorted.map((d) => d.title));
   const families = detectFamilies(sorted, o.familyDecisions ?? {});
   const typeOf = new Map<string, string>();
   const base = sorted.map((d) => {
@@ -74,6 +84,7 @@ export function buildGraph(docs: BrowseDocument[], o: GraphOptions): GraphData {
     id: d.id,
     title: d.title,
     relPath: d.relPath,
+    displayName: names.get(d.title) ?? d.title,
     type,
     detectedType: detected,
     overridden,
@@ -84,7 +95,7 @@ export function buildGraph(docs: BrowseDocument[], o: GraphOptions): GraphData {
     date: documentDate(d),
     positions: positions.get(d.id)!,
   }));
-  const edges = buildEdges(sorted, { profile, families, typeOf });
+  const edges = buildEdges(sorted, { profile, families, typeOf, large });
   return {
     version: 1,
     profile: {
@@ -93,6 +104,11 @@ export function buildGraph(docs: BrowseDocument[], o: GraphOptions): GraphData {
       types: profile.types,
       bands: profile.bands,
       edges: EDGE_RULES.filter((r) => profile.edges[r]),
+    },
+    large,
+    rules: {
+      minSharedHeadings: large ? LARGE_MIN_SHARED_HEADINGS : MIN_SHARED_HEADINGS,
+      maxEdgesPerDocument: large ? MAX_EDGES_PER_DOCUMENT : null,
     },
     nodes,
     edges,

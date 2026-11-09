@@ -77,6 +77,8 @@ src/main/graph/edges.ts. Each edge has a kind and a weight. A pair linked by the
 | ticket | Team work. The same ticket id (ABC-123) in two documents | Shared ids |
 | date | Team work. Two documents of one type, dated in the title or front matter, at most 31 days apart, next to each other in date order | 1 |
 
+In a large library (below) a shared-headings edge needs 3 shared headings, and each document keeps at most its 5 strongest edges.
+
 On the English test corpus (legal-finance) this gives 7 shared-heading edges and 20 reference edges. The Chinese test corpus gives 3 shared-heading edges between three bidding templates, 6 reference edges from texts that cite another document by its title in 《》 marks, and 1 version edge between the PDF and the Word copy of one document.
 
 Chinese relatedness works on character pairs and is rougher than English.
@@ -114,3 +116,51 @@ Changes:
 - **Fit to view**, the fallback. When the layout comes to rest and a node or label still lies outside the view (a small window, long labels), the view zooms out just enough to show them all. It never zooms in and never overrides a zoom the user made.
 - **Leaving the page.** Every way off the Graph page (a tab, a node, an edge, Back) stops the simulation, removes the drawing and the zoom's wheel, touch and pointer listeners, and takes the graph-on class off the content area, so the page that follows scrolls again (it did not when a document was opened from the Graph page).
 - **Tooltip.** Hovering a node shows a tooltip with the title, type, section count, date and the document summary, or Summary pending (docs/summaries.md). A node whose summary is pending has a dashed outline.
+
+## Large libraries
+
+src/main/graph/scale.ts and src/renderer/browse/graph-model.js. A tester's library of about 900 documents in nested folders gave a graph that was quick to build but could not be read: long labels on top of each other and nothing to find or click. Since 2026-11-09 a library of **more than 50 documents** (LARGE_LIBRARY) is a large library. A library of 50 or fewer keeps the graph described above: every node, labels always shown, the edge rules above.
+
+### Stricter edges
+
+Only in a large library, after all the edge rules have run (buildEdges with large set):
+
+- a shared-headings edge needs at least **3** shared headings (LARGE_MIN_SHARED_HEADINGS) instead of 2;
+- each document keeps at most its **5** strongest edges (MAX_EDGES_PER_DOCUMENT), counted over every kind. capEdges takes the edges heaviest first by their weight (the weights in the Edges table), ties by edge id (kind:a:b, a before b), and keeps an edge when both its documents have fewer than 5 kept so far. The result never depends on the order of the input, and no edge is dropped while both its ends still have room.
+
+The graph data says which rules ran: `large` and `rules: { minSharedHeadings, maxEdgesPerDocument }` (null without a cap). Every node also carries `displayName`, the name the source cards use (browse/identifiers.ts libraryDisplayNames).
+
+### Views
+
+A small segmented control above the graph: Local, Folders, All. A large library opens on Local, a small one on All; both can switch. The page history keeps the view and Local's centre, so Back returns to them.
+
+- **Local.** One document in the middle (thick outline) and the documents linked to it; "Also show what those link to" adds a second step. Past 30 neighbours (LOCAL_LIMIT) the 30 strongest are drawn, direct ones by the weight of their link to the centre, then the second step by their strongest link into the first, and a "+N more" node lists the rest; choosing one recentres on it. Clicking any node recentres. Open document opens the centre's Document page. Labels always shown. Without a centre yet, the page shows the search box and a line asking to pick a document. With the cap of 5, a large library reaches "+N more" only through a small library's hub or a very connected second step.
+- **Folders.** One node per first-level subfolder of the library's linked folders (the folder right below the linked folder); the files at the top of a linked folder form a node named after it, the files added to the library directly one called Added files. Two linked folders with a subfolder of the same name keep two nodes, labelled Parent › Name. Node size grows with the document count (8 + 2.2 sqrt(count), at most 36). A link between two folders stands for every edge between their documents; its thickness grows with that count (1 + 1.5 log2(count)). Clicking a folder opens it in place: its documents start where it was, the other folders stay where they rested. An edge from an open folder's document to a document in a closed folder goes to the closed folder's node, and becomes a document-to-document edge (clickable as on All) once that folder is open too. Edges inside one closed folder are not drawn. The open folders are listed as chips under the tools; a chip closes its folder. If no document lies in a subfolder, the nodes are document types instead.
+- **All.** Every document. With more than 50 drawn, labels are hidden except for the 10 documents with the most links (ties by display name, then id); a label also shows on hover (the node and its neighbours), for search matches and their neighbours, and for every node once zoomed in past 1.6 (LABEL_ZOOM).
+
+In Folders, a document's label follows the same rule over the documents drawn: all shown up to 50, else the top 10 and the rest on hover, search or zoom.
+
+**Search** works on every view. Typing lights the matching documents (display name, file name or path) and their neighbours and shows their labels; in Folders a closed folder holding a match lights instead. A list of up to 8 results opens under the box; Enter takes the first. Choosing one in Local recentres on it; in Folders it opens its folder; in All it lights that document.
+
+**Show in graph** on the Document page (beside Open original) and on each Library row opens Local centred on that document.
+
+**Labels** show the display name, cut with an ellipsis past 150 px (estimated per character, CJK characters counting as wide, so no text is measured), and the tooltip shows the full name with the file name below it. In a large drawing a label keeps 11 px on screen when the view is zoomed out to fit.
+
+**Forces.** Local and a small All keep the original's forces. A large drawing uses link distance 40, charge -45, collision radius + 4 and a faster cooling (alphaDecay 0.06). Folders push harder (charge -600 per folder), keep room for the label under each folder (collision radius + 34) and pull only weakly along the folder links (strength 0.08). The fit after the layout rests also keeps a large drawing clear of the tools at the top. Rendering stays SVG.
+
+### Measured
+
+An invented library of 900 documents (test/fixtures/make-graph-library.mjs: a made-up water cooperative, two linked folders, 14 first-level subfolders nested up to two levels deeper, 7 files at the top of a linked folder, 23 added files; 6 to 13 headings per document from shared, department and folder pools). Measured on the owner's Mac (Apple Silicon, Node 22, Chromium from Playwright 1.63 at 1200 x 860), by test/e2e/graph-scale.spec.mjs:
+
+| Step | Time |
+| --- | --- |
+| Build the graph data (buildGraph, 900 nodes, 2175 edges after the cap), three runs | 1346, 1314, 1271 ms |
+| of which the reference search | about 840 ms |
+| Local settles (centre with 5 neighbours; original forces and cooling) | 5.0 s |
+| Folders settles (16 folders) | 1.9 to 2.2 s |
+| All settles (900 nodes) | 4.0 s |
+
+Settle time runs from the start of the drawing to the end of the force layout (data-settle-ms on the graph root); the nodes move on screen during it and can be clicked. Local takes longest only because it keeps the original's slow cooling, about 300 ticks.
+
+Screenshots: docs/screenshots/graph (local, folders, folders-expanded, all, all-search; light and dark).
+

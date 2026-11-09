@@ -9,6 +9,28 @@
 // the node, label and link groups (the old code also picked up the legend's circles and threw),
 // the active search applied again after a re-render and after hover, colours from the profile,
 // edge styles by kind, and edge clicks that open a shared heading on Compare or the referencing passage.
+//
+// Three views (docs/graph.md, Large libraries): Local (one document and what it links to), Folders
+// (one node per first-level subfolder, expanded in place) and All. A library of LARGE_LIBRARY or
+// fewer documents opens on All, which draws exactly the graph above; a larger one opens on Local,
+// and its All view shows only the labels of the most linked documents until hovered, searched or
+// zoomed in. What each view holds comes from graph-model.js; this file only draws it.
+
+import {
+  defaultView,
+  folderGroups,
+  folderScene,
+  LABEL_ZOOM,
+  LARGE_LIBRARY,
+  labelWidth,
+  localScene,
+  nameOf,
+  searchMatches,
+  topLinked,
+  truncateLabel,
+  VIEWS,
+  withNeighbours,
+} from './graph-model.js';
 
 const D3_URL = new URL('../vendor/d3.min.js', import.meta.url).href;
 let d3Loading = null;
@@ -34,16 +56,50 @@ export function loadD3() {
 /** The original's forces and opacities, kept as they were. */
 export const FORCES = { linkDistance: 100, charge: -300, collide: 30 };
 /**
+ * Forces for a drawing of more than LARGE_LIBRARY nodes: the original's would spread 900 documents
+ * over many screens. Tighter, and the layout cools faster, so it settles in about a third of the
+ * ticks.
+ */
+export const LARGE_FORCES = { linkDistance: 40, charge: -45, collide: 4, alphaDecay: 0.06 };
+/**
+ * Folders: a folder pushes harder and keeps room for its label below it; the link standing for
+ * many document links pulls only weakly, so busy folders do not pile onto each other.
+ */
+export const FOLDER_FORCES = {
+  linkDistance: 40,
+  groupDistance: 90,
+  charge: -45,
+  groupCharge: -600,
+  collide: 4,
+  groupCollide: 34,
+  groupLinkStrength: 0.08,
+  alphaDecay: 0.05,
+};
+/**
  * A weak pull of every node toward the middle. forceCenter only moves the whole graph's centre of
  * mass, so a document without links was pushed off screen by the charge; with this pull it rests at
  * the outer edge of the cluster. Weak enough that linked documents keep the original shape.
  */
 export const CENTERING = 0.04;
 const OPACITY = { link: 0.6, linkLit: 0.8, linkFaded: 0.05, faded: 0.1, searchFaded: 0.05, searchLinkFaded: 0.02 };
+/** Height of the tools and the bar over the graph's top edge. */
+const TOOLS_HEIGHT = 84;
+/** Search results listed under the search box. */
+const RESULTS = 8;
 
 /** Node radius from its link count, as in the original: count * 1.2 + 4, clamped 5 to 14. */
 export function nodeRadius(count) {
   return Math.max(5, Math.min(14, count * 1.2 + 4));
+}
+
+/** Smaller nodes for a drawing of many documents: count + 3, clamped 3 to 9. */
+function smallRadius(count) {
+  return Math.max(3, Math.min(9, count + 3));
+}
+
+/** A folder node grows with the documents it holds: 8 + 2.2 * sqrt(count), at most 36. */
+export function groupRadius(count) {
+  return Math.min(36, 8 + 2.2 * Math.sqrt(count));
 }
 
 /** Label offset, as in the original: count * 2 + 4 clamped 6 to 20, plus 4. */
@@ -78,6 +134,8 @@ const EDGE_LABEL = {
   date: 'Days apart',
 };
 
+const VIEW_LABEL = { local: 'Local', folders: 'Folders', all: 'All' };
+
 function el(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -85,41 +143,74 @@ function el(tag, className, text) {
   return node;
 }
 
+/** A seeded offset in -1 to 1 from a string, so a document opened out of its folder lands the same way each time. */
+function jitter(s, salt) {
+  let h = 0x811c9dc5 ^ salt;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
+  return ((h >>> 0) / 4294967296) * 2 - 1;
+}
+
 /**
  * Mounts the graph page into root. getData() resolves to the bridge's graph data (nodes, edges,
  * profile, summaries) or null; onOpenDocument(id, target) and onOpenHeading(key) open the other
- * Browse pages. Returns { show(), hide(), reload(), setLayout(name), search(query), state }.
+ * Browse pages; onPlace(place) hears when the user changed the view or Local's centre, for the
+ * page history. Returns { show(), hide(), reload(), setLayout(name), setView(name), showDocument(id),
+ * place(), setPlace(place), search(query), state }.
  */
-export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading }) {
+export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading, onPlace = () => {} }) {
   root.classList.add('graph');
   root.innerHTML = `
     <div class="graph-tools">
-      <label class="visually-hidden" for="graph-search">Search documents</label>
-      <input id="graph-search" type="search" data-testid="graph-search" placeholder="Search documents..." spellcheck="false" />
+      <div class="graph-views" role="group" aria-label="View" data-testid="graph-views">
+        ${VIEWS.map(
+          (v) =>
+            `<button type="button" data-view="${v}" data-testid="graph-view-${v}" aria-pressed="false">${VIEW_LABEL[v]}</button>`,
+        ).join('')}
+      </div>
+      <div class="graph-search-box">
+        <label class="visually-hidden" for="graph-search">Search documents</label>
+        <input id="graph-search" type="search" data-testid="graph-search" placeholder="Search documents..." spellcheck="false" autocomplete="off" role="combobox" aria-controls="graph-results" aria-expanded="false" />
+        <ul class="graph-results" id="graph-results" data-testid="graph-results" role="listbox" hidden></ul>
+      </div>
       <div class="graph-layout" role="group" aria-label="Layout">
         <button type="button" data-layout="organic" data-testid="graph-organic" aria-pressed="true">Organic</button>
         <button type="button" data-layout="layered" data-testid="graph-layered" aria-pressed="false">Layered</button>
       </div>
     </div>
+    <div class="graph-bar" data-testid="graph-bar" hidden></div>
     <svg class="graph-svg" data-testid="graph-svg" role="img" aria-label="Documents and how they connect"></svg>
     <div class="graph-tooltip" data-testid="graph-tooltip" role="tooltip" hidden></div>
     <div class="graph-chooser" data-testid="graph-chooser" hidden></div>
-    <p class="browse-empty graph-empty" data-testid="graph-empty" hidden></p>`;
+    <p class="browse-empty graph-empty" data-testid="graph-empty" hidden></p>
+    <p class="browse-empty graph-pick" data-testid="graph-pick" hidden>Search for a document above and choose it to see the documents it links to.</p>`;
   const q = (id) => root.querySelector(`[data-testid="${id}"]`);
   const svgEl = q('graph-svg');
   const tooltip = q('graph-tooltip');
   const chooser = q('graph-chooser');
+  const searchInput = q('graph-search');
+  const results = q('graph-results');
+  const bar = q('graph-bar');
   const state = {
     data: null,
     layout: 'organic',
+    /** local, folders or all; null until the first data says which a library opens on. */
+    view: null,
+    /** Local's centre, a document id. */
+    center: null,
+    secondHop: false,
+    /** Folders view: the keys of the groups shown as their documents. */
+    expanded: new Set(),
     query: '',
     simulation: null,
     visible: false,
     rendered: 0,
     width: 0,
     height: 0,
+    zoomK: 1,
   };
   let selections = null;
+  /** Where the nodes of the last Folders drawing rested, so expanding a folder moves nothing else. */
+  let folderPositions = new Map();
 
   function stopSimulation() {
     state.simulation?.stop();
@@ -163,38 +254,62 @@ export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading }
     return null;
   }
 
-  function showNodeTooltip(event, d, typeLabel) {
+  function typeLabelOf(type) {
+    return state.data?.profile.types.find((t) => t.name === type)?.label || type;
+  }
+
+  function showNodeTooltip(event, d) {
     tooltip.replaceChildren();
-    tooltip.append(el('strong', 'tip-title', d.title));
-    const meta = [typeLabel, d.sectionCount === 1 ? '1 section' : `${d.sectionCount} sections`];
-    if (d.date) meta.push(d.date.value);
-    tooltip.append(el('span', 'tip-meta', meta.join(' · ')));
-    const s = summaryLine(d);
-    if (s) {
-      const p = el('span', `tip-summary${s.pending ? ' pending' : ''}`, s.text);
-      p.dataset.testid = 'graph-tooltip-summary';
-      tooltip.append(p);
+    if (d.role === 'group') {
+      tooltip.append(el('strong', 'tip-title', d.label));
+      tooltip.append(
+        el('span', 'tip-meta', `${d.count === 1 ? '1 document' : `${d.count} documents`} · click to show them`),
+      );
+    } else if (d.role === 'more') {
+      tooltip.append(el('strong', 'tip-title', d.label));
+      tooltip.append(el('span', 'tip-meta', 'Click to list them'));
+    } else {
+      // The full name; the label may be cut.
+      tooltip.append(el('strong', 'tip-title', nameOf(d)));
+      const meta = [typeLabelOf(d.type), d.sectionCount === 1 ? '1 section' : `${d.sectionCount} sections`];
+      if (d.date) meta.push(d.date.value);
+      tooltip.append(el('span', 'tip-meta', d.title));
+      tooltip.append(el('span', 'tip-meta', meta.join(' · ')));
+      const s = summaryLine(d);
+      if (s) {
+        const p = el('span', `tip-summary${s.pending ? ' pending' : ''}`, s.text);
+        p.dataset.testid = 'graph-tooltip-summary';
+        tooltip.append(p);
+      }
     }
     tooltip.hidden = false;
     placeFloating(tooltip, event);
   }
 
-  function showEdgeTooltip(event, e) {
+  function showEdgeTooltip(event, l) {
     tooltip.replaceChildren();
-    tooltip.append(el('strong', 'tip-title', `${EDGE_LABEL[e.kind] || e.kind}${e.weight > 1 ? `: ${e.weight}` : ''}`));
-    if (e.headings?.length)
+    const e = l.edge;
+    if (!e) {
+      tooltip.append(el('strong', 'tip-title', l.count === 1 ? '1 link' : `${l.count} links`));
+      tooltip.append(el('span', 'tip-meta', 'between documents of these two groups'));
+    } else {
       tooltip.append(
-        el(
-          'span',
-          'tip-meta',
-          e.headings
-            .slice(0, 5)
-            .map((h) => h.label)
-            .join(', '),
-        ),
+        el('strong', 'tip-title', `${EDGE_LABEL[e.kind] || e.kind}${e.weight > 1 ? `: ${e.weight}` : ''}`),
       );
-    else if (e.passages?.length) tooltip.append(el('span', 'tip-meta', e.passages[0].sectionTitle));
-    else if (e.terms?.length) tooltip.append(el('span', 'tip-meta', e.terms.slice(0, 6).join(', ')));
+      if (e.headings?.length)
+        tooltip.append(
+          el(
+            'span',
+            'tip-meta',
+            e.headings
+              .slice(0, 5)
+              .map((h) => h.label)
+              .join(', '),
+          ),
+        );
+      else if (e.passages?.length) tooltip.append(el('span', 'tip-meta', e.passages[0].sectionTitle));
+      else if (e.terms?.length) tooltip.append(el('span', 'tip-meta', e.terms.slice(0, 6).join(', ')));
+    }
     tooltip.hidden = false;
     placeFloating(tooltip, event);
   }
@@ -234,27 +349,179 @@ export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading }
     }
   }
 
+  /** "+N more": the neighbours Local leaves out, each a button that recentres on it. */
+  function openMore(event, d) {
+    hideTooltip();
+    chooser.replaceChildren(el('p', 'chooser-title', d.label));
+    const list = el('ul', 'chooser-list graph-more-list');
+    list.dataset.testid = 'graph-more-list';
+    for (const n of d.items) {
+      const li = el('li');
+      const b = el('button', 'link', nameOf(n));
+      b.type = 'button';
+      b.title = n.relPath;
+      b.dataset.testid = 'graph-more-item';
+      b.dataset.id = n.id;
+      b.addEventListener('click', () => {
+        closeChooser();
+        setCenter(n.id, { user: true });
+      });
+      li.append(b);
+      list.append(li);
+    }
+    chooser.append(list);
+    chooser.hidden = false;
+    placeFloating(chooser, event);
+  }
+
+  // --- what each view draws ----------------------------------------------------------------------
+
+  /**
+   * The scene of the current view: nodes ({ role: doc, group or more, ... }), links (each with the
+   * original edge when it joins two documents), and how labels show. Positions are set here, in
+   * the svg's coordinates, before the forces run.
+   */
+  function sceneOf(data, width, height) {
+    const layered = state.layout === 'layered' && state.view !== 'folders';
+    const bands = bandsOf(data.nodes, data.profile.bands);
+    const place = (n, scale = 1) => {
+      const p = layered ? n.positions.layered : n.positions.organic;
+      n.x = width / 2 + p.x * width * (layered ? 0.45 : 0.35) * scale;
+      n.y = layered
+        ? bandY(bands.get(n.type), bands.size, height) + p.y * 20
+        : height / 2 + p.y * height * 0.35 * scale;
+    };
+    if (state.view === 'local') {
+      const s = localScene(data, state.center, { secondHop: state.secondHop });
+      const nodes = s.nodes.map((n) => ({ ...n, role: 'doc' }));
+      for (const n of nodes) place(n);
+      const centre = nodes[0];
+      if (centre && !layered) {
+        centre.x = width / 2;
+        centre.y = height / 2;
+      }
+      const links = s.edges.map((e) => ({ ...e, edge: e, count: 1 }));
+      if (s.more.length) {
+        const more = {
+          role: 'more',
+          id: 'more',
+          label: `+${s.more.length} more`,
+          items: s.more,
+          type: centre?.type,
+          x: width / 2 + 60,
+          y: height / 2 + 60,
+        };
+        nodes.push(more);
+        links.push({
+          id: 'more-link',
+          source: centre.id,
+          target: 'more',
+          kind: 'more',
+          weight: 1,
+          count: 1,
+          edge: null,
+        });
+      }
+      return { nodes, links, labelsAlways: true, top: new Set(), layered, bands, large: nodes.length > LARGE_LIBRARY };
+    }
+    if (state.view === 'folders') {
+      const grouping = folderGroups(data.nodes, new Map(data.profile.types.map((t) => [t.name, t.label])));
+      // Expanded groups that are gone (a folder emptied) are forgotten.
+      for (const k of state.expanded) if (!grouping.groups.some((g) => g.key === k)) state.expanded.delete(k);
+      const s = folderScene(data, state.expanded, grouping);
+      const count = s.nodes.length;
+      const golden = Math.PI * (3 - Math.sqrt(5));
+      let i = 0;
+      const groupPos = new Map();
+      for (const n of s.nodes) {
+        if (n.role !== 'group') continue;
+        const r = Math.sqrt((i + 0.5) / Math.max(1, grouping.groups.length));
+        const theta = i * golden;
+        n.x = width / 2 + r * Math.cos(theta) * width * 0.38;
+        n.y = height / 2 + r * Math.sin(theta) * height * 0.38;
+        i++;
+      }
+      for (const g of grouping.groups) {
+        const was = folderPositions.get(`group:${g.key}`);
+        if (was) groupPos.set(g.key, was);
+        else {
+          const n = s.nodes.find((x) => x.id === `group:${g.key}`);
+          if (n) groupPos.set(g.key, { x: n.x, y: n.y });
+        }
+      }
+      for (const n of s.nodes) {
+        const was = folderPositions.get(n.id);
+        if (was) {
+          n.x = was.x;
+          n.y = was.y;
+        } else if (n.role === 'doc') {
+          // A document coming out of its folder starts where the folder was.
+          const g = groupPos.get(n.group) ?? { x: width / 2, y: height / 2 };
+          n.x = g.x + jitter(n.id, 1) * 30;
+          n.y = g.y + jitter(n.id, 2) * 30;
+        }
+      }
+      const docs = s.nodes.filter((n) => n.role === 'doc');
+      const docLinks = s.links.filter((l) => l.edge);
+      return {
+        nodes: s.nodes,
+        links: s.links,
+        labelsAlways: docs.length <= LARGE_LIBRARY,
+        top: topLinked(docs, docLinks),
+        layered: false,
+        bands,
+        large: count > LARGE_LIBRARY,
+        by: s.by,
+        groups: grouping.groups,
+      };
+    }
+    const nodes = data.nodes.map((n) => ({ ...n, role: 'doc' }));
+    for (const n of nodes) place(n);
+    const links = data.edges.map((e) => ({ ...e, edge: e, count: 1 }));
+    const small = nodes.length <= LARGE_LIBRARY;
+    return {
+      nodes,
+      links,
+      labelsAlways: small,
+      top: small ? new Set() : topLinked(nodes, links),
+      layered,
+      bands,
+      large: !small,
+    };
+  }
+
+  // --- search --------------------------------------------------------------------------------
+
+  /** The scene node ids a search lights (matches, a folder holding one), and with them their neighbours. */
+  function searchSets() {
+    const query = state.query.trim();
+    if (!query || !selections) return null;
+    const { scene } = selections;
+    const docMatches = new Set(searchMatches(state.data.nodes, query).map((n) => n.id));
+    const matched = new Set();
+    for (const n of scene.nodes) {
+      if (n.role === 'doc' && docMatches.has(n.id)) matched.add(n.id);
+      if (n.role === 'group' && n.members.some((m) => docMatches.has(m))) matched.add(n.id);
+    }
+    return { matched, connected: withNeighbours(matched, scene.links) };
+  }
+
   /** filterGraph, selecting by class so the legend is never touched. */
   function applySearch() {
     if (!selections || !state.data) return;
     const { node, label, link, hit } = selections;
-    const query = state.query.toLowerCase().trim();
-    if (!query) {
-      node.attr('opacity', 1);
+    const sets = searchSets();
+    selections.searchLit = sets?.connected ?? null;
+    if (!sets) {
+      node.attr('opacity', 1).classed('match', false);
       label.attr('opacity', 1);
       link.attr('stroke-opacity', OPACITY.link);
       hit.classed('dim', false);
       root.dataset.searching = 'false';
+      updateLabels();
       return;
     }
-    const matched = new Set();
-    for (const n of state.data.nodes)
-      if (n.title.toLowerCase().includes(query) || n.relPath.toLowerCase().includes(query)) matched.add(n.id);
-    const connected = new Set(matched);
-    for (const e of state.data.edges) {
-      if (matched.has(idOf(e.source))) connected.add(idOf(e.target));
-      if (matched.has(idOf(e.target))) connected.add(idOf(e.source));
-    }
+    const { matched, connected } = sets;
     node
       .attr('opacity', (d) => (connected.has(d.id) ? 1 : OPACITY.searchFaded))
       .classed('match', (d) => matched.has(d.id));
@@ -263,17 +530,173 @@ export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading }
       connected.has(idOf(e.source)) && connected.has(idOf(e.target)) ? OPACITY.linkLit : OPACITY.searchLinkFaded,
     );
     root.dataset.searching = 'true';
+    updateLabels();
   }
+
+  /** Which labels show: always in Local and small drawings; else the top ten, hover, search and zoom. */
+  function updateLabels() {
+    if (!selections) return;
+    const { scene, label } = selections;
+    const all = scene.labelsAlways || state.zoomK >= LABEL_ZOOM;
+    const hover = selections.hoverLit;
+    const lit = selections.searchLit;
+    label.classed(
+      'off',
+      (d) => !(all || d.role !== 'doc' || scene.top.has(d.id) || hover?.has(d.id) || lit?.has(d.id)),
+    );
+    root.dataset.labels = String(label.filter(':not(.off)').size());
+  }
+
+  /** The results list under the search box: documents of the whole library, by name. */
+  function renderResults() {
+    const matches = searchMatches(state.data?.nodes ?? [], state.query)
+      .sort((a, b) => nameOf(a).localeCompare(nameOf(b)))
+      .slice(0, RESULTS);
+    results.replaceChildren(
+      ...matches.map((n, i) => {
+        const li = el('li');
+        const b = el('button', 'graph-result');
+        b.type = 'button';
+        b.dataset.testid = 'graph-result';
+        b.dataset.id = n.id;
+        b.setAttribute('role', 'option');
+        if (i === 0) b.classList.add('first');
+        b.append(el('span', 'graph-result-name', nameOf(n)), el('span', 'graph-result-path', n.relPath));
+        // mousedown, so the list does not close on the input's blur first.
+        b.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          choose(n.id);
+        });
+        li.append(b);
+        return li;
+      }),
+    );
+    const open = matches.length > 0 && document.activeElement === searchInput;
+    results.hidden = !open;
+    searchInput.setAttribute('aria-expanded', String(open));
+  }
+
+  function closeResults() {
+    results.hidden = true;
+    searchInput.setAttribute('aria-expanded', 'false');
+  }
+
+  /**
+   * A search result chosen: Local recentres on it; Folders opens its folder; All lights it. In
+   * Folders and All the search stays, so the document and its neighbours stay lit.
+   */
+  function choose(id) {
+    closeResults();
+    const n = state.data?.nodes.find((x) => x.id === id);
+    if (!n) return;
+    if (state.view === 'local') {
+      searchInput.value = '';
+      state.query = '';
+      setCenter(id, { user: true });
+      return;
+    }
+    searchInput.value = nameOf(n);
+    state.query = nameOf(n);
+    if (state.view === 'folders') {
+      const g = folderGroups(state.data.nodes).groupOf.get(id);
+      if (g && !state.expanded.has(g)) {
+        state.expanded.add(g);
+        void render();
+        return;
+      }
+    }
+    applySearch();
+  }
+
+  // --- the bar under the tools: Local's centre, Folders' open folders ------------------------------
+
+  function renderBar() {
+    bar.replaceChildren();
+    const data = state.data;
+    if (!data || !data.nodes.length) {
+      bar.hidden = true;
+      return;
+    }
+    if (state.view === 'local') {
+      const centre = data.nodes.find((n) => n.id === state.center);
+      if (!centre) {
+        bar.hidden = true;
+        return;
+      }
+      const name = el('span', 'graph-center-name', nameOf(centre));
+      name.title = centre.relPath;
+      name.dataset.testid = 'graph-center';
+      const open = el('button', 'link', 'Open document');
+      open.type = 'button';
+      open.dataset.testid = 'graph-open-center';
+      open.addEventListener('click', () => onOpenDocument(centre.id, {}));
+      const hop = el('label', 'graph-hop');
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = state.secondHop;
+      box.dataset.testid = 'graph-second-hop';
+      box.addEventListener('change', () => {
+        state.secondHop = box.checked;
+        void render();
+      });
+      hop.append(box, document.createTextNode(' Also show what those link to'));
+      bar.append(el('span', 'graph-bar-label', 'Centred on'), name, open, hop);
+      bar.hidden = false;
+      return;
+    }
+    if (state.view === 'folders') {
+      const grouping = selections?.scene.groups ?? folderGroups(data.nodes);
+      const hint = el(
+        'span',
+        'graph-bar-label',
+        selections?.scene.by === 'type'
+          ? 'No subfolders: grouped by type. Click a group to show its documents.'
+          : 'Click a folder to show its documents.',
+      );
+      bar.append(hint);
+      for (const g of grouping) {
+        if (!state.expanded.has(g.key)) continue;
+        const chip = el('button', 'graph-chip', `${g.label} ×`);
+        chip.type = 'button';
+        chip.title = `Close ${g.label}`;
+        chip.dataset.testid = 'graph-collapse';
+        chip.dataset.key = g.key;
+        chip.addEventListener('click', () => {
+          state.expanded.delete(g.key);
+          void render();
+        });
+        bar.append(chip);
+      }
+      bar.hidden = false;
+      return;
+    }
+    bar.hidden = true;
+  }
+
+  function renderControls() {
+    for (const b of root.querySelectorAll('.graph-views button'))
+      b.setAttribute('aria-pressed', String(b.dataset.view === state.view));
+    root.querySelector('.graph-layout').hidden = state.view === 'folders';
+    root.dataset.view = state.view || '';
+    if (state.center) root.dataset.center = state.center;
+    else delete root.dataset.center;
+  }
+
+  // --- drawing -------------------------------------------------------------------------------
 
   async function render() {
     if (!state.visible) return;
     const data = state.data;
+    const t0 = window.performance.now();
     // Taken before the awaits, so the size observer sees this draw's size and does not draw again.
     state.width = svgEl.clientWidth || root.clientWidth || 800;
     state.height = svgEl.clientHeight || root.clientHeight || 600;
     stopSimulation();
     hideTooltip();
     closeChooser();
+    if (data && !state.view) state.view = defaultView(data);
+    if (state.center && !data?.nodes.some((n) => n.id === state.center)) state.center = null;
+    renderControls();
     let d3;
     try {
       d3 = await loadD3();
@@ -284,9 +707,11 @@ export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading }
     // The page may have been left while d3 loaded.
     if (!state.visible) return;
     const svg = d3.select(svgEl);
-    svg.selectAll('*').remove();
+    svg.on('.zoom', null).selectAll('*').remove();
     selections = null;
+    q('graph-pick').hidden = true;
     if (!data || !data.nodes.length) {
+      renderBar();
       showEmpty(
         data
           ? 'No documents yet. They appear here once they are indexed.'
@@ -295,39 +720,58 @@ export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading }
       return;
     }
     showEmpty('');
+    if (state.view === 'local' && !state.center) {
+      renderBar();
+      q('graph-pick').hidden = false;
+      root.dataset.settled = 'true';
+      root.dataset.rendered = String(++state.rendered);
+      return;
+    }
     const width = state.width;
     const height = state.height;
     svg.attr('viewBox', [0, 0, width, height]);
 
     const colors = new Map(data.profile.types.map((t) => [t.name, t.color]));
-    const labels = new Map(data.profile.types.map((t) => [t.name, t.label]));
     const fallback = '#8a8f9e';
-    // Deep copy: d3 mutates nodes and edges (as loadGraph did).
-    const nodes = data.nodes.map((n) => ({ ...n }));
-    const edges = data.edges.map((e) => ({ ...e }));
+    const scene = sceneOf(data, width, height);
+    const { nodes, links, layered, bands } = scene;
+    const folders = state.view === 'folders';
+    const forces = folders ? FOLDER_FORCES : scene.large ? LARGE_FORCES : FORCES;
+    // Labels of a large drawing keep their size on screen when the view is zoomed out to fit it.
+    const scaleLabels = scene.large || folders;
     const linkCount = {};
-    for (const e of edges) {
-      linkCount[e.source] = (linkCount[e.source] || 0) + 1;
-      linkCount[e.target] = (linkCount[e.target] || 0) + 1;
+    for (const e of links) {
+      linkCount[idOf(e.source)] = (linkCount[idOf(e.source)] || 0) + 1;
+      linkCount[idOf(e.target)] = (linkCount[idOf(e.target)] || 0) + 1;
     }
-    const bands = bandsOf(nodes, data.profile.bands);
-    const layered = state.layout === 'layered';
-    // Seeded positions from the main process, so the graph opens in the same place every time.
     for (const n of nodes) {
-      const p = layered ? n.positions.layered : n.positions.organic;
-      n.x = width / 2 + p.x * width * (layered ? 0.45 : 0.35);
-      n.y = layered ? bandY(bands.get(n.type), bands.size, height) + p.y * 20 : height / 2 + p.y * height * 0.35;
+      n.name = n.role === 'doc' ? nameOf(n) : n.role === 'group' ? `${n.label} (${n.count})` : n.label;
+      n.short = truncateLabel(n.name);
+      n.r =
+        n.role === 'group'
+          ? groupRadius(n.count)
+          : n.role === 'more'
+            ? 11
+            : scene.large
+              ? smallRadius(linkCount[n.id] || 0)
+              : nodeRadius(linkCount[n.id] || 0);
     }
 
     const g = svg.append('g').attr('class', 'zoom-layer');
     let userZoomed = false;
+    state.zoomK = 1;
     const zoom = d3
       .zoom()
-      .scaleExtent([0.2, 5])
+      .scaleExtent(scene.large ? [0.08, 8] : [0.2, 5])
       .on('zoom', (event) => {
         // A zoom from the wheel, a drag or a pinch has a source event; the fit below has none.
         if (event.sourceEvent) userZoomed = true;
         g.attr('transform', event.transform);
+        const before = state.zoomK >= LABEL_ZOOM;
+        state.zoomK = event.transform.k;
+        root.dataset.zoom = state.zoomK.toFixed(2);
+        if (before !== state.zoomK >= LABEL_ZOOM) updateLabels();
+        if (scaleLabels) sizeLabels(state.zoomK);
       });
     svg.call(zoom);
 
@@ -336,16 +780,48 @@ export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading }
       .force(
         'link',
         d3
-          .forceLink(edges)
+          .forceLink(links)
           .id((d) => d.id)
-          .distance(FORCES.linkDistance),
+          .distance(
+            folders
+              ? (l) =>
+                  (l.kind === 'aggregate' ? forces.groupDistance : forces.linkDistance) +
+                  (l.source.r || 0) +
+                  (l.target.r || 0)
+              : forces.linkDistance,
+          ),
       )
-      .force('charge', d3.forceManyBody().strength(FORCES.charge))
-      .force('collision', d3.forceCollide().radius(FORCES.collide));
+      .force(
+        'charge',
+        d3
+          .forceManyBody()
+          .strength(folders ? (d) => (d.role === 'group' ? forces.groupCharge : forces.charge) : forces.charge),
+      )
+      .force(
+        'collision',
+        d3
+          .forceCollide()
+          .radius(
+            forces === FORCES
+              ? FORCES.collide
+              : (d) => d.r + (folders && d.role === 'group' ? forces.groupCollide : forces.collide),
+          ),
+      );
+    if (folders) {
+      // d3's default strength for the links between documents; a weak pull for the group links.
+      simulation
+        .force('link')
+        .strength((l) =>
+          l.kind === 'aggregate'
+            ? forces.groupLinkStrength
+            : 1 / Math.max(1, Math.min(linkCount[idOf(l.source)] || 1, linkCount[idOf(l.target)] || 1)),
+        );
+    }
+    if (forces.alphaDecay) simulation.alphaDecay(forces.alphaDecay);
     if (layered) {
       simulation
         .force('centerX', d3.forceX(width / 2).strength(CENTERING))
-        .force('band', d3.forceY((d) => bandY(bands.get(d.type), bands.size, height)).strength(0.4));
+        .force('band', d3.forceY((d) => bandY(bands.get(d.type) ?? 0, bands.size, height)).strength(0.4));
     } else {
       simulation
         .force('center', d3.forceCenter(width / 2, height / 2))
@@ -357,21 +833,27 @@ export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading }
     const linkGroup = g.append('g').attr('class', 'links');
     const link = linkGroup
       .selectAll('line.link')
-      .data(edges)
+      .data(links)
       .join('line')
       .attr('class', (e) => `link kind-${e.kind}`)
       .attr('data-kind', (e) => e.kind)
-      .attr('stroke-width', (e) => Math.min(4, 1 + Math.log2(e.weight || 1) * 0.5))
+      .attr('data-testid', (e) => (e.kind === 'aggregate' ? 'graph-group-link' : null))
+      .attr('data-count', (e) => (e.kind === 'aggregate' ? e.count : null))
+      .attr('stroke-width', (e) =>
+        e.kind === 'aggregate'
+          ? Math.min(10, 1 + Math.log2(e.count) * 1.5)
+          : Math.min(4, 1 + Math.log2(e.weight || 1) * 0.5),
+      )
       .attr('stroke-opacity', OPACITY.link);
     // Wide invisible lines over the edges, so a thin edge can still be clicked.
     const hit = g
       .append('g')
       .attr('class', 'link-hits')
       .selectAll('line.link-hit')
-      .data(edges)
+      .data(links.filter((l) => l.kind !== 'more'))
       .join('line')
       .attr('class', 'link-hit')
-      .attr('data-testid', 'graph-edge')
+      .attr('data-testid', (e) => (e.edge ? 'graph-edge' : null))
       .attr('data-kind', (e) => e.kind)
       .attr('data-source', (e) => idOf(e.source))
       .attr('data-target', (e) => idOf(e.target))
@@ -379,21 +861,31 @@ export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading }
       .on('mouseout', hideTooltip)
       .on('click', (event, e) => {
         event.stopPropagation();
-        openEdge(event, e);
+        if (e.edge) openEdge(event, e.edge);
       });
 
+    const testidOf = (d) => (d.role === 'group' ? 'graph-group' : d.role === 'more' ? 'graph-more' : 'graph-node');
     const node = g
       .append('g')
       .attr('class', 'nodes')
       .selectAll('circle.node')
       .data(nodes)
       .join('circle')
-      .attr('class', (d) => `node${summaryLine(d)?.pending ? ' pending' : ''}`)
-      .attr('data-testid', 'graph-node')
+      .attr(
+        'class',
+        (d) =>
+          `node role-${d.role}${d.role === 'doc' && summaryLine(d)?.pending ? ' pending' : ''}${
+            state.view === 'local' && d.id === state.center ? ' center' : ''
+          }`,
+      )
+      .attr('data-testid', testidOf)
       .attr('data-id', (d) => d.id)
-      .attr('data-type', (d) => d.type)
-      .attr('r', (d) => nodeRadius(linkCount[d.id] || 0))
-      .attr('fill', (d) => colors.get(d.type) || fallback)
+      .attr('data-type', (d) => (d.role === 'doc' ? d.type : null))
+      .attr('data-key', (d) => (d.role === 'group' ? d.key : null))
+      .attr('data-count', (d) => (d.role === 'group' ? d.count : null))
+      .attr('data-hop', (d) => (d.role === 'doc' && state.view === 'local' ? d.hop : null))
+      .attr('r', (d) => d.r)
+      .attr('fill', (d) => (d.role === 'doc' ? colors.get(d.type) || fallback : null))
       .call(
         d3
           .drag()
@@ -419,76 +911,103 @@ export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading }
       .selectAll('text.label')
       .data(nodes)
       .join('text')
-      .attr('class', 'label')
-      .text((d) => d.title)
+      .attr('class', (d) => `label role-${d.role}`)
+      .attr('data-testid', 'graph-label')
+      .attr('data-id', (d) => d.id)
+      .text((d) => d.short)
       .attr('font-size', 11)
-      .attr('dx', (d) => labelOffset(linkCount[d.id] || 0))
-      .attr('dy', 4);
+      .attr('text-anchor', (d) => (d.role === 'group' || d.role === 'more' ? 'middle' : null))
+      .attr('dx', (d) => (d.role === 'doc' ? (scaleLabels ? d.r + 4 : labelOffset(linkCount[d.id] || 0)) : 0))
+      .attr('dy', (d) => (d.role === 'group' ? d.r + 14 : 4));
 
+    /** Label size and offset for zoom k: 11 px on screen below zoom 1, growing with the view above it. */
+    function sizeLabels(k) {
+      const s = 1 / Math.min(1, k);
+      label
+        .attr('font-size', 11 * s)
+        .attr('dx', (d) => (d.role === 'doc' ? d.r + 4 * s : 0))
+        .attr('dy', (d) => (d.role === 'group' ? d.r + 14 * s : 4 * s));
+    }
+
+    const neighbours = (id) => withNeighbours(new Set([id]), links);
     node.on('mouseover', function (event, d) {
-      const connected = new Set([d.id]);
-      for (const e of edges) {
-        if (idOf(e.source) === d.id) connected.add(idOf(e.target));
-        if (idOf(e.target) === d.id) connected.add(idOf(e.source));
-      }
+      const connected = neighbours(d.id);
       node.attr('opacity', (n) => (connected.has(n.id) ? 1 : OPACITY.faded));
       link.attr('stroke-opacity', (e) =>
         idOf(e.source) === d.id || idOf(e.target) === d.id ? OPACITY.linkLit : OPACITY.linkFaded,
       );
       label.attr('opacity', (n) => (connected.has(n.id) ? 1 : OPACITY.faded));
+      selections.hoverLit = connected;
+      updateLabels();
       root.dataset.hover = d.id;
-      showNodeTooltip(event, d, labels.get(d.type) || d.type);
+      showNodeTooltip(event, d);
     });
     node.on('mousemove', (event) => placeFloating(tooltip, event));
     node.on('mouseout', () => {
       delete root.dataset.hover;
       hideTooltip();
+      selections.hoverLit = null;
       // Back to the search state rather than to full opacity, so hover never clears a search.
       if (state.query.trim()) applySearch();
       else {
         node.attr('opacity', 1);
         link.attr('stroke-opacity', OPACITY.link);
         label.attr('opacity', 1);
+        updateLabels();
       }
     });
     node.on('click', (event, d) => {
       if (event.defaultPrevented) return;
       hideTooltip();
-      onOpenDocument(d.id, {});
+      if (d.role === 'group') {
+        state.expanded.add(d.key);
+        void render();
+      } else if (d.role === 'more') {
+        event.stopPropagation();
+        openMore(event, d);
+      } else if (state.view === 'local') setCenter(d.id, { user: true });
+      else onOpenDocument(d.id, {});
     });
 
     // The legend is appended to the svg, not the zoom group, so it stays put while zooming.
-    const legendTypes = [...bands.keys()];
-    const legend = svg
-      .append('g')
-      .attr('class', 'legend')
-      .attr('data-testid', 'graph-legend')
-      // pointer-events none comes from the stylesheet: the page's CSP refuses style attributes.
-      .attr('transform', `translate(20,${height - legendTypes.length * 22 - 30})`);
-    legend
-      .append('rect')
-      .attr('class', 'legend-box')
-      .attr('x', -10)
-      .attr('y', -10)
-      .attr('width', 160)
-      .attr('height', legendTypes.length * 22 + 12)
-      .attr('rx', 6);
-    legendTypes.forEach((t, i) => {
+    const legendTypes = [
+      ...bandsOf(
+        nodes.filter((n) => n.role === 'doc'),
+        data.profile.bands,
+      ).keys(),
+    ];
+    if (legendTypes.length) {
+      const legend = svg
+        .append('g')
+        .attr('class', 'legend')
+        .attr('data-testid', 'graph-legend')
+        // pointer-events none comes from the stylesheet: the page's CSP refuses style attributes.
+        .attr('transform', `translate(20,${height - legendTypes.length * 22 - 30})`);
       legend
-        .append('circle')
-        .attr('class', 'legend-dot')
-        .attr('cx', 8)
-        .attr('cy', i * 22 + 8)
-        .attr('r', 5)
-        .attr('fill', colors.get(t) || fallback);
-      legend
-        .append('text')
-        .attr('class', 'legend-label')
-        .attr('x', 20)
-        .attr('y', i * 22 + 12)
-        .attr('font-size', 12)
-        .text(labels.get(t) || t);
-    });
+        .append('rect')
+        .attr('class', 'legend-box')
+        .attr('x', -10)
+        .attr('y', -10)
+        .attr('width', 160)
+        .attr('height', legendTypes.length * 22 + 12)
+        .attr('rx', 6);
+      legendTypes.forEach((t, i) => {
+        legend
+          .append('circle')
+          .attr('class', 'legend-dot')
+          .attr('cx', 8)
+          .attr('cy', i * 22 + 8)
+          .attr('r', 5)
+          .attr('fill', colors.get(t) || fallback);
+        legend
+          .append('text')
+          .attr('class', 'legend-label')
+          .attr('x', 20)
+          .attr('y', i * 22 + 12)
+          .attr('font-size', 12)
+          .text(typeLabelOf(t));
+      });
+    }
 
     simulation.on('tick', () => {
       link
@@ -508,33 +1027,48 @@ export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading }
     /**
      * Fallback for the centering pull: should a node still rest past the edge of the panel (a
      * small window, long labels), the view zooms out just enough to show every node and its label
-     * once the layout rests; it never zooms in and never overrides a zoom the user made.
+     * once the layout rests; it never zooms in and never overrides a zoom the user made. A label
+     * that is hidden takes no room.
      */
     function fitIfOutside() {
       if (userZoomed || !nodes.length) return;
       const pad = 24;
-      const x0 = Math.min(...nodes.map((n) => n.x - 14)) - pad;
-      const x1 = Math.max(...nodes.map((n) => n.x + 14 + Math.min(200, n.title.length * 6.5))) + pad;
-      const y0 = Math.min(...nodes.map((n) => n.y - 14)) - pad;
-      const y1 = Math.max(...nodes.map((n) => n.y + 14)) + pad;
-      if (x0 >= 0 && y0 >= 0 && x1 <= width && y1 <= height) return;
-      const k = Math.max(0.2, Math.min(1, width / (x1 - x0), height / (y1 - y0)));
+      const shown = new Set(
+        label
+          .filter(':not(.off)')
+          .data()
+          .map((d) => d.id),
+      );
+      const right = (n) =>
+        n.role === 'doc' && shown.has(n.id) ? n.x + n.r + 14 + Math.min(200, labelWidth(n.short)) : n.x + n.r;
+      const x0 = Math.min(...nodes.map((n) => n.x - Math.max(14, n.r))) - pad;
+      const x1 = Math.max(...nodes.map((n) => Math.max(right(n), n.x + 14))) + pad;
+      const y0 = Math.min(...nodes.map((n) => n.y - Math.max(14, n.r))) - pad;
+      const y1 = Math.max(...nodes.map((n) => n.y + Math.max(14, n.r) + (n.role === 'group' ? 18 : 0))) + pad;
+      // A large drawing also keeps clear of the tools and the bar over its top edge.
+      const top = scaleLabels ? TOOLS_HEIGHT : 0;
+      if (x0 >= 0 && y0 >= top && x1 <= width && y1 <= height) return;
+      const [minK] = zoom.scaleExtent();
+      const k = Math.max(minK, Math.min(1, width / (x1 - x0), (height - top) / (y1 - y0)));
       const tx = (width - k * (x0 + x1)) / 2;
-      const ty = (height - k * (y0 + y1)) / 2;
+      const ty = top + (height - top - k * (y0 + y1)) / 2;
       svg.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(k));
     }
 
-    // For tests and screenshots: the layout has come to rest.
+    // For tests and screenshots: the layout has come to rest, and how long it took from the draw.
     root.dataset.settled = 'false';
     simulation.on('end', () => {
       fitIfOutside();
+      if (state.view === 'folders') folderPositions = new Map(nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
+      root.dataset.settleMs = String(Math.round(window.performance.now() - t0));
       root.dataset.settled = 'true';
     });
 
-    selections = { node, label, link, hit };
+    selections = { node, label, link, hit, scene, hoverLit: null, searchLit: null };
     state.rendered++;
     root.dataset.layout = state.layout;
     root.dataset.rendered = String(state.rendered);
+    renderBar();
     applySearch();
   }
 
@@ -549,6 +1083,24 @@ export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading }
     await render();
   }
 
+  function place() {
+    return { view: state.view, center: state.center, secondHop: state.secondHop };
+  }
+
+  /** Local's centre; user marks a move the page history should hear about. */
+  function setCenter(id, { user = false } = {}) {
+    state.view = 'local';
+    state.center = id;
+    if (user) onPlace(place());
+    void render();
+  }
+
+  function setView(name, { user = false } = {}) {
+    state.view = VIEWS.includes(name) ? name : 'all';
+    if (user) onPlace(place());
+    void render();
+  }
+
   function setLayout(name) {
     state.layout = name === 'layered' ? 'layered' : 'organic';
     for (const b of root.querySelectorAll('.graph-layout button'))
@@ -558,9 +1110,23 @@ export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading }
 
   for (const b of root.querySelectorAll('.graph-layout button'))
     b.addEventListener('click', () => setLayout(b.dataset.layout));
-  q('graph-search').addEventListener('input', (e) => {
+  for (const b of root.querySelectorAll('.graph-views button'))
+    b.addEventListener('click', () => setView(b.dataset.view, { user: true }));
+  searchInput.addEventListener('input', (e) => {
     state.query = e.target.value;
+    renderResults();
     applySearch();
+  });
+  searchInput.addEventListener('focus', renderResults);
+  searchInput.addEventListener('blur', closeResults);
+  searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const first = results.querySelector('[data-testid="graph-result"]');
+      if (first && !results.hidden) {
+        e.preventDefault();
+        choose(first.dataset.id);
+      }
+    } else if (e.key === 'Escape') closeResults();
   });
   svgEl.addEventListener('click', closeChooser);
 
@@ -589,11 +1155,26 @@ export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading }
       teardown();
       hideTooltip();
       closeChooser();
+      closeResults();
     },
     reload,
     setLayout,
+    setView: (name) => setView(name),
+    /** Show in graph: Local, centred on the document; drawn when the page is next shown. */
+    showDocument(id) {
+      state.view = 'local';
+      state.center = id;
+    },
+    place,
+    /** Back to a place from the page history, without telling onPlace. */
+    setPlace(p) {
+      if (!p) return;
+      if (VIEWS.includes(p.view)) state.view = p.view;
+      state.center = p.center ?? null;
+      state.secondHop = !!p.secondHop;
+    },
     search(query) {
-      q('graph-search').value = query;
+      searchInput.value = query;
       state.query = query;
       applySearch();
     },
@@ -605,7 +1186,7 @@ export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading }
     updateSummaries(summaries) {
       if (!state.data) return;
       state.data.summaries = summaries;
-      selections?.node.classed('pending', (d) => !!summaryLine(d)?.pending);
+      selections?.node.classed('pending', (d) => d.role === 'doc' && !!summaryLine(d)?.pending);
     },
   };
 }

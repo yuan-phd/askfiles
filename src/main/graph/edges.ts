@@ -11,6 +11,7 @@ import { documentDate } from './dates.js';
 import { datedApart, type FamilyResult } from './families.js';
 import { TICKET_ID } from './kinds.js';
 import { titleWords, type EdgeRule, type Profile } from './profiles.js';
+import { capEdges, LARGE_MIN_SHARED_HEADINGS } from './scale.js';
 
 export const EDGE_KINDS = ['headings', 'reference', 'version', 'related', 'project', 'ticket', 'date'] as const;
 export type EdgeKind = (typeof EDGE_KINDS)[number];
@@ -110,7 +111,7 @@ class EdgeSet {
 
 // --- shared headings ---------------------------------------------------------------------------
 
-function sharedHeadings(docs: BrowseDocument[], out: EdgeSet): void {
+function sharedHeadings(docs: BrowseDocument[], out: EdgeSet, minShared = MIN_SHARED_HEADINGS): void {
   const docsOf = new Map<string, Set<string>>();
   const spellings = new Map<string, Map<string, number>>();
   for (const d of docs) {
@@ -136,7 +137,7 @@ function sharedHeadings(docs: BrowseDocument[], out: EdgeSet): void {
   }
   const label = (key: string) => [...spellings.get(key)!.entries()].sort((a, b) => b[1] - a[1])[0]![0];
   for (const [p, keys] of pairs) {
-    if (keys.length < MIN_SHARED_HEADINGS) continue;
+    if (keys.length < minShared) continue;
     const [a, b] = p.split('|') as [string, string];
     keys.sort();
     out.add({
@@ -440,19 +441,23 @@ function dateAdjacency(docs: BrowseDocument[], typeOf: Map<string, string>, out:
   }
 }
 
-/** Every edge the profile turns on; typeOf is the type per document id (for date adjacency). */
+/**
+ * Every edge the profile turns on; typeOf is the type per document id (for date adjacency). In a
+ * large library (scale.ts) a headings edge needs LARGE_MIN_SHARED_HEADINGS and each document keeps
+ * at most its MAX_EDGES_PER_DOCUMENT strongest edges.
+ */
 export function buildEdges(
   docs: BrowseDocument[],
-  o: { profile: Profile; families: FamilyResult; typeOf: Map<string, string> },
+  o: { profile: Profile; families: FamilyResult; typeOf: Map<string, string>; large?: boolean },
 ): GraphEdge[] {
   const on = (r: EdgeRule) => o.profile.edges[r];
   const out = new EdgeSet();
-  if (on('headings')) sharedHeadings(docs, out);
+  if (on('headings')) sharedHeadings(docs, out, o.large ? LARGE_MIN_SHARED_HEADINGS : MIN_SHARED_HEADINGS);
   if (on('references')) references(docs, o.families, on('clauseReferences'), out);
   if (on('versions')) versions(docs, o.families, out);
   if (on('related')) related(docs, out);
   if (on('projects')) projects(docs, o.profile, out);
   if (on('tickets')) tickets(docs, out);
   if (on('dates')) dateAdjacency(docs, o.typeOf, out);
-  return out.list();
+  return o.large ? capEdges(out.list()) : out.list();
 }
