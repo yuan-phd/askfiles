@@ -16,7 +16,6 @@ import { progressText } from './progress.js';
 
 const RECENT_LIMIT = 12;
 const RECENT_KEY = 'askfiles.recentQuestions';
-const PREVIEW_CHARS = 180;
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -340,13 +339,6 @@ function setConsideredTitle(count, open) {
   els.consideredTitle.replaceChildren(document.createTextNode(`${consideredTitle(count, open)} `), chevron);
 }
 
-function preview(text) {
-  const flat = String(text || '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return flat.length > PREVIEW_CHARS ? `${flat.slice(0, PREVIEW_CHARS).trimEnd()}...` : flat;
-}
-
 function renderFallback(nearest) {
   els.fallbackList.replaceChildren(
     ...nearest.map((c) => {
@@ -354,7 +346,10 @@ function renderFallback(nearest) {
       node.querySelector('.section-title').textContent = shownPath(c);
       setOptional(node.querySelector('.section-file'), c.file);
       setOptional(node.querySelector('.section-page'), pageLabel(c));
-      node.querySelector('.section-preview').textContent = preview(withoutLeadingPageNumber(c.passage));
+      // The passage as Markdown, as answers are shown; the list clamps it to a few lines (ask.css).
+      node
+        .querySelector('.section-preview')
+        .replaceChildren(renderMarkdown(document, withoutLeadingPageNumber(c.passage || '').trim()));
       node.querySelector('.open').addEventListener('click', () => {
         announceCard(c, 'open');
         void openSource(c);

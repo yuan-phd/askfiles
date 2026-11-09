@@ -321,29 +321,29 @@ h2 {
   }
 }
 
-.answer-text p {
+:is(.answer-text, .section-preview) p {
   margin: 0 0 var(--space-3);
   overflow-wrap: anywhere;
 }
 
 /* The answer's Markdown (src/renderer/shared/markdown.js): lists, bold, italic, inline code. */
-.answer-text ul,
-.answer-text ol {
+:is(.answer-text, .section-preview) ul,
+:is(.answer-text, .section-preview) ol {
   margin: 0 0 var(--space-3);
   padding-left: 1.5em;
 }
 
-.answer-text li {
+:is(.answer-text, .section-preview) li {
   margin: 0.25em 0;
 }
 
-.answer-text li > ul,
-.answer-text li > ol,
-.answer-text li > p {
+:is(.answer-text, .section-preview) li > ul,
+:is(.answer-text, .section-preview) li > ol,
+:is(.answer-text, .section-preview) li > p {
   margin: 0.25em 0 0;
 }
 
-.answer-text code {
+:is(.answer-text, .section-preview) code {
   padding: 0.05em 0.3em;
   border-radius: 4px;
   background: var(--surface-sunken);
@@ -485,9 +485,9 @@ button:focus-visible {
 }
 
 .section-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
+  /* Like a source card: what and where, the passage, then Read section and Open file. */
+  display: grid;
+  gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   background: var(--surface);
   border: 1px solid var(--border);
@@ -519,11 +519,18 @@ button:focus-visible {
 }
 
 .section-preview {
-  font-size: 0.875rem;
+  /* Rendered Markdown like the answer, clamped to a few lines. */
+  font-size: 0.9rem;
   color: var(--text-muted);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.section-preview > :last-child {
+  margin-bottom: 0;
 }
 
 .error {

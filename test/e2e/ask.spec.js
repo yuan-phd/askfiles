@@ -418,7 +418,11 @@ test.describe('Ask page with the answer pipeline stubbed', () => {
   test('the not-found marker shows the nothing-found state with the nearest sections', async ({ page }) => {
     const run = answerRun({
       sources: [LEAVE],
-      result: { notFound: true, text: 'NOT_IN_SOURCES', nearest: [PARKING, CARRY] },
+      result: {
+        notFound: true,
+        text: 'NOT_IN_SOURCES',
+        nearest: [{ ...PARKING, passage: 'Parking is **free** for staff.\n\n- Level 1\n- Level 2' }, CARRY],
+      },
     });
     await open(page, { runs: { 'Can I fly business class?': run } });
     await askQuestion(page, 'Can I fly business class?');
@@ -429,6 +433,35 @@ test.describe('Ask page with the answer pipeline stubbed', () => {
     await expect(items.nth(0).getByTestId('fallback-file')).toHaveText('handbook.pdf');
     await expect(items.nth(0).getByTestId('fallback-page')).toHaveText('Page 3');
     await expect(items.nth(1).getByTestId('fallback-page')).toBeHidden();
+    // The same actions as a source card: the Read section link and the Open file button.
+    for (const item of [items.nth(0), items.nth(1)]) {
+      await expect(item.locator('.card-actions button')).toHaveText(['Read section', 'Open file']);
+      await expect(item.getByTestId('fallback-read')).toHaveClass('link read');
+      await expect(item.getByTestId('fallback-open')).toHaveClass('open');
+    }
+    const [readEdge, openEdge] = await Promise.all(
+      ['fallback-read', 'fallback-open'].map((id) =>
+        items
+          .nth(0)
+          .getByTestId(id)
+          .evaluate((b) => {
+            const r = b.getBoundingClientRect();
+            const row = b.parentElement.getBoundingClientRect();
+            return { left: Math.round(r.left - row.left), right: Math.round(row.right - r.right) };
+          }),
+      ),
+    );
+    // Read section at the left edge of the row, Open file at the right, as on the cards.
+    expect(readEdge.left).toBe(0);
+    expect(openEdge.right).toBe(0);
+    // The passage is Markdown rendered as answers are: bold and a list, not asterisks and dashes.
+    const preview = items.nth(0).getByTestId('fallback-preview');
+    await expect(preview.locator('strong')).toHaveText('free');
+    await expect(preview.locator('li')).toHaveText(['Level 1', 'Level 2']);
+    await expect(preview).not.toContainText('**');
+    await expect(items.nth(1).getByTestId('fallback-preview')).toHaveText(
+      'Unused days can be carried over until March.',
+    );
     await expect(page.getByTestId('answer-text')).toBeEmpty();
     await expect(page.getByTestId('sources')).toBeHidden();
   });

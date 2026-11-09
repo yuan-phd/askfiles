@@ -286,6 +286,77 @@ describe('LibraryManager', () => {
     await t.manager.stop();
   });
 
+  describe('an added file moved to the Trash', () => {
+    // A trash-like folder on the same volume: Finder's move to the Trash is a rename into ~/.Trash.
+    const trash = () => {
+      const t = path.join(tmp, '.Trash');
+      fs.mkdirSync(t, { recursive: true });
+      return t;
+    };
+    /** An added file and a neighbour that stays in its folder, as in a folder of downloads. */
+    const scene = () => {
+      const dir = path.join(tmp, 'Inbox');
+      const added = put(path.join(dir, 'minutes.md'), '# Minutes\n\nThe meeting.');
+      put(path.join(dir, 'neighbour.md'), '# Neighbour\n\nNot added.');
+      return { dir, added };
+    };
+    const sourcesOf = (t: ReturnType<typeof setup>) => t.manager.view().libraries[0]!.sources;
+
+    it('while running: the live watch removes it from the index and the library', async () => {
+      const t = setup();
+      await t.manager.start();
+      const { dir, added } = scene();
+      await t.manager.addPaths([added]);
+      await until(() => docTitles(t.manager).length === 1);
+      await t.manager.watcherOf()!.whenIdle();
+
+      fs.renameSync(added, path.join(trash(), 'minutes.md'));
+      await until(() => sourcesOf(t).length === 0);
+      expect(docTitles(t.manager)).toEqual([]);
+      expect(t.api.embedded.size).toBe(0);
+      expect(t.manager.watcherOf()!.status().unavailable).toEqual([]);
+      expect(fs.readdirSync(dir)).toEqual(['neighbour.md']);
+      await t.manager.stop();
+    });
+
+    it('while AskFiles is closed: the start removes it, then the Trash is emptied', async () => {
+      const t = setup();
+      await t.manager.start();
+      const { added } = scene();
+      await t.manager.addPaths([added]);
+      await until(() => docTitles(t.manager).length === 1);
+      await t.manager.watcherOf()!.whenIdle();
+      await t.manager.stop();
+
+      fs.renameSync(added, path.join(trash(), 'minutes.md'));
+      fs.rmSync(path.join(tmp, '.Trash'), { recursive: true });
+      await t.manager.start();
+      await until(() => sourcesOf(t).length === 0);
+      await t.manager.watcherOf()!.whenIdle();
+      expect(docTitles(t.manager)).toEqual([]);
+      expect(t.api.embedded.size).toBe(0);
+      await t.manager.stop();
+    });
+
+    it('with the event missed: Check for updates removes it, and the status is up to date', async () => {
+      const t = setup({ watch: manualWatch() });
+      await t.manager.start();
+      const { added } = scene();
+      await t.manager.addPaths([added]);
+      await until(() => docTitles(t.manager).length === 1);
+      await t.manager.watcherOf()!.whenIdle();
+
+      fs.renameSync(added, path.join(trash(), 'minutes.md'));
+      await t.manager.checkUpdates();
+      await until(() => sourcesOf(t).length === 0);
+      await t.manager.watcherOf()!.whenIdle();
+      expect(docTitles(t.manager)).toEqual([]);
+      expect(t.manager.status()).toMatchObject({ state: 'idle', unavailable: [] });
+      expect(t.manager.status().error).toBeUndefined();
+      await t.manager.stop();
+    });
+  });
+
   it('reconciles added files at start: a changed one is indexed again, a deleted one is removed', async () => {
     const t = setup();
     await t.manager.start();
