@@ -137,7 +137,7 @@ test.describe('Ask page with the answer pipeline stubbed', () => {
       await expect(g.sources.getByTestId('source-card')).toHaveCount(1);
       await expect(g.drawn).toBeVisible();
       await expect(g.drawn).toHaveAttribute('open', '');
-      await expect(g.drawn.locator('summary')).toHaveText('Drawn from, not word for word');
+      await expect(g.drawn.locator('summary')).toHaveText('Drawn from, not word for word ⌃');
       await expect(g.drawn.getByTestId('source-card')).toHaveCount(1);
       await expect(g.drawn.getByTestId('source-section')).toHaveText('Travel');
       await expect(g.drawn.getByTestId('source-passage')).toHaveText(TRAVEL.passage);

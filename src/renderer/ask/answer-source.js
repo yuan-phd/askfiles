@@ -30,10 +30,26 @@ export function streamingSource(parts, cite) {
   return { src, nodes: ph.nodes };
 }
 
+// The sentence's closing punctuation, and what may stand between it and the last word: spaces
+// and emphasis delimiters (**Water weekly** .), or after it (**Water weekly .**).
+const CLOSING = /^([\s\S]*?\S)([\s*_]*)([.!?\u3002\uff01\uff1f:\uff1a;\uff1b,\uff0c\u2026]+)([*_]*)$/;
+
+/**
+ * A sentence's text with no space before its closing punctuation. The model often writes the
+ * citation before the full stop (sun [1].), and taking the citation out to place it after the
+ * sentence leaves sun . behind; the display closes that gap. Display only: the stored claim and
+ * verification keep the text as it was.
+ */
+export function tightEnd(body) {
+  const m = CLOSING.exec(body);
+  return m ? m[1] + m[2].replace(/\s+/g, '') + m[3] + m[4] : body;
+}
+
 /**
  * The finished claims as one source. Each claim's Markdown (else its text) without its trailing
- * whitespace, then its citations, then the marker when unsupported, then the whitespace: so the
- * dagger follows the sentence's last word on the same line, inside its list item, and after the
+ * whitespace and with its closing punctuation against its last word (tightEnd), then its
+ * citations, then the marker when unsupported, then the whitespace: text, punctuation, [n], dagger
+ * (Water weekly.[2], spreads fast.\u2020), on the same line, inside its list item, and after the
  * closing ** of a sentence in bold. spans gives each claim's stretch, for the sentence spans.
  */
 export function claimsSource(claims, { cite, mark, span }) {
@@ -43,7 +59,7 @@ export function claimsSource(claims, { cite, mark, span }) {
   claims.forEach((c, i) => {
     const text = (c.markdown ?? c.text).replace(PRIVATE_USE, '');
     const from = src.length;
-    src += text.replace(/\s+$/, '');
+    src += tightEnd(text.replace(/\s+$/, ''));
     for (const n of c.citations) src += ph.add(() => cite(n));
     if (c.unsupported) src += ph.add(() => mark());
     src += /\s+$/.exec(text)?.[0] ?? ' ';

@@ -203,7 +203,7 @@ test.describe('Back after a library change', () => {
 });
 
 test.describe('unsupported sentences', () => {
-  test('stay muted, get a dagger, and one line under the answer explains it', async ({ page }) => {
+  test('keep the text colour, get a dagger, and one line under the answer explains it', async ({ page }) => {
     const LEAVE = card(1, {
       title: '1 Annual leave',
       path: ['1 Annual leave'],
@@ -229,9 +229,9 @@ test.describe('unsupported sentences', () => {
     await expect(starred).toHaveText('Plan leave early.†');
     await expect(starred).toHaveClass(/unsupported/);
     await expect(starred.getByTestId('unsupported-mark')).toHaveText('†');
-    // Muted like before: the sentence takes the muted text colour, the supported one does not.
+    // Only the dagger marks it: the sentence has the colour of a supported one.
     const color = (l) => l.evaluate((el) => window.getComputedStyle(el).color);
-    expect(await color(starred)).not.toBe(await color(page.getByTestId('claim').first()));
+    expect(await color(starred)).toBe(await color(page.getByTestId('claim').first()));
     await expect(page.getByTestId('claim').first().getByTestId('unsupported-mark')).toHaveCount(0);
     await expect(page.getByTestId('answer-note')).toHaveText(
       'Sentences marked † have no word-for-word support in the sources. They may be a summary or conclusion drawn from the sources, or they may be inaccurate. Check them against the source cards.',

@@ -311,10 +311,17 @@ function renderCards({ sent, cited, considered, drawn }) {
   els.drawnList.replaceChildren(...g.drawn.map((c) => cardNode(c)));
   els.drawn.hidden = g.drawn.length === 0;
   els.drawn.open = true;
+  setDrawnChevron(true);
   els.consideredList.replaceChildren(...g.considered.map((c) => cardNode(c)));
   els.considered.hidden = g.considered.length === 0;
   els.considered.open = false;
   setConsideredTitle(g.considered.length, false);
+}
+
+/** The Drawn from heading keeps its words; its chevron turns with the group, as on Show N more sections. */
+function setDrawnChevron(open) {
+  const chevron = $('drawn-title').querySelector('.chevron');
+  if (chevron) chevron.className = chevronClass(open);
 }
 
 /** The words, then the chevron in its own span so it can stand a little taller than them. */
@@ -697,6 +704,8 @@ async function initDeveloper() {
 }
 
 // The collapsed group says what opening it does: Show N other sections, Hide N other sections.
+els.drawn.addEventListener('toggle', () => setDrawnChevron(els.drawn.open));
+
 els.considered.addEventListener('toggle', () => {
   setConsideredTitle(els.consideredList.children.length, els.considered.open);
 });

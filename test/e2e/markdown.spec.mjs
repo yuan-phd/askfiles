@@ -177,6 +177,83 @@ test.describe('Markdown answers', () => {
       `带 ${DAGGER} 标记的句子在来源中没有逐字对应的原文，可能是根据来源归纳的结论，也可能不准确，请对照来源卡片核实。`,
     );
   });
+
+  test('an unsupported sentence keeps the text colour; only the muted dagger marks it', async ({ page }) => {
+    const claims = [
+      { text: 'Tomatoes need full sun .', citations: [1], unsupported: false },
+      { text: ' Mint grows anywhere .', citations: [], unsupported: true },
+    ];
+    const run = answerRun({
+      sources: [SUN],
+      deltas: [partsOf('Tomatoes need full sun [1]. Mint grows anywhere .')],
+      result: { claims, cited: [SUN] },
+    });
+    await ask(page, 'Where do plants grow?', run);
+    const answer = page.getByTestId('answer-text');
+    await expect(answer).toHaveText(`Tomatoes need full sun.[1] Mint grows anywhere.${DAGGER}`);
+    const colors = await answer.evaluate((el) => {
+      const c = (x) => window.getComputedStyle(x).color;
+      const root = window.getComputedStyle(document.documentElement);
+      return {
+        supported: c(el.querySelector('[data-testid=claim]')),
+        unsupported: c(el.querySelector('[data-testid=claim-unsupported]')),
+        mark: c(el.querySelector('[data-testid=unsupported-mark]')),
+        text: root.getPropertyValue('--text').trim(),
+        muted: root.getPropertyValue('--text-muted').trim(),
+      };
+    });
+    expect(colors.unsupported).toBe(colors.supported);
+    expect(colors.unsupported).toBe(hexToRgb(colors.text));
+    expect(colors.mark).toBe(hexToRgb(colors.muted));
+  });
+
+  test('the Drawn from heading has the Show more chevron after its words, turned when closed', async ({ page }) => {
+    const TOOLS = card(3, { title: 'Tools', path: ['Garden guide', 'Tools'], passage: 'A trowel and a hose.' });
+    const run = answerRun({
+      sources: [SUN, SOIL, TOOLS],
+      deltas: [partsOf('Tomatoes need full sun [1]. Basil wants a trowel [2].')],
+      result: {
+        claims: [
+          { text: 'Tomatoes need full sun . ', citations: [1], unsupported: false },
+          { text: 'Basil wants a trowel .', citations: [], unsupported: true },
+        ],
+        cited: [SUN],
+        considered: [SOIL, TOOLS],
+        drawnFrom: [SOIL],
+      },
+    });
+    await ask(page, 'What tools?', run);
+    const drawn = page.getByTestId('drawn-title');
+    await expect(drawn).toHaveText('Drawn from, not word for word ⌃');
+    const chevron = drawn.locator('.chevron');
+    const other = page.getByTestId('considered-title').locator('.chevron');
+    await expect(chevron).toHaveClass('chevron');
+    await expect(chevron).toHaveAttribute('aria-hidden', 'true');
+    // The same chevron as Show N more sections (and Compare's Show more): glyph, size, weight, lift,
+    // both open.
+    await page.getByTestId('considered-title').click();
+    await expect(other).toHaveClass('chevron');
+    for (const prop of ['font-size', 'font-weight', 'transform'])
+      await expect(chevron).toHaveCSS(
+        prop,
+        await other.evaluate((e, p) => window.getComputedStyle(e).getPropertyValue(p), prop),
+      );
+    await expect(chevron).toHaveText(await other.textContent());
+    // No browser triangle before the words, and the heading keeps its own style.
+    const heading = await drawn.evaluate((s) => ({
+      marker: window.getComputedStyle(s).listStyleType,
+      first: s.firstChild.textContent.trim().slice(0, 4),
+      transform: window.getComputedStyle(s).textTransform,
+      size: window.getComputedStyle(s).fontSize,
+    }));
+    expect(heading).toEqual({ marker: 'none', first: 'Draw', transform: 'uppercase', size: '12.8px' });
+    // Closed: the same glyph turned, the group's cards hidden.
+    await drawn.click();
+    await expect(chevron).toHaveClass('chevron down');
+    await expect(page.getByTestId('drawn').getByTestId('source-card')).toBeHidden();
+    await drawn.click();
+    await expect(chevron).toHaveClass('chevron');
+  });
 });
 
 function hexToRgb(hex) {
