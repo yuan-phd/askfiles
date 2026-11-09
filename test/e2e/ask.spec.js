@@ -270,7 +270,7 @@ test.describe('Ask page with the answer pipeline stubbed', () => {
 
     // The citation markers in the text, in the order written.
     await expect(page.getByTestId('answer-text').getByTestId('cite')).toHaveText(['[2]', '[1]']);
-    await expect(page.getByTestId('claim-unsupported')).toHaveText('Ask your manager first.*');
+    await expect(page.getByTestId('claim-unsupported')).toHaveText('Ask your manager first.†');
     await expect(page.getByTestId('answer-note')).toBeVisible();
 
     const considered = page.getByTestId('considered');

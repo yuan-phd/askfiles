@@ -48,7 +48,7 @@ export interface QuestionRecord {
   error: string | null;
   answer: string | null;
   cited: CitedSource[];
-  /** Sentences shown with the asterisk (no source found for them). */
+  /** Sentences shown with the dagger (no source found for them); named when the marker was an asterisk. */
   starred: number;
   totalMs: number;
 }

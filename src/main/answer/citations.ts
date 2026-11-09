@@ -3,6 +3,7 @@
  * and the full-width 【1】 that Chinese output often uses). The stream may cut a citation anywhere,
  * so a bracket that could still become one is held back until the next chunk decides it.
  */
+import { plainText } from './markdown.js';
 
 export type Part = { type: 'text'; text: string } | { type: 'cite'; n: number };
 
@@ -84,30 +85,59 @@ export interface Claim {
   support?: number[];
   /** After verification: the score a citation needed (the threshold the sentence was held to). */
   minSupport?: number;
+  /** The sentence as the model wrote it, with its Markdown, when that differs from text (claimsOf). */
+  markdown?: string;
 }
 
 const END = /[.!?。！？]+["'”’）)]*\s+|[。！？]+|\n+/g;
+
+/** Index of the first entry of the sorted list that is at least x. */
+function lowerBound(list: number[], x: number): number {
+  let lo = 0;
+  let hi = list.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (list[mid]! < x) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
 
 /**
  * Sentences of the answer with the citations each one carries. A citation belongs to the sentence
  * it follows, also when it comes after the full stop. Citations outside 1 to max are dropped, so
  * a sentence citing only a source that does not exist counts as unsupported.
+ *
+ * Sentences are split on the answer without its Markdown syntax (markdown.ts), and text is that
+ * plain sentence, which every check reads; markdown keeps the same stretch of the reply as written,
+ * for the Ask page, when it differs. The kept claims' markdown spans tile the reply.
  */
 export function claimsOf(parts: Part[], max: number): Claim[] {
-  const claims: Claim[] = [];
+  let raw = '';
+  const at: { pos: number; n: number }[] = [];
+  for (const p of parts) {
+    if (p.type === 'cite') at.push({ pos: raw.length, n: p.n });
+    else raw += p.text;
+  }
+  const { plain, map } = plainText(raw);
+  // The same walk as over the parts, on the plain text: a citation stands where its raw position falls.
+  const merged: Part[] = [];
+  let from = 0;
+  for (const c of at) {
+    const to = lowerBound(map, c.pos);
+    if (to > from) merged.push({ type: 'text', text: plain.slice(from, to) });
+    merged.push({ type: 'cite', n: c.n });
+    from = Math.max(from, to);
+  }
+  if (from < plain.length) merged.push({ type: 'text', text: plain.slice(from) });
+
+  const claims: (Claim & { end: number })[] = [];
   let cur: Claim = { text: '', citations: [], unsupported: false };
+  let pos = 0;
   const close = () => {
-    if (cur.text.trim() || cur.citations.length) claims.push(cur);
+    if (cur.text.trim() || cur.citations.length) claims.push({ ...cur, end: pos });
     cur = { text: '', citations: [], unsupported: false };
   };
-  // Streamed parts cut text anywhere, also between a full stop and its space: join them first.
-  const merged: Part[] = [];
-  for (const p of parts) {
-    const last = merged[merged.length - 1];
-    if (p.type === 'text' && last?.type === 'text')
-      merged[merged.length - 1] = { type: 'text', text: last.text + p.text };
-    else merged.push(p);
-  }
   for (const p of merged) {
     if (p.type === 'cite') {
       if (p.n < 1 || p.n > max) continue;
@@ -120,12 +150,22 @@ export function claimsOf(parts: Part[], max: number): Claim[] {
     for (const m of p.text.matchAll(END)) {
       const end = m.index! + m[0].length;
       cur.text += p.text.slice(from, end);
+      pos += end - from;
       from = end;
       close();
     }
     cur.text += p.text.slice(from);
+    pos += p.text.length - from;
   }
   close();
-  for (const c of claims) c.unsupported = c.citations.length === 0 && /[\p{L}\p{N}]{2}/u.test(c.text);
-  return claims;
+  // A sentence's stretch of the reply ends after the last plain character it holds; the syntax
+  // before the next sentence's first character (its list marker, an opening **) is the next one's.
+  let rawFrom = 0;
+  return claims.map(({ end, ...c }, k) => {
+    const rawTo = k === claims.length - 1 || end >= plain.length ? raw.length : end > 0 ? map[end - 1]! + 1 : 0;
+    const markdown = raw.slice(rawFrom, rawTo);
+    rawFrom = rawTo;
+    c.unsupported = c.citations.length === 0 && /[\p{L}\p{N}]{2}/u.test(c.text);
+    return markdown === c.text ? c : { ...c, markdown };
+  });
 }

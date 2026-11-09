@@ -27,7 +27,7 @@ The kind only changes how documents are grouped and linked on the Graph page. Yo
 
 Type a question on the Ask page and press Enter. The answer cites its sources with numbers, and a card for each source shows the file, the section and the page. Click Read section to see the passage in the document, or Open file to open the original.
 
-A sentence with an asterisk (*) after it is shown in a lighter colour. The line under the answer says: Starred sentences have no word-for-word support in the sources. They may be a summary or conclusion drawn from the sources, or they may be inaccurate. Check them against the source cards. For an answer in Chinese it says: 带星号的句子在来源中没有逐字对应的原文，可能是根据来源归纳的结论，也可能不准确，请对照来源卡片核实。
+Answers can contain lists, bold and italic text, shown as such. A sentence with a dagger (†) after it is shown in a lighter colour. The line under the answer, and the dagger's tooltip, say: Sentences marked † have no word-for-word support in the sources. They may be a summary or conclusion drawn from the sources, or they may be inaccurate. Check them against the source cards. For an answer in Chinese they say: 带 † 标记的句子在来源中没有逐字对应的原文，可能是根据来源归纳的结论，也可能不准确，请对照来源卡片核实。
 
 While AskFiles is reading new files, the question box is switched off and says Reading new files, and how many are left. It comes back as soon as they are read, so an answer never misses a file you just added.
 
@@ -47,7 +47,7 @@ These figures were measured on our own test documents: procurement regulations a
 - **Comparing documents works best when you name both files.** Asking about each document in a question of its own is more reliable still.
 - **Poor-quality scans may be misread.** Text recognised from a blurred or faint scan can be wrong or missing.
 - **Spreadsheet formulas are not read**, only the values in the cells.
-- **Starred sentences (*) have no word-for-word support** in the sources. Check them against the source cards.
+- **Sentences marked † have no word-for-word support** in the sources. Check them against the source cards.
 - **On computers with 8 GB of memory, Ask is off.** Browse and Find, and the Graph, work there.
 - **The first launch has to be allowed** in the system's security settings: on a Mac in System Settings, Privacy & Security (Open Anyway); on Windows in the SmartScreen window (More info, then Run anyway).
 

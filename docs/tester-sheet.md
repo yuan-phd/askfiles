@@ -28,7 +28,7 @@ Thank you for testing AskFiles. This test version keeps a record of your questio
 - Use your own documents: Add files, Add folder, or drag them into the window. Use documents you know well, in English or Chinese.
 - Ask questions the way you would ask a colleague. Some about one fact, some naming a document ("what does the travel policy say about taxis?"), some comparing two documents. A question comparing two documents takes about a minute longer than others; the app is not stuck.
 - Read the answer and its sources. Click a source to read the section, or to show the file.
-- A sentence with an asterisk (\*) has no word-for-word support in the sources. It may be a summary or conclusion drawn from the sources, or it may be inaccurate. Check it against the source cards, and tell us whether it was right or wrong.
+- Sentences marked † have no word-for-word support in the sources. They may be a summary or conclusion drawn from the sources, or they may be inaccurate. Check them against the source cards. Tell us whether such a sentence was right or wrong.
 - Use Browse: the library, a document's outline, Find, Compare.
 - When an answer looks wrong or strange, write down the question and why it seems wrong to you (for example: the document says 30 days, not 14). We cannot see your documents, so your note is the only way we can tell what went wrong.
 
@@ -68,7 +68,7 @@ The person who invited you will send you the regular AskFiles. Install it: it ke
 - 使用您自己的文档：Add files（添加文件）、Add folder（添加文件夹），或直接拖进窗口。请用您熟悉的中文或英文文档。
 - 像问同事一样提问：有的问一个具体事实，有的提到某份文档（例如“差旅制度对打车有什么规定？”），有的比较两份文档。比较两份文档的问题比其他问题多用约一分钟，应用并没有卡住。
 - 阅读回答和来源。点击来源可以阅读对应章节，或在文件夹中显示文件。
-- 带星号（\*）的句子在来源中没有逐字对应的原文，可能是根据来源归纳的结论，也可能不准确，请对照来源卡片核实，并告诉我们它是对是错。
+- 带 † 标记的句子在来源中没有逐字对应的原文，可能是根据来源归纳的结论，也可能不准确，请对照来源卡片核实。请告诉我们这样的句子是对是错。
 - 使用 Browse（浏览）：文档库、文档大纲、Find（查找）、Compare（比较）。
 - 当回答看起来有误或奇怪时，请记下这个问题，以及您认为它哪里不对（例如：文件写的是 30 天，不是 14 天）。我们看不到您的文档，您的记录是我们了解问题所在的唯一途径。
 

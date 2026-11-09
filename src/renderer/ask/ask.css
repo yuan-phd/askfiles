@@ -323,8 +323,32 @@ h2 {
 
 .answer-text p {
   margin: 0 0 var(--space-3);
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* The answer's Markdown (src/renderer/shared/markdown.js): lists, bold, italic, inline code. */
+.answer-text ul,
+.answer-text ol {
+  margin: 0 0 var(--space-3);
+  padding-left: 1.5em;
+}
+
+.answer-text li {
+  margin: 0.25em 0;
+}
+
+.answer-text li > ul,
+.answer-text li > ol,
+.answer-text li > p {
+  margin: 0.25em 0 0;
+}
+
+.answer-text code {
+  padding: 0.05em 0.3em;
+  border-radius: 4px;
+  background: var(--surface-sunken);
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.9em;
 }
 
 .sources,
@@ -551,8 +575,11 @@ button:focus-visible {
 /* Citations and unsupported sentences */
 
 .answer-text {
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.answer-text > :last-child {
+  margin-bottom: 0;
 }
 
 .cite {
@@ -576,9 +603,16 @@ span.cite {
   color: var(--text-muted);
 }
 
+/* The dagger after an unsupported sentence: a little larger than the text, muted, never bold or
+   italic from the Markdown around it. */
 .unsupported-mark {
-  margin-left: 0.1em;
-  font-weight: 600;
+  margin-left: 0.12em;
+  font-size: 1.15em;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--text-muted);
+  cursor: help;
 }
 
 .answer-note {
