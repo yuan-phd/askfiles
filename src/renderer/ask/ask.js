@@ -117,6 +117,13 @@ const bar = mountTopBar($('top-bar'), {
   // window, which clears the history too.)
   onLibraryChange: () =>
     history.reset(state.view === 'browse' && state.browse ? state.browse.current() : { view: 'search' }),
+  // Manage in the library menu: the Library page in Browse, at its Sources section.
+  onManage: () =>
+    history.navigate(() => {
+      showView('browse');
+      void state.browse.showSources();
+      return { view: 'browse', page: 'library' };
+    }),
 });
 
 function setState(kind, text) {

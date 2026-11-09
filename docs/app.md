@@ -70,18 +70,30 @@ src/main/libraries.ts (LibraryManager). A library is one upstream workspace plus
 | --- | --- |
 | index.json | The watcher's records: per file its hash, shown path, source id and section records (title, index, level, full heading path, pages, printed page labels, document location) |
 | browse/ | The browse index, one JSON file per document |
-| files/ | Copies of files added with Add files or by dropping files; the library's own, deleted with it |
+| files/ | Only in libraries made before 2026-11-09: copies of files added then. They keep working from the copy (the original's path was never stored) and are listed as Copy; adding the original again offers to replace the copy. No longer created |
 | graph.json | The library graph (docs/graph.md), rebuilt after browse changes |
 | summaries/ | Document and section summaries, one JSON file per document (docs/summaries.md) |
 | export/ | The Markdown export of the summaries, an Obsidian-compatible folder |
 
 Section documents go to `STORAGE_DIR/documents/askfiles/<id>/`. The default library, All files (id all-files, workspace askfiles-library as before Session K), exists from the first launch and cannot be renamed or deleted. Others get an id lib-xxxxxx and a workspace askfiles-<id>.
 
-- Sources: linked folders (watched recursively, never modified, listed in shell.json) and the added files (the entries of files/). A folder inside a linked one is refused; a folder holding linked ones replaces them; a folder that holds or lies inside the data directory is refused. Files of a type the splitter cannot read are left out and reported.
+- Sources: linked folders (watched recursively, never modified, listed in shell.json `folders`), added files (Add files, a dialog, or files dropped on the window; listed by absolute path in shell.json `files`, ids file-1, file-2, never copied or modified) and, in older libraries, the copies in files/. A folder inside a linked one is refused; a folder holding linked ones, or added files, replaces them (those files are indexed again as files of the folder); a folder that holds or lies inside the data directory is refused. Files of a type the splitter cannot read are left out and reported.
+- An added file is followed like a file of a linked folder: it is watched through its parent folder (one chokidar watch per folder, depth 0, limited to the added files of that folder, so the folder's other files are never read), a content change is indexed again, and a deleted or moved original leaves the index and then the library's list. The start reconciles added files like folder files (size and modification time, then the content hash). A file whose folder cannot be read (an unplugged drive) is kept, like a linked folder's files.
+- Adding a file whose path is already in the library, or that lies inside a linked folder, does nothing and says Already in this library; it is kept up to date. A file with the same name (ignoring case) as a file added on its own asks: A file named X is already in this library (path). Replace it, or keep both? Replace removes the old source and all its data (sections, vectors, browse entry, summaries, export page, graph node) through the watcher's removal of the file, then adds the new one; Keep both adds it as another document. A name that matches a file inside a linked folder is added without asking, and the add result says both are kept.
+- Check for updates (the ↻ control next to the status in the top bar): the start-up reconcile now, for every source of the current library. Unchanged files (same size and time, or the same hash) are not indexed again.
+- Updates that stop halfway: before a file's new sections are written and embedded, their names are recorded in index.json as `pending`; the record is cleared once the file's record is saved. After a failed attempt, a dead-letter and at every start, pending sections that no saved record lists are removed from the workspace and the document store.
 - Only the current library runs a watcher (one FolderWatcher over all its roots, one queue). A folder that cannot be read at start (an unplugged drive) keeps its files in the index and shows as not available; a folder removed from the library loses its files at the next reconcile.
 - Switching libraries restarts the watcher on the new library and reloads the main window, because the Ask page reads its workspace once per load.
 - Delete removes the workspace (vectors included), the library's section documents and its folder under the data directory. Linked folders and original files are never touched.
-- Reindex clears the library's index and documents and indexes every file again. SPLITTER_VERSION 2 does the same once for every library after the update from Session J, because the section records changed shape.
+- Reindex removes every document of the library's workspace (also those no record lists) and every section document under the library's folder in the document store, clears the index and indexes every file again. SPLITTER_VERSION 2 does the same once for every library after the update from Session J, because the section records changed shape.
+- Cost of watching added files, measured 2026-11-09 by scripts/measure-file-watch.ts (`node --expose-gc --import tsx scripts/measure-file-watch.ts 30`) on the owner's Mac (M1 Max, 10 cores, Node 22.23.4, not inside Electron): an invented library of 900 added Markdown files spread over 200 folders, each folder also holding 10 files that were not added; every case in a fresh process on an index built beforehand, with an in-memory workspace, so only the watching is measured. Idle CPU over 30 s, as a share of one core.
+
+  | Case | RSS before | RSS watching | Heap before | Heap watching | Idle CPU before | Idle CPU watching | Start, nothing changed | Check for updates |
+  | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+  | 900 added files in 200 folders (200 watches, depth 0) | 92.3 MB | 141.1 MB | 13.6 MB | 19.7 MB | 0.22 % | 0.39 % | 191 ms | 13 ms |
+  | The same files as one linked folder (2900 files, recursive) | 93.8 MB | 150.3 MB | 13.6 MB | 25.8 MB | 0.21 % | 0.50 % | 325 ms | 63 ms |
+
+  Watching 900 added files costs about what one linked folder of the same files costs: about 49 MB of resident memory (index records and the watches) and 6 MB of heap, and no measurable idle CPU.
 - Migration from shell.json version 1: the one folder becomes a linked folder of All files, and `<dataDir>/index.json` and `<dataDir>/browse` move to `libraries/all-files/`.
 
 ## Where the API key lives
@@ -95,7 +107,8 @@ Section documents go to `STORAGE_DIR/documents/askfiles/<id>/`. The default libr
   "setupCompletedAt": "2026-10-30T10:00:00.000Z",
   "libraries": [
     { "id": "all-files", "name": "All files", "workspaceSlug": "askfiles-library",
-      "folders": [{ "id": "folder-1", "path": "/Users/anna/Documents", "addedAt": "..." }], "createdAt": "...",
+      "folders": [{ "id": "folder-1", "path": "/Users/anna/Documents", "addedAt": "..." }],
+      "files": [{ "id": "file-1", "path": "/Users/anna/Desktop/plan.pdf", "addedAt": "..." }], "createdAt": "...",
       "profile": "legal-finance", "typeOverrides": { "legal-finance": { "<document id>": "contract" } },
       "familyDecisions": { "<id>|<id>": true }, "sectionSummaries": false }
   ],
@@ -129,11 +142,11 @@ One preload script, src/main/preload.ts, for every window. Windows run with cont
 | `askfiles.setup.start()`, `.retry()` | FirstRun.start (joins a run in progress), FirstRun.retry |
 | `askfiles.models.list()`, `.pull(tag)`, `.onProgress(cb)`, `.remove(tag)`, `.switchChat(tag)` | ModelManager (Session E); a switch restarts the backend and reloads the Ask page; the answer pipeline reads the chat model from the server .env |
 | `askfiles.watcher.status()`, `.onStatus(cb)` | The current library's watcher status plus `libraryId`, `unavailable` (folders that cannot be read) and `error` |
-| `askfiles.libraries.list()`, `.onChange(cb)` | `{ current, libraries: [{ id, name, isDefault, isCurrent, indexed, sources: [{ id, kind, path, name, available }] }] }` |
+| `askfiles.libraries.list()`, `.onChange(cb)` | `{ current, libraries: [{ id, name, isDefault, isCurrent, indexed, sources: [{ id, kind, path, name, available }] }] }`; kind is folder, file or copy; available is false for a folder that cannot be read and for an added file whose original is gone |
 | `askfiles.libraries.select(id)`, `.create(name)`, `.rename(id, name)`, `.remove(id)` | LibraryManager; select, create and a delete of the current library reload the main window |
-| `askfiles.libraries.addFiles()`, `.addFolder()` | Native dialog, then copy or link into the current library; `{ added, skipped: [{ name, reason }] }`, null when cancelled |
-| `askfiles.libraries.addPaths(paths)`, `.pathForFile(file)` | Drag and drop: the preload turns each dropped File into its path (webUtils.getPathForFile); folders are linked, files copied |
-| `askfiles.libraries.removeSource(id)`, `.reindex()` | Unlink a folder or delete an added file's copy; reindex the current library |
+| `askfiles.libraries.addFiles()`, `.addFolder()` | Native dialog, then link into the current library; `{ added, skipped: [{ name, reason }], already: [name], conflicts: [{ path, name, existing: { id, path, kind } }], kept: [{ name, path }] }`, null when cancelled |
+| `askfiles.libraries.addPaths(paths, decisions)`, `.pathForFile(file)` | Drag and drop (the preload turns each dropped File into its path, webUtils.getPathForFile), and the answers to conflicts: decisions maps a path to `{ action: 'replace', replaces: id }` or `{ action: 'keep' }`; folders and files are linked |
+| `askfiles.libraries.removeSource(id)`, `.reindex()`, `.checkUpdates()` | Unlink a folder or an added file, or delete an old copy; reindex the current library; check for updates (returns the watcher status after the check) |
 | `askfiles.settings.get()`, `.set(change)` | The Settings page values, model choices and context choices; a model or context change restarts the server |
 | `askfiles.developer.info()` | Data directory, presets file, settings, machine and effective preset; refused unless ASKFILES_DEVELOPER=1 |
 | `askfiles.developer.openModels()` | Opens the Models window, which has no menu entry; refused unless ASKFILES_DEVELOPER=1 and set up |
@@ -160,7 +173,7 @@ src/main/bridge/bridge.test.ts runs the preload in the same function wrapper the
 
 ## Top bar
 
-src/renderer/shared/topbar.js and topbar.css, mounted by the Ask page into `<header id="top-bar">`. It stays fixed while the views scroll (the body is a column; only the view scrolls). At the far left the Ask and Browse switch, inset like the Browse sidebar's entries so it stands over them. At the right the library switcher (library name, indexed count, indexing state: Indexing, N left; Up to date; Folder not available; the dead-letter count with errors in the tooltip), whose menu opens from its right edge and lists the libraries with their counts, creates one, and for the current library lists its sources with Remove, renames it, reindexes it and deletes it (asks once); then, after a clear gap, the Add button (Add files, Add folder). The result of an add shows just left of the library switcher. A library without sources shows one sentence and the Add button in place of both views. Dropping files or folders anywhere in the window adds them to the current library. The Ask page keeps the test ids status-count, status-state and status-failed.
+src/renderer/shared/topbar.js and topbar.css, mounted by the Ask page into `<header id="top-bar">`. It stays fixed while the views scroll (the body is a column; only the view scrolls). At the far left the Ask and Browse switch, inset like the Browse sidebar's entries so it stands over them. At the right the library switcher (library name, indexed count, indexing state: Indexing, N left; Up to date; Folder not available; the dead-letter count with errors in the tooltip), whose menu opens from its right edge and lists the libraries with their counts, creates one, and for the current library lists its sources with Remove, renames it, reindexes it and deletes it (asks once); then the ↻ control (tooltip Check for updates; the status reads Checking… for at least 0.6 s, then Up to date or the usual indexing status); then, after a clear gap, the Add button (Add files, Add folder). The menu lists every linked folder, then added files until it holds five rows; the rest is one row, N more files · Manage (N more folders and files when both are left out); with five or more folders it lists all folders and no added file. Manage opens the Library page in Browse at its Sources section: every linked folder, added file and old copy with search, type (Folder, File, Copy), path and Remove, and a note when originals are missing and about to leave the library. A name conflict on an add opens a dialog with Replace, Keep both and Cancel (Escape). The result of an add shows just left of the library switcher. A library without sources shows one sentence and the Add button in place of both views. Dropping files or folders anywhere in the window adds them to the current library. The Ask page keeps the test ids status-count, status-state and status-failed.
 
 ## Browse view
 

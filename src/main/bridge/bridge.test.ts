@@ -153,6 +153,10 @@ function recordingHandlers() {
     librariesAddPaths: rec('librariesAddPaths', Promise.resolve({ added: 1, skipped: [] })),
     librariesRemoveSource: rec('librariesRemoveSource', Promise.resolve(libs)),
     librariesReindex: rec('librariesReindex', Promise.resolve(libs)),
+    librariesCheckUpdates: rec(
+      'librariesCheckUpdates',
+      Promise.resolve(null),
+    ) as unknown as BridgeHandlers['librariesCheckUpdates'],
     settingsGet: rec('settingsGet', settings) as unknown as BridgeHandlers['settingsGet'],
     settingsSet: rec('settingsSet', Promise.resolve(settings)) as unknown as BridgeHandlers['settingsSet'],
     developerInfo: rec('developerInfo', {}) as unknown as BridgeHandlers['developerInfo'],
@@ -249,6 +253,7 @@ describe('preload bridge', () => {
         'askfiles.libraries.addFiles',
         'askfiles.libraries.addFolder',
         'askfiles.libraries.addPaths',
+        'askfiles.libraries.checkUpdates',
         'askfiles.libraries.create',
         'askfiles.libraries.list',
         'askfiles.libraries.onChange',
@@ -320,6 +325,7 @@ describe('preload bridge', () => {
     await a.libraries.addPaths(['/a.pdf']);
     await a.libraries.removeSource('folder-1');
     await a.libraries.reindex();
+    await a.libraries.checkUpdates();
     await a.settings.get();
     await a.settings.set({ answerScope: 'strict' });
     await a.developer.info();
@@ -420,7 +426,19 @@ describe('preload bridge', () => {
     await a.libraries.rename('lib-1', 'n'.repeat(300));
     expect(t.calls).toContainEqual(['librariesRename', 'lib-1', 'n'.repeat(200)]);
     await a.libraries.addPaths(['/a.pdf', '', 'x'.repeat(5000), '/b'] as string[]);
-    expect(t.calls).toContainEqual(['librariesAddPaths', ['/a.pdf', '/b']]);
+    expect(t.calls).toContainEqual(['librariesAddPaths', ['/a.pdf', '/b'], {}]);
+    // Answers to Replace or Keep both pass only for the paths of the same call, and only in shape.
+    await a.libraries.addPaths(['/a.pdf', '/b', '/c'], {
+      '/a.pdf': { action: 'replace', replaces: 'file-1' },
+      '/b': { action: 'keep' },
+      '/c': { action: 'replace' } as never,
+      '/elsewhere': { action: 'keep' },
+    });
+    expect(t.calls).toContainEqual([
+      'librariesAddPaths',
+      ['/a.pdf', '/b', '/c'],
+      { '/a.pdf': { action: 'replace', replaces: 'file-1' }, '/b': { action: 'keep' } },
+    ]);
     await a.settings.set(null as never);
     expect(t.calls).toContainEqual(['settingsSet', {}]);
     await a.settings.set({ answerScope: 'broad' });

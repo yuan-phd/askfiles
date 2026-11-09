@@ -54,6 +54,7 @@ function externalHandlers(baseUrl: string | null, log: (m: string) => void): Bri
     librariesAddPaths: unavailable,
     librariesRemoveSource: unavailable,
     librariesReindex: unavailable,
+    librariesCheckUpdates: unavailable,
     settingsGet: () => {
       throw new Error('not available when AskFiles connects to an external server');
     },

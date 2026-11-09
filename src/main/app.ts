@@ -51,7 +51,7 @@ import {
 import { SummaryService, type SummaryModel } from './summaries/index.js';
 import type { Env, Logger } from './config.js';
 import { FirstRun } from './first-run.js';
-import { LibraryManager, libraryDir, moveLegacyLibraryFiles, type AddResult } from './libraries.js';
+import { LibraryManager, libraryDir, moveLegacyLibraryFiles, type AddDecision, type AddResult } from './libraries.js';
 import { deleteWorkspace, ensureApiKey, ensureLibrary, ensureWorkspace, workspaceNameOf } from './library.js';
 import { ModelManager, verifyPinnedModel } from './models/index.js';
 import { OllamaClient } from './ollama/index.js';
@@ -389,8 +389,12 @@ export class AppController implements BridgeHandlers {
     return this.libraries.addFolder(folder);
   }
 
-  librariesAddPaths(paths: string[]) {
-    return this.libraries.addPaths(paths);
+  librariesAddPaths(paths: string[], decisions?: Record<string, AddDecision>) {
+    return this.libraries.addPaths(paths, decisions);
+  }
+
+  librariesCheckUpdates() {
+    return this.libraries.checkUpdates();
   }
 
   librariesRemoveSource(sourceId: string) {

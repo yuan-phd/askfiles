@@ -142,6 +142,38 @@ body {
   background: var(--bad);
 }
 
+.topbar .status-state[data-state='checking'] .dot {
+  background: var(--busy);
+  animation: topbar-pulse 1.4s ease-in-out infinite;
+}
+
+/* Check for updates: a small round control right of the library's status. */
+.topbar .check-updates {
+  flex: none;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin-left: calc(-1 * var(--space-2));
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.topbar .check-updates:hover:not(:disabled) {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.topbar .check-updates:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
 @keyframes topbar-pulse {
   50% {
     opacity: 0.35;
@@ -297,6 +329,65 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.source-more {
+  padding: var(--space-1) 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+/* Replace or keep both, for an added file named like one already in the library. */
+.replace-dialog {
+  max-width: 30rem;
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+  font-size: 0.95rem;
+}
+
+.replace-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.replace-text {
+  margin: 0 0 var(--space-5);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.replace-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.replace-actions button {
+  padding: var(--space-1) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface-sunken);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.replace-actions button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.replace-actions button.link {
+  margin-right: auto;
+  border: 0;
+  background: none;
+  color: var(--accent);
 }
 
 .source-kind,

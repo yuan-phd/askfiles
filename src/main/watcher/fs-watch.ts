@@ -8,12 +8,16 @@ import type { WatchFactory } from './types.js';
  * and it needs our own polling fallback for network volumes. chokidar 4 is about 150 KB with one
  * dependency (readdirp) and ships CommonJS, which the main process build emits.
  */
-export const chokidarWatch: WatchFactory = (root, onEvent, onError) => {
+export const chokidarWatch: WatchFactory = (root, onEvent, onError, options = {}) => {
+  const { only } = options;
   const w = watch(root, {
     ignoreInitial: true,
     // The user's folder may link anywhere on disk; only its own contents belong in the library.
     followSymlinks: false,
-    ignored: (p: string) => isHidden(p, root),
+    ...(options.depth !== undefined ? { depth: options.depth } : {}),
+    // With only, the other files of the folder are never looked at, so a large Downloads folder
+    // costs one directory watch and no stat per file.
+    ignored: (p: string) => isHidden(p, root) || (!!only && p !== root && !only.has(p)),
   });
   w.on('add', (p) => onEvent('add', p));
   w.on('change', (p) => onEvent('change', p));

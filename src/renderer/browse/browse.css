@@ -1334,3 +1334,104 @@ h6.doc-heading {
   right: 0;
   text-align: center;
 }
+
+/* Sources: the folders and files the library follows (Manage in the library menu lands here). */
+
+.library-sources {
+  margin-top: var(--space-7);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border);
+  scroll-margin-top: var(--space-4);
+}
+
+.library-sources-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+}
+
+.library-sources-title {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.library-sources-count {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.library-sources-search {
+  margin-left: auto;
+}
+
+.library-sources-search input {
+  width: 16rem;
+  max-width: 100%;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.875rem;
+}
+
+.library-sources .hint {
+  margin: var(--space-2) 0 var(--space-3);
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.library-sources-missing {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-small);
+  background: var(--surface-sunken);
+  font-size: 0.875rem;
+}
+
+.library-sources-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.library-sources-item {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) 9rem minmax(0, 2fr) auto;
+  gap: var(--space-3);
+  align-items: baseline;
+  padding: var(--space-2) var(--space-4);
+  font-size: 0.9rem;
+}
+
+.library-sources-item + .library-sources-item {
+  border-top: 1px solid var(--border);
+}
+
+.library-sources-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.library-sources-kind {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.library-sources-item[data-available='false'] .library-sources-kind {
+  color: var(--bad);
+}
+
+.library-sources-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
