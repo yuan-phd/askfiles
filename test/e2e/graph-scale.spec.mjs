@@ -541,6 +541,7 @@ test.describe('small library graph', () => {
   test('opens on All with every label and can switch to Local', async ({ page }) => {
     await openGraph(page, small);
     await expect(root(page)).toHaveAttribute('data-view', 'all');
+    await expect(page.locator('.graph-views button')).toHaveText(['All', 'Folders', 'Local']);
     await expect(page.getByTestId('graph-node')).toHaveCount(40);
     await expect(page.locator('[data-testid="graph-label"]:not(.off)')).toHaveCount(40);
     await page.getByTestId('graph-view-local').click();

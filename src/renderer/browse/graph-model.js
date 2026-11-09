@@ -13,7 +13,8 @@ export const LABEL_ZOOM = 1.6;
 /** Label width before the ellipsis, in pixels at the label's 11 px font. */
 export const LABEL_WIDTH = 150;
 
-export const VIEWS = ['local', 'folders', 'all'];
+/** The view switch, in this order. */
+export const VIEWS = ['all', 'folders', 'local'];
 
 const idOf = (end) => (typeof end === 'object' && end ? end.id : end);
 
