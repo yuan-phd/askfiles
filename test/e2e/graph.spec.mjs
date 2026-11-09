@@ -198,7 +198,9 @@ test.describe('graph page', () => {
     expect(await opacity(node(page, 'budget-2026.xlsx'))).toBe('1');
   });
 
-  test('a node opens its Document page; edges open Compare or the referencing passage', async ({ page }) => {
+  test('a double click opens the Document page of a node; edges open Compare or the referencing passage', async ({
+    page,
+  }) => {
     await openGraphPage(page);
     const headings = graphData.edges.find((e) => e.kind === 'headings');
     expect(headings, 'the two leave policies share headings').toBeTruthy();
@@ -222,7 +224,7 @@ test.describe('graph page', () => {
 
     await page.getByTestId('browse-tab-graph').click();
     await expect(page.getByTestId('graph-root')).toHaveAttribute('data-settled', 'true', { timeout: 20_000 });
-    await node(page, 'budget-2026.xlsx').click({ force: true });
+    await node(page, 'budget-2026.xlsx').dblclick({ force: true });
     await expect(page.getByTestId('doc-title')).toHaveText('budget-2026.xlsx');
   });
 
@@ -231,7 +233,7 @@ test.describe('graph page', () => {
   }) => {
     await page.setViewportSize({ width: 1200, height: 520 });
     await openGraphPage(page);
-    await node(page, 'it-handbook.pdf').click({ force: true });
+    await node(page, 'it-handbook.pdf').dblclick({ force: true });
     await expect(page.getByTestId('doc-title')).toHaveText('it-handbook.pdf');
     const content = page.getByTestId('browse-content');
     await expect(content).not.toHaveClass(/graph-on/);

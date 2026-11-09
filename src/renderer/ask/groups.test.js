@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { consideredTitle, sourceGroups } from './groups.js';
+import { consideredChevron, consideredTitle, sourceGroups } from './groups.js';
 
 const card = (n) => ({ n, file: `garden-${n}.md`, title: `Section ${n}`, passage: `Text ${n}.` });
 const numbers = (g) => ({
@@ -58,9 +58,11 @@ describe('sourceGroups', () => {
 
 describe('consideredTitle', () => {
   it('says what opening or closing does, with the count', () => {
-    expect(consideredTitle(3, false)).toBe('▸ Show 3 more sections');
-    expect(consideredTitle(3, true)).toBe('▾ Hide 3 sections');
-    expect(consideredTitle(1, false)).toBe('▸ Show 1 more section');
-    expect(consideredTitle(1, true)).toBe('▾ Hide 1 section');
+    expect(consideredTitle(3, false)).toBe('Show 3 more sections');
+    expect(consideredTitle(3, true)).toBe('Hide 3 sections');
+    expect(consideredTitle(1, false)).toBe('Show 1 more section');
+    expect(consideredTitle(1, true)).toBe('Hide 1 section');
+    expect(consideredChevron(false)).toBe('⌄');
+    expect(consideredChevron(true)).toBe('⌃');
   });
 });

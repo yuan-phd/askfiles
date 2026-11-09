@@ -140,6 +140,33 @@ function hubOf(lib) {
     .sort((a, b) => a.displayName.localeCompare(b.displayName))[0];
 }
 
+/** Pairs of labels on screen whose boxes overlap (more than half a pixel), as [id, id]. */
+function overlaps(page) {
+  return page.evaluate(() => {
+    const boxes = [...document.querySelectorAll('[data-testid="graph-label"]')]
+      .filter((t) => window.getComputedStyle(t).display !== 'none')
+      .map((t) => ({ id: t.dataset.id, r: t.getBoundingClientRect() }))
+      .filter((b) => b.r.width > 0);
+    const out = [];
+    for (let i = 0; i < boxes.length; i++)
+      for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i].r;
+        const b = boxes[j].r;
+        const w = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+        const h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+        if (w > 0.5 && h > 0.5) out.push([boxes[i].id, boxes[j].id]);
+      }
+    return out;
+  });
+}
+
+/** Labels are placed again a frame after a zoom; waits two frames. */
+async function settledLabels(page) {
+  await page.evaluate(() => new Promise((r) => window.requestAnimationFrame(() => window.requestAnimationFrame(r))));
+}
+
+const opacityOf = (page, id) => page.locator(`[data-testid="graph-node"][data-id="${id}"]`).getAttribute('opacity');
+
 /** Zooms in with the wheel over the middle of the graph until the zoom passes k. */
 async function zoomPast(page, k) {
   const box = await page.getByTestId('graph-svg').boundingBox();
@@ -182,9 +209,9 @@ test.describe('large library graph', () => {
     await page.getByTestId('graph-second-hop').uncheck();
     await settled(page);
 
-    // A click on a neighbour recentres on it.
+    // A double click on a neighbour recentres on it.
     const next = [...near].sort()[0];
-    await page.locator(`[data-testid="graph-node"][data-id="${next}"]`).click({ force: true });
+    await page.locator(`[data-testid="graph-node"][data-id="${next}"]`).dblclick({ force: true });
     await expect(root(page)).toHaveAttribute('data-center', next);
     await settled(page);
     await expect(page.locator(`[data-testid="graph-node"][data-id="${hub.id}"]`)).toHaveCount(1);
@@ -285,6 +312,8 @@ test.describe('large library graph', () => {
     // Zoomed in past the set level, every label shows.
     expect(await zoomPast(page, 1.6)).toBeGreaterThanOrEqual(1.6);
     await expect(shown).toHaveCount(900);
+    await settledLabels(page);
+    expect(await overlaps(page)).toEqual([]);
   });
 
   test('labels use the display name, cut with an ellipsis, the full name on hover', async ({ page }) => {
@@ -322,6 +351,182 @@ test.describe('large library graph', () => {
     // Back returns to the document.
     await page.getByTestId('browse-back').click();
     await expect(page.getByTestId('doc-title')).toHaveText(other.title);
+  });
+});
+
+test.describe('selection', () => {
+  test('a click selects a document: it and its links lit, the rest dimmed, its card pinned; Esc and empty space clear', async ({
+    page,
+  }) => {
+    await openGraph(page, large);
+    await page.getByTestId('graph-view-all').click();
+    await settled(page);
+    const hub = hubOf(large);
+    const near = neighboursOf(large, hub.id);
+    const far = large.data.nodes.find((n) => n.id !== hub.id && !near.has(n.id)).id;
+    await page.locator(`[data-testid="graph-node"][data-id="${hub.id}"]`).click({ force: true });
+    // Selecting does not leave the graph.
+    await expect(page.getByTestId('graph')).toBeVisible();
+    await expect(root(page)).toHaveAttribute('data-selected', hub.id);
+    await expect(page.locator(`[data-testid="graph-node"][data-id="${hub.id}"]`)).toHaveClass(/selected/);
+    expect(await opacityOf(page, hub.id)).toBe('1');
+    for (const id of near) expect(await opacityOf(page, id)).toBe('1');
+    expect(await opacityOf(page, far)).toBe('0.1');
+    // Its links are lit, and only its links.
+    expect(await page.locator('line.link.lit').count()).toBe(near.size);
+    // The labels of the selected document and what it links to show.
+    for (const id of [hub.id, ...near])
+      await expect(page.locator(`[data-testid="graph-label"][data-id="${id}"]`)).not.toHaveClass(/off/);
+    // The card is pinned: it stays where it is when the mouse moves on.
+    const card = page.getByTestId('graph-card');
+    await expect(card).toBeVisible();
+    await expect(card.locator('.tip-title')).toHaveText(hub.displayName);
+    const at = await card.boundingBox();
+    await page.locator(`[data-testid="graph-node"][data-id="${far}"]`).hover({ force: true });
+    expect(await card.boundingBox()).toEqual(at);
+    // Hover does not take the selection's lighting away.
+    expect(await opacityOf(page, far)).toBe('0.1');
+    await page.mouse.move(2, 2);
+
+    await page.keyboard.press('Escape');
+    await expect(card).toBeHidden();
+    await expect(root(page)).not.toHaveAttribute('data-selected', /./);
+    expect(await opacityOf(page, far)).toBe('1');
+
+    await page.locator(`[data-testid="graph-node"][data-id="${hub.id}"]`).click({ force: true });
+    await expect(card).toBeVisible();
+    // Empty space: the bottom right corner of the graph.
+    const box = await page.getByTestId('graph-svg').boundingBox();
+    await page.mouse.click(box.x + box.width - 4, box.y + box.height - 4);
+    await expect(card).toBeHidden();
+  });
+
+  test('the card opens the document or shows it in Local; a double click opens the document', async ({ page }) => {
+    await openGraph(page, large);
+    await page.getByTestId('graph-view-all').click();
+    await settled(page);
+    const hub = hubOf(large);
+    const nodeOf = (id) => page.locator(`[data-testid="graph-node"][data-id="${id}"]`);
+    await nodeOf(hub.id).click({ force: true });
+    await page.getByTestId('graph-card-local').click();
+    await expect(root(page)).toHaveAttribute('data-view', 'local');
+    await expect(root(page)).toHaveAttribute('data-center', hub.id);
+    await settled(page);
+
+    await page.getByTestId('graph-view-all').click();
+    await settled(page);
+    await nodeOf(hub.id).click({ force: true });
+    await page.getByTestId('graph-card-open').click();
+    await expect(page.getByTestId('doc-title')).toHaveText(hub.title);
+
+    await page.getByTestId('browse-tab-graph').click();
+    await settled(page);
+    await nodeOf(hub.id).dblclick({ force: true });
+    await expect(page.getByTestId('doc-title')).toHaveText(hub.title);
+  });
+
+  test('in Local a click selects; Show in Local or a double click recentres; a double click on the centre opens it; settles in about 2 s', async ({
+    page,
+  }) => {
+    const hub = hubOf(large);
+    await openLibrary(page, large);
+    await page.locator(`[data-testid="library-item"][data-id="${hub.id}"] [data-testid="library-show-graph"]`).click();
+    await settled(page);
+    const ms = Number(await root(page).getAttribute('data-settle-ms'));
+    timings.localSettleMs = ms;
+    expect(ms, 'Local settles within about 2 s').toBeLessThan(2500);
+    const [a, b] = [...neighboursOf(large, hub.id)].sort();
+    const nodeOf = (id) => page.locator(`[data-testid="graph-node"][data-id="${id}"]`);
+
+    await nodeOf(a).click({ force: true });
+    await expect(root(page)).toHaveAttribute('data-center', hub.id);
+    await expect(root(page)).toHaveAttribute('data-selected', a);
+    await page.getByTestId('graph-card-local').click();
+    await expect(root(page)).toHaveAttribute('data-center', a);
+    await expect(page.getByTestId('graph-card')).toBeHidden();
+    await settled(page);
+
+    await nodeOf(hub.id).dblclick({ force: true });
+    await expect(root(page)).toHaveAttribute('data-center', hub.id);
+    await settled(page);
+    await nodeOf(b).dblclick({ force: true });
+    await expect(root(page)).toHaveAttribute('data-center', b);
+    await settled(page);
+    await nodeOf(b).dblclick({ force: true });
+    await expect(page.getByTestId('doc-title')).toHaveText(large.data.nodes.find((n) => n.id === b).title);
+  });
+
+  test('Folders: with a document selected, opening a folder lights only its documents linked to it', async ({
+    page,
+  }) => {
+    await openGraph(page, large);
+    await page.getByTestId('graph-view-folders').click();
+    await settled(page);
+    const keyOf = (rel) => {
+      const p = rel.split('/');
+      return p.length === 1 ? 'added:' : p.length === 2 ? `top:${p[0]}` : `sub:${p[0]}/${p[1]}`;
+    };
+    const groupOf = new Map(large.data.nodes.map((n) => [n.id, keyOf(n.relPath)]));
+    // A document with a link into another folder.
+    const cross = large.data.edges.find((e) => groupOf.get(e.source) !== groupOf.get(e.target));
+    const [x, y] = [cross.source, cross.target];
+    const other = groupOf.get(y);
+    await page.locator(`[data-testid="graph-group"][data-key="${groupOf.get(x)}"]`).click({ force: true });
+    await settled(page);
+    await page.locator(`[data-testid="graph-node"][data-id="${x}"]`).click({ force: true });
+    await expect(root(page)).toHaveAttribute('data-selected', x);
+    // Before: the link ends at the folder.
+    const hitBetween = (a, b) =>
+      page.locator(`.link-hit[data-source="${a < b ? a : b}"][data-target="${a < b ? b : a}"]`);
+    await expect(hitBetween(x, `group:${other}`)).toHaveCount(1);
+
+    await page.locator(`[data-testid="graph-group"][data-key="${other}"]`).click({ force: true });
+    await settled(page);
+    await expect(root(page)).toHaveAttribute('data-selected', x);
+    await expect(page.getByTestId('graph-card')).toBeVisible();
+    const inOther = large.data.nodes.filter((n) => groupOf.get(n.id) === other).map((n) => n.id);
+    const linked = new Set(
+      large.data.edges.flatMap((e) => (e.source === x ? [e.target] : e.target === x ? [e.source] : [])),
+    );
+    const opacities = await page.$$eval(
+      '[data-testid="graph-node"]',
+      (els, ids) => els.filter((e) => ids.includes(e.dataset.id)).map((e) => [e.dataset.id, e.getAttribute('opacity')]),
+      inOther,
+    );
+    expect(opacities).toHaveLength(inOther.length);
+    for (const [id, o] of opacities) expect(o, id).toBe(linked.has(id) ? '1' : '0.1');
+    expect(opacities.filter(([, o]) => o === '0.1').length).toBeGreaterThan(0);
+    // After: the selected document's links run to those documents, not to the folder.
+    await expect(hitBetween(x, `group:${other}`)).toHaveCount(0);
+    await expect(hitBetween(x, y).first()).toHaveAttribute('data-testid', 'graph-edge');
+    expect(await page.locator('line.link.lit').count()).toBeGreaterThan(0);
+  });
+
+  test('labels never run into each other: a dense small library', async ({ page }) => {
+    // 40 documents all linked to each other, every label shown.
+    await openGraph(page, small);
+    await settled(page);
+    expect(await overlaps(page)).toEqual([]);
+    expect(Number(await root(page).getAttribute('data-labels'))).toBeGreaterThan(10);
+  });
+
+  test('labels never run into each other: Folders with an open folder and a selection', async ({ page }) => {
+    await openGraph(page, large);
+    await page.getByTestId('graph-view-folders').click();
+    await settled(page);
+    expect(await overlaps(page)).toEqual([]);
+    await page
+      .locator('[data-testid="graph-group"][data-key="sub:Cooperative Records/Governance"]')
+      .click({ force: true });
+    await settled(page);
+    expect(await overlaps(page)).toEqual([]);
+    // Every folder label still shows next to the documents' labels.
+    expect(await page.locator('[data-testid="graph-label"].role-group.crowded').count()).toBe(0);
+    const doc = await page.locator('[data-testid="graph-node"]').first().getAttribute('data-id');
+    await page.locator(`[data-testid="graph-node"][data-id="${doc}"]`).click({ force: true });
+    await settledLabels(page);
+    expect(await overlaps(page)).toEqual([]);
+    await expect(page.locator(`[data-testid="graph-label"][data-id="${doc}"]`)).not.toHaveClass(/off|crowded/);
   });
 });
 
@@ -381,6 +586,28 @@ test.describe('screenshots of the 900-document library', () => {
       await settled(page);
       await page.mouse.move(2, 2);
       await page.screenshot({ path: `${SHOTS}/folders-expanded-${scheme}.png` });
+      // A document with a link into another folder, selected, and that folder opened.
+      const keyOf = (id) => {
+        const p = large.data.nodes.find((n) => n.id === id).relPath.split('/');
+        return p.length === 1 ? 'added:' : p.length === 2 ? `top:${p[0]}` : `sub:${p[0]}/${p[1]}`;
+      };
+      const cross = large.data.edges.find(
+        (e) =>
+          keyOf(e.source) !== keyOf(e.target) &&
+          keyOf(e.source).startsWith('sub:') &&
+          keyOf(e.target).startsWith('sub:'),
+      );
+      expect(cross, 'two subfolders are linked').toBeTruthy();
+      await page.locator('[data-testid="graph-collapse"]').click();
+      await settled(page);
+      await page.locator(`[data-testid="graph-group"][data-key="${keyOf(cross.source)}"]`).click({ force: true });
+      await settled(page);
+      await page.locator(`[data-testid="graph-node"][data-id="${cross.source}"]`).click({ force: true });
+      await page.locator(`[data-testid="graph-group"][data-key="${keyOf(cross.target)}"]`).click({ force: true });
+      await settled(page);
+      await page.mouse.move(2, 2);
+      await page.screenshot({ path: `${SHOTS}/folders-selected-${scheme}.png` });
+      await page.keyboard.press('Escape');
 
       await page.getByTestId('graph-view-all').click();
       await settled(page);
@@ -388,6 +615,11 @@ test.describe('screenshots of the 900-document library', () => {
       await page.getByTestId('graph-search').fill('Pressure Management');
       await page.getByTestId('graph-search').blur();
       await page.screenshot({ path: `${SHOTS}/all-search-${scheme}.png` });
+      await page.getByTestId('graph-search').fill('');
+      await page.locator(`[data-testid="graph-node"][data-id="${hub.id}"]`).click({ force: true });
+      await page.mouse.move(2, 2);
+      await settledLabels(page);
+      await page.screenshot({ path: `${SHOTS}/all-selected-${scheme}.png` });
     });
   }
 });

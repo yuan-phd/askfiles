@@ -90,7 +90,14 @@ test.describe('Ask page with the answer pipeline stubbed', () => {
       const summary = g.considered.locator('summary');
       await expect(summary).toHaveCSS('font-weight', '600');
       await expect(summary).toHaveCSS('font-size', '14px');
-      await expect(summary).toHaveText('▸ Show 1 more section');
+      await expect(summary).toHaveText('Show 1 more section ⌄');
+      // The same chevron as Compare's Show more: its own span, 1.3 times the text, the text's colour.
+      const chevron = summary.locator('.chevron');
+      await expect(chevron).toHaveAttribute('aria-hidden', 'true');
+      await expect(chevron).toHaveCSS('font-size', '18.2px');
+      expect(await chevron.evaluate((c) => window.getComputedStyle(c).color)).toBe(
+        await summary.evaluate((s) => window.getComputedStyle(s).color),
+      );
     });
 
     test('one starred sentence: its section is in the open group after the sources, the rest stays collapsed', async ({
@@ -189,7 +196,7 @@ test.describe('Ask page with the answer pipeline stubbed', () => {
       ]);
       expect(new Set(shown.map((x) => x.cls)).size).toBe(1);
       expect(shown.every((x) => x.visible)).toBe(true);
-      await expect(g.considered.locator('summary')).toHaveText('▾ Hide 2 sections');
+      await expect(g.considered.locator('summary')).toHaveText('Hide 2 sections ⌃');
       // Display only: the path shows the logical section once, the page in its own line, and the
       // printed page number at the start of a passage is not shown.
       const nest = g.sources.getByTestId('source-card');
@@ -259,9 +266,9 @@ test.describe('Ask page with the answer pipeline stubbed', () => {
     await expect(considered).toBeVisible();
     await expect(considered).not.toHaveAttribute('open', '');
     await expect(considered.getByTestId('source-card')).toBeHidden();
-    await expect(considered.locator('summary')).toHaveText('▸ Show 1 more section');
+    await expect(considered.locator('summary')).toHaveText('Show 1 more section ⌄');
     await considered.locator('summary').click();
-    await expect(considered.locator('summary')).toHaveText('▾ Hide 1 section');
+    await expect(considered.locator('summary')).toHaveText('Hide 1 section ⌃');
     await expect(considered.getByTestId('source-card')).toHaveCount(1);
     await expect(considered.getByTestId('source-section')).toHaveText('Facilities > Parking');
     await expect(considered.getByTestId('source-number')).toHaveText(['[3]']);

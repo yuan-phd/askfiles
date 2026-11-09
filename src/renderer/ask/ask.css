@@ -618,8 +618,19 @@ span.cite {
   font-weight: 600;
   color: var(--text-muted);
   margin-bottom: var(--space-3);
-  /* The title carries its own ▸ and ▾. */
+  /* The title carries its own chevron, ⌄ closed and ⌃ open, as Compare's Show more. */
   list-style: none;
+}
+
+.considered summary .chevron {
+  display: inline-block;
+  font-size: 1.3em;
+  line-height: 0;
+  transform: translateY(-0.18em);
+}
+
+.considered[open] summary .chevron {
+  transform: translateY(0.3em);
 }
 
 .considered summary::-webkit-details-marker {

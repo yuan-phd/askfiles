@@ -9,7 +9,7 @@ import { createClient, generateApiKey } from '../api/client.js';
 import { createHistory, isBackKey } from '../shared/history.js';
 import { lockLine, mountTopBar } from '../shared/topbar.js';
 import { displayPath, withoutLeadingPageNumber } from '../shared/display.js';
-import { consideredTitle, sourceGroups } from './groups.js';
+import { consideredChevron, consideredTitle, sourceGroups } from './groups.js';
 
 const RECENT_LIMIT = 12;
 const RECENT_KEY = 'askfiles.recentQuestions';
@@ -311,7 +311,16 @@ function renderCards({ sent, cited, considered, drawn }) {
   els.consideredList.replaceChildren(...g.considered.map((c) => cardNode(c)));
   els.considered.hidden = g.considered.length === 0;
   els.considered.open = false;
-  els.consideredTitle.textContent = consideredTitle(g.considered.length, false);
+  setConsideredTitle(g.considered.length, false);
+}
+
+/** The words, then the chevron in its own span so it can stand a little taller than them. */
+function setConsideredTitle(count, open) {
+  const chevron = document.createElement('span');
+  chevron.className = 'chevron';
+  chevron.setAttribute('aria-hidden', 'true');
+  chevron.textContent = consideredChevron(open);
+  els.consideredTitle.replaceChildren(document.createTextNode(`${consideredTitle(count, open)} `), chevron);
 }
 
 function preview(text) {
@@ -681,7 +690,7 @@ async function initDeveloper() {
 
 // The collapsed group says what opening it does: Show N other sections, Hide N other sections.
 els.considered.addEventListener('toggle', () => {
-  els.consideredTitle.textContent = consideredTitle(els.consideredList.children.length, els.considered.open);
+  setConsideredTitle(els.consideredList.children.length, els.considered.open);
 });
 
 els.form.addEventListener('submit', (e) => {

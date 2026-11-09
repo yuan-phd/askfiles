@@ -1188,6 +1188,21 @@ h6.doc-heading {
   display: none;
 }
 
+/* A label with no free spot beside its node waits until there is room. */
+.graph .label.crowded {
+  display: none;
+}
+
+/* The selected document. */
+.graph .node.selected {
+  stroke: var(--accent);
+  stroke-width: 3px;
+}
+
+.graph .link.lit {
+  stroke: var(--accent);
+}
+
 .graph .label.role-group {
   font-weight: 600;
 }
@@ -1227,6 +1242,53 @@ h6.doc-heading {
 
 .graph-tooltip {
   pointer-events: none;
+}
+
+/* The selected document's card stays put at the top right, under the tools. */
+.graph-card {
+  position: absolute;
+  z-index: 15;
+  top: calc(var(--space-4) + 76px);
+  right: var(--space-4);
+  width: 280px;
+  max-width: calc(100% - 2 * var(--space-4));
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.graph-card[hidden] {
+  display: none;
+}
+
+.graph-card span,
+.graph-card strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.graph-card .tip-meta {
+  color: var(--text-muted);
+}
+
+.graph-card .tip-summary {
+  margin-top: var(--space-1);
+}
+
+.graph-card .tip-summary.pending {
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+.graph-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
 }
 
 .graph-tooltip span,

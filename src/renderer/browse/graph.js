@@ -81,6 +81,8 @@ export const FOLDER_FORCES = {
  * the outer edge of the cluster. Weak enough that linked documents keep the original shape.
  */
 export const CENTERING = 0.04;
+/** Local: the original's forces with the large views' cooling. */
+export const LOCAL_FORCES = { ...FORCES, alphaDecay: LARGE_FORCES.alphaDecay };
 const OPACITY = { link: 0.6, linkLit: 0.8, linkFaded: 0.05, faded: 0.1, searchFaded: 0.05, searchLinkFaded: 0.02 };
 /** Height of the tools and the bar over the graph's top edge. */
 const TOOLS_HEIGHT = 84;
@@ -181,6 +183,7 @@ export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading, 
     <svg class="graph-svg" data-testid="graph-svg" role="img" aria-label="Documents and how they connect"></svg>
     <div class="graph-tooltip" data-testid="graph-tooltip" role="tooltip" hidden></div>
     <div class="graph-chooser" data-testid="graph-chooser" hidden></div>
+    <div class="graph-card" data-testid="graph-card" role="region" aria-label="Selected document" hidden></div>
     <p class="browse-empty graph-empty" data-testid="graph-empty" hidden></p>
     <p class="browse-empty graph-pick" data-testid="graph-pick" hidden>Search for a document above and choose it to see the documents it links to.</p>`;
   const q = (id) => root.querySelector(`[data-testid="${id}"]`);
@@ -190,6 +193,7 @@ export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading, 
   const searchInput = q('graph-search');
   const results = q('graph-results');
   const bar = q('graph-bar');
+  const card = q('graph-card');
   const state = {
     data: null,
     layout: 'organic',
@@ -198,6 +202,8 @@ export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading, 
     /** Local's centre, a document id. */
     center: null,
     secondHop: false,
+    /** The selected document: lit with its links, its card pinned. Kept across redraws while drawn. */
+    selected: null,
     /** Folders view: the keys of the groups shown as their documents. */
     expanded: new Set(),
     query: '',
@@ -263,25 +269,12 @@ export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading, 
     if (d.role === 'group') {
       tooltip.append(el('strong', 'tip-title', d.label));
       tooltip.append(
-        el('span', 'tip-meta', `${d.count === 1 ? '1 document' : `${d.count} documents`} · click to show them`),
+        el('span', 'tip-meta', `${d.count === 1 ? '1 document' : `${d.count} documents`} · click to open it`),
       );
     } else if (d.role === 'more') {
       tooltip.append(el('strong', 'tip-title', d.label));
       tooltip.append(el('span', 'tip-meta', 'Click to list them'));
-    } else {
-      // The full name; the label may be cut.
-      tooltip.append(el('strong', 'tip-title', nameOf(d)));
-      const meta = [typeLabelOf(d.type), d.sectionCount === 1 ? '1 section' : `${d.sectionCount} sections`];
-      if (d.date) meta.push(d.date.value);
-      tooltip.append(el('span', 'tip-meta', d.title));
-      tooltip.append(el('span', 'tip-meta', meta.join(' · ')));
-      const s = summaryLine(d);
-      if (s) {
-        const p = el('span', `tip-summary${s.pending ? ' pending' : ''}`, s.text);
-        p.dataset.testid = 'graph-tooltip-summary';
-        tooltip.append(p);
-      }
-    }
+    } else docFacts(tooltip, d);
     tooltip.hidden = false;
     placeFloating(tooltip, event);
   }
@@ -312,6 +305,62 @@ export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading, 
     }
     tooltip.hidden = false;
     placeFloating(tooltip, event);
+  }
+
+  /** The facts of a document, for the hover tooltip and the pinned card alike. */
+  function docFacts(box, d) {
+    // The full name; the label may be cut.
+    box.append(el('strong', 'tip-title', nameOf(d)));
+    const meta = [typeLabelOf(d.type), d.sectionCount === 1 ? '1 section' : `${d.sectionCount} sections`];
+    if (d.date) meta.push(d.date.value);
+    box.append(el('span', 'tip-meta', d.title));
+    box.append(el('span', 'tip-meta', meta.join(' · ')));
+    const s = summaryLine(d);
+    if (s) {
+      const p = el('span', `tip-summary${s.pending ? ' pending' : ''}`, s.text);
+      p.dataset.testid = box === card ? 'graph-card-summary' : 'graph-tooltip-summary';
+      box.append(p);
+    }
+  }
+
+  /** The selected document's card, pinned at the top right: its facts, Open document and Show in Local. */
+  function renderCard() {
+    const d = state.selected && state.data?.nodes.find((n) => n.id === state.selected);
+    if (!d) {
+      card.hidden = true;
+      card.replaceChildren();
+      return;
+    }
+    card.replaceChildren();
+    docFacts(card, d);
+    const actions = el('div', 'graph-card-actions');
+    const open = el('button', 'link', 'Open document');
+    open.type = 'button';
+    open.dataset.testid = 'graph-card-open';
+    open.addEventListener('click', () => onOpenDocument(d.id, {}));
+    const local = el('button', 'link', 'Show in Local');
+    local.type = 'button';
+    local.dataset.testid = 'graph-card-local';
+    local.addEventListener('click', () => setCenter(d.id, { user: true }));
+    actions.append(open, local);
+    card.append(actions);
+    card.hidden = false;
+  }
+
+  /** Selects a document: it and its links lit, the rest dimmed, its card pinned. No redraw. */
+  function select(id) {
+    hideTooltip();
+    closeChooser();
+    state.selected = id;
+    renderCard();
+    applySearch();
+  }
+
+  function clearSelection() {
+    if (!state.selected) return;
+    state.selected = null;
+    renderCard();
+    applySearch();
   }
 
   function closeChooser() {
@@ -428,6 +477,9 @@ export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading, 
       const grouping = folderGroups(data.nodes, new Map(data.profile.types.map((t) => [t.name, t.label])));
       // Expanded groups that are gone (a folder emptied) are forgotten.
       for (const k of state.expanded) if (!grouping.groups.some((g) => g.key === k)) state.expanded.delete(k);
+      // A selected document is drawn: its folder is open.
+      const selectedGroup = state.selected && grouping.groupOf.get(state.selected);
+      if (selectedGroup) state.expanded.add(selectedGroup);
       const s = folderScene(data, state.expanded, grouping);
       const count = s.nodes.length;
       const golden = Math.PI * (3 - Math.sqrt(5));
@@ -506,30 +558,52 @@ export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading, 
     return { matched, connected: withNeighbours(matched, scene.links) };
   }
 
-  /** filterGraph, selecting by class so the legend is never touched. */
+  /** The selected document when it is drawn in this view, else null. */
+  function selectedShown() {
+    const id = state.selected;
+    return id && selections?.scene.nodes.some((n) => n.id === id && n.role === 'doc') ? id : null;
+  }
+
+  /**
+   * What is lit, strongest first: a selected document and its links; else the node under the
+   * mouse and its neighbours; else a search's matches and their neighbours (filterGraph, by class
+   * so the legend is never touched); else everything.
+   */
   function applySearch() {
     if (!selections || !state.data) return;
-    const { node, label, link, hit } = selections;
+    const { node, label, link, scene } = selections;
     const sets = searchSets();
     selections.searchLit = sets?.connected ?? null;
-    if (!sets) {
-      node.attr('opacity', 1).classed('match', false);
+    root.dataset.searching = sets ? 'true' : 'false';
+    node.classed('match', (d) => !!sets?.matched.has(d.id));
+    const sel = selectedShown();
+    node.classed('selected', (d) => d.id === sel);
+    if (sel) root.dataset.selected = sel;
+    else delete root.dataset.selected;
+    const touches = (e, id) => idOf(e.source) === id || idOf(e.target) === id;
+    const focus = sel ?? selections.hoverId;
+    selections.selLit = sel ? withNeighbours(new Set([sel]), scene.links) : null;
+    if (focus) {
+      const lit = sel ? selections.selLit : selections.hoverLit;
+      node.attr('opacity', (n) => (lit.has(n.id) ? 1 : OPACITY.faded));
+      label.attr('opacity', (n) => (lit.has(n.id) ? 1 : OPACITY.faded));
+      link
+        .attr('stroke-opacity', (e) => (touches(e, focus) ? OPACITY.linkLit : OPACITY.linkFaded))
+        .classed('lit', (e) => !!sel && touches(e, sel));
+    } else if (sets) {
+      const { connected } = sets;
+      node.attr('opacity', (d) => (connected.has(d.id) ? 1 : OPACITY.searchFaded));
+      label.attr('opacity', (d) => (connected.has(d.id) ? 1 : OPACITY.searchFaded));
+      link
+        .attr('stroke-opacity', (e) =>
+          connected.has(idOf(e.source)) && connected.has(idOf(e.target)) ? OPACITY.linkLit : OPACITY.searchLinkFaded,
+        )
+        .classed('lit', false);
+    } else {
+      node.attr('opacity', 1);
       label.attr('opacity', 1);
-      link.attr('stroke-opacity', OPACITY.link);
-      hit.classed('dim', false);
-      root.dataset.searching = 'false';
-      updateLabels();
-      return;
+      link.attr('stroke-opacity', OPACITY.link).classed('lit', false);
     }
-    const { matched, connected } = sets;
-    node
-      .attr('opacity', (d) => (connected.has(d.id) ? 1 : OPACITY.searchFaded))
-      .classed('match', (d) => matched.has(d.id));
-    label.attr('opacity', (d) => (connected.has(d.id) ? 1 : OPACITY.searchFaded));
-    link.attr('stroke-opacity', (e) =>
-      connected.has(idOf(e.source)) && connected.has(idOf(e.target)) ? OPACITY.linkLit : OPACITY.searchLinkFaded,
-    );
-    root.dataset.searching = 'true';
     updateLabels();
   }
 
@@ -538,13 +612,15 @@ export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading, 
     if (!selections) return;
     const { scene, label } = selections;
     const all = scene.labelsAlways || state.zoomK >= LABEL_ZOOM;
-    const hover = selections.hoverLit;
+    const hover = selections.selLit ? null : selections.hoverLit;
     const lit = selections.searchLit;
+    const sel = selections.selLit;
     label.classed(
       'off',
-      (d) => !(all || d.role !== 'doc' || scene.top.has(d.id) || hover?.has(d.id) || lit?.has(d.id)),
+      (d) => !(all || d.role !== 'doc' || scene.top.has(d.id) || hover?.has(d.id) || lit?.has(d.id) || sel?.has(d.id)),
     );
-    root.dataset.labels = String(label.filter(':not(.off)').size());
+    selections.placeLabels();
+    root.dataset.labels = String(label.filter(':not(.off):not(.crowded)').size());
   }
 
   /** The results list under the search box: documents of the whole library, by name. */
@@ -663,6 +739,10 @@ export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading, 
         chip.dataset.key = g.key;
         chip.addEventListener('click', () => {
           state.expanded.delete(g.key);
+          if (state.selected && g.members.includes(state.selected)) {
+            state.selected = null;
+            renderCard();
+          }
           void render();
         });
         bar.append(chip);
@@ -736,7 +816,9 @@ export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading, 
     const scene = sceneOf(data, width, height);
     const { nodes, links, layered, bands } = scene;
     const folders = state.view === 'folders';
-    const forces = folders ? FOLDER_FORCES : scene.large ? LARGE_FORCES : FORCES;
+    const local = state.view === 'local';
+    // Local keeps the original's forces but cools as fast as the large views, so it rests in about 2 s.
+    const forces = folders ? FOLDER_FORCES : scene.large ? LARGE_FORCES : local ? LOCAL_FORCES : FORCES;
     // Labels of a large drawing keep their size on screen when the view is zoomed out to fit it.
     const scaleLabels = scene.large || folders;
     const linkCount = {};
@@ -770,8 +852,9 @@ export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading, 
         const before = state.zoomK >= LABEL_ZOOM;
         state.zoomK = event.transform.k;
         root.dataset.zoom = state.zoomK.toFixed(2);
-        if (before !== state.zoomK >= LABEL_ZOOM) updateLabels();
         if (scaleLabels) sizeLabels(state.zoomK);
+        if (before !== state.zoomK >= LABEL_ZOOM) updateLabels();
+        else if (scaleLabels) placeSoon();
       });
     svg.call(zoom);
 
@@ -802,8 +885,8 @@ export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading, 
         d3
           .forceCollide()
           .radius(
-            forces === FORCES
-              ? FORCES.collide
+            !folders && !scene.large
+              ? forces.collide
               : (d) => d.r + (folders && d.role === 'group' ? forces.groupCollide : forces.collide),
           ),
       );
@@ -915,57 +998,162 @@ export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading, 
       .attr('data-testid', 'graph-label')
       .attr('data-id', (d) => d.id)
       .text((d) => d.short)
-      .attr('font-size', 11)
-      .attr('text-anchor', (d) => (d.role === 'group' || d.role === 'more' ? 'middle' : null))
-      .attr('dx', (d) => (d.role === 'doc' ? (scaleLabels ? d.r + 4 : labelOffset(linkCount[d.id] || 0)) : 0))
-      .attr('dy', (d) => (d.role === 'group' ? d.r + 14 : 4));
+      .attr('font-size', 11);
 
-    /** Label size and offset for zoom k: 11 px on screen below zoom 1, growing with the view above it. */
-    function sizeLabels(k) {
-      const s = 1 / Math.min(1, k);
-      label
-        .attr('font-size', 11 * s)
-        .attr('dx', (d) => (d.role === 'doc' ? d.r + 4 * s : 0))
-        .attr('dy', (d) => (d.role === 'group' ? d.r + 14 * s : 4 * s));
+    /** The label's font scale: 1, or 1 / zoom below zoom 1 in a large drawing, so it keeps 11 px on screen. */
+    const labelScale = () => (scaleLabels ? 1 / Math.min(1, state.zoomK) : 1);
+
+    function sizeLabels() {
+      label.attr('font-size', 11 * labelScale());
+    }
+
+    /**
+     * Where each label goes beside its node, in order of preference: right (the original's offset),
+     * left, below, above, then right and left a line higher or lower. A folder's label goes below
+     * it first. dy is the baseline.
+     */
+    function spots(d, s) {
+      if (d.role === 'more') return [{ dx: 0, dy: 4 * s, anchor: 'middle' }];
+      const r = d.r;
+      const gap = 4 * s;
+      const line = 13 * s;
+      const right = d.role === 'doc' && !scaleLabels ? labelOffset(linkCount[d.id] || 0) : r + gap;
+      const side = [
+        { dx: right, dy: 4 * s, anchor: 'start' },
+        { dx: -(r + gap), dy: 4 * s, anchor: 'end' },
+      ];
+      const below = { dx: 0, dy: r + 11 * s, anchor: 'middle' };
+      const above = { dx: 0, dy: -(r + 4 * s), anchor: 'middle' };
+      const shifted = [
+        { dx: right, dy: 4 * s - line, anchor: 'start' },
+        { dx: right, dy: 4 * s + line, anchor: 'start' },
+        { dx: -(r + gap), dy: 4 * s - line, anchor: 'end' },
+        { dx: -(r + gap), dy: 4 * s + line, anchor: 'end' },
+      ];
+      if (d.role === 'group') return [{ dx: 0, dy: r + 14 * s, anchor: 'middle' }, above, ...side, ...shifted];
+      return [...side, below, above, ...shifted];
+    }
+
+    /**
+     * Places the labels shown so that none runs into another or into a folder's circle. The most
+     * important go first (the selected document, what it links to, folders, search matches, the
+     * most linked); each takes the first spot that is free. A label with no free spot is held back
+     * (class crowded) until there is room: after a zoom, a move or a new selection.
+     */
+    function placeLabels() {
+      const s = labelScale();
+      const fs = 11 * s;
+      const els = label.nodes();
+      const items = [];
+      label.classed('crowded', false);
+      els.forEach((elmt, i) => {
+        const d = elmt.__data__;
+        if (elmt.classList.contains('off')) return;
+        items.push({ elmt, d, i });
+      });
+      // Read every width first, then write: no layout between the writes.
+      for (const it of items) {
+        if (it.d.w11 == null) {
+          const size = parseFloat(it.elmt.getAttribute('font-size')) || 11;
+          const w = it.elmt.getComputedTextLength();
+          if (w > 0) it.d.w11 = (w * 11) / size;
+        }
+      }
+      const sel = selections?.selLit;
+      const lit = selections?.searchLit;
+      const rank = (d) =>
+        d.id === state.selected
+          ? 0
+          : sel?.has(d.id)
+            ? 1
+            : d.role !== 'doc'
+              ? 2
+              : lit?.has(d.id)
+                ? 3
+                : scene.top.has(d.id)
+                  ? 4
+                  : 5;
+      items.sort((a, b) => rank(a.d) - rank(b.d) || a.i - b.i);
+      const pad = 1.5 * s;
+      const boxes = [];
+      for (const n of nodes)
+        if (n.role === 'group') boxes.push({ x0: n.x - n.r, x1: n.x + n.r, y0: n.y - n.r, y1: n.y + n.r, id: n.id });
+      const hits = (b, own) =>
+        boxes.some((o) => o.id !== own && b.x0 < o.x1 && b.x1 > o.x0 && b.y0 < o.y1 && b.y1 > o.y0);
+      for (const it of items) {
+        const { d } = it;
+        const w = (d.w11 ?? labelWidth(d.short)) * s;
+        let chosen = null;
+        let box = null;
+        for (const p of spots(d, s)) {
+          const x0 = d.x + p.dx - (p.anchor === 'end' ? w : p.anchor === 'middle' ? w / 2 : 0);
+          const y0 = d.y + p.dy - 0.95 * fs;
+          const b = { x0: x0 - pad, x1: x0 + w + pad, y0: y0 - pad, y1: d.y + p.dy + 0.3 * fs + pad, id: d.id };
+          if (d.role === 'more' || !hits(b, d.id)) {
+            chosen = p;
+            box = b;
+            break;
+          }
+        }
+        if (!chosen) {
+          it.elmt.classList.add('crowded');
+          continue;
+        }
+        boxes.push({ ...box, id: `label:${d.id}` });
+        it.elmt.setAttribute('dx', String(chosen.dx));
+        it.elmt.setAttribute('dy', String(chosen.dy));
+        it.elmt.setAttribute('text-anchor', chosen.anchor);
+      }
+      root.dataset.crowded = String(label.filter('.crowded').size());
+    }
+
+    let placeFrame = 0;
+    /** Places the labels again at the next frame, once however many zoom events come before it. */
+    function placeSoon() {
+      if (placeFrame) return;
+      placeFrame = window.requestAnimationFrame(() => {
+        placeFrame = 0;
+        if (selections?.label === label) placeLabels();
+      });
     }
 
     const neighbours = (id) => withNeighbours(new Set([id]), links);
     node.on('mouseover', function (event, d) {
-      const connected = neighbours(d.id);
-      node.attr('opacity', (n) => (connected.has(n.id) ? 1 : OPACITY.faded));
-      link.attr('stroke-opacity', (e) =>
-        idOf(e.source) === d.id || idOf(e.target) === d.id ? OPACITY.linkLit : OPACITY.linkFaded,
-      );
-      label.attr('opacity', (n) => (connected.has(n.id) ? 1 : OPACITY.faded));
-      selections.hoverLit = connected;
-      updateLabels();
+      // A selection outlasts hover: the tooltip shows, the lighting stays the selection's.
+      selections.hoverId = d.id;
+      selections.hoverLit = neighbours(d.id);
+      if (!selectedShown()) applySearch();
       root.dataset.hover = d.id;
-      showNodeTooltip(event, d);
+      if (d.id !== state.selected) showNodeTooltip(event, d);
     });
-    node.on('mousemove', (event) => placeFloating(tooltip, event));
+    node.on('mousemove', (event) => {
+      if (!tooltip.hidden) placeFloating(tooltip, event);
+    });
     node.on('mouseout', () => {
       delete root.dataset.hover;
       hideTooltip();
+      selections.hoverId = null;
       selections.hoverLit = null;
-      // Back to the search state rather than to full opacity, so hover never clears a search.
-      if (state.query.trim()) applySearch();
-      else {
-        node.attr('opacity', 1);
-        link.attr('stroke-opacity', OPACITY.link);
-        label.attr('opacity', 1);
-        updateLabels();
-      }
+      // Back to the selection or the search rather than to full opacity.
+      if (!selectedShown()) applySearch();
     });
+    // One click selects a document (or opens a folder, or lists the "+N more"); two open it.
     node.on('click', (event, d) => {
+      event.stopPropagation();
       if (event.defaultPrevented) return;
       hideTooltip();
       if (d.role === 'group') {
         state.expanded.add(d.key);
         void render();
-      } else if (d.role === 'more') {
-        event.stopPropagation();
-        openMore(event, d);
-      } else if (state.view === 'local') setCenter(d.id, { user: true });
+      } else if (d.role === 'more') openMore(event, d);
+      else select(d.id);
+    });
+    node.on('dblclick', (event, d) => {
+      // Not the zoom's double-click zoom on the svg.
+      event.stopPropagation();
+      event.preventDefault();
+      if (d.role !== 'doc') return;
+      if (state.view === 'local' && d.id !== state.center) setCenter(d.id, { user: true });
       else onOpenDocument(d.id, {});
     });
 
@@ -1022,7 +1210,10 @@ export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading, 
         .attr('y2', (d) => d.target.y);
       node.attr('cx', (d) => d.x).attr('cy', (d) => d.y);
       label.attr('x', (d) => d.x).attr('y', (d) => d.y);
+      // While the layout moves, labels are placed again every few ticks; all of them at the end.
+      if (++ticks % 4 === 0 && Number(root.dataset.labels || 0) <= 150) placeLabels();
     });
+    let ticks = 0;
 
     /**
      * Fallback for the centering pull: should a node still rest past the edge of the panel (a
@@ -1059,12 +1250,26 @@ export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading, 
     root.dataset.settled = 'false';
     simulation.on('end', () => {
       fitIfOutside();
+      placeLabels();
       if (state.view === 'folders') folderPositions = new Map(nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
       root.dataset.settleMs = String(Math.round(window.performance.now() - t0));
       root.dataset.settled = 'true';
     });
 
-    selections = { node, label, link, hit, scene, hoverLit: null, searchLit: null };
+    selections = {
+      node,
+      label,
+      link,
+      hit,
+      scene,
+      hoverId: null,
+      hoverLit: null,
+      searchLit: null,
+      selLit: null,
+      placeLabels,
+    };
+    if (scaleLabels) sizeLabels();
+    renderCard();
     state.rendered++;
     root.dataset.layout = state.layout;
     root.dataset.rendered = String(state.rendered);
@@ -1091,6 +1296,8 @@ export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading, 
   function setCenter(id, { user = false } = {}) {
     state.view = 'local';
     state.center = id;
+    state.selected = null;
+    renderCard();
     if (user) onPlace(place());
     void render();
   }
@@ -1128,7 +1335,16 @@ export function createGraphPage(root, { getData, onOpenDocument, onOpenHeading, 
       }
     } else if (e.key === 'Escape') closeResults();
   });
-  svgEl.addEventListener('click', closeChooser);
+  // A click on empty space (nodes and edges stop their own clicks) or Esc clears the selection.
+  svgEl.addEventListener('click', () => {
+    closeChooser();
+    clearSelection();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || !state.visible) return;
+    closeChooser();
+    clearSelection();
+  });
 
   // A new size draws again, with the bands from the new height.
   let resizeTimer = null;

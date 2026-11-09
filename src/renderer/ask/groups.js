@@ -24,8 +24,13 @@ export function sourceGroups({ sent = [], cited = [], considered = [], drawn = [
   return { cited: citedOut, drawn: drawnOut, considered: rest };
 }
 
-/** The title of the other sections: ▸ Show 3 more sections when closed, ▾ Hide 3 sections when open. */
+/** The words of the other sections' title: Show 3 more sections when closed, Hide 3 sections when open. */
 export function consideredTitle(count, open) {
   const noun = count === 1 ? 'section' : 'sections';
-  return open ? `▾ Hide ${count} ${noun}` : `▸ Show ${count} more ${noun}`;
+  return open ? `Hide ${count} ${noun}` : `Show ${count} more ${noun}`;
+}
+
+/** The chevron after the title, as on Compare's Show more: ⌄ closed, ⌃ open. */
+export function consideredChevron(open) {
+  return open ? '⌃' : '⌄';
 }
