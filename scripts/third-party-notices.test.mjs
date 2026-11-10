@@ -202,7 +202,19 @@ describe('third-party notices', () => {
     expect(text).toContain('=== Ollama ===\n\nMIT License\n\nCopyright (c) Ollama');
     const section = text.slice(text.indexOf(LGPL_SOURCES_HEADING), text.indexOf('\nLicense texts\n'));
     expect(section.length).toBeGreaterThan(LGPL_SOURCES_HEADING.length);
-    for (const lib of LIBVIPS_POSIX['8.15.3'].libraries) expect(section).toContain(lib.url);
+    // The file is the one the platform's package build wrote: the committed mac copy in npm test, the
+    // Windows one in npm run package:win. Each libvips build it names must carry its pointers.
+    const posix = [...section.matchAll(/^- libvips (\S+) and the libraries built into it$/gm)].map((m) => m[1]);
+    const win32 = [...section.matchAll(/^- libvips (\S+) for Windows and the libraries built into it$/gm)].map(
+      (m) => m[1],
+    );
+    expect(posix.length + win32.length).toBeGreaterThan(0);
+    for (const v of posix) {
+      expect(LIBVIPS_POSIX[v], `libvips ${v}`).toBeTruthy();
+      expect(section).toContain(`${LIBVIPS_POSIX[v].repo}/tree/${LIBVIPS_POSIX[v].commit}`);
+      for (const lib of LIBVIPS_POSIX[v].libraries) expect(section).toContain(lib.url);
+    }
+    for (const v of win32) expect(section).toContain(`https://github.com/libvips/build-win64-mxe/tree/v${v}`);
     const electron = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '..', 'package.json'), 'utf8'))
       .devDependencies.electron;
     expect(section).toContain(`FFmpeg in Electron ${electron}`);
