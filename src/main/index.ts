@@ -168,6 +168,7 @@ function main(): void {
       appProtocolHandler({
         rendererDir: path.join(appPath, 'src', 'renderer'),
         noticesFile: path.join(appPath, 'THIRD-PARTY-NOTICES'),
+        licenseFile: path.join(appPath, 'LICENSE'),
         appDir: appPath,
         ...(testBuild ? { extraFile: (p: string) => testBuild.resolveAsset(p) } : {}),
       }),

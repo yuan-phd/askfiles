@@ -12,6 +12,23 @@ test('shows the version from the bridge, the credits and the third-party notices
   await expect(page.getByTestId('version')).toHaveText('Version 0.1.0');
   await expect(page.getByTestId('credits')).toContainText('Ollama');
   await expect(page.getByTestId('notices')).toContainText('a@1.0.0  MIT');
+  await expect(page.getByTestId('license')).toContainText(
+    'GNU Affero General Public License v3.0 only (AGPL-3.0-only)',
+  );
+});
+
+test('shows the app license text in the page from the link, and hides it again', async ({ page }) => {
+  await page.route('**/LICENSE', (route) =>
+    route.fulfill({ status: 200, contentType: 'text/plain', body: 'GNU AFFERO GENERAL PUBLIC LICENSE\nVersion 3' }),
+  );
+  await page.goto(`${process.env.ASKFILES_PAGE_URL}/about/index.html`);
+  await expect(page.getByTestId('license-text')).toBeHidden();
+  await page.getByTestId('license-link').click();
+  await expect(page.getByTestId('license-text')).toContainText('GNU AFFERO GENERAL PUBLIC LICENSE');
+  // The link stays on the About page rather than navigating to the plain text file.
+  await expect(page).toHaveURL(/\/about\/index\.html$/);
+  await page.getByTestId('license-link').click();
+  await expect(page.getByTestId('license-text')).toBeHidden();
 });
 
 test('still lists the notices state when the file is missing', async ({ page }) => {

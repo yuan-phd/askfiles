@@ -18,6 +18,8 @@ export function pageUrl(page: PageName): string {
 
 /** Path served for the third-party notices file, which lives at the app root, not in src/renderer. */
 export const NOTICES_PATH = '/THIRD-PARTY-NOTICES';
+/** Path served for the app's own license (AGPL-3.0-only), the LICENSE file at the app root; the About page shows it. */
+export const LICENSE_PATH = '/LICENSE';
 
 /**
  * Third-party scripts the pages load, served from the app's own node_modules: never from a CDN.
@@ -49,6 +51,8 @@ export function contentType(file: string): string {
 export interface AppFiles {
   rendererDir: string;
   noticesFile: string;
+  /** The app's LICENSE file; LICENSE_PATH is 404 without it. */
+  licenseFile?: string;
   appDir?: string;
   /** Files served outside rendererDir: the test build's pages (src/main/test-build.ts); null for any other path. */
   extraFile?: (pathname: string) => string | null;
@@ -69,6 +73,7 @@ export function resolveAppFile(url: string, o: AppFiles): string | null {
     return null;
   }
   if (rel === NOTICES_PATH) return o.noticesFile;
+  if (rel === LICENSE_PATH) return o.licenseFile ?? null;
   const extra = o.extraFile?.(rel);
   if (extra) return extra;
   const vendor = VENDOR_FILES[rel];
