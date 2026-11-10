@@ -45,6 +45,18 @@ const MARKUP = `
   </section>
   <ul class="library-list" data-testid="library-list"></ul>
   <p class="browse-empty" data-testid="library-empty" hidden>No documents yet. Files in your documents folder appear here once they are indexed.</p>
+  <section class="library-sources" data-testid="library-sources" aria-labelledby="library-sources-title" hidden>
+    <div class="library-sources-head">
+      <h2 class="library-sources-title" id="library-sources-title">Sources</h2>
+      <p class="library-sources-count" data-testid="library-sources-count"></p>
+      <label class="library-sources-search"><span class="visually-hidden">Search sources</span><input type="search" data-testid="library-sources-search" placeholder="Search sources" spellcheck="false" /></label>
+    </div>
+    <p class="hint">The folders and files this library follows. AskFiles never changes them; Remove only takes them out of the library.</p>
+    <p class="library-sources-missing" data-testid="library-sources-missing" role="status" hidden></p>
+    <ul class="library-sources-list" data-testid="library-sources-list"></ul>
+    <p class="browse-empty" data-testid="library-sources-empty" hidden>No source matches.</p>
+    <p class="error" data-testid="library-sources-error" role="alert" hidden></p>
+  </section>
 </section>
 
 <section class="browse-page" data-page="document" data-testid="document" aria-label="Document" hidden>
@@ -105,9 +117,18 @@ const MARKUP = `
 
 import { createHistory, isBackKey } from '../shared/history.js';
 import { PAGE_PART, sectionTitle, withoutLeadingPageNumber } from '../shared/display.js';
+import {
+  filterSources,
+  missingText,
+  sourceKindText,
+  sourceStatus,
+  sourceStatusText,
+  sourcesCountText,
+} from '../shared/sources.js';
 import { createGraphPage } from './graph.js';
 
 const bridge = window.askfiles?.browse;
+const librariesBridge = window.askfiles?.libraries;
 const watcher = window.askfiles?.watcher;
 const graphBridge = window.askfiles?.graph;
 const summariesBridge = window.askfiles?.summaries;
@@ -232,6 +253,8 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     // The library graph (types, summaries, family questions); null without the bridge.
     graph: null,
     docSummary: null,
+    // The current library's sources (src/main/libraries.ts SourceView); null without the bridge.
+    sources: null,
   };
 
   const content = q('browse-content');
@@ -521,6 +544,86 @@ export function createBrowseView(root, { history: shared = null } = {}) {
       q('library-count').textContent = `The library could not be read: ${e.message}`;
     }
   }
+
+  // --- sources -------------------------------------------------------------------------------
+
+  /** The current library's sources, from the library menu's view; null until it answers. */
+  function currentSources(view) {
+    return view?.libraries?.find((l) => l.isCurrent)?.sources ?? null;
+  }
+
+  function renderSources() {
+    const all = state.sources;
+    const box = q('library-sources');
+    box.hidden = !all;
+    if (!all) return;
+    const shown = filterSources(all, q('library-sources-search').value);
+    q('library-sources-count').textContent =
+      shown.length === all.length ? sourcesCountText(all) : `${shown.length} of ${all.length} shown`;
+    const missing = missingText(all);
+    q('library-sources-missing').hidden = !missing;
+    q('library-sources-missing').textContent = missing;
+    q('library-sources-empty').hidden = shown.length > 0 || all.length === 0;
+    q('library-sources-list').replaceChildren(
+      ...shown.map((src) => {
+        const li = el('li', 'library-sources-item');
+        li.dataset.testid = 'library-sources-item';
+        li.dataset.kind = src.kind;
+        li.dataset.status = sourceStatus(src);
+        const name = el('span', 'library-sources-name', src.name);
+        const kind = el('span', 'library-sources-kind', sourceKindText(src));
+        kind.dataset.testid = 'library-sources-kind';
+        const mark = sourceStatusText(src);
+        if (mark) {
+          // Not available: kept and still answered from; Original missing: about to leave.
+          const badge = el('span', 'library-sources-status', mark);
+          badge.dataset.testid = 'library-sources-status';
+          kind.append(badge);
+        }
+        const where = el('span', 'library-sources-path', src.path);
+        where.dataset.testid = 'library-sources-path';
+        where.title = src.path;
+        const remove = button('link', 'Remove', 'library-sources-remove');
+        remove.setAttribute('aria-label', `Remove ${src.name}`);
+        remove.addEventListener('click', async () => {
+          q('library-sources-error').hidden = true;
+          try {
+            applySources(await librariesBridge.removeSource(src.id));
+          } catch (e) {
+            q('library-sources-error').textContent = e.message;
+            q('library-sources-error').hidden = false;
+          }
+        });
+        li.append(name, kind, where, remove);
+        return li;
+      }),
+    );
+  }
+
+  function applySources(view) {
+    const sources = currentSources(view);
+    if (sources) state.sources = sources;
+    renderSources();
+  }
+
+  async function loadSources() {
+    if (!librariesBridge) return;
+    try {
+      applySources(await librariesBridge.list());
+    } catch (e) {
+      console.warn('[browse] sources failed', e.message);
+    }
+  }
+
+  /** Manage in the library menu: the Library page at its Sources section, search box ready. */
+  async function showSources() {
+    show('library');
+    await loadSources();
+    q('library-sources').scrollIntoView({ block: 'start' });
+    q('library-sources-search').focus({ preventScroll: true });
+  }
+
+  q('library-sources-search').addEventListener('input', () => renderSources());
 
   q('library-sort').addEventListener('change', (e) => {
     state.sort = e.target.value;
@@ -1050,6 +1153,11 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     });
   }
 
+  if (librariesBridge) {
+    librariesBridge.onChange(applySources);
+    void loadSources();
+  }
+
   if (watcher) {
     watcher.onStatus(applyStatus);
     watcher
@@ -1068,6 +1176,7 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     restore,
     scrollTop: () => content.scrollTop,
     ready: () => state.loaded,
+    showSources,
     graphPage,
   };
 }

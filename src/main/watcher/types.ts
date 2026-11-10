@@ -65,7 +65,17 @@ export type WatchFactory = (
   root: string,
   onEvent: (type: WatchEventType, absPath: string) => void,
   onError: (err: Error) => void,
+  options?: WatchOptions,
 ) => WatchHandle;
+
+/**
+ * For the folder of individually added files: only its direct entries (depth 0), and of those
+ * only the paths in only. The set is live: a file added later is watched from then on.
+ */
+export interface WatchOptions {
+  depth?: number;
+  only?: ReadonlySet<string>;
+}
 
 export interface SectionRecord {
   /** Path relative to STORAGE_DIR/documents, as update-embeddings takes it. */
@@ -108,6 +118,12 @@ export interface FileRecord {
 export interface IndexData {
   version: 1;
   files: Record<string, FileRecord>;
+  /**
+   * Section documents written or embedded for an update that has not been saved yet, by file.
+   * Whatever of them the file's saved record does not list is removed after a failure, a
+   * dead-letter or at the next start, so an update that stops halfway leaves nothing behind.
+   */
+  pending?: Record<string, string[]>;
 }
 
 export type JobKind = 'upsert' | 'remove';

@@ -142,6 +142,63 @@ body {
   background: var(--bad);
 }
 
+.topbar .status-state[data-state='checking'] .dot {
+  background: var(--busy);
+  animation: topbar-pulse 1.4s ease-in-out infinite;
+}
+
+/* The status and its ↻ are one control, Check for updates: "Up to date ↻". */
+.topbar .status-check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+  margin-left: calc(-1 * var(--space-1));
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-small);
+  background: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.topbar .status-check:hover:not(:disabled, [aria-disabled='true']) {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.topbar .status-check[aria-disabled='true'] {
+  cursor: progress;
+}
+
+.topbar .status-check:disabled {
+  cursor: default;
+}
+
+.topbar .status-check:disabled .check-icon {
+  display: none;
+}
+
+/* A focus ring for keyboard focus only; a click leaves none. */
+.topbar .status-check:focus {
+  outline: none;
+}
+
+.topbar .status-check:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.topbar .check-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.topbar .status-check[aria-disabled='true'] .check-icon {
+  opacity: 0.5;
+}
+
 @keyframes topbar-pulse {
   50% {
     opacity: 0.35;
@@ -297,6 +354,118 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.source-kind {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 12rem;
+  white-space: nowrap;
+}
+
+/* The folder of a file whose name another listed file shares: cut short, the full path on hover. */
+.source-folder {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.source-more {
+  padding: var(--space-1) 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+/* Replace or keep both, for an added file named like one already in the library. */
+.replace-dialog {
+  max-width: 30rem;
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+  font-size: 0.95rem;
+}
+
+.replace-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.replace-choices {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-5);
+  padding: 0;
+  border: 0;
+}
+
+.replace-choice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: var(--space-2);
+  align-items: baseline;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  cursor: pointer;
+}
+
+.replace-choice:has(input:checked) {
+  border-color: var(--accent);
+}
+
+.replace-choice-name {
+  font-weight: 600;
+}
+
+.replace-choice-path {
+  grid-column: 2;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.replace-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.replace-text {
+  margin: 0 0 var(--space-5);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.replace-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.replace-actions button {
+  padding: var(--space-1) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface-sunken);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.replace-actions button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.replace-actions button.link {
+  margin-right: auto;
+  border: 0;
+  background: none;
+  color: var(--accent);
 }
 
 .source-kind,

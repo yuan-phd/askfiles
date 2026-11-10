@@ -4,8 +4,8 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { countingSplitter, fakeApi, manualWatch, type FakeApi } from './__fixtures__/fakes.js';
 import { chokidarWatch } from './fs-watch.js';
-import type { FileEvent, IndexData, Splitter, WatchFactory } from './types.js';
-import { FolderWatcher } from './watcher.js';
+import type { FileEvent, IndexData, LibraryApi, Splitter, WatchFactory, WatchOptions } from './types.js';
+import { FolderWatcher, type WatchRoot } from './watcher.js';
 
 let tmp: string;
 let root: string;
@@ -28,20 +28,31 @@ afterEach(async () => {
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
-function make(opts: { watch?: WatchFactory; splitter?: Splitter; retryDelaysMs?: number[]; debounceMs?: number } = {}) {
+function make(
+  opts: {
+    watch?: WatchFactory;
+    splitter?: Splitter;
+    retryDelaysMs?: number[];
+    debounceMs?: number;
+    roots?: WatchRoot[];
+    api?: LibraryApi;
+    availabilityPollMs?: number;
+  } = {},
+) {
   const events: FileEvent[] = [];
   const logs: string[] = [];
   const w = new FolderWatcher({
-    root,
+    ...(opts.roots ? { roots: opts.roots } : { root }),
     dataDir,
     storageDir,
     workspaceSlug: 'library',
-    api,
+    api: opts.api ?? api,
     splitter: opts.splitter ?? countingSplitter(),
     watch: opts.watch ?? manualWatch(),
     debounceMs: opts.debounceMs ?? 30,
     stableMs: 30,
     retryDelaysMs: opts.retryDelaysMs ?? [10, 20, 40],
+    availabilityPollMs: opts.availabilityPollMs ?? 0,
     log: (m) => logs.push(m),
   });
   w.on('file', (e) => events.push(e));
@@ -256,7 +267,8 @@ describe('FolderWatcher', () => {
     const watch = manualWatch();
     const { w, events } = make({ watch });
     await w.start();
-    api.failNext = 2;
+    // The embed fails, then the removal of its pending sections, then the embed again.
+    api.failNext = 3;
     const p = write('flaky.md', 'text');
     watch.emit('add', p);
     await w.whenIdle();
@@ -264,6 +276,7 @@ describe('FolderWatcher', () => {
     expect(events[0]).toMatchObject({ attempt: 1, error: expect.stringContaining('500') });
     expect(api.embedded.size).toBe(1);
     expect(w.status().deadLetters).toEqual([]);
+    expect(readIndex().pending).toBeUndefined();
   });
 
   it('moves a job to the dead-letter list after three retries and keeps the others going', async () => {
@@ -391,5 +404,372 @@ describe('FolderWatcher', () => {
       await new Promise((r) => setTimeout(r, 50));
     }
     expect(api.embedded.size).toBe(0);
+  });
+
+  it('removes the sections of an update that failed after embedding, at the next start', async () => {
+    // Embeds, then the server goes away before the record is saved; the cleanup fails too.
+    let down = false;
+    const flaky: LibraryApi = {
+      updateEmbeddings: async (slug, change) => {
+        await api.updateEmbeddings(slug, change);
+        down = true;
+      },
+      removeDocuments: async (slug, l) => {
+        if (down) throw new Error('connect ECONNREFUSED');
+        return api.removeDocuments(slug, l);
+      },
+      workspaceDocuments: async (slug) => {
+        if (down) throw new Error('connect ECONNREFUSED');
+        return api.workspaceDocuments(slug);
+      },
+    };
+    const watch = manualWatch();
+    const first = make({ watch, api: flaky, retryDelaysMs: [] });
+    await first.w.start();
+    const p = write('half.md', '# Half\n\nEmbedded but never saved.');
+    watch.emit('add', p);
+    await first.w.whenIdle();
+    expect(first.events.map((e) => e.outcome)).toEqual(['dead-letter']);
+    expect(api.embedded.size).toBe(1);
+    const [left] = [...api.embedded.keys()];
+    expect(readIndex().files[p]).toBeUndefined();
+    expect(readIndex().pending).toEqual({ [p]: [left] });
+    await first.w.stop();
+
+    // Next start, server back: the leftover goes before anything else happens.
+    down = false;
+    fs.rmSync(p);
+    const second = make({ watch: manualWatch(), api: flaky });
+    await second.w.start();
+    await second.w.whenIdle();
+    expect(api.embedded.size).toBe(0);
+    expect(fs.existsSync(path.join(storageDir, 'documents', left!))).toBe(false);
+    expect(readIndex().pending).toBeUndefined();
+    expect(second.logs).toContain(`removed 1 sections left by an unfinished update of ${p}`);
+  });
+
+  it('removes the pending sections right after a failure when the server allows it', async () => {
+    const watch = manualWatch();
+    const { w, events } = make({ watch, retryDelaysMs: [] });
+    await w.start();
+    // The embed works; the server then says it embedded nothing, so the job fails.
+    const real = api.workspaceDocuments.bind(api);
+    let reads = 0;
+    api.workspaceDocuments = async (slug) => (++reads === 2 ? new Map() : real(slug));
+    const p = write('lost.md', '# Lost\n\nText.');
+    watch.emit('add', p);
+    await w.whenIdle();
+    expect(events.map((e) => e.outcome)).toEqual(['dead-letter']);
+    expect(api.embedded.size).toBe(0);
+    expect(readIndex().pending).toBeUndefined();
+  });
+
+  it('keeps an unchanged section of a changed file when it cleans up', async () => {
+    const watch = manualWatch();
+    const { w } = make({ watch });
+    await w.start();
+    const p = write('two.md', '# One\n\nFirst part.\n\n# Two\n\nSecond part.');
+    watch.emit('add', p);
+    await w.whenIdle();
+    const before = readIndex().files[p]!.sections.map((s) => s.location);
+    write('two.md', '# One\n\nFirst part.\n\n# Two\n\nSecond part, changed.');
+    watch.emit('change', p);
+    await w.whenIdle();
+    const after = readIndex().files[p]!.sections.map((s) => s.location);
+    expect([...api.embedded.keys()].sort()).toEqual([...after].sort());
+    expect(after).not.toEqual(before);
+    expect(readIndex().pending).toBeUndefined();
+  });
+
+  it('clears every document of the workspace, also those the index does not list', async () => {
+    const watch = manualWatch();
+    const { w, logs } = make({ watch });
+    await w.start();
+    const p = write('a.md', 'Text.');
+    watch.emit('add', p);
+    await w.whenIdle();
+    api.embedded.set('askfiles/unlisted.md-000000000000-1-1.json', 'x');
+    await w.stop();
+    await w.clearIndex();
+    expect(api.embedded.size).toBe(0);
+    expect(readIndex().files).toEqual({});
+    expect(logs).toContain('index cleared, 2 documents removed (1 listed, 1 not listed)');
+  });
+
+  describe('added files', () => {
+    let other: string;
+    beforeEach(() => {
+      other = path.join(tmp, 'Desktop');
+      fs.mkdirSync(other);
+    });
+    const put = (dir: string, name: string, text: string) => {
+      const p = path.join(dir, name);
+      fs.writeFileSync(p, text);
+      return p;
+    };
+
+    /** A manual watch that also records what each watch was asked for. */
+    function recordingWatch() {
+      const inner = manualWatch();
+      const opened: { root: string; options?: WatchOptions }[] = [];
+      const f = ((r, onEvent, onError, options) => {
+        opened.push({ root: r, options });
+        return inner(r, onEvent, onError, options);
+      }) as WatchFactory;
+      return { f, opened, emit: inner.emit };
+    }
+
+    it('watches each added file through its folder, one watch per folder, depth 0', async () => {
+      const a = put(other, 'a.md', 'A.');
+      const b = put(other, 'b.md', 'B.');
+      put(other, 'not-added.md', 'Never indexed.');
+      const watch = recordingWatch();
+      const { w } = make({
+        watch: watch.f,
+        roots: [
+          { id: 'file-1', path: a, label: '', file: true },
+          { id: 'file-2', path: b, label: '', file: true },
+        ],
+      });
+      await w.start();
+      await w.whenIdle();
+      expect(watch.opened).toEqual([{ root: other, options: { depth: 0, only: new Set([a, b]) } }]);
+      expect(Object.keys(readIndex().files).sort()).toEqual([a, b]);
+      expect(readIndex().files[a]).toMatchObject({ sourceId: 'file-1', relPath: 'a.md' });
+
+      // Events for other files of the folder are not the library's.
+      watch.emit('add', path.join(other, 'not-added.md'));
+      await w.whenIdle();
+      expect(Object.keys(readIndex().files)).toHaveLength(2);
+    });
+
+    it('adds and removes added files while running', async () => {
+      const watch = recordingWatch();
+      const { w, events } = make({ watch: watch.f, roots: [] });
+      await w.start();
+      const a = put(other, 'a.md', 'A.');
+      const b = put(root, 'b.md', 'B.');
+      await w.addRoots([
+        { id: 'file-1', path: a, label: '', file: true },
+        { id: 'file-2', path: b, label: '', file: true },
+      ]);
+      await w.whenIdle();
+      expect(watch.opened.map((o) => o.root).sort()).toEqual([other, root].sort());
+      expect(Object.keys(readIndex().files).sort()).toEqual([a, b].sort());
+
+      // A third file in a folder already watched joins its watch.
+      const c = put(other, 'c.md', 'C.');
+      await w.addRoots([{ id: 'file-3', path: c, label: '', file: true }]);
+      await w.whenIdle();
+      expect(watch.opened).toHaveLength(2);
+      expect([...watch.opened.find((o) => o.root === other)!.options!.only!]).toEqual([a, c]);
+
+      // A change event re-indexes it; removing its root removes it from the index.
+      fs.writeFileSync(c, 'C, changed.');
+      watch.emit('change', c);
+      await w.whenIdle();
+      expect(events.filter((e) => e.path === c).map((e) => e.outcome)).toEqual(['indexed', 'indexed']);
+      w.removeRoot('file-3');
+      await w.whenIdle();
+      expect(readIndex().files[c]).toBeUndefined();
+      expect([...watch.opened.find((o) => o.root === other)!.options!.only!]).toEqual([a]);
+      await expect(w.addRoots([{ id: 'folder-1', path: root, label: 'Documents' }])).rejects.toThrow(
+        /added files only/,
+      );
+    });
+
+    it('removes an added file whose original is gone at start, keeps one whose folder cannot be read', async () => {
+      const a = put(other, 'a.md', 'A.');
+      const drive = path.join(tmp, 'Volume');
+      fs.mkdirSync(drive);
+      const b = put(drive, 'b.md', 'B.');
+      const roots: WatchRoot[] = [
+        { id: 'file-1', path: a, label: '', file: true },
+        { id: 'file-2', path: b, label: '', file: true },
+      ];
+      const first = make({ roots });
+      await first.w.start();
+      await first.w.whenIdle();
+      await first.w.stop();
+      fs.rmSync(a);
+      fs.rmSync(drive, { recursive: true });
+      const second = make({ roots });
+      await second.w.start();
+      await second.w.whenIdle();
+      expect(Object.keys(readIndex().files)).toEqual([b]);
+      expect(second.w.status().unavailable).toEqual([b]);
+      expect(second.events).toEqual([expect.objectContaining({ path: a, outcome: 'removed' })]);
+    });
+
+    it('checks for updates while running: only a file whose size or time changed is looked at', async () => {
+      const a = put(other, 'a.md', 'A.');
+      const b = put(other, 'b.md', 'B.');
+      const splitter = countingSplitter();
+      const { w } = make({
+        splitter,
+        roots: [
+          { id: 'file-1', path: a, label: '', file: true },
+          { id: 'file-2', path: b, label: '', file: true },
+        ],
+      });
+      await w.start();
+      await w.whenIdle();
+      fs.writeFileSync(a, 'A, changed while no event came.');
+      const calls = splitter.calls.length;
+      expect(await w.checkNow()).toEqual({ toCheck: 1 });
+      expect(w.status()).toMatchObject({ state: 'working', pending: 1 });
+      await w.whenIdle();
+      expect(splitter.calls.slice(calls)).toEqual([a]);
+      expect(await w.checkNow()).toEqual({ toCheck: 0 });
+    });
+
+    it('follows an added file with the real chokidar watch, ignoring its neighbours', async () => {
+      const a = put(other, 'live.md', 'First.');
+      const splitter = countingSplitter();
+      const { w } = make({
+        watch: chokidarWatch,
+        splitter,
+        roots: [{ id: 'file-1', path: a, label: '', file: true }],
+      });
+      await w.start();
+      await w.whenIdle();
+      const first = readIndex().files[a]!.hash;
+      put(other, 'neighbour.md', 'Not added.');
+      // On macOS the folder watch can take a moment to arm after ready, more so while other test
+      // files load the machine; a change in that moment is caught by the next reconcile in the app.
+      // Here the file is written again until the watch reports it.
+      const deadline = Date.now() + 10_000;
+      for (let n = 2; readIndex().files[a]?.hash === first; n++) {
+        if (Date.now() > deadline) throw new Error('chokidar did not report the change within 10 s');
+        if (n % 20 === 2) fs.writeFileSync(a, `Version ${n}.`);
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      fs.rmSync(a);
+      while (readIndex().files[a]) {
+        if (Date.now() > deadline) throw new Error('chokidar did not report the deletion within 10 s');
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      expect(splitter.calls.every((c) => c === a)).toBe(true);
+      expect(api.embedded.size).toBe(0);
+    });
+  });
+
+  describe('sources out of reach', () => {
+    const wait = async (check: () => boolean, ms = 10_000) => {
+      const t0 = Date.now();
+      while (!check()) {
+        if (Date.now() - t0 > ms) throw new Error('timed out');
+        await new Promise((r) => setTimeout(r, 20));
+      }
+    };
+    const indexed = () => Object.keys(readIndex().files).sort();
+
+    it('keeps a linked folder that goes out of reach while running, and takes it back when it returns', async () => {
+      const a = write('a.md', '# A\n\nOne.');
+      const b = write('b.md', '# B\n\nTwo.');
+      const watch = manualWatch();
+      const splitter = countingSplitter();
+      const { w, events } = make({ watch, splitter, availabilityPollMs: 30 });
+      await w.start();
+      await w.whenIdle();
+      expect(indexed()).toEqual([a, b]);
+
+      // The drive goes: the watch reports each file as deleted.
+      const away = path.join(tmp, 'Away');
+      fs.renameSync(root, away);
+      watch.emit('unlink', a);
+      watch.emit('unlink', b);
+      await new Promise((r) => setTimeout(r, 120));
+      await w.whenIdle();
+      expect(indexed()).toEqual([a, b]);
+      expect(api.embedded.size).toBe(2);
+      expect(w.status().unavailable).toEqual([root]);
+      expect(events.filter((e) => e.outcome === 'removed')).toEqual([]);
+      // Check for updates while it is away keeps everything too.
+      await w.checkNow();
+      await w.whenIdle();
+      expect(indexed()).toEqual([a, b]);
+
+      // Back, with one file changed meanwhile: the poll sees it, the changed file alone is indexed.
+      fs.writeFileSync(path.join(away, 'b.md'), '# B\n\nTwo, changed while away.');
+      fs.renameSync(away, root);
+      const calls = splitter.calls.length;
+      await wait(() => w.status().unavailable.length === 0);
+      await w.whenIdle();
+      expect(splitter.calls.slice(calls)).toEqual([b]);
+      expect(indexed()).toEqual([a, b]);
+    });
+
+    it('keeps an added file whose folder is out of reach, removes one deleted from a reachable folder', async () => {
+      const drive = path.join(tmp, 'Drive');
+      const desk = path.join(tmp, 'Desk');
+      fs.mkdirSync(drive);
+      fs.mkdirSync(desk);
+      const onDrive = path.join(drive, 'far.md');
+      const onDesk = path.join(desk, 'near.md');
+      fs.writeFileSync(onDrive, '# Far\n\nText.');
+      fs.writeFileSync(onDesk, '# Near\n\nText.');
+      const watch = manualWatch();
+      const { w } = make({
+        watch,
+        roots: [
+          { id: 'file-1', path: onDrive, label: '', file: true },
+          { id: 'file-2', path: onDesk, label: '', file: true },
+        ],
+      });
+      await w.start();
+      await w.whenIdle();
+
+      fs.renameSync(drive, path.join(tmp, 'DriveAway'));
+      fs.rmSync(onDesk);
+      watch.emit('unlink', onDrive);
+      watch.emit('unlink', onDesk);
+      await new Promise((r) => setTimeout(r, 120));
+      await w.whenIdle();
+      expect(indexed()).toEqual([onDrive]);
+      expect(w.status().unavailable).toEqual([onDrive]);
+
+      // Back on Check for updates (no poll here): the mark goes, nothing is indexed again.
+      fs.renameSync(path.join(tmp, 'DriveAway'), drive);
+      await w.checkNow();
+      await w.whenIdle();
+      expect(w.status().unavailable).toEqual([]);
+      expect(indexed()).toEqual([onDrive]);
+    });
+
+    it('keeps a folder out of reach at start, and reconciles it once it is back', async () => {
+      const a = write('a.md', '# A\n\nOne.');
+      const first = make({ watch: manualWatch() });
+      await first.w.start();
+      await first.w.whenIdle();
+      await first.w.stop();
+      fs.renameSync(root, path.join(tmp, 'Away'));
+      const second = make({ watch: manualWatch(), availabilityPollMs: 30 });
+      await second.w.start();
+      await second.w.whenIdle();
+      expect(indexed()).toEqual([a]);
+      expect(second.w.status().unavailable).toEqual([root]);
+      fs.rmSync(path.join(tmp, 'Away', 'a.md'));
+      fs.renameSync(path.join(tmp, 'Away'), root);
+      // Back, without the file that was deleted meanwhile: now it goes.
+      await wait(() => indexed().length === 0);
+      expect(second.w.status().unavailable).toEqual([]);
+    });
+
+    it('keeps a linked folder renamed away under the real chokidar watch', async () => {
+      const a = write('a.md', '# A\n\nOne.');
+      const { w } = make({ watch: chokidarWatch, availabilityPollMs: 50 });
+      await w.start();
+      await w.whenIdle();
+      fs.renameSync(root, path.join(tmp, 'Away'));
+      await wait(() => w.status().unavailable.length === 1);
+      await new Promise((r) => setTimeout(r, 300));
+      await w.whenIdle();
+      expect(indexed()).toEqual([a]);
+      fs.renameSync(path.join(tmp, 'Away'), root);
+      await wait(() => w.status().unavailable.length === 0);
+      await w.whenIdle();
+      expect(indexed()).toEqual([a]);
+    });
   });
 });

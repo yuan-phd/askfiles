@@ -5,6 +5,8 @@
 // by drag and drop anywhere in the window. Everything goes through window.askfiles (the preload
 // bridge); without it (a plain browser) the bar shows the status counts only.
 
+import { menuSources, moreText, sameNameFolders, sourceMenuText, sourceStatus } from './sources.js';
+
 const MARKUP = `
 <div class="view-switch" role="group" aria-label="View">
   <button type="button" data-view="search" data-testid="view-search" aria-pressed="true">Ask</button>
@@ -16,8 +18,11 @@ const MARKUP = `
     <span class="library-name" data-testid="library-name">Library</span>
     <span class="library-status">
       <span data-testid="status-count">Connecting</span>
-      <span class="status-state" data-testid="status-state" data-state="connecting"><span class="dot" aria-hidden="true"></span><span class="status-state-text">Connecting</span></span>
     </span>
+  </button>
+  <button type="button" class="status-check" data-testid="check-updates" title="Check for updates">
+    <span class="status-state" data-testid="status-state" data-state="connecting"><span class="dot" aria-hidden="true"></span><span class="status-state-text">Connecting</span></span>
+    <span class="check-icon" aria-hidden="true">&#x21bb;</span>
   </button>
   <span class="status-failed" data-testid="status-failed" hidden></span>
   <span class="summaries-status" data-testid="summaries-status" role="status" hidden>
@@ -64,7 +69,7 @@ const MARKUP = `
 <div class="topbar-add">
   <button type="button" class="add-button" data-testid="add-button" aria-haspopup="true" aria-expanded="false">Add</button>
   <div class="topbar-menu add-menu" data-testid="add-menu" role="menu" hidden>
-    <button type="button" role="menuitem" data-testid="add-files">Add files<span>Copies them into the library</span></button>
+    <button type="button" role="menuitem" data-testid="add-files">Add files<span>Links them; AskFiles follows their changes</span></button>
     <button type="button" role="menuitem" data-testid="add-folder">Add folder<span>Links it; AskFiles never changes it</span></button>
   </div>
 </div>
@@ -74,18 +79,42 @@ const EMPTY_MARKUP = `
 <p class="empty-text">This library is empty. Add files or a folder to start.</p>
 <button type="button" class="add-button" data-testid="empty-add">Add</button>
 <div class="topbar-menu add-menu empty-menu" data-testid="empty-add-menu" role="menu" hidden>
-  <button type="button" role="menuitem" data-testid="empty-add-files">Add files<span>Copies them into the library</span></button>
+  <button type="button" role="menuitem" data-testid="empty-add-files">Add files<span>Links them; AskFiles follows their changes</span></button>
   <button type="button" role="menuitem" data-testid="empty-add-folder">Add folder<span>Links it; AskFiles never changes it</span></button>
 </div>
 `;
 
+const DIALOG_MARKUP = `
+<form method="dialog" class="replace-form">
+  <p class="replace-text" data-testid="replace-text"></p>
+  <fieldset class="replace-choices" data-testid="replace-choices" hidden>
+    <legend class="visually-hidden">File to replace</legend>
+  </fieldset>
+  <div class="replace-actions">
+    <button value="cancel" class="link" data-testid="replace-cancel">Cancel</button>
+    <button value="keep" data-testid="replace-keep">Keep both</button>
+    <button value="replace" class="primary" data-testid="replace-confirm">Replace</button>
+  </div>
+</form>
+`;
+
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
-/** One line about an add: what went in and what was left out. */
+/** The text of the add-result line for files already in the library (src/main/libraries.ts AddResult.already). */
+const ALREADY = 'Already in this library; it is kept up to date.';
+
+/** One line about an add: what went in, what was already there, and what was left out. */
 export function addResultText(r) {
   if (!r) return '';
   const parts = [];
   if (r.added) parts.push(`Added ${plural(r.added, 'item', 'items')}.`);
+  const already = r.already || [];
+  if (already.length === 1 && parts.length === 0 && !r.skipped?.length) parts.push(ALREADY);
+  else if (already.length === 1) parts.push(`${already[0]}: ${ALREADY}`);
+  else if (already.length > 1)
+    parts.push(`${already[0]} and ${already.length - 1} more: already in this library; they are kept up to date.`);
+  for (const k of r.kept || [])
+    parts.push(`A file named ${k.name} is already in this library (${k.path}); both will be kept.`);
   if (r.skipped?.length) {
     const first = r.skipped[0];
     const more = r.skipped.length > 1 ? ` and ${r.skipped.length - 1} more` : '';
@@ -93,6 +122,22 @@ export function addResultText(r) {
   }
   return parts.join(' ') || 'Nothing was added.';
 }
+
+/** The files a conflict names (AddResult.conflicts): every file of the library with that name. */
+export function conflictMatches(c) {
+  return Array.isArray(c.existing) ? c.existing : [c.existing];
+}
+
+/** The question for a file whose name matches files added on their own. */
+export function replaceQuestion(c) {
+  const matches = conflictMatches(c);
+  if (matches.length === 1)
+    return `A file named ${c.name} is already in this library (${matches[0].path}). Replace it, or keep both?`;
+  return `${matches.length} files named ${c.name} are already in this library. Pick the one to replace, or keep all.`;
+}
+
+/** Least time Checking… shows, so a quick check is still seen. */
+const CHECK_MIN_MS = 600;
 
 /** Status line of the current library from the watcher status (src/main/libraries.ts LibraryStatus). */
 export function statusOf(s) {
@@ -123,7 +168,10 @@ export function lockLine(status) {
  * uses: setView(name), setConnection(kind, text) for its own connection problems,
  * setFallbackCount(n) for a count when no watcher reports one, and isEmpty().
  */
-export function mountTopBar(header, { views = {}, onView = () => {}, onLibraryChange = () => {} } = {}) {
+export function mountTopBar(
+  header,
+  { views = {}, onView = () => {}, onLibraryChange = () => {}, onManage = () => {} } = {},
+) {
   header.classList.add('topbar');
   header.dataset.testid = 'status-bar';
   header.innerHTML = MARKUP;
@@ -151,7 +199,20 @@ export function mountTopBar(header, { views = {}, onView = () => {}, onLibraryCh
     fallbackCount: null,
     profiles: [],
     summaries: null,
+    checking: false,
   };
+
+  const dialog = document.createElement('dialog');
+  dialog.className = 'replace-dialog';
+  dialog.dataset.testid = 'replace-dialog';
+  dialog.innerHTML = DIALOG_MARKUP;
+  document.body.append(dialog);
+  // Escape always cancels: Chromium may ignore it for a dialog reopened without a new user gesture.
+  dialog.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    dialog.close('cancel');
+  });
 
   // --- status ---------------------------------------------------------------------------------
 
@@ -159,11 +220,13 @@ export function mountTopBar(header, { views = {}, onView = () => {}, onLibraryCh
     const s = state.status;
     const conn = state.connection;
     // The page's own problems win over the watcher; its ready state only stands in for a watcher.
-    const line = (conn && conn.kind !== 'ready' ? conn : null) || statusOf(s) || conn;
+    const checking = state.checking ? { kind: 'checking', text: 'Checking\u2026' } : null;
+    const line = (conn && conn.kind !== 'ready' ? conn : null) || checking || statusOf(s) || conn;
     const node = q('status-state');
     node.dataset.state = line ? line.kind : 'connecting';
     node.querySelector('.status-state-text').textContent = line ? line.text : 'Connecting';
-    node.title = s?.error || '';
+    // One tooltip for the one control: what it does, and why the library is not available.
+    q('check-updates').title = s?.error ? `${s.error}. Check for updates` : 'Check for updates';
     const n = s ? s.indexed : state.fallbackCount;
     if (n !== null && n !== undefined)
       q('status-count').textContent = plural(n, 'document indexed', 'documents indexed');
@@ -221,8 +284,11 @@ export function mountTopBar(header, { views = {}, onView = () => {}, onLibraryCh
     q('library-current-title').textContent = lib ? lib.name : '';
     const sources = lib?.sources || [];
     q('source-empty').hidden = sources.length > 0;
+    const { rows, more } = menuSources(sources);
+    // Two listed files of one name are told apart by their folder; other rows stay as they are.
+    const folders = sameNameFolders(rows);
     q('source-list').replaceChildren(
-      ...sources.map((s) => {
+      ...rows.map((s) => {
         const li = document.createElement('li');
         li.className = 'source-item';
         li.dataset.testid = 'source-item';
@@ -233,7 +299,16 @@ export function mountTopBar(header, { views = {}, onView = () => {}, onLibraryCh
         label.title = s.path;
         const kind = document.createElement('span');
         kind.className = 'source-kind';
-        kind.textContent = s.kind === 'folder' ? (s.available ? 'Folder' : 'Folder, not available') : 'File';
+        kind.textContent = sourceMenuText(s);
+        if (folders.has(s.id)) {
+          const where = document.createElement('span');
+          where.className = 'source-folder';
+          where.dataset.testid = 'source-folder';
+          where.textContent = folders.get(s.id);
+          where.title = s.path;
+          kind.append('\u00a0\u00b7\u00a0', where);
+        }
+        li.dataset.status = sourceStatus(s);
         const remove = document.createElement('button');
         remove.type = 'button';
         remove.className = 'link';
@@ -244,6 +319,7 @@ export function mountTopBar(header, { views = {}, onView = () => {}, onLibraryCh
         li.append(label, kind, remove);
         return li;
       }),
+      ...(more ? [moreRow(more)] : []),
     );
     renderGraphSettings(lib);
     const fixed = !lib || lib.isDefault;
@@ -251,6 +327,25 @@ export function mountTopBar(header, { views = {}, onView = () => {}, onLibraryCh
     q('library-rename-form').hidden = fixed;
     if (!fixed && document.activeElement !== q('library-rename-name')) q('library-rename-name').value = lib.name;
     renderEmpty();
+  }
+
+  function moreRow(more) {
+    const li = document.createElement('li');
+    li.className = 'source-more';
+    li.dataset.testid = 'source-more';
+    const text = document.createElement('span');
+    text.textContent = `${moreText(more)} \u00b7 `;
+    const manage = document.createElement('button');
+    manage.type = 'button';
+    manage.className = 'link';
+    manage.dataset.testid = 'source-manage';
+    manage.textContent = 'Manage';
+    manage.addEventListener('click', () => {
+      closeMenus();
+      onManage();
+    });
+    li.append(text, manage);
+    return li;
   }
 
   function profileOptions(select, selected) {
@@ -448,20 +543,122 @@ export function mountTopBar(header, { views = {}, onView = () => {}, onLibraryCh
     const node = q('add-result');
     clearTimeout(resultTimer);
     node.textContent = text || addResultText(r);
+    // The line is cut to one row; the whole of it on hover.
+    node.title = node.textContent;
     node.hidden = false;
     resultTimer = setTimeout(() => (node.hidden = true), 8000);
+  }
+
+  /**
+   * Replace, keep or cancel for one name conflict; the dialog stays until it is answered. With
+   * several files of that name it lists each with its path, and Replace waits for one to be picked.
+   * Resolves to { action: 'replace', id }, { action: 'keep' } or null.
+   */
+  function askReplace(conflict) {
+    const d = (id) => dialog.querySelector(`[data-testid="${id}"]`);
+    const matches = conflictMatches(conflict);
+    const many = matches.length > 1;
+    d('replace-text').textContent = replaceQuestion(conflict);
+    d('replace-keep').textContent = many ? 'Keep all' : 'Keep both';
+    const choices = d('replace-choices');
+    choices.hidden = !many;
+    choices.replaceChildren(
+      choices.querySelector('legend'),
+      ...(many
+        ? matches.map((m) => {
+            const label = document.createElement('label');
+            label.className = 'replace-choice';
+            label.dataset.testid = 'replace-choice';
+            const radio = document.createElement('input');
+            radio.type = 'radio';
+            radio.name = 'replace-target';
+            radio.value = m.id;
+            radio.addEventListener('change', () => (d('replace-confirm').disabled = false));
+            const name = document.createElement('span');
+            name.className = 'replace-choice-name';
+            name.textContent = m.path.split(/[\\/]/).pop();
+            const where = document.createElement('span');
+            where.className = 'replace-choice-path';
+            where.textContent = m.kind === 'copy' ? `${m.path} (copy)` : m.path;
+            label.append(radio, name, where);
+            return label;
+          })
+        : []),
+    );
+    d('replace-confirm').disabled = many;
+    dialog.returnValue = '';
+    return new Promise((resolve) => {
+      dialog.addEventListener(
+        'close',
+        () => {
+          const v = dialog.returnValue;
+          const picked = many ? choices.querySelector('input:checked')?.value : matches[0].id;
+          if (v === 'replace' && picked) resolve({ action: 'replace', id: picked });
+          else if (v === 'keep') resolve({ action: 'keep' });
+          else resolve(null);
+        },
+        { once: true },
+      );
+      dialog.showModal();
+      (many ? choices.querySelector('input') : d('replace-keep')).focus();
+    });
+  }
+
+  /** Shows what an add did, then asks about each name conflict and adds what the user answered. */
+  async function settle(r) {
+    if (!r) return;
+    const conflicts = r.conflicts || [];
+    if (!conflicts.length) return showResult(r);
+    const decisions = {};
+    for (const c of conflicts) {
+      const answer = await askReplace(c);
+      if (answer?.action === 'replace') decisions[c.path] = { action: 'replace', replaces: answer.id };
+      else if (answer?.action === 'keep') decisions[c.path] = { action: 'keep' };
+    }
+    const paths = Object.keys(decisions);
+    const next = paths.length ? await bridge.addPaths(paths, decisions) : null;
+    const join = (k) => [...(r[k] || []), ...(next?.[k] || [])];
+    showResult({
+      added: r.added + (next?.added || 0),
+      skipped: join('skipped'),
+      already: join('already'),
+      kept: join('kept'),
+      conflicts: [],
+    });
   }
 
   async function add(kind) {
     closeMenus();
     if (!bridge) return;
     try {
-      const r = kind === 'files' ? await bridge.addFiles() : await bridge.addFolder();
-      if (r) showResult(r);
+      await settle(kind === 'files' ? await bridge.addFiles() : await bridge.addFolder());
     } catch (e) {
       showResult({ added: 0, skipped: [{ name: kind === 'files' ? 'files' : 'folder', reason: e.message }] });
     }
   }
+
+  // --- check for updates ----------------------------------------------------------------------
+
+  // The status and its ↻ are one button: clicking the status checks. While checking it stays
+  // focusable (aria-disabled, not disabled), so a keyboard user keeps their place.
+  q('check-updates').addEventListener('click', async () => {
+    if (!bridge?.checkUpdates || state.checking) return;
+    state.checking = true;
+    q('check-updates').setAttribute('aria-disabled', 'true');
+    renderStatus();
+    const t0 = Date.now();
+    let s = null;
+    try {
+      s = await bridge.checkUpdates();
+    } catch (e) {
+      console.warn('[topbar] check for updates failed', e.message);
+    }
+    await new Promise((r) => setTimeout(r, Math.max(0, CHECK_MIN_MS - (Date.now() - t0))));
+    state.checking = false;
+    q('check-updates').removeAttribute('aria-disabled');
+    if (s) applyStatus(s);
+    else renderStatus();
+  });
 
   q('add-files').addEventListener('click', () => add('files'));
   q('add-folder').addEventListener('click', () => add('folder'));
@@ -496,7 +693,7 @@ export function mountTopBar(header, { views = {}, onView = () => {}, onLibraryCh
       .filter(Boolean);
     if (!paths.length) return;
     try {
-      showResult(await bridge.addPaths(paths));
+      await settle(await bridge.addPaths(paths));
     } catch (err) {
       showResult({ added: 0, skipped: [{ name: 'dropped items', reason: err.message }] });
     }
@@ -522,6 +719,9 @@ export function mountTopBar(header, { views = {}, onView = () => {}, onLibraryCh
   if (!bridge) {
     q('library-switcher').disabled = true;
     q('add-button').hidden = true;
+    // A plain browser cannot check: the status shows, not as a control.
+    q('check-updates').disabled = true;
+    q('check-updates').removeAttribute('title');
   } else {
     bridge.onChange(applyLibraries);
     bridge.list().then(applyLibraries, (e) => console.warn('[topbar] libraries failed', e.message));

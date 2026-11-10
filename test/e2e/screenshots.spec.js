@@ -78,7 +78,8 @@ for (const scheme of ['light', 'dark']) {
     test.skip(!dir, 'SCREENSHOT_DIR not set');
     await page.emulateMedia({ colorScheme: scheme });
     await mockLibrary(page, { documents: 14, recent });
-    await stubBridge(page, { status: watcherStatus({ state: 'working', pending: 3, indexed: 11 }) });
+    // Idle: the question box is off while the library indexes (docs/summaries.md).
+    await stubBridge(page, { status: watcherStatus({ indexed: 14 }) });
     await stubAnswer(page, { runs: { 'Can I fly business class?': notFound } });
     await page.goto(pageUrl({ folder: '/Users/anna/Documents/HR' }));
     await page.getByTestId('query').fill('Can I fly business class?');

@@ -29,7 +29,9 @@ export function settingsView(over = {}) {
 
 /**
  * options: libraries (LibrariesView), status (watcher status), settings (SettingsView),
- * addResult (what addFiles, addFolder and addPaths answer), fail ({ method: message }),
+ * addResult (what addFiles, addFolder and addPaths answer), resolvedResult (what addPaths answers
+ * when the page passes Replace or Keep both decisions), checkResult (what checkUpdates answers;
+ * with checkGate it waits for window.__finishCheck()), fail ({ method: message }),
  * developer (what developer.info answers).
  */
 export async function stubLibraries(page, options = {}) {
@@ -72,7 +74,15 @@ export async function stubLibraries(page, options = {}) {
         remove: (id) => answer('remove', () => o.libraries, id),
         addFiles: () => answer('addFiles', o.addResult ?? null),
         addFolder: () => answer('addFolder', o.addResult ?? null),
-        addPaths: (paths) => answer('addPaths', o.addResult ?? { added: paths.length, skipped: [] }, paths),
+        addPaths: (paths, decisions) =>
+          decisions
+            ? answer('addPaths', o.resolvedResult ?? { added: paths.length, skipped: [] }, paths, decisions)
+            : answer('addPaths', o.addResult ?? { added: paths.length, skipped: [] }, paths),
+        checkUpdates: () => {
+          if (!o.checkGate) return answer('checkUpdates', o.checkResult ?? o.status ?? null);
+          calls.push(['checkUpdates']);
+          return new Promise((resolve) => (window.__finishCheck = () => resolve(o.checkResult ?? o.status ?? null)));
+        },
         removeSource: (id) => answer('removeSource', () => o.libraries, id),
         reindex: () => answer('reindex', () => o.libraries),
         pathForFile: (file) => `/dropped/${file.name}`,

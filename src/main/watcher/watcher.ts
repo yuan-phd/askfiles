@@ -24,13 +24,17 @@ import type {
   WatcherStatus,
 } from './types.js';
 
-/** One folder the watcher reads: a linked folder, or a library's own folder of added files. */
+/**
+ * One source the watcher reads: a linked folder, a library's own folder of copies made by earlier
+ * versions, or one individually added file (file: true), which is watched through its folder.
+ */
 export interface WatchRoot {
   /** Stable id; part of every document name, so equal files under two roots never share a name. */
   id: string;
   path: string;
   /** Shown before the path inside the root (the folder's name); empty for the added files. */
   label: string;
+  file?: boolean;
 }
 
 export interface FolderWatcherOptions {
@@ -52,6 +56,12 @@ export interface FolderWatcherOptions {
   debounceMs?: number;
   /** A file whose size changed within this time is not indexed yet. Default 2000. */
   stableMs?: number;
+  /**
+   * How often the folders of the sources are checked for being reachable while running: a source
+   * whose folder went away (an unplugged drive) is set aside, one that came back is reconciled.
+   * Default 5000; 0 turns it off.
+   */
+  availabilityPollMs?: number;
   /** One entry per retry; after the last one the job goes to the dead-letter list. Default 1, 4, 16 s. */
   retryDelaysMs?: number[];
   log?: (msg: string) => void;
@@ -78,7 +88,11 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
   private roots: WatchRoot[] = [];
   private unavailable: WatchRoot[] = [];
   private data: IndexData = { version: 1, files: {} };
-  private handle: WatchHandle | null = null;
+  /** Watches by the folder they watch: a linked folder, or the folder of added files. */
+  private watches = new Map<string, WatchHandle>();
+  /** Folders watched for individually added files, with the added files in each (the watch's only set). */
+  private fileDirs = new Map<string, Set<string>>();
+  private pollTimer: NodeJS.Timeout | null = null;
   private state: WatcherStatus['state'] = 'stopped';
   /** Paths in the debounce stage, with the size seen when the timer was set (-1: missing). */
   private readonly settling = new Map<string, { timer: NodeJS.Timeout; size: number }>();
@@ -98,6 +112,7 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
       debounceMs: options.debounceMs ?? 2000,
       stableMs: options.stableMs ?? 2000,
       retryDelaysMs: options.retryDelaysMs ?? [1000, 4000, 16000],
+      availabilityPollMs: options.availabilityPollMs ?? 5000,
       log: options.log ?? ((msg) => console.log(`[watcher] ${msg}`)),
       now: options.now ?? (() => new Date()),
     };
@@ -113,8 +128,10 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
 
   /**
    * Loads index.json, starts watching, then queues the differences between folders and index. A
-   * folder that cannot be read (an unplugged drive) is listed in status().unavailable and its
-   * files stay in the index until it is back or removed from the library.
+   * source whose folder cannot be reached (an unplugged drive, a disconnected network volume) is
+   * listed in status().unavailable and its files stay in the index, answerable, until the folder
+   * is back (at start, on Check for updates, or when the poll sees it) or the source is removed.
+   * The same holds when the folder goes away while running.
    */
   async start(): Promise<void> {
     if (this.state !== 'stopped') throw new Error(`start() called while ${this.state}`);
@@ -122,40 +139,25 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
     this.roots = [];
     this.unavailable = [];
     for (const r of this.given) {
-      try {
-        // realpath so the paths the watch reports match the keys in index.json (macOS /var is /private/var).
-        const real = fs.realpathSync(r.path);
-        if (!fs.statSync(real).isDirectory()) throw new Error('not a folder');
-        this.roots.push({ ...r, path: real });
-      } catch (e) {
-        this.unavailable.push(r);
-        this.o.log(`folder not available: ${r.path} (${(e as Error).message})`);
-      }
+      const real = this.resolveRoot(r);
+      if (real) this.roots.push(real);
+      else this.unavailable.push(r);
     }
     this.data = loadIndex(this.indexFile, this.o.log);
+    const count = (list: WatchRoot[], file: boolean) => list.filter((r) => !!r.file === file).length;
     this.o.log(
-      `watching ${this.roots.length} of ${this.given.length} folders, ${Object.keys(this.data.files).length} files in index`,
+      `watching ${count(this.roots, false)} of ${count(this.given, false)} folders and ${count(this.roots, true)} of ${count(this.given, true)} added files, ${Object.keys(this.data.files).length} files in index`,
     );
     // Watch before walking, so nothing written during the walk is missed. chokidar treats files
     // that appear before it is ready as initial and, with ignoreInitial, never reports them.
-    const handles = this.roots.map((r) =>
-      this.o.watch(
-        r.path,
-        (_type, p) => this.onPath(p),
-        (err) => {
-          // Not 'error': an EventEmitter throws on an 'error' event nobody listens to.
-          this.o.log(`watch error: ${err.message}`);
-          this.emit('watchError', err);
-        },
-      ),
-    );
-    this.handle = {
-      ready: Promise.all(handles.map((h) => h.ready)).then(() => undefined),
-      close: () => Promise.all(handles.map((h) => h.close())).then(() => undefined),
-    };
-    await this.handle.ready;
+    this.watches = new Map();
+    this.fileDirs = new Map();
+    const opened = this.roots.map((r) => this.watchRoot(r)).filter((h): h is WatchHandle => !!h);
+    await Promise.all(opened.map((h) => h.ready));
+    await this.removePending();
     await this.reconcile();
     this.state = 'idle';
+    this.startPoll();
     this.kick();
     this.emitStatus();
   }
@@ -169,8 +171,12 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
     for (const t of this.retryTimers) clearTimeout(t);
     this.retryTimers.clear();
     this.queue.length = 0;
-    await this.handle?.close();
-    this.handle = null;
+    if (this.pollTimer) clearInterval(this.pollTimer);
+    this.pollTimer = null;
+    const handles = [...this.watches.values()];
+    this.watches = new Map();
+    this.fileDirs = new Map();
+    await Promise.all(handles.map((h) => h.close()));
     await this.running;
     this.o.log('stopped');
     this.flushIdle();
@@ -188,24 +194,229 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
   }
 
   /**
-   * Forgets every indexed file: unembeds and deletes its section documents and empties index.json,
-   * so the next start indexes everything again (Reindex). Only while stopped.
+   * Forgets every indexed file and empties index.json, so the next start indexes everything again
+   * (Reindex). Removes every document of the workspace, not only those the index lists: sections
+   * of an update that never finished, or of a record that was lost, would otherwise stay in the
+   * answers for good. Only while stopped.
    */
   async clearIndex(): Promise<void> {
     if (this.state !== 'stopped') throw new Error(`clearIndex() called while ${this.state}`);
     this.data = loadIndex(this.indexFile, this.o.log);
-    const locations = Object.values(this.data.files).flatMap((f) => f.sections.map((s) => s.location));
-    await this.o.api.removeDocuments(this.o.workspaceSlug, locations);
+    const listed = Object.values(this.data.files).flatMap((f) => f.sections.map((s) => s.location));
+    const pending = Object.values(this.data.pending ?? {}).flat();
+    const inWorkspace = [...(await this.o.api.workspaceDocuments(this.o.workspaceSlug)).keys()];
+    const all = [...new Set([...listed, ...pending, ...inWorkspace])];
+    await this.o.api.removeDocuments(this.o.workspaceSlug, all);
     this.data = { version: 1, files: {} };
     this.dead.clear();
     this.save();
-    this.o.log(`index cleared, ${locations.length} section documents removed`);
+    this.o.log(
+      `index cleared, ${all.length} documents removed (${listed.length} listed, ${all.length - listed.length} not listed)`,
+    );
   }
 
-  /** The watched root that holds p (the deepest one), or null. */
+  /**
+   * Adds individually added files while running: each is watched through its folder from now on
+   * and indexed at once. Folders are linked by a restart instead (src/main/libraries.ts).
+   */
+  async addRoots(roots: WatchRoot[]): Promise<void> {
+    const fresh: WatchHandle[] = [];
+    const added: string[] = [];
+    for (const r0 of roots) {
+      if (!r0.file) throw new Error('addRoots() takes added files only');
+      const r = { ...r0, path: path.resolve(r0.path) };
+      this.given.push(r);
+      if (this.state === 'stopped') continue;
+      const real = this.resolveRoot(r);
+      if (!real) {
+        this.unavailable.push(r);
+        continue;
+      }
+      this.roots.push(real);
+      const h = this.watchRoot(real);
+      if (h) fresh.push(h);
+      added.push(real.path);
+    }
+    await Promise.all(fresh.map((h) => h.ready));
+    for (const p of added) if (this.state !== 'stopped') this.settle(p, 0);
+  }
+
+  /**
+   * Drops a source while running (an added file the user removed, or whose original is gone):
+   * its files leave the index through the queue, like a deleted file.
+   */
+  removeRoot(id: string): void {
+    const gone = this.roots.filter((r) => r.id === id);
+    const drop = (list: WatchRoot[]) => list.filter((r) => r.id !== id);
+    this.given.splice(0, this.given.length, ...drop(this.given));
+    this.roots = drop(this.roots);
+    this.unavailable = drop(this.unavailable);
+    for (const r of gone) if (r.file) this.fileDirs.get(path.dirname(r.path))?.delete(r.path);
+    for (const [p, rec] of Object.entries(this.data.files)) {
+      if (rec.sourceId === id || gone.some((r) => r.path === p)) this.enqueue(p, 'remove');
+    }
+  }
+
+  /** Removes one file from the index through the queue (a copy the library deleted itself). */
+  forget(filePath: string): void {
+    if (this.data.files[filePath]) this.enqueue(filePath, 'remove');
+  }
+
+  /**
+   * Check for updates: the start-up comparison now, for every source (size and modification time,
+   * then the content hash in the job). Resolves once the changed files are queued; status() then
+   * says working while they are indexed. Unchanged files are never indexed again.
+   */
+  async checkNow(): Promise<{ toCheck: number }> {
+    if (this.state === 'stopped' || this.state === 'starting') return { toCheck: 0 };
+    // reconcile() first sets aside sources whose folder went away and takes back those that returned.
+    const before = this.settling.size + this.queue.length;
+    await this.reconcile();
+    this.kick();
+    this.emitStatus();
+    return { toCheck: Math.max(0, this.settling.size + this.queue.length - before) };
+  }
+
+  /** A root as watched: real paths, so they match what the watch reports; null when it cannot be read. */
+  private resolveRoot(r: WatchRoot, quiet = false): WatchRoot | null {
+    try {
+      if (r.file) {
+        // The file itself may be gone: then its folder is watched and the reconcile removes it.
+        // Only a folder that cannot be read (an unplugged drive) makes the file unavailable.
+        const dir = fs.realpathSync(path.dirname(r.path));
+        if (!fs.statSync(dir).isDirectory()) throw new Error('not a folder');
+        return { ...r, path: path.join(dir, path.basename(r.path)) };
+      }
+      // realpath so the paths the watch reports match the keys in index.json (macOS /var is /private/var).
+      const real = fs.realpathSync(r.path);
+      if (!fs.statSync(real).isDirectory()) throw new Error('not a folder');
+      return { ...r, path: real };
+    } catch (e) {
+      if (!quiet) this.o.log(`${r.file ? 'file' : 'folder'} not available: ${r.path} (${(e as Error).message})`);
+      return null;
+    }
+  }
+
+  /**
+   * Starts watching a root: a linked folder recursively, an added file through its folder. Returns
+   * the new handle, or null when the folder was watched already (another added file in it).
+   */
+  private watchRoot(r: WatchRoot): WatchHandle | null {
+    if (!r.file) {
+      const h = this.o.watch(r.path, this.onEvent, this.onWatchError);
+      this.watches.set(r.path, h);
+      return h;
+    }
+    const dir = path.dirname(r.path);
+    const known = this.fileDirs.get(dir);
+    if (known) {
+      known.add(r.path);
+      return null;
+    }
+    const only = new Set([r.path]);
+    this.fileDirs.set(dir, only);
+    const h = this.o.watch(dir, this.onEvent, this.onWatchError, { depth: 0, only });
+    this.watches.set(dir, h);
+    return h;
+  }
+
+  /** The folder whose presence decides whether a root can be reached: the linked folder, or the added file's folder. */
+  private static folderOf(r: WatchRoot): string {
+    return r.file ? path.dirname(r.path) : r.path;
+  }
+
+  private static reachable(r: WatchRoot): boolean {
+    try {
+      return fs.statSync(FolderWatcher.folderOf(r), { throwIfNoEntry: false })?.isDirectory() ?? false;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Sets a root aside whose folder can no longer be reached: its watch closes and its files stay
+   * in the index, answerable, until the folder is back. Added files of the same folder go with it.
+   */
+  private setAside(r: WatchRoot): void {
+    const folder = FolderWatcher.folderOf(r);
+    const gone = this.roots.filter((x) => FolderWatcher.folderOf(x) === folder || x === r);
+    if (!gone.length) return;
+    this.roots = this.roots.filter((x) => !gone.includes(x));
+    for (const x of gone) this.unavailable.push(this.given.find((g) => g.id === x.id) ?? x);
+    const h = this.watches.get(folder);
+    this.watches.delete(folder);
+    this.fileDirs.delete(folder);
+    void h?.close().catch(() => undefined);
+    // Jobs already waiting for these files would remove them; the files are only out of reach.
+    for (const [p, { timer }] of this.settling) {
+      if (gone.some((x) => belongsTo(p, this.data.files[p], x) || x.path === p)) {
+        clearTimeout(timer);
+        this.settling.delete(p);
+      }
+    }
+    this.o.log(`not reachable, kept as not available: ${gone.map((x) => x.path).join(', ')}`);
+    this.emitStatus();
+  }
+
+  /**
+   * Sets aside roots whose folder went away and takes back unavailable roots whose folder is
+   * reachable again (watching them anew). Run before every reconcile.
+   */
+  private async refreshRoots(): Promise<void> {
+    for (const r of [...this.roots]) if (this.roots.includes(r) && !FolderWatcher.reachable(r)) this.setAside(r);
+    const back: WatchRoot[] = [];
+    for (const u of [...this.unavailable]) {
+      const real = this.resolveRoot(u, true);
+      if (!real) continue;
+      this.unavailable = this.unavailable.filter((x) => x !== u);
+      this.roots.push(real);
+      back.push(real);
+    }
+    const opened = back.map((r) => this.watchRoot(r)).filter((h): h is WatchHandle => !!h);
+    await Promise.all(opened.map((h) => h.ready));
+    if (back.length) {
+      this.o.log(`reachable again: ${back.map((r) => r.path).join(', ')}`);
+      this.emitStatus();
+    }
+  }
+
+  /** While running: notices a folder that went away or came back without waiting for an event. */
+  private startPoll(): void {
+    if (!this.o.availabilityPollMs || this.pollTimer) return;
+    this.pollTimer = setInterval(() => {
+      if (this.state === 'stopped' || this.state === 'starting' || this.polling) return;
+      // One stat per folder: 900 added files in 200 folders cost 200 stats, not 900.
+      const folders = new Map<string, WatchRoot>();
+      for (const r of this.roots) folders.set(FolderWatcher.folderOf(r), r);
+      const lost = [...folders.values()].some((r) => !FolderWatcher.reachable(r));
+      const found = this.unavailable.some((u) => !!this.resolveRoot(u, true));
+      if (!lost && !found) return;
+      this.polling = true;
+      void this.checkNow()
+        .catch((e: Error) => this.o.log(`availability check failed: ${e.message}`))
+        .finally(() => (this.polling = false));
+    }, this.o.availabilityPollMs);
+    this.pollTimer.unref?.();
+  }
+
+  private polling = false;
+
+  private readonly onEvent = (_type: string, p: string): void => this.onPath(p);
+
+  private readonly onWatchError = (err: Error): void => {
+    // Not 'error': an EventEmitter throws on an 'error' event nobody listens to.
+    this.o.log(`watch error: ${err.message}`);
+    this.emit('watchError', err);
+  };
+
+  /** The root that holds p: an added file by its exact path, else the deepest folder; or null. */
   private rootOf(p: string): WatchRoot | null {
     let best: WatchRoot | null = null;
     for (const r of this.roots) {
+      if (r.file) {
+        if (r.path === p) return r;
+        continue;
+      }
       const rel = path.relative(r.path, p);
       if (rel && !rel.startsWith('..') && !path.isAbsolute(rel) && (!best || r.path.length > best.path.length))
         best = r;
@@ -215,8 +426,13 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
 
   /** p under its root, with the root's label in front: what the browse pages show. */
   private relPathOf(p: string, r: WatchRoot): string {
+    if (r.file) return path.basename(p);
     const rel = path.relative(r.path, p);
     return r.label ? path.join(r.label, rel) : rel;
+  }
+
+  private indexable(p: string, r: WatchRoot): boolean {
+    return isIndexable(p, r.file ? path.dirname(r.path) : r.path, this.o.extensions);
   }
 
   /** A copy of the index, for the status bar and the browse view. */
@@ -242,7 +458,7 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
 
   private onPath(p: string): void {
     const r = this.rootOf(p);
-    if (this.state === 'stopped' || !r || !isIndexable(p, r.path, this.o.extensions)) return;
+    if (this.state === 'stopped' || !r || !this.indexable(p, r)) return;
     this.settle(p);
   }
 
@@ -264,6 +480,12 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
     if (this.state === 'stopped') return;
     const size = sizeOf(p);
     if (size === -1) {
+      // A file whose folder went away with it (the drive was unplugged) is out of reach, not deleted.
+      const root = this.rootOf(p);
+      if (root && !FolderWatcher.reachable(root)) {
+        this.setAside(root);
+        return;
+      }
       this.enqueue(p, 'remove');
     } else if (size !== seenSize) {
       // Still being written: wait until the size holds still for stableMs.
@@ -317,6 +539,8 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
       this.emit('file', { path: job.path, kind: job.kind, ...r });
     } catch (e) {
       const error = (e as Error).message;
+      // The sections this attempt embedded are not in any saved record; a retry writes them again.
+      await this.removePending([job.path]);
       const attempt = job.attempt + 1;
       const delay = this.o.retryDelaysMs[attempt - 1];
       if (delay === undefined || this.state === 'stopped') {
@@ -361,7 +585,8 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
     const old = this.data.files[p];
     const { splitKey } = this.o.splitter;
     const relPath = this.relPathOf(p, root);
-    if (old && old.hash === hash && old.splitKey === splitKey && old.relPath === relPath) {
+    const sameSource = old?.sourceId === undefined || old.sourceId === root.id;
+    if (old && old.hash === hash && old.splitKey === splitKey && old.relPath === relPath && sameSource) {
       if (old.size !== st.size || old.mtimeMs !== st.mtimeMs) {
         this.data.files[p] = { ...old, size: st.size, mtimeMs: st.mtimeMs };
         this.save();
@@ -375,13 +600,21 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
     const t1 = Date.now();
     // Names depend on path, bytes, split key and chunk position only: a changed file gets all new
     // names and is embedded afresh; an unchanged one keeps them (src/main/sections/documents.ts).
-    const rel = path.relative(root.path, p);
+    const rel = root.file ? path.basename(p) : path.relative(root.path, p);
     const docs = sectionDocuments(
       chunks,
       { path: p, relPath: root.id ? `${root.id}/${rel}` : rel, hash },
       { splitKey, published: this.o.now().toLocaleString('en-US') },
     );
     const oldByLocation = new Map((old?.sections ?? []).map((s) => [s.location, s]));
+    // Recorded before anything is written or embedded: a failure from here until the record is
+    // saved, a crash included, leaves names that removePending can find.
+    const fresh = docs.map(({ name }) => `${this.docsFolder}/${name}`).filter((l) => !oldByLocation.has(l));
+    if (fresh.length) {
+      const pending = (this.data.pending ??= {});
+      pending[p] = [...new Set([...(pending[p] ?? []), ...fresh])];
+      this.save();
+    }
     const records: SectionRecord[] = [];
     for (const [i, { name, doc }] of docs.entries()) {
       const location = `${this.docsFolder}/${name}`;
@@ -436,6 +669,8 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
       sections: records,
     };
     this.save();
+    // Saved with the record still pending; only names of an earlier, different attempt go now.
+    await this.removePending([p]);
     const t3 = Date.now();
     const times: StageTimes = {
       split: t1 - t0 - stats.ocrMs,
@@ -450,6 +685,14 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
   private async remove(p: string): Promise<Outcome> {
     const old = this.data.files[p];
     if (!old) return { outcome: 'removed', sections: 0 };
+    // Out of reach is not deleted: keep the file of a source set aside, or whose folder just went.
+    if (this.unavailable.some((u) => belongsTo(p, old, u)))
+      return { outcome: 'unchanged', sections: old.sections.length };
+    const root = this.rootOf(p);
+    if (root && !FolderWatcher.reachable(root)) {
+      this.setAside(root);
+      return { outcome: 'unchanged', sections: old.sections.length };
+    }
     await this.o.api.removeDocuments(
       this.o.workspaceSlug,
       old.sections.map((s) => s.location),
@@ -460,15 +703,22 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
   }
 
   private async reconcile(): Promise<void> {
+    await this.refreshRoots();
     const found = new Set<string>();
-    const walked: string[] = [];
+    const walked: { p: string; r: WatchRoot }[] = [];
     for (const r of this.roots) {
+      if (r.file) {
+        // A missing original is not found and goes below, like a file deleted from a folder.
+        if (this.indexable(r.path, r) && fs.statSync(r.path, { throwIfNoEntry: false })?.isFile())
+          walked.push({ p: r.path, r });
+        continue;
+      }
       for await (const p of walk(r.path, r.path)) {
-        if (!isIndexable(p, r.path, this.o.extensions) || this.rootOf(p) !== r) continue;
-        walked.push(p);
+        if (!this.indexable(p, r) || this.rootOf(p) !== r) continue;
+        walked.push({ p, r });
       }
     }
-    for (const p of walked) {
+    for (const { p, r } of walked) {
       found.add(p);
       const rec = this.data.files[p];
       let st: fs.Stats;
@@ -479,7 +729,9 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
       }
       // Size and time decide what to look at; the job then compares hashes before any work.
       const changed = !rec || rec.size !== st.size || rec.mtimeMs !== st.mtimeMs;
-      if (changed || rec.splitKey !== this.o.splitter.splitKey) this.settle(p);
+      // An added file now inside a linked folder belongs to the folder: its names change.
+      const moved = rec && rec.sourceId !== undefined && rec.sourceId !== r.id;
+      if (changed || moved || rec.splitKey !== this.o.splitter.splitKey) this.settle(p);
     }
     let missing = 0;
     // Files of a folder that cannot be read now are kept; files of a folder no longer in the
@@ -487,11 +739,41 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
     const keep = (p: string) => this.unavailable.some((u) => belongsTo(p, this.data.files[p], u));
     for (const p of Object.keys(this.data.files)) {
       if (!found.has(p) && !keep(p)) {
-        this.queue.push({ path: p, kind: 'remove', attempt: 0 });
+        // Check for updates runs this while jobs are queued: one job per path.
+        const queued = this.queue.find((j) => j.path === p);
+        if (queued) queued.kind = 'remove';
+        else if (this.current?.path !== p || this.current.kind !== 'remove')
+          this.queue.push({ path: p, kind: 'remove', attempt: 0 });
         missing++;
       }
     }
     this.o.log(`reconcile: ${found.size} files in folders, ${this.settling.size} to check, ${missing} to remove`);
+  }
+
+  /**
+   * Removes the pending sections of the given files (all files when none are given) that their
+   * saved records do not list, then forgets them. Best effort: what cannot be removed now stays
+   * pending for the next failure or start.
+   */
+  private async removePending(paths?: string[]): Promise<void> {
+    const pending = this.data.pending;
+    if (!pending) return;
+    for (const p of paths ?? Object.keys(pending)) {
+      const names = pending[p];
+      if (!names) continue;
+      const keep = new Set((this.data.files[p]?.sections ?? []).map((s) => s.location));
+      const orphans = names.filter((l) => !keep.has(l));
+      try {
+        if (orphans.length) await this.o.api.removeDocuments(this.o.workspaceSlug, orphans);
+      } catch (e) {
+        this.o.log(`pending sections of ${p} not removed yet: ${(e as Error).message}`);
+        continue;
+      }
+      delete pending[p];
+      if (orphans.length) this.o.log(`removed ${orphans.length} sections left by an unfinished update of ${p}`);
+    }
+    if (!Object.keys(pending).length) delete this.data.pending;
+    this.save();
   }
 
   private save(): void {

@@ -1,4 +1,5 @@
 import { CHANNELS, type BridgeHandlers } from './contract.js';
+import type { AddDecision } from '../libraries.js';
 
 /** The parts of ipcMain the bridge uses, so tests can pass a fake. */
 export interface IpcMainLike {
@@ -28,6 +29,7 @@ const INVOKE: Record<string, keyof BridgeHandlers> = {
   [CHANNELS.librariesAddPaths]: 'librariesAddPaths',
   [CHANNELS.librariesRemoveSource]: 'librariesRemoveSource',
   [CHANNELS.librariesReindex]: 'librariesReindex',
+  [CHANNELS.librariesCheckUpdates]: 'librariesCheckUpdates',
   [CHANNELS.settingsGet]: 'settingsGet',
   [CHANNELS.settingsSet]: 'settingsSet',
   [CHANNELS.developerInfo]: 'developerInfo',
@@ -95,6 +97,18 @@ export function registerBridge(ipc: IpcMainLike, h: BridgeHandlers): void {
   const nameArg = (v: unknown, what: string): string => {
     if (typeof v !== 'string' || !/^[a-z0-9-]{1,40}$/.test(v)) throw new Error(`${what} is required`);
     return v;
+  };
+  /** Replace or Keep both answers from a page, only for the paths of the same call. */
+  const decisionsArg = (v: unknown, paths: string[]): Record<string, AddDecision> => {
+    const out: Record<string, AddDecision> = {};
+    if (!v || typeof v !== 'object') return out;
+    for (const p of paths) {
+      const d = (v as Record<string, unknown>)[p] as { action?: unknown; replaces?: unknown } | undefined;
+      if (d?.action === 'keep') out[p] = { action: 'keep' };
+      else if (d?.action === 'replace' && typeof d.replaces === 'string' && d.replaces && d.replaces.length <= 200)
+        out[p] = { action: 'replace', replaces: d.replaces };
+    }
+    return out;
   };
   for (const [channel, name] of Object.entries(INVOKE)) {
     ipc.handle(channel, async (_event, ...args) => {
@@ -164,7 +178,7 @@ export function registerBridge(ipc: IpcMainLike, h: BridgeHandlers): void {
           const paths = (Array.isArray(args[0]) ? args[0] : [])
             .filter((p): p is string => typeof p === 'string' && p !== '' && p.length <= MAX_PATH)
             .slice(0, MAX_PATHS);
-          return h.librariesAddPaths(paths);
+          return h.librariesAddPaths(paths, decisionsArg(args[1], paths));
         }
         case 'settingsSet':
           return h.settingsSet(args[0] && typeof args[0] === 'object' ? args[0] : {});

@@ -10,6 +10,17 @@ export interface FolderSource {
 }
 
 /**
+ * A file added on its own (Add files, drag and drop): linked by its absolute path and watched
+ * through its folder, like a file inside a linked folder; never copied or modified.
+ */
+export interface FileSource {
+  /** Stable id, part of the document names of the file. */
+  id: string;
+  path: string;
+  addedAt: string;
+}
+
+/**
  * One library: an upstream workspace plus the shell's own records under
  * <dataDir>/libraries/<id> (index.json, browse/, files/ for added files; src/main/libraries).
  */
@@ -19,6 +30,10 @@ export interface LibraryRecord {
   /** Slug of the library's hidden workspace; null until the server created it. */
   workspaceSlug: string | null;
   folders: FolderSource[];
+  /** Individually added files; absent in records written before files were linked. */
+  files?: FileSource[];
+  /** The highest added-file id number given so far, so a removed file's id is never given again. */
+  lastFileId?: number;
   createdAt: string;
   /** Profile id (config/profiles, src/main/graph/profiles.ts); absent means the default. */
   profile?: string;
@@ -111,6 +126,10 @@ function readLibrary(v: unknown): LibraryRecord | null {
     .map((f) => (f && typeof f === 'object' ? (f as Record<string, unknown>) : {}))
     .filter((f) => str(f.id) && str(f.path))
     .map((f) => ({ id: f.id as string, path: f.path as string, addedAt: str(f.addedAt) ?? new Date(0).toISOString() }));
+  const files = (Array.isArray(d.files) ? d.files : [])
+    .map((f) => (f && typeof f === 'object' ? (f as Record<string, unknown>) : {}))
+    .filter((f) => str(f.id) && str(f.path))
+    .map((f) => ({ id: f.id as string, path: f.path as string, addedAt: str(f.addedAt) ?? new Date(0).toISOString() }));
   const profile = str(d.profile);
   const overrides: Record<string, Record<string, string>> = {};
   if (d.typeOverrides && typeof d.typeOverrides === 'object') {
@@ -132,6 +151,8 @@ function readLibrary(v: unknown): LibraryRecord | null {
     name,
     workspaceSlug: str(d.workspaceSlug),
     folders,
+    ...(files.length ? { files } : {}),
+    ...(Number.isInteger(d.lastFileId) && (d.lastFileId as number) > 0 ? { lastFileId: d.lastFileId as number } : {}),
     createdAt: str(d.createdAt) ?? new Date(0).toISOString(),
     ...(profile && /^[a-z0-9-]{1,40}$/.test(profile) ? { profile } : {}),
     ...(Object.keys(overrides).length ? { typeOverrides: overrides } : {}),

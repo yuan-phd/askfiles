@@ -6,7 +6,7 @@ import type { PullProgress } from '../ollama/client.js';
 import type { SetupEvent, SetupSnapshot } from '../first-run.js';
 import type { GraphData, ProfileInfo } from '../graph/index.js';
 import type { DocumentSummaryView, SummaryStatusView } from '../summaries/index.js';
-import type { AddResult, LibrariesView, LibraryStatus } from '../libraries.js';
+import type { AddDecision, AddResult, LibrariesView, LibraryStatus } from '../libraries.js';
 import type { Preset } from '../presets/index.js';
 import type { SettingsView } from '../settings.js';
 import type { Settings } from '../shell-state.js';
@@ -43,6 +43,7 @@ export const CHANNELS = {
   librariesAddPaths: 'askfiles:libraries:add-paths',
   librariesRemoveSource: 'askfiles:libraries:remove-source',
   librariesReindex: 'askfiles:libraries:reindex',
+  librariesCheckUpdates: 'askfiles:libraries:check-updates',
   settingsGet: 'askfiles:settings:get',
   settingsSet: 'askfiles:settings:set',
   developerInfo: 'askfiles:developer:info',
@@ -153,15 +154,17 @@ export interface BridgeHandlers {
   librariesRename(id: string, name: string): Promise<LibrariesView>;
   /** Deletes a library's workspace and records; never the original files. */
   librariesRemove(id: string): Promise<LibrariesView>;
-  /** Native file dialog, then copies the chosen files into the current library; null when cancelled. */
+  /** Native file dialog, then links the chosen files into the current library; null when cancelled. */
   librariesAddFiles(): Promise<AddResult | null>;
   /** Native folder dialog, then links the folder into the current library; null when cancelled. */
   librariesAddFolder(): Promise<AddResult | null>;
-  /** Dropped paths: folders are linked, files copied. */
-  librariesAddPaths(paths: string[]): Promise<AddResult>;
+  /** Dropped paths, or files waiting for Replace or Keep both with the answers by path: all linked. */
+  librariesAddPaths(paths: string[], decisions?: Record<string, AddDecision>): Promise<AddResult>;
   librariesRemoveSource(sourceId: string): Promise<LibrariesView>;
   /** Splits and embeds every file of the current library again. */
   librariesReindex(): Promise<LibrariesView>;
+  /** Check for updates: the start-up comparison now; the status after it. */
+  librariesCheckUpdates(): Promise<WatcherView>;
   settingsGet(): SettingsView;
   /** Stores and applies a change; model and context changes restart the server. */
   settingsSet(change: Partial<Settings>): Promise<SettingsView>;
@@ -255,9 +258,10 @@ export interface AskfilesBridge {
     remove(id: string): Promise<LibrariesView>;
     addFiles(): Promise<AddResult | null>;
     addFolder(): Promise<AddResult | null>;
-    addPaths(paths: string[]): Promise<AddResult>;
+    addPaths(paths: string[], decisions?: Record<string, AddDecision>): Promise<AddResult>;
     removeSource(sourceId: string): Promise<LibrariesView>;
     reindex(): Promise<LibrariesView>;
+    checkUpdates(): Promise<WatcherView>;
     /** The path of a dropped File (webUtils.getPathForFile); empty when it has none. */
     pathForFile(file: File): string;
   };

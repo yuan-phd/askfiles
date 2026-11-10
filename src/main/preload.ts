@@ -68,9 +68,15 @@ const askfiles: AskfilesBridge = {
     remove: (id) => invoke('askfiles:libraries:remove', String(id)),
     addFiles: () => invoke('askfiles:libraries:add-files'),
     addFolder: () => invoke('askfiles:libraries:add-folder'),
-    addPaths: (paths) => invoke('askfiles:libraries:add-paths', Array.isArray(paths) ? paths.map(String) : []),
+    addPaths: (paths, decisions) =>
+      invoke(
+        'askfiles:libraries:add-paths',
+        Array.isArray(paths) ? paths.map(String) : [],
+        decisions && typeof decisions === 'object' ? decisions : {},
+      ),
     removeSource: (id) => invoke('askfiles:libraries:remove-source', String(id)),
     reindex: () => invoke('askfiles:libraries:reindex'),
+    checkUpdates: () => invoke('askfiles:libraries:check-updates'),
     // Since Electron 32 a dropped File has no path property; only the preload can ask for it.
     pathForFile: (file) => {
       try {
