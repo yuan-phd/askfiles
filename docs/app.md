@@ -12,7 +12,7 @@ Written by Session H (plan tasks 3.4 and 3.5). Code in src/main; pages in src/re
 
 ## Pages
 
-The window loads our pages from the app bundle, never from the server: `askfiles://app/<page>/index.html` maps to src/renderer/<page>/index.html inside app.asar (src/main/app-protocol.ts). A custom scheme rather than file://, because Chromium refuses ES modules from file:// URLs, and a standard secure scheme gives every page the one origin `askfiles://app`, which the server allows and which keeps the recent questions in localStorage. Pages: onboarding, ask (the Ask view and the Browse view under one top bar), settings (menu AskFiles > Settings..., Cmd+comma, once set up), models (no menu entry since Session K: Settings chooses the answer model; opened from the Developer page), developer (menu AskFiles > Developer, only with ASKFILES_DEVELOPER=1), about (menu AskFiles > About AskFiles). `askfiles://app/THIRD-PARTY-NOTICES` serves the notices file from the app root for the About page.
+The window loads our pages from the app bundle, never from the server: `askfiles://app/<page>/index.html` maps to src/renderer/<page>/index.html inside app.asar (src/main/app-protocol.ts). A custom scheme rather than file://, because Chromium refuses ES modules from file:// URLs, and a standard secure scheme gives every page the one origin `askfiles://app`, which the server allows and which keeps the recent questions in localStorage. Pages: onboarding, ask (the Ask view and the Browse view under one top bar), settings (menu AskFiles > Settings..., Cmd+comma, once set up), models (no menu entry since Session K: Settings chooses the answer model; opened from the Developer page), developer (menu AskFiles > Developer, only with ASKFILES_DEVELOPER=1), about (menu AskFiles > About AskFiles). `askfiles://app/THIRD-PARTY-NOTICES` serves the notices file and `askfiles://app/LICENSE` the app's own license (AGPL-3.0-only) from the app root for the About page, which shows the license line, opens the license text in the page from its link, and lists the notices.
 
 The window title stays AskFiles whatever a page sets. Navigation is limited to `askfiles://app`, and to the server's origin only behind the developer switch.
 
@@ -304,9 +304,4 @@ scripts/smoke-mac.sh starts the packaged app on an emptied data directory (the m
 
 THIRD-PARTY-NOTICES at the repository root lists every bundled package with its license and each license text once; the About page shows it. A package that ships no license file gets the standard text of the license its package.json names, from scripts/license-texts (SPDX license-list-data v3.27.0: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, LGPL-3.0 with the GPL-3.0 text it builds on, MPL-2.0, CC0-1.0); when package.json names none, the license its readme states under a License heading, marked as from the readme. A package with no license anywhere is listed with its dependency path. scripts/third-party-notices.test.mjs fails when a listed package that names a license has no text in the file.
 
-`npm run package:mac` regenerates the file on the Mac after scripts/build.sh has pruned the trees and before electron-builder and signing, and runs the test there; the mac workflow does the same and uploads the result. docs/packaging.md, Third-party notices, has the details. To regenerate the repository copy in a cloud session:
-
-```
-PACKAGE_TARGET=linux-x64 bash scripts/build.sh
-npm run notices -- --strict
-```
+`npm run package:mac` regenerates the file on the Mac after scripts/build.sh has pruned the trees and before electron-builder and signing, and runs the test there; the mac workflow does the same, fails when the committed copy or the generated part of docs/licenses.md differs from the package, and uploads both. The committed copy is the mac one; a cloud session (Linux) cannot regenerate it, since it would list linux builds. docs/packaging.md, Third-party notices, has the details.

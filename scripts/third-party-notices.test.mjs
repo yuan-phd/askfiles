@@ -13,7 +13,13 @@ import {
   render,
   standardLicenseIds,
   standardTextHeading,
+  lgplSection,
+  LGPL_SOURCES_HEADING,
+  OLLAMA_LICENSE,
+  WINDOWS_RUNTIME_HEADING,
 } from './third-party-notices.mjs';
+import { noticeText, windowsRuntimes } from './lib/windows-runtimes.mjs';
+import { FFMPEG, LIBVIPS_POSIX } from './lib/lgpl-sources.mjs';
 
 const NOTICES = path.resolve(import.meta.dirname, '..', 'THIRD-PARTY-NOTICES');
 
@@ -185,6 +191,99 @@ describe('third-party notices', () => {
     // voyageai came only with chromadb, which the build's prune step removes (docs/licenses.md).
     expect(text).not.toMatch(/voyageai/);
     expect(text).toContain('- combine-errors@3.0.3  MIT  [upstream server]  (license stated in its readme');
-    expect(text).toMatch(/^- buffers@0\.1\.1: no license stated .*; dependency path upstream server: .*> buffers$/m);
+    // buffers 0.1.1 ships no license; it came only with exceljs, which the prune step now removes.
+    expect(text).not.toMatch(/buffers@0\.1\.1/);
+    expect(text).not.toMatch(/^- exceljs@/m);
   });
+
+  it("carries Ollama's MIT notice and the source pointers of the LGPL libraries", () => {
+    const text = fs.readFileSync(NOTICES, 'utf8');
+    expect(fs.readFileSync(OLLAMA_LICENSE, 'utf8')).toMatch(/^MIT License\n\nCopyright \(c\) Ollama\n/);
+    expect(text).toContain('=== Ollama ===\n\nMIT License\n\nCopyright (c) Ollama');
+    const section = text.slice(text.indexOf(LGPL_SOURCES_HEADING), text.indexOf('\nLicense texts\n'));
+    expect(section.length).toBeGreaterThan(LGPL_SOURCES_HEADING.length);
+    // The file is the one the platform's package build wrote: the committed mac copy in npm test, the
+    // Windows one in npm run package:win. Each libvips build it names must carry its pointers.
+    const posix = [...section.matchAll(/^- libvips (\S+) and the libraries built into it$/gm)].map((m) => m[1]);
+    const win32 = [...section.matchAll(/^- libvips (\S+) for Windows and the libraries built into it$/gm)].map(
+      (m) => m[1],
+    );
+    expect(posix.length + win32.length).toBeGreaterThan(0);
+    for (const v of posix) {
+      expect(LIBVIPS_POSIX[v], `libvips ${v}`).toBeTruthy();
+      expect(section).toContain(`${LIBVIPS_POSIX[v].repo}/tree/${LIBVIPS_POSIX[v].commit}`);
+      for (const lib of LIBVIPS_POSIX[v].libraries) expect(section).toContain(lib.url);
+    }
+    for (const v of win32) expect(section).toContain(`https://github.com/libvips/build-win64-mxe/tree/v${v}`);
+    const electron = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '..', 'package.json'), 'utf8'))
+      .devDependencies.electron;
+    expect(section).toContain(`FFmpeg in Electron ${electron}`);
+    expect(section).toContain(FFMPEG[electron].revision);
+    expect(text).toContain(standardTextHeading('LGPL-3.0'));
+  });
+
+  it('adds the LGPL sources section and its license text, and reports LGPL packages without a build', () => {
+    const versions = Object.fromEntries(LIBVIPS_POSIX['8.14.5'].libraries.map((l) => [l.key, l.version]));
+    const components = [
+      {
+        label: 'upstream server',
+        missing: [],
+        packages: new Map([
+          [
+            'sharp@0.32.6',
+            {
+              name: 'sharp',
+              version: '0.32.6',
+              license: 'Apache-2.0',
+              text: 'APACHE',
+              libvips: [{ vips: '8.14.5', family: 'posix', versions }],
+            },
+          ],
+          ['lonely@1.0.0', { name: 'lonely', version: '1.0.0', license: 'LGPL-2.1', text: 'LGPL 2.1 text' }],
+        ]),
+      },
+    ];
+    const electron = Object.keys(FFMPEG)[0];
+    const { lines, errors } = lgplSection(components, electron);
+    expect(errors).toEqual(['lonely@1.0.0 (upstream server) names an LGPL license but holds no libvips versions.json']);
+    const text = render(components, 'UPSTREAM', new Map([['LGPL-3.0', 'LGPL TEXT']]), {
+      ollamaLicense: 'OLLAMA MIT',
+      lgplLines: lines,
+    });
+    expect(text).toContain(`${LGPL_SOURCES_HEADING}\n`);
+    expect(text).toContain('Shipped in: sharp@0.32.6 (upstream server)');
+    expect(text).toContain('=== Ollama ===\n\nOLLAMA MIT');
+    expect(text).toContain(`${standardTextHeading('LGPL-3.0')}\n\nThe license of the libraries under`);
+    expect(text).toContain('LGPL TEXT');
+  });
+
+  it('adds the Windows runtime section and texts only when given', () => {
+    const components = [{ label: 'shell', missing: [], packages: new Map() }];
+    expect(render(components, 'UPSTREAM', new Map())).not.toContain(WINDOWS_RUNTIME_HEADING);
+    const text = render(components, 'UPSTREAM', new Map(), {
+      windowsRuntime: {
+        lines: ['- Runtime X', '  Files: x.dll'],
+        texts: [{ heading: '=== Windows runtime: X ===', text: 'X TEXT' }],
+      },
+    });
+    expect(text).toContain(`${WINDOWS_RUNTIME_HEADING}\n`);
+    expect(text).toContain('  Files: x.dll');
+    expect(text.indexOf('=== Windows runtime: X ===\n\nX TEXT')).toBeGreaterThan(text.indexOf('\nLicense texts\n'));
+  });
+
+  // Runs in npm run package:win, after the workflow put the Windows Ollama package in resources/ollama.
+  const ollamaDir = path.resolve(import.meta.dirname, '..', 'resources', 'ollama');
+  it.skipIf(!fs.existsSync(path.join(ollamaDir, 'ollama.exe')))(
+    'covers every runtime library of the Windows Ollama folder with its license text',
+    () => {
+      const text = fs.readFileSync(NOTICES, 'utf8');
+      const { groups, errors } = windowsRuntimes(ollamaDir);
+      expect(errors).toEqual([]);
+      expect(text).toContain(WINDOWS_RUNTIME_HEADING);
+      for (const g of groups) {
+        for (const f of g.files) expect(text).toContain(f);
+        for (const t of g.texts) expect(text).toContain(noticeText(t));
+      }
+    },
+  );
 });

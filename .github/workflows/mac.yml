@@ -132,6 +132,18 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
       - name: Check the signature
         run: codesign --verify --deep --strict --verbose=2 release/mac-arm64/AskFiles.app
+      # The committed THIRD-PARTY-NOTICES and the generated part of docs/licenses.md must be what the
+      # package holds: npm run package:mac regenerated THIRD-PARTY-NOTICES in place from the pruned
+      # darwin trees, and the report reads the packaged app. Fix by committing the regenerated file,
+      # or the report output below the marker in docs/licenses.md (both are in the artifact below).
+      - name: Check the committed notices match the package
+        run: |
+          git diff --exit-code --stat -- THIRD-PARTY-NOTICES || {
+            echo "::error file=THIRD-PARTY-NOTICES::THIRD-PARTY-NOTICES differs from the one npm run package:mac generated; commit the regenerated file (artifact third-party-notices-mac)"
+            git diff -- THIRD-PARTY-NOTICES | head -60
+            exit 1
+          }
+          node scripts/license-report.mjs release/mac-arm64/AskFiles.app/Contents/Resources --check docs/licenses.md
       # The release build is compiled without the test build's logging code (docs/test-build.md).
       # The default shell here has no pipefail; without it a failing check would pass through tee.
       - name: Check the release app has no test record
@@ -156,12 +168,19 @@ jobs:
         run: node scripts/bench-reranker.mjs "$RUNNER_TEMP/reranker" | tee -a "$GITHUB_STEP_SUMMARY"
 
       # The notices the DMG ships: npm run package:mac regenerates THIRD-PARTY-NOTICES from the pruned
-      # darwin trees, so this artifact is the file to replace the committed Linux-generated copy with.
+      # darwin trees, and the license report reads the package; when the check above fails, these are
+      # the files to commit.
+      - name: Write the license report
+        if: always()
+        run: node scripts/license-report.mjs release/mac-arm64/AskFiles.app/Contents/Resources > license-report.md || true
       - name: Upload the regenerated THIRD-PARTY-NOTICES
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: third-party-notices-mac-${{ github.sha }}
-          path: THIRD-PARTY-NOTICES
+          path: |
+            THIRD-PARTY-NOTICES
+            license-report.md
           if-no-files-found: error
           retention-days: 14
 

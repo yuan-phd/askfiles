@@ -15,6 +15,11 @@ describe('askfiles:// scheme', () => {
     expect(resolveAppFile('askfiles://app/THIRD-PARTY-NOTICES', o)).toBe('/app/THIRD-PARTY-NOTICES');
   });
 
+  it('serves the app license from the app root, and nothing for it without a license file', () => {
+    expect(resolveAppFile('askfiles://app/LICENSE', { ...o, licenseFile: '/app/LICENSE' })).toBe('/app/LICENSE');
+    expect(resolveAppFile('askfiles://app/LICENSE', o)).toBeNull();
+  });
+
   it('refuses other hosts, schemes and paths that leave the folder', () => {
     expect(resolveAppFile('askfiles://other/ask/index.html', o)).toBeNull();
     expect(resolveAppFile('file:///app/src/renderer/ask/index.html', o)).toBeNull();

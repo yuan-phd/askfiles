@@ -2,7 +2,9 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { isAllowed, licenseOf, walkDependencies } from './license-report.mjs';
+import { GENERATED_MARKER, generatedPart, isAllowed, licenseOf, walkDependencies } from './license-report.mjs';
+import { readFileSync } from 'node:fs';
+import { RUNTIME_GROUPS, noticeText } from './lib/windows-runtimes.mjs';
 
 let root;
 beforeEach(() => {
@@ -61,5 +63,25 @@ describe('walkDependencies', () => {
       ['b', 'a > b'],
     ]);
     expect(walkDependencies(root, { dev: true }).map((e) => e.name)).toContain('d');
+  });
+});
+
+describe('generatedPart', () => {
+  it('returns what follows the marker, and null without one', () => {
+    expect(generatedPart(`# Licenses\n\nBy hand.\n\n${GENERATED_MARKER}\n\n## Generated\n`)).toBe('## Generated\n');
+    expect(generatedPart('# Licenses\n')).toBeNull();
+  });
+
+  it('finds the marker in docs/licenses.md', () => {
+    const doc = readFileSync(join(import.meta.dirname, '..', 'docs', 'licenses.md'), 'utf8');
+    expect(generatedPart(doc)).toMatch(/^## Source code of the LGPL libraries\n/);
+  });
+
+  it('carries in docs/licenses.md, above the marker, every Windows runtime license text as in scripts/notices', () => {
+    const doc = readFileSync(join(import.meta.dirname, '..', 'docs', 'licenses.md'), 'utf8');
+    const handWritten = doc.slice(0, doc.indexOf(GENERATED_MARKER));
+    for (const g of RUNTIME_GROUPS) {
+      for (const t of g.texts) expect(handWritten, t).toContain(`\`\`\`text\n${noticeText(t)}\n\`\`\``);
+    }
   });
 });

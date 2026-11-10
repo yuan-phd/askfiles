@@ -20,6 +20,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PROVIDERS } from './prune.mjs';
+import { lgplSourceLines, libvipsBuildsIn } from './lib/lgpl-sources.mjs';
+import { windowsRuntimeLines, windowsRuntimes } from './lib/windows-runtimes.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -45,6 +47,13 @@ const LICENSE_FILE = /^(licen[cs]e|copying|notice)([-_.].*)?$/i;
  * carries the GPL-3.0 text it builds on, as LGPL section 4 requires both to accompany the work.
  */
 export const LICENSE_TEXTS_DIR = path.join(ROOT, 'scripts', 'license-texts');
+
+/**
+ * Ollama's own license, from github.com/ollama/ollama at the tag the build bundles (v0.40.4,
+ * docs/packaging.md step 2). Its release archives carry the license files of the libraries inside
+ * but not this one, so the notices carry it.
+ */
+export const OLLAMA_LICENSE = path.join(ROOT, 'scripts', 'notices', 'ollama-LICENSE');
 
 /** License names seen in package.json fields, mapped to the file in LICENSE_TEXTS_DIR. */
 const LICENSE_ALIASES = {
@@ -196,6 +205,7 @@ export function collect(rootDir) {
           licenseSource = 'readme';
         }
       }
+      const libvips = libvipsBuildsIn(dir, pkg.name ?? name);
       out.set(key, {
         name: pkg.name ?? name,
         version: pkg.version ?? '',
@@ -203,6 +213,7 @@ export function collect(rootDir) {
         licenseSource,
         path: chain,
         text: licenseText(dir),
+        ...(libvips.length ? { libvips } : {}),
       });
     }
     for (const [deps, opt] of [
@@ -246,17 +257,57 @@ Components without an npm package
 
 - AnythingLLM by Mintplex Labs Inc. (server, collector and frontend), MIT License. Full text below
   under "AnythingLLM". Copyright and license notices inside the bundled folders are kept as shipped.
-- Ollama, MIT License. The Ollama release bundled in Contents/Resources/ollama ships its own
-  license and notice files for the libraries it includes; they are kept there unchanged.
+- Ollama, MIT License, Copyright (c) Ollama. Full text below under "Ollama". The Ollama release
+  bundled in the ollama folder of the app's resources ships the license and notice files of the
+  libraries it includes; they are kept there unchanged.
 - Electron, MIT License, with Chromium and Node.js. Their licenses ship in the app bundle as
   LICENSE.electron.txt and LICENSES.chromium.html (Contents/Resources).
 - Tesseract language data (eng, chi_sim, 4.0.0_best_int) from tesseract-ocr/tessdata_best,
   Apache License 2.0, via the npm packages @tesseract.js-data/eng and @tesseract.js-data/chi_sim.
 - Language models are not bundled. They are downloaded on first run through Ollama under their own
   licenses: the Qwen3 chat models (Apache License 2.0) and the bge-m3 embedding model (MIT License).
+- LGPL libraries (libvips and the libraries built into it, FFmpeg in Electron): where their source
+  code is, under "Source code of the LGPL libraries" below.
 `;
 
-export function render(components, upstreamLicense, standardTexts = loadStandardTexts()) {
+/** Heading of the Windows package's section on the runtime libraries in the Ollama folder. */
+export const WINDOWS_RUNTIME_HEADING = '=== Windows: runtime libraries in the Ollama folder ===';
+const WINDOWS_RUNTIME_INTRO =
+  'The Windows build ships these files from the Ollama release in its ollama folder. Their license texts follow under "License texts", headed "Windows runtime".';
+
+/** Heading of the section that points to the source of the LGPL libraries; the tests look for it. */
+export const LGPL_SOURCES_HEADING = '=== Source code of the LGPL libraries ===';
+
+/**
+ * The libvips builds of every listed package, with the packages that carry them, and the
+ * LGPL-licensed packages that carry none (an error: their source would go unnamed).
+ */
+export function libvipsBuilds(components) {
+  const builds = [];
+  const uncovered = [];
+  for (const c of components) {
+    for (const [key, p] of c.packages) {
+      for (const b of p.libvips ?? []) builds.push({ ...b, carriers: [`${key} (${c.label})`] });
+      if (/LGPL/i.test(p.license) && !p.libvips?.length) uncovered.push(`${key} (${c.label})`);
+    }
+  }
+  return { builds, uncovered };
+}
+
+/** The LGPL sources section: lines, and errors for builds or versions without a source entry. */
+export function lgplSection(components, electronVersion) {
+  const { builds, uncovered } = libvipsBuilds(components);
+  const { lines, errors } = lgplSourceLines(builds, electronVersion);
+  for (const u of uncovered) errors.push(`${u} names an LGPL license but holds no libvips versions.json`);
+  return { lines, errors };
+}
+
+/**
+ * extra.ollamaLicense: Ollama's license text; extra.lgplLines: the body of the LGPL sources section
+ * (lgplSection); extra.windowsRuntime: { lines, texts } from windowsRuntimeLines, on the Windows
+ * package only. Each is left out when not given, as in the unit tests.
+ */
+export function render(components, upstreamLicense, standardTexts = loadStandardTexts(), extra = {}) {
   const all = new Map();
   for (const c of components) {
     for (const [key, p] of c.packages) {
@@ -280,7 +331,21 @@ export function render(components, upstreamLicense, standardTexts = loadStandard
       );
     }
   }
+  const lgplLines = extra.lgplLines ?? [];
+  if (lgplLines.length) {
+    lines.push('', '', LGPL_SOURCES_HEADING, '', ...lgplLines);
+    lines.push(
+      '',
+      `The GNU LGPL version 3 text, with the GNU GPL version 3 text it builds on, is under "${standardTextHeading('LGPL-3.0')}" below.`,
+    );
+  }
+  const win = extra.windowsRuntime;
+  if (win?.lines.length) {
+    lines.push('', '', WINDOWS_RUNTIME_HEADING, '', WINDOWS_RUNTIME_INTRO, '', ...win.lines);
+  }
   lines.push('', '', 'License texts', '', '=== AnythingLLM ===', '', upstreamLicense.trim(), '');
+  if (extra.ollamaLicense) lines.push('=== Ollama ===', '', extra.ollamaLicense.trim(), '');
+  for (const t of win?.texts ?? []) lines.push(t.heading, '', t.text, '');
 
   const byText = new Map();
   const standardUsers = new Map();
@@ -307,6 +372,18 @@ export function render(components, upstreamLicense, standardTexts = loadStandard
     byText.set(h, g);
   }
   for (const g of byText.values()) lines.push(`=== Used by: ${g.users.join(', ')} ===`, '', g.text, '');
+  // The LGPL sources section refers to this text; a libvips build inside an Apache-2.0 package
+  // (sharp's vendor folder, @img/sharp-win32-*) would otherwise leave it out.
+  if (lgplLines.length && !standardUsers.has('LGPL-3.0') && standardTexts.has('LGPL-3.0')) {
+    lines.push(
+      standardTextHeading('LGPL-3.0'),
+      '',
+      'The license of the libraries under "Source code of the LGPL libraries" above.',
+      '',
+      standardTexts.get('LGPL-3.0'),
+      '',
+    );
+  }
   for (const id of [...standardUsers.keys()].sort()) {
     lines.push(
       standardTextHeading(id),
@@ -377,7 +454,25 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       console.warn(`[notices] ${c.label}: no node_modules, skipped`);
     }
   }
-  const text = render(components, fs.readFileSync(path.join(ROOT, 'upstream', 'LICENSE'), 'utf8'));
+  const electronVersion = readJson(path.join(ROOT, 'node_modules', 'electron', 'package.json')).version;
+  const lgpl = lgplSection(components, electronVersion);
+  if (lgpl.errors.length) {
+    const message = `the LGPL source pointers are incomplete:\n  ${lgpl.errors.join('\n  ')}`;
+    if (args.includes('--strict')) fail(message);
+    console.warn(`[notices] WARNING: ${message}`);
+  }
+  // On the Windows package resources/ollama holds ollama.exe and the runtime DLLs; elsewhere this is empty.
+  const runtimes = windowsRuntimes(path.join(ROOT, 'resources', 'ollama'));
+  if (runtimes.errors.length) {
+    const message = `the Windows runtime libraries are not all covered:\n  ${runtimes.errors.join('\n  ')}`;
+    if (args.includes('--strict')) fail(message);
+    console.warn(`[notices] WARNING: ${message}`);
+  }
+  const text = render(components, fs.readFileSync(path.join(ROOT, 'upstream', 'LICENSE'), 'utf8'), undefined, {
+    ollamaLicense: fs.readFileSync(OLLAMA_LICENSE, 'utf8'),
+    lgplLines: lgpl.lines,
+    windowsRuntime: windowsRuntimeLines(runtimes.groups),
+  });
   fs.writeFileSync(outFile, text);
   const count = new Set(components.flatMap((c) => [...c.packages.keys()])).size;
   console.log(
