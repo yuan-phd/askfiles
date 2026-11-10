@@ -18,7 +18,7 @@ export function pageUrl(page: PageName): string {
 
 /** Path served for the third-party notices file, which lives at the app root, not in src/renderer. */
 export const NOTICES_PATH = '/THIRD-PARTY-NOTICES';
-/** Path served for the app's own license (AGPL-3.0-only), the LICENSE file at the app root; the About page shows it. */
+/** Path served for the app's own license (Apache-2.0), the LICENSE file at the app root; the About page shows it. */
 export const LICENSE_PATH = '/LICENSE';
 
 /**

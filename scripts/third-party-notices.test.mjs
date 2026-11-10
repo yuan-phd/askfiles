@@ -51,6 +51,7 @@ describe('third-party notices', () => {
     expect(text).toContain('- a@1.0.0  MIT  [shell]');
     expect(text).toContain('- b@2.0.0  ISC  [shell]');
     expect(text).toContain('UPSTREAM LICENSE');
+    expect(text).toMatch(/AskFiles' own code is Copyright 2026 yuan-phd and licensed under the Apache License 2\.0/);
     expect(text.match(/ISC text/g)).toHaveLength(1);
     expect(text).not.toContain('dev@');
     fs.rmSync(root, { recursive: true, force: true });

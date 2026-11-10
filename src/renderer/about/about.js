@@ -17,7 +17,7 @@ async function toggleLicense(event) {
       if (!res.ok) throw new Error(String(res.status));
       pre.textContent = await res.text();
     } catch (e) {
-      pre.textContent = `The license text could not be read (${e.message}). It is the GNU Affero General Public License v3.0, https://www.gnu.org/licenses/agpl-3.0.txt`;
+      pre.textContent = `The license text could not be read (${e.message}). It is the Apache License 2.0, https://www.apache.org/licenses/LICENSE-2.0.txt`;
     }
   }
   pre.hidden = false;
