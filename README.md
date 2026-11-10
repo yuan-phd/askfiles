@@ -33,7 +33,7 @@ AskFiles is a desktop app for macOS and Windows. You point it at your files, ask
 | 16 GB | Ask, Browse and Find, with a smaller version of the same model | about 8.5 GB |
 | 8 GB | Browse and Find only | about 1.2 GB |
 
-- macOS on Apple Silicon (M1 or later), or Windows 10/11 on x64.
+- macOS 14 (Sonoma) or later on Apple Silicon (M1 or later), or Windows 10/11 on x64.
 - At least 15 GB of free disk space.
 - An internet connection for the first start only, to download the models.
 
@@ -45,9 +45,9 @@ The builds are not yet code-signed, so your system will warn you the first time:
 
 - **macOS**: if macOS says it cannot verify the app, open System Settings, Privacy & Security, and click **Open Anyway**. If that does not work, run this in Terminal and open the app again:
   ```
-  xattr -dr com.apple.quarantine "/Applications/AskFiles.app"
+  xattr -dr com.apple.quarantine "/Applications/AskFiles Test.app"
   ```
-  (For a test build the app is called `AskFiles Test.app`.) Work computers managed by an organisation may block unsigned apps entirely.
+  (For a release build the app is called `AskFiles.app`.) Work computers managed by an organisation may block unsigned apps entirely.
 - **Windows**: if SmartScreen appears, click **More info**, then **Run anyway**.
 
 On first start, AskFiles checks your computer's memory, downloads the matching models, and opens. Add a folder or some files, wait for indexing to finish, and ask.

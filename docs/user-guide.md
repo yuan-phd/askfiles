@@ -6,7 +6,7 @@ AskFiles finds answers in your own documents. Everything runs on your computer: 
 
 Click Add at the top right:
 
-- **Add files** copies files into the library.
+- **Add files** adds files where they are. AskFiles reads them from their own folder and follows them for changes, but never changes them. Files that earlier versions of AskFiles copied into the library show as Copy.
 - **Add folder** links a folder. AskFiles watches it and reads new and changed files, but never changes the folder itself.
 
 You can also drop files or folders anywhere on the window. AskFiles reads PDF, Word, Excel, CSV, Markdown and text files.
