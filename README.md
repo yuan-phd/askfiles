@@ -82,7 +82,7 @@ AskFiles is an [Electron](https://www.electronjs.org/) app that runs everything 
 - Hybrid search (vector and keyword), section-level selection, and a citation check that runs on every answer as soon as it is complete.
 - Tesseract for text recognition of scanned pages.
 
-Third-party licenses are listed in [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES). The AnythingLLM core in [upstream/](upstream/) is MIT-licensed ([upstream/LICENSE](upstream/LICENSE)); AskFiles' own code is AGPL-3.0-only (see [License](#license)).
+Third-party licenses are listed in [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES). The AnythingLLM core in [upstream/](upstream/) is MIT-licensed ([upstream/LICENSE](upstream/LICENSE)); AskFiles' own code is licensed under the Apache License 2.0 (see [License](#license)).
 
 ## Documentation
 
@@ -97,12 +97,10 @@ Please open an [issue](https://github.com/yuan-phd/askfiles/issues) with what yo
 
 ## License
 
-Copyright (C) 2026 yuan-phd.
+Copyright 2026 yuan-phd.
 
-AskFiles is free software under the [GNU Affero General Public License v3.0 only](LICENSE) (AGPL-3.0-only). You may use, study, share and modify it. If you distribute it, or let others use a modified version over a network, you must make your source code available under the same license.
+AskFiles is licensed under the [Apache License 2.0](LICENSE). You may use, modify, distribute and sell it, provided you keep the copyright and license notices (including [NOTICE](NOTICE)) and state significant changes you make.
 
-Third-party components keep their own licenses, listed in [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES). The AnythingLLM core in [upstream/](upstream/) stays under its MIT license ([upstream/LICENSE](upstream/LICENSE)).
-
-Commercial licensing outside the AGPL can be discussed with the author.
+The AnythingLLM core in [upstream/](upstream/) is MIT-licensed ([upstream/LICENSE](upstream/LICENSE)). Third-party components keep their own licenses, listed in [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES).
 
 Contributions: see [CONTRIBUTING.md](CONTRIBUTING.md).

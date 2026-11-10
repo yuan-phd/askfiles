@@ -12,19 +12,18 @@ test('shows the version from the bridge, the credits and the third-party notices
   await expect(page.getByTestId('version')).toHaveText('Version 0.1.0');
   await expect(page.getByTestId('credits')).toContainText('Ollama');
   await expect(page.getByTestId('notices')).toContainText('a@1.0.0  MIT');
-  await expect(page.getByTestId('license')).toContainText(
-    'GNU Affero General Public License v3.0 only (AGPL-3.0-only)',
-  );
+  await expect(page.getByTestId('license')).toContainText('Apache License 2.0 (Apache-2.0)');
+  await expect(page.getByTestId('license')).toContainText('github.com/yuan-phd/askfiles');
 });
 
 test('shows the app license text in the page from the link, and hides it again', async ({ page }) => {
   await page.route('**/LICENSE', (route) =>
-    route.fulfill({ status: 200, contentType: 'text/plain', body: 'GNU AFFERO GENERAL PUBLIC LICENSE\nVersion 3' }),
+    route.fulfill({ status: 200, contentType: 'text/plain', body: 'Apache License\nVersion 2.0, January 2004' }),
   );
   await page.goto(`${process.env.ASKFILES_PAGE_URL}/about/index.html`);
   await expect(page.getByTestId('license-text')).toBeHidden();
   await page.getByTestId('license-link').click();
-  await expect(page.getByTestId('license-text')).toContainText('GNU AFFERO GENERAL PUBLIC LICENSE');
+  await expect(page.getByTestId('license-text')).toContainText('Apache License');
   // The link stays on the About page rather than navigating to the plain text file.
   await expect(page).toHaveURL(/\/about\/index\.html$/);
   await page.getByTestId('license-link').click();

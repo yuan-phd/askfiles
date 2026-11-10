@@ -1,9 +1,2 @@
 AskFiles
-Copyright (C) 2026 yuan-phd
-
-AskFiles' own code is licensed under the GNU Affero General Public License, version 3 only
-(AGPL-3.0-only); the full text is in LICENSE.
-
-The AnythingLLM core in upstream/ is Copyright (c) Mintplex Labs Inc. and stays under the MIT
-License in upstream/LICENSE. The other third-party components and their licenses are listed in
-THIRD-PARTY-NOTICES.
+Copyright 2026 yuan-phd
