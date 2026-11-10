@@ -260,6 +260,13 @@ export const UNUSED = {
       'utils/chats/exportChatToFile.js',
       'utils/agents/aibitat/plugins/create-files/pdf/create-pdf-file.js',
     ],
+    // The agent's create-spreadsheet skill imports it dynamically inside its handler's try/catch;
+    // utils.js names it only in JSDoc types. Removing it also removes buffers 0.1.1 (exceljs >
+    // unzipper > binary > buffers), which ships no license (docs/licenses.md).
+    exceljs: [
+      'utils/agents/aibitat/plugins/create-files/xlsx/create-excel-file.js',
+      'utils/agents/aibitat/plugins/create-files/xlsx/utils.js',
+    ],
   },
   collector: {
     // Both are JSDoc type imports; at run time langchain's PuppeteerWebBaseLoader imports puppeteer
@@ -298,6 +305,8 @@ export const PROVIDER_SDKS = new Set(['voyageai', 'cohere-ai', '@google/generati
 export const OPTIONAL_REQUIRES = [
   /^server: node_modules\/@langchain\/community\/dist\/(vectorstores\/(chroma|astradb|milvus|qdrant)|stores\/message\/astradb)\.c?js requires (chromadb|@datastax\/astra-db-ts|@zilliz\/milvus2-sdk-node|@qdrant\/js-client-rest)$/,
   /^server: node_modules\/jsdom\/lib\/jsdom\/utils\.js requires canvas$/,
+  // A build task of the package, loaded only by its gulpfile; its main, lib/, requires nothing.
+  /^server: node_modules\/extract-json-from-string\/gulp\/clean\.js requires rimraf$/,
   /^collector: node_modules\/(.+\/)?(langchain|@langchain\/community)\/dist\/document_loaders\/web\/puppeteer\.c?js requires puppeteer$/,
 ];
 

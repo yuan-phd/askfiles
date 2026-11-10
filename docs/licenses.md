@@ -1,49 +1,113 @@
 # Licenses
 
-Generated 2026-10-29 after the rebase onto Session H, with `node scripts/license-report.mjs` over the pruned Linux packaging (`PACKAGE_TARGET=linux-x64 bash scripts/build.sh`, then `npx electron-builder --config electron-builder.yml --linux dir`), plus the shell's own dependency tree. Report only: nothing was removed or replaced because of a license.
+## This repository
 
-The mac package holds the same packages except the platform ones: @lancedb/lancedb-darwin-arm64 instead of the two linux-x64 builds (Apache-2.0 either way), @img/sharp-darwin-arm64 and @img/sharp-libvips-darwin-arm64 instead of the linux ones. Re-run the script on the Mac against `release/mac-arm64/AskFiles.app/Contents/Resources` for the exact mac list.
+AskFiles' own code (everything outside upstream/: the Electron shell, the pages, the scripts, the patches, the configuration and the documentation) is Copyright (C) 2026 yuan-phd and licensed under the GNU Affero General Public License v3.0 only (AGPL-3.0-only): LICENSE at the repository root holds the official text from gnu.org, and NOTICE the copyright line. The AnythingLLM core in upstream/ (git subtree, UPSTREAM_VERSION) stays under its own MIT License, Copyright (c) Mintplex Labs Inc., in upstream/LICENSE, which ships in the app as Resources/licenses/anything-llm-LICENSE and in THIRD-PARTY-NOTICES. Every other bundled component keeps its own license, listed below and in THIRD-PARTY-NOTICES. The About page shows the app's license, with its text, and the notices.
+
+## How this file is made
+
+Everything below the marker line, after the hand-written sections, is the output of `node scripts/license-report.mjs release/mac-arm64/AskFiles.app/Contents/Resources`, run against the packaged mac app (`npm run package:mac`), plus the shell's own dependency tree. The mac workflow fails when that output differs from this file, and when the committed THIRD-PARTY-NOTICES differs from the one the package build regenerates (docs/packaging.md, Third-party notices). The sections above the marker are written by hand. The Windows package holds the win32 builds of the platform packages instead of the darwin ones.
 
 ## Ollama, models and OCR data
 
-None of the models is inside the DMG: the first-run wizard pulls them from the Ollama registry. The licenses below were read on 2026-10-29 from the license layer of each model's manifest on registry.ollama.ai and from the projects' LICENSE files.
+None of the models is inside the DMG: the first-run wizard has Ollama pull them from the Ollama registry or from Hugging Face. The licenses were read on 2026-11-10 from the license layer of each model in Ollama (`ollama show <model> --license`) and from the model cards on huggingface.co.
 
 | Component | Where it comes from | License |
 | --- | --- | --- |
-| Ollama v0.40.4 | Bundled in Contents/Resources/ollama (docs/packaging.md step 2) | MIT, Copyright (c) Ollama (github.com/ollama/ollama, LICENSE at tag v0.40.4). The release also ships notice files for llama.cpp, ggml, MLX, Go modules and others (docs/upstream-analysis.md Q12); they stay in the bundle. |
-| qwen3:4b, qwen3:8b, qwen3:14b | Chat models of the three tiers in config/presets.json | Apache-2.0 (same license layer for all three tags) |
-| bge-m3:567m | Embedder of every tier in config/presets.json | MIT (the license layer is the MIT template without a filled-in copyright line) |
+| Ollama v0.40.4 | Bundled in the app resources, folder ollama (docs/packaging.md step 2) | MIT, Copyright (c) Ollama (github.com/ollama/ollama, LICENSE at tag v0.40.4). The release archive does not hold this file, so THIRD-PARTY-NOTICES carries it (copy in scripts/notices/ollama-LICENSE). The archive does ship the license and notice files of llama.cpp, ggml, MLX, the Go toolchain and others; they stay in the bundle. |
+| qwen3:14b-q4_K_M | Chat model of the 32 GB tier, from the Ollama library (config/presets.json) | Apache-2.0 (the model's license layer; Qwen/Qwen3-14B on Hugging Face is tagged apache-2.0) |
+| Qwen3-14B-Q3_K_M.gguf, hf.co/unsloth/Qwen3-14B-GGUF | Chat model of the 16 GB tier, pinned by sha256 (config/presets.json chatModelFile) | Apache-2.0 per the repository's Hugging Face license tag. The repository has no LICENSE file and its readme states no other terms; Ollama shows no license layer for it. A quantization of Qwen3-14B, which is Apache-2.0. |
+| (none) | The 8 GB tier has no chat model | |
+| bge-m3:567m | Embedder of every tier | MIT (the license layer is the MIT template without a filled-in copyright line; BAAI/bge-m3 on Hugging Face is tagged mit) |
 | qwen3:0.6b, all-minilm | Test models of the cloud environment and CI smoke test only, never shipped | Apache-2.0 |
-| Tesseract language data, eng and chi_sim, 4.0.0_best_int | npm packages @tesseract.js-data/eng and @tesseract.js-data/chi_sim 1.0.0, shipped in app.asar by Session H and copied to STORAGE_DIR/models/tesseract at first run | The npm packages are MIT; the traineddata files come from tesseract-ocr/tessdata_best, Apache-2.0 |
+| Tesseract language data, eng and chi_sim, 4.0.0_best_int | npm packages @tesseract.js-data/eng and @tesseract.js-data/chi_sim 1.0.0, shipped in app.asar and copied to the data directory at first run | The npm packages are MIT; the traineddata files come from tesseract-ocr/tessdata_best, Apache-2.0 |
+
+None of these licenses restricts how the models' output may be used.
+
+## Windows build: runtime files from the Ollama release
+
+Read on 2026-11-10 from the file list of ollama-windows-amd64.zip v0.40.4 (the archive the Windows workflow downloads, docs/windows.md), after scripts/lib/ollama-runtimes.mjs keeps only cuda_v12. Not checked against an installed Windows package.
+
+| Files | From | Terms |
+| --- | --- | --- |
+| lib/ollama/cuda_v12/cudart64_12.dll, cublas64_12.dll, cublasLt64_12.dll | NVIDIA CUDA Toolkit 12 | NVIDIA CUDA Toolkit EULA (https://docs.nvidia.com/cuda/eula/index.html). Attachment A lists the CUDA Runtime (cudart) and CUDA BLAS (cublas, cublasLt) Windows DLLs as files that may be distributed with an application. Section 1.1.2 asks that the application add material functionality beyond the SDK, that only the application accesses these files, and that the terms the application is distributed under are consistent with the EULA; section 1.2 forbids distributing the SDK as a stand-alone product and using it in a way that would make it subject to an open source license. No notice text is required for these runtime files. |
+| lib/ollama/cuda_v12/ggml-cuda.dll | llama.cpp / ggml | MIT (LLAMA_CPP_LICENSE) |
+| lib/ollama/CUDNN_LICENSE.txt, CUTLASS_LICENSE.txt, NVTX3_LICENSE.txt | NVIDIA open source headers built into ggml-cuda (cuDNN frontend MIT, CUTLASS BSD-3-Clause, NVTX Apache-2.0) | Their license files ship in the archive and stay in the bundle |
+| lib/ollama/cuda_v12/msvcp140*.dll, vcruntime140*.dll, concrt140.dll, vccorlib140.dll | Microsoft Visual C++ runtime | Microsoft's redistribution terms for the Visual C++ runtime; no license file in the archive |
+| lib/ollama/libc++.dll, libunwind.dll, libomp.dll, libwinpthread-1.dll | LLVM runtimes and MinGW-w64 winpthreads | Apache-2.0 with LLVM exception, and MinGW-w64's permissive license; no license file in the archive |
+
+Open points for the Windows build, not resolved here: THIRD-PARTY-NOTICES does not list the files of this table; the archive ships no license text for the Visual C++, LLVM and winpthreads runtimes; and whether the EULA's "consistent terms" and "open source license" conditions hold for an app whose own code is AGPL-3.0-only, while the CUDA files are part of the separately licensed Ollama (MIT), has not been checked by a lawyer.
 
 ## Notes on the packages outside the allowed list
 
-Read by hand; the table below is the script's output.
+Read by hand; the tables below the marker are the script's output.
 
-- LGPL-3.0-or-later, @img/sharp-libvips-* (collector, through sharp 0.33) and the libvips inside server/node_modules/sharp/vendor (sharp 0.32.6, whose own field says Apache-2.0; vendor/8.14.5/linux-x64/THIRD-PARTY-NOTICES.md lists libvips as LGPLv3). Dynamically linked shared libraries, shipped unmodified. The owner accepts this provided the LGPL text ships in the notices. Checked 2026-10-29: it did not then. Since Session J the notices generator adds the standard LGPL-3.0 text, with the GPL-3.0 text it builds on, for every package that names LGPL-3.0 and ships no license file, and the mac package job regenerates the file from the darwin trees (docs/packaging.md, Third-party notices).
-- MPL-2.0, web-push (server). Accepted by the owner as long as its files are not modified (they are not). Not pruned: server/utils/PushNotifications/index.js requires it at module scope and is loaded at server start, so it is on a path AskFiles uses.
+- LGPL-3.0-or-later: @img/sharp-libvips-darwin-arm64 (collector, through sharp 0.33) and the libvips 8.14.5 build inside the two copies of sharp 0.32.6 (server, and collector under @xenova/transformers; their own field says Apache-2.0, the THIRD-PARTY-NOTICES.md in their vendor folder lists the LGPL libraries). Dynamically linked shared libraries, shipped unmodified. THIRD-PARTY-NOTICES carries the LGPL-3.0 text with the GPL-3.0 text it builds on, and, since 2026-11-10, where the source of every shipped version is (section "Source code of the LGPL libraries", the same as below). FFmpeg inside Electron (LGPL-2.1, text in LICENSES.chromium.html) has its source pointer there too.
+- MPL-2.0, web-push (server). Accepted by the owner as long as its files are not modified (they are not); shipped as its JavaScript source. Not pruned: server/utils/PushNotifications/index.js requires it at module scope and is loaded at server start. cairo inside libvips is MPL-2.0 as well; its source is listed with the LGPL libraries.
 - BlueOak-1.0.0, sax, jackspeak, path-scurry, package-json-from-dist: permissive, not on the allowed list.
 - MIT-0 (@csstools/color-helpers, nodemailer), (MIT AND Zlib) (pako), BSD without a variant (duck): permissive, not on the allowed list as written.
 - No license statement in the package (no license field, no license file, and the readme states none):
-  - voyageai 0.0.3: removed by prune step 5; it came only with chromadb.
-  - buffers 0.1.1: server, exceljs > unzipper > binary > buffers. exceljs is required only by utils/agents/aibitat/plugins/create-files/xlsx/create-excel-file.js, inside a function (the agent's create-spreadsheet skill). Not on a path AskFiles uses. Left in place.
-  - combine-errors 3.0.3: server, @mintplex-labs/bree > combine-errors. Its readme states MIT under a License heading; THIRD-PARTY-NOTICES records MIT from the readme since Session J. bree is required at module scope by utils/BackgroundWorkers, which utils/boot loads at every server start. On a path AskFiles uses. Left in place.
+  - voyageai 0.0.3: removed by prune step providers; it came only with chromadb.
+  - buffers 0.1.1: came only with exceljs (exceljs > unzipper > binary > buffers), which upstream loads only for the agent's create-spreadsheet skill, a path AskFiles never reaches. Since 2026-11-10 scripts/prune.mjs removes exceljs as unused, and buffers with it (docs/bundle-report.md, step 4). No longer shipped.
+  - combine-errors 3.0.3: server, @mintplex-labs/bree > combine-errors. Its readme states MIT under a License heading; THIRD-PARTY-NOTICES records MIT from the readme. On a path AskFiles uses. Left in place.
 - Development dependencies (MPL-2.0 lightningcss, WTFPL truncate-utf8-bytes, BlueOak-1.0.0) are never shipped.
+
+<!-- Generated by node scripts/license-report.mjs <resources-dir> from the packaged app: do not edit below this line. -->
+
+## Source code of the LGPL libraries
+
+AskFiles ships the libraries below as separate shared libraries, as their projects build them, without
+changes by AskFiles. They are covered by the GNU Lesser General Public License (cairo by the Mozilla Public
+License 2.0); you may replace them with your own builds. Their complete source code, at the versions
+shipped, is available at these locations:
+
+- libvips 8.14.5 and the libraries built into it
+  Shipped in: sharp@0.32.6 (upstream collector), sharp@0.32.6 (upstream server)
+  Built by https://github.com/lovell/sharp-libvips at commit e3585e7e2de7c0a9f0fe81c2bd9a559bebc65f87 (tag v8.14.5):
+  https://github.com/lovell/sharp-libvips/tree/e3585e7e2de7c0a9f0fe81c2bd9a559bebc65f87
+  Its build/lin.sh downloads each source below and applies the patches it names.
+  - libvips 8.14.5 (LGPL): https://github.com/libvips/libvips/releases/download/v8.14.5/vips-8.14.5.tar.xz
+  - GLib 2.78.0 (LGPL): https://download.gnome.org/sources/glib/2.78/glib-2.78.0.tar.xz
+  - FriBidi 1.0.13 (LGPL): https://github.com/fribidi/fribidi/releases/download/v1.0.13/fribidi-1.0.13.tar.xz
+  - GdkPixbuf 2.42.10 (LGPL): https://download.gnome.org/sources/gdk-pixbuf/2.42/gdk-pixbuf-2.42.10.tar.xz
+  - libexif 0.6.24 (LGPL): https://github.com/libexif/libexif/releases/download/v0.6.24/libexif-0.6.24.tar.bz2
+  - libheif 1.16.2 (LGPL): https://github.com/strukturag/libheif/releases/download/v1.16.2/libheif-1.16.2.tar.gz
+  - librsvg 2.57.0 (LGPL): https://download.gnome.org/sources/librsvg/2.57/librsvg-2.57.0.tar.xz
+  - Pango 1.51.0 (LGPL): https://download.gnome.org/sources/pango/1.51/pango-1.51.0.tar.xz
+  - proxy-libintl 0.4 (LGPL): https://github.com/frida/proxy-libintl/archive/0.4.tar.gz
+  - cairo 1.17.8 (MPL-2.0): https://gitlab.freedesktop.org/cairo/cairo/-/archive/1.17.8/cairo-1.17.8.tar.bz2
+- libvips 8.15.3 and the libraries built into it
+  Shipped in: @img/sharp-libvips-darwin-arm64@1.0.4 (upstream collector)
+  Built by https://github.com/lovell/sharp-libvips at commit cb57c8e09460fa0b5c550806b667a2dfc3f7480b (tag v8.15.3):
+  https://github.com/lovell/sharp-libvips/tree/cb57c8e09460fa0b5c550806b667a2dfc3f7480b
+  Its build/lin.sh downloads each source below and applies the patches it names.
+  - libvips 8.15.3 (LGPL): https://github.com/libvips/libvips/releases/download/v8.15.3/vips-8.15.3.tar.xz
+  - GLib 2.81.1 (LGPL): https://download.gnome.org/sources/glib/2.81/glib-2.81.1.tar.xz
+  - FriBidi 1.0.15 (LGPL): https://github.com/fribidi/fribidi/releases/download/v1.0.15/fribidi-1.0.15.tar.xz
+  - libexif 0.6.24 (LGPL): https://github.com/libexif/libexif/releases/download/v0.6.24/libexif-0.6.24.tar.bz2
+  - libheif 1.18.2 (LGPL): https://github.com/strukturag/libheif/releases/download/v1.18.2/libheif-1.18.2.tar.gz
+  - librsvg 2.58.93 (LGPL): https://download.gnome.org/sources/librsvg/2.58/librsvg-2.58.93.tar.xz
+  - Pango 1.54.0 (LGPL): https://download.gnome.org/sources/pango/1.54/pango-1.54.0.tar.xz
+  - proxy-libintl 0.4 (LGPL): https://github.com/frida/proxy-libintl/archive/0.4.tar.gz
+  - cairo 1.18.0 (MPL-2.0): https://cairographics.org/releases/cairo-1.18.0.tar.xz
+- FFmpeg in Electron 44.10.0 (libffmpeg in the Electron framework)
+  License: LGPL-2.1; its text is in LICENSES.chromium.html in the app resources.
+  Chromium 152.0.7977.169's copy at revision 2b68d2babae73714846961fb0ee47e3b3d2e39a9, with Chromium's build configuration
+  in its chromium/ folder:
+  https://chromium.googlesource.com/chromium/third_party/ffmpeg/+/2b68d2babae73714846961fb0ee47e3b3d2e39a9
 
 ## Licenses outside the allowed list
 
-Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Python-2.0, CC0-1.0. 29 packages, first dependency path found:
+Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Python-2.0, CC0-1.0. 26 packages, first dependency path found:
 
 | Tree | Package | License | Pulled in by |
 | --- | --- | --- | --- |
 | Packaged server dependencies | @csstools/color-helpers 5.1.0 | MIT-0 | jsdom > cssstyle > @asamuzakjp/css-color > @csstools/css-color-parser > @csstools/color-helpers |
-| Packaged server dependencies | buffers 0.1.1 | UNKNOWN | exceljs > unzipper > binary > buffers |
 | Packaged server dependencies | combine-errors 3.0.3 | UNKNOWN | @mintplex-labs/bree > combine-errors |
 | Packaged server dependencies | pako 1.0.11 | (MIT AND Zlib) | pdf-lib > pako |
 | Packaged server dependencies | sax 1.6.0 | BlueOak-1.0.0 | docx > xml-js > sax |
 | Packaged server dependencies | web-push 3.6.7 | MPL-2.0 | web-push |
-| Packaged collector dependencies | @img/sharp-libvips-linux-x64 1.0.4 | LGPL-3.0-or-later | sharp > @img/sharp-libvips-linux-x64 |
-| Packaged collector dependencies | @img/sharp-libvips-linuxmusl-x64 1.0.4 | LGPL-3.0-or-later | sharp > @img/sharp-libvips-linuxmusl-x64 |
+| Packaged collector dependencies | @img/sharp-libvips-darwin-arm64 1.0.4 | LGPL-3.0-or-later | sharp > @img/sharp-libvips-darwin-arm64 |
 | Packaged collector dependencies | duck 0.1.12 | BSD | mammoth > lop > duck |
 | Packaged collector dependencies | jackspeak 3.4.3 | BlueOak-1.0.0 | officeparser > rimraf > glob > jackspeak |
 | Packaged collector dependencies | nodemailer 7.0.10 | MIT-0 | mbox-parser > mailparser > nodemailer |
@@ -62,13 +126,12 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | Shell development dependencies (not shipped) | yallist 5.0.0 | BlueOak-1.0.0 | electron-builder > app-builder-lib > tar > yallist |
 | Shell development dependencies (not shipped) | isexe 3.1.5 | BlueOak-1.0.0 | electron-builder > app-builder-lib > which > isexe |
 | Shell development dependencies (not shipped) | truncate-utf8-bytes 1.0.2 | WTFPL | electron-builder > builder-util > sanitize-filename > truncate-utf8-bytes |
-| Shell development dependencies (not shipped) | lightningcss-linux-x64-gnu 1.33.0 | MPL-2.0 | vitest > vite > lightningcss > lightningcss-linux-x64-gnu |
-| Shell development dependencies (not shipped) | lightningcss-linux-x64-musl 1.33.0 | MPL-2.0 | vitest > vite > lightningcss > lightningcss-linux-x64-musl |
+| Shell development dependencies (not shipped) | lightningcss-darwin-arm64 1.33.0 | MPL-2.0 | vitest > vite > lightningcss > lightningcss-darwin-arm64 |
 | Shell development dependencies (not shipped) | isexe 4.0.0 | BlueOak-1.0.0 | electron-builder > app-builder-lib > @electron/rebuild > node-gyp > which > isexe |
 
 ## Packaged server dependencies
 
-813 packages (name and version).
+768 packages (name and version).
 
 | Package | Version | License |
 | --- | --- | --- |
@@ -105,8 +168,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | @cypress/request | 3.0.10 | Apache-2.0 |
 | @cypress/request-promise | 5.0.0 | ISC |
 | @dabh/diagnostics | 2.0.3 | MIT |
-| @fast-csv/format | 4.3.5 | MIT |
-| @fast-csv/parse | 4.3.6 | MIT |
 | @hapi/hoek | 9.3.0 | BSD-3-Clause |
 | @hapi/topo | 5.1.0 | BSD-3-Clause |
 | @huggingface/jinja | 0.2.2 | MIT |
@@ -114,8 +175,7 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | @kurkle/color | 0.3.4 | MIT |
 | @ladjs/graceful | 3.2.2 | MIT |
 | @lancedb/lancedb | 0.15.0 | Apache 2.0 |
-| @lancedb/lancedb-linux-x64-gnu | 0.15.0 | Apache 2.0 |
-| @lancedb/lancedb-linux-x64-musl | 0.15.0 | Apache 2.0 |
+| @lancedb/lancedb-darwin-arm64 | 0.15.0 | Apache 2.0 |
 | @langchain/anthropic | 0.1.16 | MIT |
 | @langchain/community | 0.0.53 | MIT |
 | @langchain/core | 0.1.61 | MIT |
@@ -162,9 +222,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | ansi-styles | 5.2.0 | MIT |
 | apache-arrow | 19.0.0 | Apache-2.0 |
 | append-field | 1.0.0 | MIT |
-| archiver | 5.3.2 | MIT |
-| archiver-utils | 2.1.0 | MIT |
-| archiver-utils | 3.0.4 | MIT |
 | argparse | 2.0.1 | Python-2.0 |
 | array-back | 3.1.0 | MIT |
 | array-back | 6.2.2 | MIT |
@@ -178,7 +235,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | asn1.js | 5.4.1 | MIT |
 | assert-plus | 1.0.0 | MIT |
 | async | 3.2.5 | MIT |
-| async | 3.2.6 | MIT |
 | asynckit | 0.4.0 | MIT |
 | available-typed-arrays | 1.0.7 | MIT |
 | aws-sign2 | 0.7.0 | Apache-2.0 |
@@ -196,14 +252,11 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | base64-js | 1.5.1 | MIT |
 | bcrypt-pbkdf | 1.0.2 | BSD-3-Clause |
 | bcryptjs | 3.0.3 | BSD-3-Clause |
-| big-integer | 1.6.52 | Unlicense |
-| binary | 0.3.0 | MIT |
 | binary-extensions | 2.3.0 | MIT |
 | binary-search | 1.3.6 | CC0-1.0 |
 | bl | 1.2.3 | MIT |
 | bl | 4.1.0 | MIT |
 | bl | 6.0.12 | MIT |
-| bluebird | 3.4.7 | MIT |
 | bluebird | 3.7.2 | MIT |
 | bn.js | 4.12.2 | MIT |
 | body-parser | 1.20.4 | MIT |
@@ -211,14 +264,11 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | boolbase | 1.0.0 | ISC |
 | boolean | 3.2.0 | MIT |
 | brace-expansion | 1.1.11 | MIT |
-| brace-expansion | 2.0.3 | MIT |
 | buffer | 5.7.1 | MIT |
 | buffer | 6.0.3 | MIT |
 | buffer-crc32 | 0.2.13 | MIT |
 | buffer-equal-constant-time | 1.0.1 | BSD-3-Clause |
 | buffer-from | 1.1.2 | MIT |
-| buffer-indexof-polyfill | 1.0.2 | MIT |
-| buffers | 0.1.1 | UNKNOWN |
 | busboy | 1.6.0 | MIT |
 | bytes | 3.1.2 | MIT |
 | call-bind | 1.0.7 | MIT |
@@ -227,7 +277,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | call-bound | 1.0.4 | MIT |
 | camelcase | 6.3.0 | MIT |
 | caseless | 0.12.0 | Apache-2.0 |
-| chainsaw | 0.1.0 | MIT/X11 |
 | chalk | 4.1.2 | MIT |
 | chalk-template | 0.4.0 | MIT |
 | charenc | 0.0.2 | BSD-3-Clause |
@@ -256,7 +305,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | commander | 10.0.1 | MIT |
 | commander | 11.1.0 | MIT |
 | commander | 8.3.0 | MIT |
-| compress-commons | 4.1.2 | MIT |
 | concat-map | 0.0.1 | MIT |
 | concat-stream | 1.6.2 | MIT |
 | content-disposition | 0.5.4 | MIT |
@@ -268,8 +316,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | core-util-is | 1.0.2 | MIT |
 | core-util-is | 1.0.3 | MIT |
 | cors | 2.8.5 | MIT |
-| crc-32 | 1.2.2 | Apache-2.0 |
-| crc32-stream | 4.0.3 | MIT |
 | cron-validate | 1.4.5 | MIT |
 | cross-spawn | 7.0.6 | MIT |
 | crypt | 0.0.2 | BSD-3-Clause |
@@ -285,7 +331,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | data-view-byte-length | 1.0.2 | MIT |
 | data-view-byte-offset | 1.0.0 | MIT |
 | data-view-byte-offset | 1.0.1 | MIT |
-| dayjs | 1.11.20 | MIT |
 | debug | 2.6.9 | MIT |
 | debug | 3.2.7 | MIT |
 | debug | 4.3.4 | MIT |
@@ -315,7 +360,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | domutils | 3.2.2 | BSD-2-Clause |
 | dotenv | 16.4.5 | BSD-2-Clause |
 | dunder-proto | 1.0.1 | MIT |
-| duplexer2 | 0.1.4 | BSD-3-Clause |
 | ecc-jsbn | 0.1.2 | MIT |
 | ecdsa-sig-formatter | 1.0.11 | Apache-2.0 |
 | ee-first | 1.1.1 | MIT |
@@ -348,7 +392,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | events | 3.3.0 | MIT |
 | eventsource | 3.0.7 | MIT |
 | eventsource-parser | 3.0.6 | MIT |
-| exceljs | 4.4.0 | MIT |
 | execa | 5.1.1 | MIT |
 | expand-template | 2.0.3 | (MIT OR WTFPL) |
 | expr-eval | 2.0.2 | MIT |
@@ -359,7 +402,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | extract-json-from-string | 1.0.1 | MIT |
 | extsprintf | 1.3.0 | MIT |
 | extsprintf | 1.4.1 | MIT |
-| fast-csv | 4.3.6 | MIT |
 | fast-deep-equal | 3.1.3 | MIT |
 | fast-fifo | 1.3.2 | MIT |
 | fast-levenshtein | 3.0.0 | MIT |
@@ -390,7 +432,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | fresh | 2.0.0 | MIT |
 | fs-constants | 1.0.0 | MIT |
 | fs.realpath | 1.0.0 | ISC |
-| fstream | 1.0.12 | ISC |
 | function-bind | 1.1.2 | MIT |
 | function.prototype.name | 1.1.6 | MIT |
 | function.prototype.name | 1.1.8 | MIT |
@@ -407,7 +448,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | glob | 7.2.3 | ISC |
 | globalthis | 1.0.4 | MIT |
 | gopd | 1.2.0 | MIT |
-| graceful-fs | 4.2.11 | ISC |
 | graphql | 16.9.0 | MIT |
 | guid-typescript | 1.0.9 | ISC |
 | has-bigints | 1.0.2 | MIT |
@@ -527,10 +567,8 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | langchain | 0.1.36 | MIT |
 | langchainhub | 0.0.8 | MIT |
 | langsmith | 0.1.21 | MIT |
-| lazystream | 1.0.1 | MIT |
 | lie | 3.3.0 | MIT |
 | lil-http-terminator | 1.2.3 | BSD-3-Clause |
-| listenercount | 1.0.1 | ISC |
 | lodash | 4.17.21 | MIT |
 | lodash | 4.17.23 | MIT |
 | lodash-es | 4.17.21 | MIT |
@@ -541,24 +579,13 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | lodash._root | 3.0.1 | MIT |
 | lodash._stringtopath | 4.8.0 | MIT |
 | lodash.camelcase | 4.3.0 | MIT |
-| lodash.defaults | 4.2.0 | MIT |
-| lodash.difference | 4.5.0 | MIT |
-| lodash.escaperegexp | 4.1.2 | MIT |
-| lodash.flatten | 4.4.0 | MIT |
-| lodash.groupby | 4.6.0 | MIT |
 | lodash.includes | 4.3.0 | MIT |
 | lodash.isboolean | 3.0.3 | MIT |
-| lodash.isequal | 4.5.0 | MIT |
-| lodash.isfunction | 3.0.9 | MIT |
 | lodash.isinteger | 4.0.4 | MIT |
-| lodash.isnil | 4.0.0 | MIT |
 | lodash.isnumber | 3.0.3 | MIT |
 | lodash.isplainobject | 4.0.6 | MIT |
 | lodash.isstring | 4.0.1 | MIT |
-| lodash.isundefined | 3.0.1 | MIT |
 | lodash.once | 4.1.1 | MIT |
-| lodash.union | 4.6.0 | MIT |
-| lodash.uniq | 4.5.0 | MIT |
 | lodash.uniqby | 4.5.0 | MIT |
 | logform | 2.6.0 | MIT |
 | long | 4.0.0 | Apache-2.0 |
@@ -586,7 +613,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | mimic-response | 3.1.0 | MIT |
 | minimalistic-assert | 1.0.1 | ISC |
 | minimatch | 3.1.2 | ISC |
-| minimatch | 5.1.9 | ISC |
 | minimist | 1.2.8 | MIT |
 | mkdirp | 0.5.6 | MIT |
 | mkdirp-classic | 0.5.3 | MIT |
@@ -616,7 +642,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | node-domexception | 1.0.0 | MIT |
 | node-fetch | 2.7.0 | MIT |
 | node-telegram-bot-api | 0.67.0 | MIT |
-| normalize-path | 3.0.0 | MIT |
 | npm-run-path | 4.0.1 | MIT |
 | nth-check | 2.1.1 | BSD-2-Clause |
 | num-sort | 2.1.0 | MIT |
@@ -703,7 +728,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | readable-stream | 2.3.8 | MIT |
 | readable-stream | 3.6.2 | MIT |
 | readable-stream | 4.5.2 | MIT |
-| readdir-glob | 1.1.3 | Apache-2.0 |
 | reflect-metadata | 0.2.2 | Apache-2.0 |
 | reflect.getprototypeof | 1.0.10 | MIT |
 | regenerator-runtime | 0.14.1 | MIT |
@@ -714,7 +738,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | requires-port | 1.0.0 | MIT |
 | retry | 0.13.1 | MIT |
 | rfdc | 1.3.1 | MIT |
-| rimraf | 2.7.1 | ISC |
 | router | 2.2.0 | MIT |
 | rrweb-cssom | 0.8.0 | MIT |
 | rusha | 0.8.14 | MIT |
@@ -729,7 +752,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | safe-timers | 1.1.0 | MIT |
 | safer-buffer | 2.1.2 | MIT |
 | sax | 1.6.0 | BlueOak-1.0.0 |
-| saxes | 5.0.1 | ISC |
 | saxes | 6.0.0 | ISC |
 | semver | 7.6.0 | ISC |
 | send | 0.19.0 | MIT |
@@ -798,14 +820,12 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | text-hex | 1.0.0 | MIT |
 | tldts | 6.1.86 | MIT |
 | tldts-core | 6.1.86 | MIT |
-| tmp | 0.2.5 | MIT |
 | toidentifier | 1.0.1 | MIT |
 | toposort | 2.0.2 | MIT |
 | tough-cookie | 4.1.4 | BSD-3-Clause |
 | tough-cookie | 5.1.2 | BSD-3-Clause |
 | tr46 | 0.0.3 | MIT |
 | tr46 | 5.1.1 | MIT |
-| traverse | 0.3.9 | MIT/X11 |
 | triple-beam | 1.4.1 | MIT |
 | truncate | 3.0.0 | MIT |
 | tslib | 1.14.1 | 0BSD |
@@ -836,7 +856,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | undici-types | 7.18.2 | MIT |
 | universalify | 0.2.0 | MIT |
 | unpipe | 1.0.0 | MIT |
-| unzipper | 0.10.14 | MIT |
 | url-join | 4.0.1 | MIT |
 | url-parse | 1.5.10 | MIT |
 | url-pattern | 1.0.3 | MIT |
@@ -880,7 +899,6 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | yaml | 2.4.2 | ISC |
 | yauzl | 2.10.0 | MIT |
 | yup | 0.32.9 | MIT |
-| zip-stream | 4.1.1 | MIT |
 | zod | 3.23.5 | MIT |
 | zod | 4.1.13 | MIT |
 | zod-to-json-schema | 3.23.0 | ISC |
@@ -888,7 +906,7 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 
 ## Packaged collector dependencies
 
-447 packages (name and version).
+445 packages (name and version).
 
 | Package | Version | License |
 | --- | --- | --- |
@@ -897,10 +915,8 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | @dabh/diagnostics | 2.0.8 | MIT |
 | @fastify/busboy | 2.1.1 | MIT |
 | @huggingface/jinja | 0.2.2 | MIT |
-| @img/sharp-libvips-linux-x64 | 1.0.4 | LGPL-3.0-or-later |
-| @img/sharp-libvips-linuxmusl-x64 | 1.0.4 | LGPL-3.0-or-later |
-| @img/sharp-linux-x64 | 0.33.5 | Apache-2.0 |
-| @img/sharp-linuxmusl-x64 | 0.33.5 | Apache-2.0 |
+| @img/sharp-darwin-arm64 | 0.33.5 | Apache-2.0 |
+| @img/sharp-libvips-darwin-arm64 | 1.0.4 | LGPL-3.0-or-later |
 | @isaacs/cliui | 8.0.2 | ISC |
 | @langchain/community | 0.0.57 | MIT |
 | @langchain/community | 0.2.33 | MIT |
@@ -1342,26 +1358,60 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 
 ## Shell runtime dependencies (app.asar)
 
-39 packages (name and version).
+77 packages (name and version).
 
 | Package | Version | License |
 | --- | --- | --- |
 | @napi-rs/canvas | 1.0.13 | MIT |
-| @napi-rs/canvas-linux-x64-gnu | 1.0.13 | MIT |
-| @napi-rs/canvas-linux-x64-musl | 1.0.13 | MIT |
+| @napi-rs/canvas-darwin-arm64 | 1.0.13 | MIT |
 | @tesseract.js-data/chi_sim | 1.0.0 | MIT |
 | @tesseract.js-data/eng | 1.0.0 | MIT |
 | @xmldom/xmldom | 0.8.15 | MIT |
 | argparse | 1.0.10 | MIT |
 | base64-js | 1.5.1 | MIT |
 | chokidar | 4.0.3 | MIT |
+| commander | 7.2.0 | MIT |
 | core-util-is | 1.0.3 | MIT |
+| d3 | 7.9.0 | ISC |
+| d3-array | 3.2.4 | ISC |
+| d3-axis | 3.0.0 | ISC |
+| d3-brush | 3.0.0 | ISC |
+| d3-chord | 3.0.1 | ISC |
+| d3-color | 3.1.0 | ISC |
+| d3-contour | 4.0.2 | ISC |
+| d3-delaunay | 6.0.4 | ISC |
+| d3-dispatch | 3.0.1 | ISC |
+| d3-drag | 3.0.0 | ISC |
+| d3-dsv | 3.0.1 | ISC |
+| d3-ease | 3.0.1 | BSD-3-Clause |
+| d3-fetch | 3.0.1 | ISC |
+| d3-force | 3.0.0 | ISC |
+| d3-format | 3.1.2 | ISC |
+| d3-geo | 3.1.1 | ISC |
+| d3-hierarchy | 3.1.2 | ISC |
+| d3-interpolate | 3.0.1 | ISC |
+| d3-path | 3.1.0 | ISC |
+| d3-polygon | 3.0.1 | ISC |
+| d3-quadtree | 3.0.1 | ISC |
+| d3-random | 3.0.1 | ISC |
+| d3-scale | 4.0.2 | ISC |
+| d3-scale-chromatic | 3.1.0 | ISC |
+| d3-selection | 3.0.0 | ISC |
+| d3-shape | 3.2.0 | ISC |
+| d3-time | 3.1.0 | ISC |
+| d3-time-format | 4.1.0 | ISC |
+| d3-timer | 3.0.1 | ISC |
+| d3-transition | 3.0.1 | ISC |
+| d3-zoom | 3.0.0 | ISC |
+| delaunator | 5.1.0 | ISC |
 | dingbat-to-unicode | 1.0.2 | BSD-2-Clause |
 | duck | 0.1.12 | BSD |
 | fflate | 0.8.3 | MIT |
 | graceful-fs | 4.2.11 | ISC |
+| iconv-lite | 0.6.3 | MIT |
 | immediate | 3.0.6 | MIT |
 | inherits | 2.0.4 | ISC |
+| internmap | 2.0.3 | ISC |
 | isarray | 1.0.0 | MIT |
 | jszip | 3.10.2 | (MIT OR GPL-3.0-or-later) |
 | lie | 3.3.0 | MIT |
@@ -1375,7 +1425,10 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | read-excel-file | 9.3.13 | MIT |
 | readable-stream | 2.3.8 | MIT |
 | readdirp | 4.1.2 | MIT |
+| robust-predicates | 3.0.3 | Unlicense |
+| rw | 1.3.3 | BSD-3-Clause |
 | safe-buffer | 5.1.2 | MIT |
+| safer-buffer | 2.1.2 | MIT |
 | saxen | 11.2.0 | MIT |
 | setimmediate | 1.0.5 | MIT |
 | sprintf-js | 1.0.3 | BSD-3-Clause |
@@ -1384,11 +1437,12 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | unzipper-esm | 0.13.3 | MIT |
 | util-deprecate | 1.0.2 | MIT |
 | worker-f | 0.1.21 | MIT |
+| xlsx | 0.20.3 | Apache-2.0 |
 | xmlbuilder | 10.1.1 | MIT |
 
 ## Shell development dependencies (not shipped)
 
-374 packages (name and version).
+373 packages (name and version).
 
 | Package | Version | License |
 | --- | --- | --- |
@@ -1404,7 +1458,7 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | @electron/rebuild | 4.2.1 | MIT |
 | @electron/universal | 2.0.3 | MIT |
 | @electron/windows-sign | 1.2.2 | BSD-2-Clause |
-| @esbuild/linux-x64 | 0.28.2 | MIT |
+| @esbuild/darwin-arm64 | 0.28.2 | MIT |
 | @eslint-community/eslint-utils | 4.10.1 | MIT |
 | @eslint-community/regexpp | 4.12.2 | MIT |
 | @eslint/config-array | 0.23.5 | Apache-2.0 |
@@ -1433,8 +1487,7 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | @peculiar/utils | 2.0.3 | MIT |
 | @peculiar/webcrypto | 1.7.2 | MIT |
 | @playwright/test | 1.63.0 | Apache-2.0 |
-| @rolldown/binding-linux-x64-gnu | 1.2.15 | MIT |
-| @rolldown/binding-linux-x64-musl | 1.2.15 | MIT |
+| @rolldown/binding-darwin-arm64 | 1.2.15 | MIT |
 | @rolldown/pluginutils | 1.0.1 | MIT |
 | @sindresorhus/is | 4.6.0 | MIT |
 | @szmarczak/http-timer | 4.0.6 | MIT |
@@ -1578,6 +1631,7 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | fs-extra | 8.1.0 | MIT |
 | fs-extra | 9.1.0 | MIT |
 | fs.realpath | 1.0.0 | ISC |
+| fsevents | 2.3.3 | MIT |
 | function-bind | 1.1.2 | MIT |
 | get-caller-file | 2.0.5 | ISC |
 | get-intrinsic | 1.3.0 | MIT |
@@ -1630,8 +1684,7 @@ Allowed: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, Pyth
 | lazy-val | 1.0.5 | MIT |
 | levn | 0.4.1 | MIT |
 | lightningcss | 1.33.0 | MPL-2.0 |
-| lightningcss-linux-x64-gnu | 1.33.0 | MPL-2.0 |
-| lightningcss-linux-x64-musl | 1.33.0 | MPL-2.0 |
+| lightningcss-darwin-arm64 | 1.33.0 | MPL-2.0 |
 | locate-path | 6.0.0 | MIT |
 | lodash | 4.18.1 | MIT |
 | lowercase-keys | 2.0.0 | MIT |

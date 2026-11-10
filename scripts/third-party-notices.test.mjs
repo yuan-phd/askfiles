@@ -13,7 +13,11 @@ import {
   render,
   standardLicenseIds,
   standardTextHeading,
+  lgplSection,
+  LGPL_SOURCES_HEADING,
+  OLLAMA_LICENSE,
 } from './third-party-notices.mjs';
+import { FFMPEG, LIBVIPS_POSIX } from './lib/lgpl-sources.mjs';
 
 const NOTICES = path.resolve(import.meta.dirname, '..', 'THIRD-PARTY-NOTICES');
 
@@ -185,6 +189,57 @@ describe('third-party notices', () => {
     // voyageai came only with chromadb, which the build's prune step removes (docs/licenses.md).
     expect(text).not.toMatch(/voyageai/);
     expect(text).toContain('- combine-errors@3.0.3  MIT  [upstream server]  (license stated in its readme');
-    expect(text).toMatch(/^- buffers@0\.1\.1: no license stated .*; dependency path upstream server: .*> buffers$/m);
+    // buffers 0.1.1 ships no license; it came only with exceljs, which the prune step now removes.
+    expect(text).not.toMatch(/buffers@0\.1\.1/);
+    expect(text).not.toMatch(/^- exceljs@/m);
+  });
+
+  it("carries Ollama's MIT notice and the source pointers of the LGPL libraries", () => {
+    const text = fs.readFileSync(NOTICES, 'utf8');
+    expect(fs.readFileSync(OLLAMA_LICENSE, 'utf8')).toMatch(/^MIT License\n\nCopyright \(c\) Ollama\n/);
+    expect(text).toContain('=== Ollama ===\n\nMIT License\n\nCopyright (c) Ollama');
+    const section = text.slice(text.indexOf(LGPL_SOURCES_HEADING), text.indexOf('\nLicense texts\n'));
+    expect(section.length).toBeGreaterThan(LGPL_SOURCES_HEADING.length);
+    for (const lib of LIBVIPS_POSIX['8.15.3'].libraries) expect(section).toContain(lib.url);
+    const electron = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '..', 'package.json'), 'utf8'))
+      .devDependencies.electron;
+    expect(section).toContain(`FFmpeg in Electron ${electron}`);
+    expect(section).toContain(FFMPEG[electron].revision);
+    expect(text).toContain(standardTextHeading('LGPL-3.0'));
+  });
+
+  it('adds the LGPL sources section and its license text, and reports LGPL packages without a build', () => {
+    const versions = Object.fromEntries(LIBVIPS_POSIX['8.14.5'].libraries.map((l) => [l.key, l.version]));
+    const components = [
+      {
+        label: 'upstream server',
+        missing: [],
+        packages: new Map([
+          [
+            'sharp@0.32.6',
+            {
+              name: 'sharp',
+              version: '0.32.6',
+              license: 'Apache-2.0',
+              text: 'APACHE',
+              libvips: [{ vips: '8.14.5', family: 'posix', versions }],
+            },
+          ],
+          ['lonely@1.0.0', { name: 'lonely', version: '1.0.0', license: 'LGPL-2.1', text: 'LGPL 2.1 text' }],
+        ]),
+      },
+    ];
+    const electron = Object.keys(FFMPEG)[0];
+    const { lines, errors } = lgplSection(components, electron);
+    expect(errors).toEqual(['lonely@1.0.0 (upstream server) names an LGPL license but holds no libvips versions.json']);
+    const text = render(components, 'UPSTREAM', new Map([['LGPL-3.0', 'LGPL TEXT']]), {
+      ollamaLicense: 'OLLAMA MIT',
+      lgplLines: lines,
+    });
+    expect(text).toContain(`${LGPL_SOURCES_HEADING}\n`);
+    expect(text).toContain('Shipped in: sharp@0.32.6 (upstream server)');
+    expect(text).toContain('=== Ollama ===\n\nOLLAMA MIT');
+    expect(text).toContain(`${standardTextHeading('LGPL-3.0')}\n\nThe license of the libraries under`);
+    expect(text).toContain('LGPL TEXT');
   });
 });
