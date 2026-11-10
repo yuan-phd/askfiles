@@ -21,6 +21,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PROVIDERS } from './prune.mjs';
 import { lgplSourceLines, libvipsBuildsIn } from './lib/lgpl-sources.mjs';
+import { windowsRuntimeLines, windowsRuntimes } from './lib/windows-runtimes.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -269,6 +270,11 @@ Components without an npm package
   code is, under "Source code of the LGPL libraries" below.
 `;
 
+/** Heading of the Windows package's section on the runtime libraries in the Ollama folder. */
+export const WINDOWS_RUNTIME_HEADING = '=== Windows: runtime libraries in the Ollama folder ===';
+const WINDOWS_RUNTIME_INTRO =
+  'The Windows build ships these files from the Ollama release in its ollama folder. Their license texts follow under "License texts", headed "Windows runtime".';
+
 /** Heading of the section that points to the source of the LGPL libraries; the tests look for it. */
 export const LGPL_SOURCES_HEADING = '=== Source code of the LGPL libraries ===';
 
@@ -298,7 +304,8 @@ export function lgplSection(components, electronVersion) {
 
 /**
  * extra.ollamaLicense: Ollama's license text; extra.lgplLines: the body of the LGPL sources section
- * (lgplSection). Both are left out when not given, as in the unit tests.
+ * (lgplSection); extra.windowsRuntime: { lines, texts } from windowsRuntimeLines, on the Windows
+ * package only. Each is left out when not given, as in the unit tests.
  */
 export function render(components, upstreamLicense, standardTexts = loadStandardTexts(), extra = {}) {
   const all = new Map();
@@ -332,8 +339,13 @@ export function render(components, upstreamLicense, standardTexts = loadStandard
       `The GNU LGPL version 3 text, with the GNU GPL version 3 text it builds on, is under "${standardTextHeading('LGPL-3.0')}" below.`,
     );
   }
+  const win = extra.windowsRuntime;
+  if (win?.lines.length) {
+    lines.push('', '', WINDOWS_RUNTIME_HEADING, '', WINDOWS_RUNTIME_INTRO, '', ...win.lines);
+  }
   lines.push('', '', 'License texts', '', '=== AnythingLLM ===', '', upstreamLicense.trim(), '');
   if (extra.ollamaLicense) lines.push('=== Ollama ===', '', extra.ollamaLicense.trim(), '');
+  for (const t of win?.texts ?? []) lines.push(t.heading, '', t.text, '');
 
   const byText = new Map();
   const standardUsers = new Map();
@@ -449,9 +461,17 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     if (args.includes('--strict')) fail(message);
     console.warn(`[notices] WARNING: ${message}`);
   }
+  // On the Windows package resources/ollama holds ollama.exe and the runtime DLLs; elsewhere this is empty.
+  const runtimes = windowsRuntimes(path.join(ROOT, 'resources', 'ollama'));
+  if (runtimes.errors.length) {
+    const message = `the Windows runtime libraries are not all covered:\n  ${runtimes.errors.join('\n  ')}`;
+    if (args.includes('--strict')) fail(message);
+    console.warn(`[notices] WARNING: ${message}`);
+  }
   const text = render(components, fs.readFileSync(path.join(ROOT, 'upstream', 'LICENSE'), 'utf8'), undefined, {
     ollamaLicense: fs.readFileSync(OLLAMA_LICENSE, 'utf8'),
     lgplLines: lgpl.lines,
+    windowsRuntime: windowsRuntimeLines(runtimes.groups),
   });
   fs.writeFileSync(outFile, text);
   const count = new Set(components.flatMap((c) => [...c.packages.keys()])).size;

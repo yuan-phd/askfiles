@@ -16,7 +16,9 @@ import {
   lgplSection,
   LGPL_SOURCES_HEADING,
   OLLAMA_LICENSE,
+  WINDOWS_RUNTIME_HEADING,
 } from './third-party-notices.mjs';
+import { noticeText, windowsRuntimes } from './lib/windows-runtimes.mjs';
 import { FFMPEG, LIBVIPS_POSIX } from './lib/lgpl-sources.mjs';
 
 const NOTICES = path.resolve(import.meta.dirname, '..', 'THIRD-PARTY-NOTICES');
@@ -242,4 +244,34 @@ describe('third-party notices', () => {
     expect(text).toContain(`${standardTextHeading('LGPL-3.0')}\n\nThe license of the libraries under`);
     expect(text).toContain('LGPL TEXT');
   });
+
+  it('adds the Windows runtime section and texts only when given', () => {
+    const components = [{ label: 'shell', missing: [], packages: new Map() }];
+    expect(render(components, 'UPSTREAM', new Map())).not.toContain(WINDOWS_RUNTIME_HEADING);
+    const text = render(components, 'UPSTREAM', new Map(), {
+      windowsRuntime: {
+        lines: ['- Runtime X', '  Files: x.dll'],
+        texts: [{ heading: '=== Windows runtime: X ===', text: 'X TEXT' }],
+      },
+    });
+    expect(text).toContain(`${WINDOWS_RUNTIME_HEADING}\n`);
+    expect(text).toContain('  Files: x.dll');
+    expect(text.indexOf('=== Windows runtime: X ===\n\nX TEXT')).toBeGreaterThan(text.indexOf('\nLicense texts\n'));
+  });
+
+  // Runs in npm run package:win, after the workflow put the Windows Ollama package in resources/ollama.
+  const ollamaDir = path.resolve(import.meta.dirname, '..', 'resources', 'ollama');
+  it.skipIf(!fs.existsSync(path.join(ollamaDir, 'ollama.exe')))(
+    'covers every runtime library of the Windows Ollama folder with its license text',
+    () => {
+      const text = fs.readFileSync(NOTICES, 'utf8');
+      const { groups, errors } = windowsRuntimes(ollamaDir);
+      expect(errors).toEqual([]);
+      expect(text).toContain(WINDOWS_RUNTIME_HEADING);
+      for (const g of groups) {
+        for (const f of g.files) expect(text).toContain(f);
+        for (const t of g.texts) expect(text).toContain(noticeText(t));
+      }
+    },
+  );
 });

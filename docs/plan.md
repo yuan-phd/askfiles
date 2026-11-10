@@ -255,6 +255,14 @@ Owner, 2026-11-07. In this order:
 
 Rule for findings from user testing: verification-layer bugs use the budget of two per release (Stopping conditions for a phase); anything the owner classes as a capability limit goes into the limits list; no new tuning round is opened from test findings.
 
+### Before formal release
+
+Owner, 2026-11-10, after the license work (AGPL-3.0-only, branch local/license; docs/licenses.md). To be done before the first formal release:
+
+- **Mirror the LGPL sources.** Copy the exact source archives the THIRD-PARTY-NOTICES section "Source code of the LGPL libraries" points to (libvips and the libraries built into it, for both builds shipped, with the patches the sharp-libvips build scripts apply; Electron's FFmpeg at the Chromium revision listed) into a dedicated GitHub release of this repository, and point the notices there, so the pointers no longer depend on gists, moving branches or third-party servers (scripts/lib/lgpl-sources.mjs).
+- **NVIDIA CUDA runtime.** Have a lawyer confirm that redistributing the NVIDIA CUDA runtime files of the Windows build (cudart, cuBLAS, cuBLASLt, inside the bundled Ollama) with an AGPL-3.0-only application meets the NVIDIA CUDA Toolkit EULA (docs/licenses.md, Windows build).
+- **Trademark search.** Run an official trademark search for the name AskFiles (USPTO, EUIPO, WIPO Global Brand Database and the national offices of the markets the app is released in, classes 9 and 42 at least) before relying on the name.
+
 ### Next release
 
 Recorded 2026-11-07 (owner), nothing built in this release.

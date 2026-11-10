@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { GENERATED_MARKER, generatedPart, isAllowed, licenseOf, walkDependencies } from './license-report.mjs';
 import { readFileSync } from 'node:fs';
+import { RUNTIME_GROUPS, noticeText } from './lib/windows-runtimes.mjs';
 
 let root;
 beforeEach(() => {
@@ -74,5 +75,13 @@ describe('generatedPart', () => {
   it('finds the marker in docs/licenses.md', () => {
     const doc = readFileSync(join(import.meta.dirname, '..', 'docs', 'licenses.md'), 'utf8');
     expect(generatedPart(doc)).toMatch(/^## Source code of the LGPL libraries\n/);
+  });
+
+  it('carries in docs/licenses.md, above the marker, every Windows runtime license text as in scripts/notices', () => {
+    const doc = readFileSync(join(import.meta.dirname, '..', 'docs', 'licenses.md'), 'utf8');
+    const handWritten = doc.slice(0, doc.indexOf(GENERATED_MARKER));
+    for (const g of RUNTIME_GROUPS) {
+      for (const t of g.texts) expect(handWritten, t).toContain(`\`\`\`text\n${noticeText(t)}\n\`\`\``);
+    }
   });
 });
