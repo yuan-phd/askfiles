@@ -130,6 +130,11 @@ export interface LibraryManagerDeps {
   profiles?: { defaultId: string; ids: string[] };
   log?: (msg: string) => void;
   now?: () => Date;
+  /**
+   * A library is being deleted: whatever else writes into its folder (graph, summaries, paragraph
+   * store) stops now, before its data goes.
+   */
+  closeLibrary?: (id: string) => void;
   /** Tests: called before each step of a delete (library-data.ts removeLibraryData). */
   beforeRemovalStep?: (step: RemovalStep) => void | Promise<void>;
 }
@@ -615,6 +620,11 @@ export class LibraryManager {
     });
     this.log(`deleting ${id}`);
     this.changed();
+    try {
+      this.d.closeLibrary?.(id);
+    } catch (e) {
+      this.log(`closing ${id} failed: ${(e as Error).message}`);
+    }
     const abandoned = await this.abandonWatcherOf(id);
     // All files takes over the window, queued behind whatever still holds the queue; the stop
     // above has just released a start of this library that held it.

@@ -65,6 +65,7 @@ function setup(
   const workspaces = { ensured: [] as string[], removed: [] as string[] };
   const views: LibrariesView[] = [];
   const logs: string[] = [];
+  const closed: string[] = [];
   const manager = new LibraryManager({
     dataDir,
     storageDir,
@@ -100,9 +101,10 @@ function setup(
     onChange: (v) => views.push(v),
     onStatus: () => {},
     log: (m) => logs.push(m),
+    closeLibrary: (id) => closed.push(id),
     ...(o.beforeRemovalStep ? { beforeRemovalStep: o.beforeRemovalStep } : {}),
   });
-  return { manager, api, splitter, workspaces, views, logs, state: () => state };
+  return { manager, api, splitter, workspaces, views, logs, closed, state: () => state };
 }
 
 const names = (v: LibrariesView) => v.libraries.map((l) => l.name);
@@ -765,6 +767,8 @@ describe('deleting a library', () => {
     expect(names(v as LibrariesView)).toEqual(['All files']);
     expect((v as LibrariesView).current).toBe('all-files');
     expect(watch.closed).toBe(1);
+    // Graph, summaries and paragraphs of the library were told to stop before its data went.
+    expect(t.closed).toEqual([id]);
     expect(t.workspaces.removed).toEqual([`ws-${id}`]);
     allGone(id);
     expect(t.state().libraries.map((l) => l.id)).toEqual(['all-files']);

@@ -979,6 +979,15 @@ export class AppController implements BridgeHandlers {
         return browse;
       },
       followWatcher: (browse, watcher) => followWatcher(browse, watcher, (m) => log(`[browse] ${m}`)),
+      closeLibrary: (id) => {
+        // A summary already being written may still land once; the next start's self-check removes it.
+        if (this.libraryViews?.libraryId === id) {
+          this.libraryViews.summaries.stop();
+          this.libraryViews.graph.stop();
+          this.libraryViews = null;
+        }
+        if (this.paragraphs?.key.startsWith(`${id}|`)) this.paragraphs = null;
+      },
       onChange: (v) => this.d.broadcast(CHANNELS.librariesEvent, v),
       onStatus: (s) => {
         // The summary queue waits while the library indexes (docs/summaries.md, Queue).
