@@ -63,7 +63,9 @@ describe('shell.json', () => {
     expect(loadShellState(dir, (m) => logs.push(m))).toEqual(emptyShellState());
     fs.writeFileSync(file, 'not json');
     expect(loadShellState(dir, (m) => logs.push(m))).toEqual(emptyShellState());
-    expect(logs).toHaveLength(2);
+    // Each damaged file is moved aside and logged; without a backup setup starts again.
+    expect(logs.filter((l) => l.includes('moved to'))).toHaveLength(2);
+    expect(logs.filter((l) => l.includes('starting setup again'))).toHaveLength(2);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 

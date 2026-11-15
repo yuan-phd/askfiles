@@ -13,6 +13,7 @@ import {
   linkFolder,
   moveLegacyLibraryFiles,
   type LibrariesView,
+  type LibraryManagerDeps,
 } from './libraries.js';
 import { emptyShellState, loadShellState, saveShellState, type ShellState } from './shell-state.js';
 import { countingSplitter, fakeApi, manualWatch } from './watcher/__fixtures__/fakes.js';
@@ -46,7 +47,14 @@ async function until(check: () => boolean, ms = 10_000): Promise<void> {
   }
 }
 
-function setup(o: { watch?: WatchFactory; state?: (s: ShellState) => void } = {}) {
+function setup(
+  o: {
+    watch?: WatchFactory;
+    state?: (s: ShellState) => void;
+    beforeRemovalStep?: LibraryManagerDeps['beforeRemovalStep'];
+    removeWorkspace?: (slug: string) => Promise<void>;
+  } = {},
+) {
   let state: ShellState = emptyShellState();
   state.apiKey = 'K';
   state.setupCompletedAt = '2026-10-30T10:00:00.000Z';
@@ -56,8 +64,11 @@ function setup(o: { watch?: WatchFactory; state?: (s: ShellState) => void } = {}
   const splitter = countingSplitter();
   const workspaces = { ensured: [] as string[], removed: [] as string[] };
   const views: LibrariesView[] = [];
+  const logs: string[] = [];
   const manager = new LibraryManager({
     dataDir,
+    storageDir,
+    ocrCacheDir: path.join(dataDir, 'ocr-cache'),
     getState: () => state,
     setState: (s) => (state = structuredClone(s)),
     workspaces: {
@@ -65,16 +76,20 @@ function setup(o: { watch?: WatchFactory; state?: (s: ShellState) => void } = {}
         workspaces.ensured.push(id);
         return `ws-${id}`;
       },
-      remove: async (slug) => void workspaces.removed.push(slug),
+      remove: async (slug) => {
+        await o.removeWorkspace?.(slug);
+        workspaces.removed.push(slug);
+      },
     },
     removeDocuments: (folder) =>
       fs.rmSync(path.join(storageDir, 'documents', folder), { recursive: true, force: true }),
-    createWatcher: (o) =>
+    createWatcher: (w) =>
       new FolderWatcher({
-        ...o,
+        ...w,
         storageDir,
         api,
         splitter,
+        // The setup's own option; this was w.watch before, which no caller gives, so setup({ watch }) had no effect.
         watch: o.watch ?? chokidarWatch,
         debounceMs: 20,
         stableMs: 20,
@@ -84,8 +99,10 @@ function setup(o: { watch?: WatchFactory; state?: (s: ShellState) => void } = {}
     followWatcher: (b, w) => followWatcher(b, w),
     onChange: (v) => views.push(v),
     onStatus: () => {},
+    log: (m) => logs.push(m),
+    ...(o.beforeRemovalStep ? { beforeRemovalStep: o.beforeRemovalStep } : {}),
   });
-  return { manager, api, splitter, workspaces, views, state: () => state };
+  return { manager, api, splitter, workspaces, views, logs, state: () => state };
 }
 
 const names = (v: LibrariesView) => v.libraries.map((l) => l.name);
@@ -695,6 +712,163 @@ describe('LibraryManager', () => {
     expect(t.state().libraries[0]!.folders.map((f) => f.path)).toEqual([folder]);
     await t.manager.start();
     await until(() => docTitles(t.manager).length === 1);
+    await t.manager.stop();
+  });
+});
+
+describe('deleting a library', () => {
+  /**
+   * The watch of a folder holding many nested repositories: chokidar crawls it for minutes before
+   * it is ready. Here it never gets ready; every other folder is watched for real.
+   */
+  function crawlingForever(match: string): WatchFactory & { closed: number } {
+    const f = ((root, onEvent, onError, options) => {
+      if (!root.includes(match)) return chokidarWatch(root, onEvent, onError, options);
+      return {
+        ready: new Promise<void>(() => {}),
+        close: async () => {
+          f.closed++;
+        },
+      };
+    }) as WatchFactory & { closed: number };
+    f.closed = 0;
+    return f;
+  }
+
+  async function within<T>(p: Promise<T>, ms: number): Promise<T | 'timed out'> {
+    let timer: NodeJS.Timeout | undefined;
+    const t = new Promise<'timed out'>((r) => (timer = setTimeout(() => r('timed out'), ms)));
+    try {
+      return await Promise.race([p, t]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  function allGone(id: string): void {
+    expect(fs.existsSync(libraryDir(dataDir, id))).toBe(false);
+    expect(fs.existsSync(path.join(storageDir, 'documents', docsFolderOf(id)))).toBe(false);
+  }
+
+  it('does not wait for a watcher still crawling a large folder (the hang a tester hit)', async () => {
+    const watch = crawlingForever('Code');
+    const t = setup({ watch });
+    await t.manager.start();
+    put(path.join(tmp, 'Code', 'repo-1', 'README.md'), '# Invented repository');
+    const { current: id } = await t.manager.create('Code');
+    // Linking the folder restarts the watcher inside the queue; its start never finishes.
+    const adding = t.manager.addFolder(path.join(tmp, 'Code'));
+    await new Promise((r) => setTimeout(r, 100));
+
+    const v = await within(t.manager.remove(id), 5000);
+    expect(v).not.toBe('timed out');
+    expect(names(v as LibrariesView)).toEqual(['All files']);
+    expect((v as LibrariesView).current).toBe('all-files');
+    expect(watch.closed).toBe(1);
+    expect(t.workspaces.removed).toEqual([`ws-${id}`]);
+    allGone(id);
+    expect(t.state().libraries.map((l) => l.id)).toEqual(['all-files']);
+    // The queued add gave up with the start, and All files runs again.
+    await within(adding, 5000);
+    await until(() => t.manager.watcherOf() !== null);
+    expect(t.manager.current().id).toBe('all-files');
+    expect(fs.existsSync(path.join(tmp, 'Code', 'repo-1', 'README.md'))).toBe(true);
+    await t.manager.stop();
+  });
+
+  it('does not wait for a file being embedded, and the stopped job writes nothing back', async () => {
+    const t = setup();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let embedding = false;
+    const inner = t.api.updateEmbeddings.bind(t.api);
+    t.api.updateEmbeddings = async (slug, change) => {
+      embedding = true;
+      await gate;
+      return inner(slug, change);
+    };
+    await t.manager.start();
+    put(path.join(tmp, 'Work', 'plan.md'), '# Plan\n\nInvented.');
+    const { current: id } = await t.manager.create('Work');
+    await t.manager.addFolder(path.join(tmp, 'Work'));
+    await until(() => embedding);
+    expect(fs.readdirSync(path.join(storageDir, 'documents', docsFolderOf(id))).length).toBeGreaterThan(0);
+
+    const v = await within(t.manager.remove(id), 5000);
+    expect(v).not.toBe('timed out');
+    allGone(id);
+    release();
+    await new Promise((r) => setTimeout(r, 300));
+    // No index.json, section document or browse entry came back after the embed returned.
+    allGone(id);
+    expect(t.state().libraries.map((l) => l.id)).toEqual(['all-files']);
+    await t.manager.stop();
+  });
+
+  it('stops a watcher still crawling when the app quits', async () => {
+    put(path.join(tmp, 'Code', 'a.md'), '# A');
+    const t = setup({
+      watch: crawlingForever('Code'),
+      state: (s) => s.libraries[0]!.folders.push({ id: 'folder-1', path: path.join(tmp, 'Code'), addedAt: '' }),
+    });
+    void t.manager.start();
+    await new Promise((r) => setTimeout(r, 100));
+    expect(await within(t.manager.stop(), 5000)).not.toBe('timed out');
+  });
+
+  for (const step of ['vector-cache', 'ocr-cache', 'workspace', 'vectors', 'documents', 'records'] as const) {
+    it(`finishes a delete that stopped before ${step} at the next start`, async () => {
+      let fail = true;
+      const t = setup({
+        beforeRemovalStep: (s) => {
+          if (fail && s === step) throw new Error('the app stopped');
+        },
+      });
+      await t.manager.start();
+      put(path.join(tmp, 'Work', 'plan.md'), '# Plan\n\nInvented.');
+      const { current: id } = await t.manager.create('Work');
+      await t.manager.addFolder(path.join(tmp, 'Work'));
+      await until(() => docTitles(t.manager).length === 1);
+
+      const v = await t.manager.remove(id);
+      // Hidden at once and marked, so the next start knows.
+      expect(names(v)).toEqual(['All files']);
+      expect(t.state().libraries.find((l) => l.id === id)).toMatchObject({ deleting: true });
+      expect(fs.existsSync(libraryDir(dataDir, id))).toBe(true);
+      await expect(t.manager.select(id)).rejects.toThrow('That library no longer exists.');
+      saveShellState(dataDir, t.state());
+      await t.manager.stop();
+
+      // The next start: shell.json as saved, a new manager.
+      fail = false;
+      const saved = loadShellState(dataDir);
+      const next = setup({ state: (s) => Object.assign(s, saved) });
+      expect(await next.manager.resumeRemovals()).toEqual([]);
+      allGone(id);
+      expect(next.state().libraries.map((l) => l.id)).toEqual(['all-files']);
+      expect(next.workspaces.removed).toEqual([`ws-${id}`]);
+    });
+  }
+
+  it('leaves the delete marked when the server is down, and joins a second Delete of the same library', async () => {
+    let down = true;
+    const t = setup({
+      removeWorkspace: async () => {
+        if (down) throw new Error('the search engine is not running');
+      },
+    });
+    await t.manager.start();
+    const { current: id } = await t.manager.create('Work');
+    const first = t.manager.remove(id);
+    const second = t.manager.remove(id);
+    const [a, b] = await Promise.all([first, second]);
+    expect(names(a)).toEqual(['All files']);
+    expect(names(b)).toEqual(['All files']);
+    expect(t.state().libraries.find((l) => l.id === id)?.deleting).toBe(true);
+    expect(t.logs.some((l) => l.includes('it is finished at the next start'))).toBe(true);
+    down = false;
+    expect(await t.manager.resumeRemovals()).toEqual([]);
+    expect(t.state().libraries.map((l) => l.id)).toEqual(['all-files']);
     await t.manager.stop();
   });
 });

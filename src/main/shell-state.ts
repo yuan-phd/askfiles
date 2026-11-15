@@ -43,6 +43,11 @@ export interface LibraryRecord {
   familyDecisions?: Record<string, boolean>;
   /** Section summaries for every document of the library (docs/summaries.md); off by default. */
   sectionSummaries?: boolean;
+  /**
+   * Set before a delete removes anything: the library is hidden at once, and a delete the app could
+   * not finish (it quit, the server was down) is finished at the next start (src/main/library-data.ts).
+   */
+  deleting?: boolean;
 }
 
 export type AnswerScope = 'strict' | 'balanced' | 'broad';
@@ -158,6 +163,7 @@ function readLibrary(v: unknown): LibraryRecord | null {
     ...(Object.keys(overrides).length ? { typeOverrides: overrides } : {}),
     ...(Object.keys(decisions).length ? { familyDecisions: decisions } : {}),
     ...(d.sectionSummaries === true ? { sectionSummaries: true } : {}),
+    ...(d.deleting === true ? { deleting: true } : {}),
   };
 }
 
@@ -183,51 +189,134 @@ export function migrateV1(d: Record<string, unknown>): ShellState {
   return state;
 }
 
+export const SHELL_STATE_BACKUP = 'shell.json.bak';
+
 /**
- * A missing or unreadable file is an empty state: the first run then starts again, which is safe
- * because every first-run step is idempotent (models already pulled are skipped, the library
- * workspace is found by name, a stored key is checked before reuse). migrated is set when the
- * file was version 1, so the caller can move that version's files and save the new shape.
+ * Where a loaded state came from. Only 'file' is the app's latest word on which libraries exist:
+ * the startup self-check removes data of unknown libraries only then. The backup is one save
+ * behind, so a library created in the last save may be missing from it; an empty state knows none.
  */
-export function loadShellState(dataDir: string, log: (msg: string) => void = () => {}): ShellState & { migrated?: 1 } {
-  const file = path.join(dataDir, SHELL_STATE_FILE);
-  let raw: string;
-  try {
-    raw = fs.readFileSync(file, 'utf8');
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return emptyShellState();
-    throw e;
+export type ShellStateSource = 'file' | 'backup' | 'missing' | 'unreadable';
+
+export interface ShellStateRead {
+  state: ShellState & { migrated?: 1 };
+  source: ShellStateSource;
+  /**
+   * Every library id the file names, also of records too damaged to load: data under such an id
+   * is never treated as belonging to no library.
+   */
+  knownIds: Set<string>;
+}
+
+function parseShellState(raw: string): { state: ShellState & { migrated?: 1 }; knownIds: Set<string> } {
+  const d = JSON.parse(raw) as Record<string, unknown>;
+  if (!d || typeof d !== 'object') throw new Error('not an object');
+  if (d.version === 1) return { state: { ...migrateV1(d), migrated: 1 }, knownIds: new Set([DEFAULT_LIBRARY_ID]) };
+  if (d.version !== 2) throw new Error(`version ${String(d.version)}`);
+  const rawLibs = Array.isArray(d.libraries) ? d.libraries : [];
+  const knownIds = new Set<string>([DEFAULT_LIBRARY_ID]);
+  for (const l of rawLibs) {
+    const id = l && typeof l === 'object' ? (l as Record<string, unknown>).id : null;
+    if (typeof id === 'string' && id) knownIds.add(id);
   }
-  try {
-    const d = JSON.parse(raw) as Record<string, unknown>;
-    if (d.version === 1) return { ...migrateV1(d), migrated: 1 };
-    if (d.version !== 2) throw new Error(`version ${String(d.version)}`);
-    const libraries = withDefault(
-      (Array.isArray(d.libraries) ? d.libraries : []).map(readLibrary).filter((l): l is LibraryRecord => !!l),
-    );
-    const current = str(d.currentLibrary);
-    return {
+  const libraries = withDefault(rawLibs.map(readLibrary).filter((l): l is LibraryRecord => !!l));
+  const current = str(d.currentLibrary);
+  const shown = libraries.find((l) => l.id === current && !l.deleting);
+  return {
+    state: {
       version: 2,
       apiKey: str(d.apiKey),
       setupCompletedAt: str(d.setupCompletedAt),
       libraries,
-      currentLibrary: libraries.some((l) => l.id === current) ? current! : DEFAULT_LIBRARY_ID,
+      currentLibrary: shown ? shown.id : DEFAULT_LIBRARY_ID,
       settings: readSettings(d.settings),
-    };
+    },
+    knownIds,
+  };
+}
+
+/**
+ * Reads shell.json. When it is missing or unreadable, the backup the last save kept
+ * (shell.json.bak) is loaded and the event logged; an unreadable file is first moved aside as
+ * shell.json.broken-<time> so it can be looked at. Without a usable backup a missing or unreadable
+ * file is an empty state: the first run then starts again, which is safe because every first-run
+ * step is idempotent (models already pulled are skipped, the library workspace is found by name, a
+ * stored key is checked before reuse). migrated is set when the file was version 1, so the caller
+ * can move that version's files and save the new shape.
+ */
+export function readShellState(dataDir: string, log: (msg: string) => void = () => {}): ShellStateRead {
+  const file = path.join(dataDir, SHELL_STATE_FILE);
+  const backup = path.join(dataDir, SHELL_STATE_BACKUP);
+  let source: ShellStateSource;
+  let reason: string;
+  try {
+    const parsed = parseShellState(fs.readFileSync(file, 'utf8'));
+    return { ...parsed, source: 'file' };
   } catch (e) {
-    log(`${file} unreadable (${(e as Error).message}), starting setup again`);
-    return emptyShellState();
+    const missing = (e as NodeJS.ErrnoException).code === 'ENOENT';
+    source = missing ? 'missing' : 'unreadable';
+    reason = (e as Error).message;
+    if (!missing) {
+      const aside = `${file}.broken-${Date.now()}`;
+      try {
+        fs.renameSync(file, aside);
+        log(`[shell-state] ${file} unreadable (${reason}), moved to ${aside}`);
+      } catch {
+        log(`[shell-state] ${file} unreadable (${reason})`);
+      }
+    }
+  }
+  try {
+    const parsed = parseShellState(fs.readFileSync(backup, 'utf8'));
+    log(`[shell-state] ${file} ${source === 'missing' ? 'missing' : 'unreadable'}, loaded the backup ${backup}`);
+    return { ...parsed, source: 'backup' };
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'ENOENT')
+      log(`[shell-state] backup ${backup} unreadable too (${(e as Error).message})`);
+  }
+  if (source === 'unreadable') log(`[shell-state] ${file} unreadable (${reason}), starting setup again`);
+  return { state: emptyShellState(), source, knownIds: new Set([DEFAULT_LIBRARY_ID]) };
+}
+
+/** The state alone (readShellState has the source and the ids the file names). */
+export function loadShellState(dataDir: string, log: (msg: string) => void = () => {}): ShellState & { migrated?: 1 } {
+  return readShellState(dataDir, log).state;
+}
+
+function writeDurably(file: string, text: string): void {
+  const fd = fs.openSync(file, 'w', 0o600);
+  try {
+    fs.writeSync(fd, text);
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
   }
 }
 
-/** Temp file and rename, so a crash never leaves half a file. */
+/**
+ * Temp file and rename, so a crash never leaves half a file. The version being replaced is kept as
+ * shell.json.bak first, but only when it still reads: a damaged file never replaces a good backup.
+ */
 export function saveShellState(dataDir: string, state: ShellState): void {
   fs.mkdirSync(dataDir, { recursive: true });
   const file = path.join(dataDir, SHELL_STATE_FILE);
   const tmp = `${file}.tmp-${process.pid}`;
   const { version, apiKey, setupCompletedAt, libraries, currentLibrary, settings } = state;
   const out = { version, apiKey, setupCompletedAt, libraries, currentLibrary, settings };
-  fs.writeFileSync(tmp, JSON.stringify(out, null, 2) + '\n', { mode: 0o600 });
+  writeDurably(tmp, JSON.stringify(out, null, 2) + '\n');
+  let previous: string | null;
+  try {
+    previous = fs.readFileSync(file, 'utf8');
+    parseShellState(previous);
+  } catch {
+    previous = null;
+  }
+  if (previous !== null) {
+    const backup = path.join(dataDir, SHELL_STATE_BACKUP);
+    const bakTmp = `${backup}.tmp-${process.pid}`;
+    writeDurably(bakTmp, previous);
+    fs.renameSync(bakTmp, backup);
+  }
   fs.renameSync(tmp, file);
 }
 
