@@ -131,7 +131,6 @@ describe('shell.json reads', () => {
       resumeRemovals: async () => [],
       dataDir,
       storageDir: path.join(dataDir, 'storage'),
-      ocrCacheDir: path.join(dataDir, 'ocr-cache'),
       state: r.state,
       knownIds: r.knownIds,
       listWorkspaces: async () => [],
@@ -251,7 +250,6 @@ describe('a data folder in the current layout', () => {
       resumeRemovals: async () => [],
       dataDir,
       storageDir: storage,
-      ocrCacheDir: path.join(dataDir, 'ocr-cache'),
       state: r.state,
       knownIds: r.knownIds,
       listWorkspaces: async () => [

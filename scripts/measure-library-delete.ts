@@ -8,6 +8,11 @@
 //
 // Defaults: 40 repositories, 4 levels, 4 folders per level (about 13600 folders), 120 s timeout.
 // Nothing here is a real file: every folder and Markdown file is made up in a temporary folder.
+//
+// For a manual test in the app, only make the tree and keep it (prints its path; delete it with
+// rm -rf on the printed temporary folder afterwards):
+//
+//   node --import tsx scripts/measure-library-delete.ts --make-tree [repos] [depth] [fanout]
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -17,10 +22,12 @@ import { emptyShellState, type ShellState } from '../src/main/shell-state.js';
 import { countingSplitter, fakeApi } from '../src/main/watcher/__fixtures__/fakes.js';
 import { chokidarWatch, FolderWatcher } from '../src/main/watcher/index.js';
 
-const repos = Number(process.argv[2] ?? 40);
-const depth = Number(process.argv[3] ?? 4);
-const fanout = Number(process.argv[4] ?? 4);
-const timeoutS = Number(process.argv[5] ?? 120);
+const makeOnly = process.argv[2] === '--make-tree';
+const args = process.argv.slice(makeOnly ? 3 : 2);
+const repos = Number(args[0] ?? 40);
+const depth = Number(args[1] ?? 4);
+const fanout = Number(args[2] ?? 4);
+const timeoutS = Number(args[3] ?? 120);
 
 function makeTree(top: string): { folders: number; files: number } {
   let folders = 0;
@@ -38,7 +45,20 @@ function makeTree(top: string): { folders: number; files: number } {
   return { folders, files };
 }
 
+/** --make-tree: the invented tree alone, kept in a new temporary folder for a test in the app. */
+function makeTreeOnly(): void {
+  const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'askfiles-tree-')));
+  const top = path.join(tmp, 'Invented Code');
+  const t0 = Date.now();
+  const tree = makeTree(top);
+  console.log(`made ${tree.folders} folders and ${tree.files} Markdown files in ${Date.now() - t0} ms`);
+  console.log(`folder to add in AskFiles: ${top}`);
+  console.log(`show it in Finder:         open "${tmp}"`);
+  console.log(`delete it afterwards:      rm -rf "${tmp}"`);
+}
+
 async function main(): Promise<void> {
+  if (makeOnly) return makeTreeOnly();
   const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'askfiles-delete-')));
   const dataDir = path.join(tmp, 'AskFiles');
   const storageDir = path.join(dataDir, 'storage');

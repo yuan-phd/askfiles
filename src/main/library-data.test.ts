@@ -234,7 +234,6 @@ describe('selfCheck', () => {
     const removed = await selfCheck({
       dataDir,
       storageDir,
-      ocrCacheDir,
       state,
       knownIds: new Set(o.knownIds ?? state.libraries.map((l) => l.id)),
       listWorkspaces: async () => (o.workspaces === undefined ? [] : o.workspaces),
@@ -268,7 +267,8 @@ describe('selfCheck', () => {
     expectGone(B, orphan.docpaths);
     expect(exists(cacheOf('askfiles/lib-0c0c0c/gone.json'))).toBe(false);
     expect(exists(cacheOf('custom-documents/upstream-doc.json'))).toBe(true);
-    expect(exists(ocrOf(`${ONLY_B}.pages.json`))).toBe(false);
+    // The OCR cache is never touched by the self-check, not even an entry no library uses.
+    expect(exists(ocrOf(`${ONLY_B}.pages.json`))).toBe(true);
     expect(exists(ocrOf(`${ONLY_A}.pages.json`))).toBe(true);
     expect(exists(libDir(A))).toBe(true);
     expect(exists(lanceOf(`askfiles-${A}`))).toBe(true);
@@ -279,7 +279,6 @@ describe('selfCheck', () => {
       `workspace askfiles-${B}`,
       `vector table askfiles-${B}`,
       '2 vector cache entries without a document',
-      '1 OCR cache entries no library uses',
     ]);
     for (const what of r.removed) expect(r.log).toContain(`[self-check] removed ${what}`);
   });
@@ -308,18 +307,26 @@ describe('selfCheck', () => {
     expect(exists(libDir(B))).toBe(false);
   });
 
-  it('keeps the OCR cache when an index cannot be read, and entries newer than the check', async () => {
+  it('never touches the OCR cache: an unfinished scanned file keeps its OCR text', async () => {
     makeLibrary(A, [{ name: 'notes.md', hash: ONLY_A }]);
+    // OCR text of a scanned file whose indexing never finished: no index lists its hash.
     put(ocrOf(`${ONLY_B}.pages.json`));
-    put(path.join(libDir('all-files'), 'index.json'), 'not json');
-    let r = await check(stateWith([{ id: A, workspaceSlug: `askfiles-${A}` }]));
-    expect(exists(ocrOf(`${ONLY_B}.pages.json`))).toBe(true);
-    expect(r.log.some((l) => l.includes('OCR cache not checked'))).toBe(true);
+    put(ocrOf(`${ONLY_B}-0123456789ab-up.pages.json`));
+    const state = stateWith([{ id: A, workspaceSlug: `askfiles-${A}` }]);
+    for (let run = 0; run < 3; run++) {
+      const r = await check(state);
+      expect(r.removed).toEqual([]);
+    }
+    expect(fs.readdirSync(ocrCacheDir).sort()).toEqual(
+      [`${ONLY_B}-0123456789ab-up.pages.json`, `${ONLY_B}.pages.json`].sort(),
+    );
+  });
 
-    fs.rmSync(path.join(libDir('all-files'), 'index.json'));
+  it('keeps vector cache entries newer than the check', async () => {
     put(cacheOf('askfiles/lib-0c0c0c/gone.json'), '[]');
-    r = await check(stateWith([{ id: A, workspaceSlug: `askfiles-${A}` }]), { now: Date.now() - 60_000 });
+    fs.mkdirSync(path.join(storageDir, 'documents'), { recursive: true });
+    const r = await check(stateWith([]), { now: Date.now() - 60_000 });
     expect(r.removed).toEqual([]);
-    expect(exists(ocrOf(`${ONLY_B}.pages.json`))).toBe(true);
+    expect(exists(cacheOf('askfiles/lib-0c0c0c/gone.json'))).toBe(true);
   });
 });

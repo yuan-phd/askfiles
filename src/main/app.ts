@@ -1034,7 +1034,6 @@ export class AppController implements BridgeHandlers {
       resumeRemovals: () => this.libraries.resumeRemovals(),
       dataDir: this.dataDir,
       storageDir: this.storageDir,
-      ocrCacheDir: this.ocrCacheDir,
       state: this.state,
       knownIds: this.knownLibraryIds,
       listWorkspaces: async () => (base && apiKey ? listWorkspaces(base, apiKey) : null),

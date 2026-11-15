@@ -232,7 +232,8 @@ export async function removeLibraryData(o: RemoveLibraryOptions): Promise<void> 
   });
 }
 
-export interface SelfCheckOptions extends DataPaths {
+/** No OCR cache folder: the self-check never touches it. */
+export interface SelfCheckOptions extends Omit<DataPaths, 'ocrCacheDir'> {
   state: ShellState;
   /** Every library id shell.json names, damaged records included (readShellState knownIds). */
   knownIds: Set<string>;
@@ -248,8 +249,8 @@ export interface SelfCheckOptions extends DataPaths {
  * state read from shell.json itself (readShellState source 'file'). Only what the app creates is
  * touched, by its own naming: library folders and document folders named lib-xxxxxx, workspaces
  * named askfiles-lib-xxxxxx and their LanceDB tables, vector cache entries whose section document
- * is gone, OCR cache entries no library's index lists. All files, the models, the server's own
- * files and the user's files are never touched. Returns what was removed, one line each, logged.
+ * is gone. All files, the OCR cache, the models, the server's own files and the user's files are
+ * never touched. Returns what was removed, one line each, logged.
  */
 export async function selfCheck(o: SelfCheckOptions): Promise<string[]> {
   const removed: string[] = [];
@@ -328,34 +329,9 @@ export async function selfCheck(o: SelfCheckOptions): Promise<string[]> {
     if (n) gone(`${n} vector cache entries without a document`);
   }
 
-  // OCR cache: kept whole when any library's index cannot be read, since its entries are unknown.
-  const used = new Set<string>();
-  let readable = true;
-  for (const id of known) {
-    const h = hashesOf(o.dataDir, id);
-    if (!h) {
-      readable = false;
-      log(`OCR cache not checked: the index of ${id} cannot be read`);
-      break;
-    }
-    for (const x of h) used.add(x);
-  }
-  if (readable) {
-    let n = 0;
-    for (const name of listNames(o.ocrCacheDir)) {
-      const hash = OCR_CACHE_RE.exec(name)?.[1];
-      if (!hash || used.has(hash)) continue;
-      const file = path.join(o.ocrCacheDir, name);
-      try {
-        if (fs.statSync(file).mtimeMs >= startedAt) continue;
-      } catch {
-        continue;
-      }
-      fs.rmSync(file, { force: true });
-      n++;
-    }
-    if (n) gone(`${n} OCR cache entries no library uses`);
-  }
+  // The OCR cache is never looked at here (owner decision 2026-11-15): a scanned file whose
+  // indexing never finished has no record yet, and the self-check runs most when startup is in
+  // trouble, so such a file would be OCRed again and again. Only a delete removes OCR entries.
 
   log(removed.length ? `${removed.length} removals` : 'nothing to remove');
   return removed;
