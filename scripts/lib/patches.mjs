@@ -1,5 +1,7 @@
-// Lists and applies the unified diffs in patches/ to upstream/. Called by scripts/build.sh.
-// Usage: node scripts/lib/patches.mjs apply <repoRoot>
+// Lists, applies and reverts the unified diffs in patches/ in upstream/. apply is called by
+// scripts/build.sh and npm run dev; restore by the packaging commands once electron-builder has
+// copied the patched tree, so upstream/ is back at its committed state after a package run.
+// Usage: node scripts/lib/patches.mjs apply|restore <repoRoot>
 import { spawnSync } from 'node:child_process';
 import { readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -60,13 +62,57 @@ export function applyPatches({
   return results;
 }
 
+/**
+ * Reverts every applied patch, last patch first: a later patch may change lines an earlier one
+ * added, so the earlier one only reverts once the later one is gone. A patch that is not applied
+ * is skipped. Throws on a patch that is neither applied nor cleanly unapplied (upstream/ was
+ * edited by hand), leaving that patch's files as they are. Only the patches' own lines change, so
+ * anything else edited under upstream/ stays visible in git status.
+ */
+export function restorePatches({
+  repoRoot,
+  patchesDir = join(repoRoot, 'patches'),
+  upstreamDir = 'upstream',
+  log = console.log,
+}) {
+  const results = [];
+  for (const name of listPatches(patchesDir).reverse()) {
+    const patchPath = join(patchesDir, name);
+    if (gitApply(repoRoot, upstreamDir, ['--reverse', '--check'], patchPath).status === 0) {
+      const revert = gitApply(repoRoot, upstreamDir, ['--reverse'], patchPath);
+      if (revert.status !== 0) {
+        throw new Error(
+          `patch ${name} passed --reverse --check but failed to revert:\n${(revert.stderr || '').trim()}`,
+        );
+      }
+      log(`[build] patch ${name} reverted`);
+      results.push({ name, action: 'reverted' });
+      continue;
+    }
+    if (gitApply(repoRoot, upstreamDir, ['--check'], patchPath).status === 0) {
+      results.push({ name, action: 'skipped' });
+      continue;
+    }
+    throw new Error(
+      `patch ${name} is neither applied nor cleanly unapplied in ${upstreamDir}/; its files were edited ` +
+        `by hand. Check git status ${upstreamDir}/ and restore them with git checkout -- <file>.`,
+    );
+  }
+  return results;
+}
+
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const [command, repoRoot] = process.argv.slice(2);
-  if (command !== 'apply' || !repoRoot) {
-    console.error('usage: node scripts/lib/patches.mjs apply <repoRoot>');
+  if ((command !== 'apply' && command !== 'restore') || !repoRoot) {
+    console.error('usage: node scripts/lib/patches.mjs apply|restore <repoRoot>');
     process.exit(2);
   }
   try {
+    if (command === 'restore') {
+      const reverted = restorePatches({ repoRoot: resolve(repoRoot) }).filter((r) => r.action === 'reverted');
+      console.log(`[build] upstream/ restored: ${reverted.length} patches reverted`);
+      process.exit(0);
+    }
     const results = applyPatches({ repoRoot: resolve(repoRoot) });
     if (results.length === 0) console.log('[build] no patches to apply');
   } catch (err) {

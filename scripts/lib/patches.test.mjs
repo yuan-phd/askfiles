@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { applyPatches, listPatches } from './patches.mjs';
+import { applyPatches, listPatches, restorePatches } from './patches.mjs';
 
 const ORIGINAL = 'one\ntwo\nthree\n';
 
@@ -92,6 +92,44 @@ describe('applyPatches', () => {
     writeFileSync(join(root, 'patches/001-two.patch'), CHANGE_TWO);
     writeFileSync(join(root, 'patches/002-bad.patch'), CONFLICT);
     expect(() => applyPatches({ repoRoot: root, log: quiet })).toThrow(/002-bad\.patch/);
+    expect(file()).toBe('one\nTWO\nthree\n');
+  });
+});
+
+describe('restorePatches', () => {
+  it('reverts stacked patches last first and leaves the file as committed', () => {
+    writeFileSync(join(root, 'patches/001-two.patch'), CHANGE_TWO);
+    writeFileSync(join(root, 'patches/002-three.patch'), CHANGE_THREE);
+    applyPatches({ repoRoot: root, log: quiet });
+    expect(file()).toBe('one\nTWO\nTHREE\n');
+    const results = restorePatches({ repoRoot: root, log: quiet });
+    expect(results).toEqual([
+      { name: '002-three.patch', action: 'reverted' },
+      { name: '001-two.patch', action: 'reverted' },
+    ]);
+    expect(file()).toBe(ORIGINAL);
+  });
+
+  it('skips patches that are not applied, so a second restore changes nothing', () => {
+    writeFileSync(join(root, 'patches/001-two.patch'), CHANGE_TWO);
+    applyPatches({ repoRoot: root, log: quiet });
+    restorePatches({ repoRoot: root, log: quiet });
+    expect(restorePatches({ repoRoot: root, log: quiet })).toEqual([{ name: '001-two.patch', action: 'skipped' }]);
+    expect(file()).toBe(ORIGINAL);
+  });
+
+  it('stops with the patch name when a patched file was edited by hand and leaves it as it is', () => {
+    writeFileSync(join(root, 'patches/001-two.patch'), CHANGE_TWO);
+    writeFileSync(join(root, 'upstream/server/file.txt'), 'one\nedited\nthree\n');
+    expect(() => restorePatches({ repoRoot: root, log: quiet })).toThrow(/001-two\.patch is neither applied/);
+    expect(file()).toBe('one\nedited\nthree\n');
+  });
+
+  it('applies again after a restore', () => {
+    writeFileSync(join(root, 'patches/001-two.patch'), CHANGE_TWO);
+    applyPatches({ repoRoot: root, log: quiet });
+    restorePatches({ repoRoot: root, log: quiet });
+    expect(applyPatches({ repoRoot: root, log: quiet })).toEqual([{ name: '001-two.patch', action: 'applied' }]);
     expect(file()).toBe('one\nTWO\nthree\n');
   });
 });

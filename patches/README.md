@@ -9,6 +9,8 @@ Paths inside a patch are relative to upstream/. Apply from the repository root:
     git apply --check --directory=upstream patches/NNN-name.patch
     git apply --directory=upstream patches/NNN-name.patch
 
+`node scripts/lib/patches.mjs apply .` applies every patch that is not applied yet; `node scripts/lib/patches.mjs restore .` reverts every applied one, last first, and stops with the patch name if a patched file was edited by hand. The packaging commands (npm run package:mac, package:win and their :test variants) run restore when they end, so upstream/ is back at its committed state after a package run.
+
 Running git apply from inside upstream/ silently skips every file ("Skipped patch"), because git resolves patch paths from the repository top level.
 
 | Patch | Why |

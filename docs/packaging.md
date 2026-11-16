@@ -57,6 +57,7 @@ This runs, in order:
 5. `electron-builder --mac dir --arm64 --publish never`: creates release/mac-arm64/AskFiles.app without a DMG (layout below); THIRD-PARTY-NOTICES goes into app.asar here
 6. `scripts/sign-adhoc.sh`: ad-hoc signs every Mach-O file under Contents/Resources, then the whole app, then verifies with `codesign --verify --deep --strict`
 7. `electron-builder --mac dmg --arm64 --prepackaged release/mac-arm64/AskFiles.app --publish never`: wraps the signed app into release/AskFiles-0.1.0-arm64.dmg. Every packaging command passes --publish never: on CI electron-builder otherwise publishes implicitly (on a push to main it asked for a GitHub token and failed, mac run #65); builds are distributed from the workflow artifacts only
+8. `node scripts/lib/patches.mjs restore .`: reverts patches/ in upstream/, last patch first, so upstream/ is back at its committed state and git status shows nothing under it. It runs whether or not the steps before it passed, and the command keeps their exit status. The app bundle already holds the patched copy. `npm run package:mac:test` applies the patches again for its own electron-builder run and restores them when it ends. `npm run build:upstream` alone still leaves them applied, because `npm run dev` and the boot check below run the server from upstream/.
 
 The DMG is built after signing on purpose: signing the app after the DMG exists would leave an unsigned copy inside the DMG.
 

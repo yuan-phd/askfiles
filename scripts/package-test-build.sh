@@ -18,6 +18,13 @@ if [ ! -f dist/main/test-record/index.js ] || [ ! -f dist/main/test-record/ui/ui
   exit 1
 fi
 
+# package:mac and package:win restore upstream/ when they finish, so apply the patches again for
+# electron-builder to copy (the generated Prisma client and node_modules stay from that run) and
+# restore upstream/ to its committed state on the way out, whether packaging worked or not.
+node scripts/lib/patches.mjs apply "$ROOT"
+trap 'node "$ROOT/scripts/lib/patches.mjs" restore "$ROOT"' EXIT
+node scripts/lib/prisma-client.mjs check upstream/server
+
 # --publish never: on a push to main electron-builder detects CI and publishes implicitly, which
 # needs a GitHub token and stops the DMG step without one (mac run #65); the test build is never
 # published, only uploaded as a workflow artifact.
