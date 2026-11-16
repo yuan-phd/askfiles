@@ -37,6 +37,7 @@ function make(
     roots?: WatchRoot[];
     api?: LibraryApi;
     availabilityPollMs?: number;
+    keepUnknownSources?: boolean;
   } = {},
 ) {
   const events: FileEvent[] = [];
@@ -53,6 +54,7 @@ function make(
     stableMs: 30,
     retryDelaysMs: opts.retryDelaysMs ?? [10, 20, 40],
     availabilityPollMs: opts.availabilityPollMs ?? 0,
+    ...(opts.keepUnknownSources ? { keepUnknownSources: true } : {}),
     log: (m) => logs.push(m),
   });
   w.on('file', (e) => events.push(e));
@@ -771,5 +773,57 @@ describe('FolderWatcher', () => {
       await w.whenIdle();
       expect(indexed()).toEqual([a]);
     });
+  });
+
+  it('keeps files of a source not in the library while told to, and still removes a source the user removes', async () => {
+    const a = path.join(tmp, 'Invented A');
+    const b = path.join(tmp, 'Invented B');
+    fs.mkdirSync(a);
+    fs.mkdirSync(b);
+    fs.writeFileSync(path.join(a, 'one.md'), '# One\n\nInvented text.');
+    fs.writeFileSync(path.join(b, 'two.md'), '# Two\n\nInvented text.');
+    const both: WatchRoot[] = [
+      { id: 'folder-1', path: a, label: 'Invented A' },
+      { id: 'folder-2', path: b, label: 'Invented B' },
+    ];
+    const first = make({ roots: both });
+    await first.w.start();
+    await first.w.whenIdle();
+    await first.w.stop();
+    expect(Object.keys(readIndex().files)).toHaveLength(2);
+
+    // shell.json lost folder-2 (a reset): with the hold, its file stays.
+    const kept = make({ roots: [both[0]!], keepUnknownSources: true });
+    await kept.w.start();
+    await kept.w.whenIdle();
+    expect(Object.keys(readIndex().files)).toHaveLength(2);
+    expect(kept.logs.some((l) => l.includes('0 to remove, 1 of sources not in the library kept'))).toBe(true);
+    // The user removes folder-2 in the app: that removal goes through.
+    kept.w.removeRoot('folder-2');
+    await kept.w.whenIdle();
+    expect(Object.keys(readIndex().files)).toEqual([path.join(fs.realpathSync(a), 'one.md')]);
+    await kept.w.stop();
+  });
+
+  it('removes files of a source not in the library when not told to keep them', async () => {
+    const a = path.join(tmp, 'Invented A');
+    const b = path.join(tmp, 'Invented B');
+    fs.mkdirSync(a);
+    fs.mkdirSync(b);
+    fs.writeFileSync(path.join(a, 'one.md'), '# One\n\nInvented text.');
+    fs.writeFileSync(path.join(b, 'two.md'), '# Two\n\nInvented text.');
+    const both: WatchRoot[] = [
+      { id: 'folder-1', path: a, label: 'Invented A' },
+      { id: 'folder-2', path: b, label: 'Invented B' },
+    ];
+    const first = make({ roots: both });
+    await first.w.start();
+    await first.w.whenIdle();
+    await first.w.stop();
+    const after = make({ roots: [both[0]!] });
+    await after.w.start();
+    await after.w.whenIdle();
+    expect(Object.keys(readIndex().files)).toHaveLength(1);
+    await after.w.stop();
   });
 });

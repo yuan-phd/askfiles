@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { BrowseIndex } from './browse/index.js';
+import { removeLibraryData, type RemovalStep } from './library-data.js';
 import { isSupported } from './sections/index.js';
 import {
   currentLibraryOf,
@@ -87,7 +88,9 @@ function emptyResult(): AddResult {
 /** The parts of FolderWatcher the manager drives. */
 export interface WatcherLike {
   start(): Promise<void>;
-  stop(): Promise<void>;
+  /** abandon: the library is being deleted; the job in progress is not waited for (settled()). */
+  stop(o?: { abandon?: boolean }): Promise<void>;
+  settled(): Promise<void>;
   clearIndex(): Promise<void>;
   status(): WatcherStatus;
   files(): FileRecord[];
@@ -104,6 +107,10 @@ export interface WatcherLike {
 
 export interface LibraryManagerDeps {
   dataDir: string;
+  /** STORAGE_DIR of the server: documents, lancedb and vector-cache of a deleted library go. */
+  storageDir: string;
+  /** <dataDir>/ocr-cache: entries only a deleted library used go. */
+  ocrCacheDir: string;
   getState(): ShellState;
   setState(state: ShellState): void;
   /** Server calls; ensure creates the workspace or finds it by name and applies the preset. */
@@ -123,6 +130,13 @@ export interface LibraryManagerDeps {
   profiles?: { defaultId: string; ids: string[] };
   log?: (msg: string) => void;
   now?: () => Date;
+  /**
+   * A library is being deleted: whatever else writes into its folder (graph, summaries, paragraph
+   * store) stops now, before its data goes.
+   */
+  closeLibrary?: (id: string) => void;
+  /** Tests: called before each step of a delete (library-data.ts removeLibraryData). */
+  beforeRemovalStep?: (step: RemovalStep) => void | Promise<void>;
 }
 
 const MAX_NAME = 60;
@@ -252,6 +266,12 @@ export class LibraryManager {
   private watcher: WatcherLike | null = null;
   private browseIndex: BrowseIndex | null = null;
   private runningId: string | null = null;
+  /** The watcher whose start() is in progress, so a delete or a quit can stop it without waiting. */
+  private starting: { id: string; watcher: WatcherLike } | null = null;
+  /** Deletes in progress by library id; a second Delete of the same library joins the first. */
+  private readonly removals = new Map<string, Promise<void>>();
+  /** remove() calls in progress, so a second Delete of the same library joins the first. */
+  private readonly deletes = new Map<string, Promise<void>>();
   private startError: string | null = null;
   private queue: Promise<unknown> = Promise.resolve();
   /** Added files whose original went away, dropped from the record together (onFileEvent). */
@@ -283,16 +303,18 @@ export class LibraryManager {
     const s = this.d.getState();
     return {
       current: s.currentLibrary,
-      libraries: s.libraries.map((l) => ({
-        id: l.id,
-        name: l.name,
-        isDefault: l.id === DEFAULT_LIBRARY_ID,
-        isCurrent: l.id === s.currentLibrary,
-        indexed: l.id === this.runningId && this.watcher ? this.watcher.status().indexed : this.indexedCount(l.id),
-        sources: this.sourcesOf(l),
-        profile: this.profileOf(l),
-        sectionSummaries: l.sectionSummaries === true,
-      })),
+      libraries: s.libraries
+        .filter((l) => !l.deleting)
+        .map((l) => ({
+          id: l.id,
+          name: l.name,
+          isDefault: l.id === DEFAULT_LIBRARY_ID,
+          isCurrent: l.id === s.currentLibrary,
+          indexed: l.id === this.runningId && this.watcher ? this.watcher.status().indexed : this.indexedCount(l.id),
+          sources: this.sourcesOf(l),
+          profile: this.profileOf(l),
+          sectionSummaries: l.sectionSummaries === true,
+        })),
     };
   }
 
@@ -322,7 +344,7 @@ export class LibraryManager {
 
   /** True when the library has no source at all: the pages show the empty state. */
   isEmpty(id = this.d.getState().currentLibrary): boolean {
-    const lib = this.d.getState().libraries.find((l) => l.id === id);
+    const lib = this.d.getState().libraries.find((l) => l.id === id && !l.deleting);
     return !lib || this.sourcesOf(lib).length === 0;
   }
 
@@ -379,8 +401,12 @@ export class LibraryManager {
     return this.serial(() => this.startRuntime());
   }
 
-  /** Stops the watcher; queued work is picked up by the next start (quit, backend restart). */
-  stop(): Promise<void> {
+  /**
+   * Stops the watcher; queued work is picked up by the next start (quit, backend restart). A start
+   * still crawling a large folder is stopped first, so the quit does not wait behind it.
+   */
+  async stop(): Promise<void> {
+    await this.starting?.watcher.stop();
     return this.serial(() => this.stopRuntime());
   }
 
@@ -437,12 +463,21 @@ export class LibraryManager {
     this.d.followWatcher(browse, watcher);
     this.browseIndex = browse;
     this.startError = null;
+    this.starting = { id: lib.id, watcher };
     try {
       await watcher.start();
     } catch (e) {
       this.startError = `The library could not be read: ${(e as Error).message}`;
       this.log(`watcher of ${lib.id} not started: ${(e as Error).message}`);
       this.d.onStatus(this.status());
+      return;
+    } finally {
+      if (this.starting?.watcher === watcher) this.starting = null;
+    }
+    // Stopped while starting: a delete or a quit came first.
+    if (watcher.status().state === 'stopped') {
+      this.log(`start of ${lib.id} stopped`);
+      if (this.browseIndex === browse) this.browseIndex = null;
       return;
     }
     this.watcher = watcher;
@@ -477,7 +512,7 @@ export class LibraryManager {
   select(id: string): Promise<LibrariesView> {
     return this.serial(async () => {
       const s = this.d.getState();
-      if (!s.libraries.some((l) => l.id === id)) throw new Error('That library no longer exists.');
+      if (!s.libraries.some((l) => l.id === id && !l.deleting)) throw new Error('That library no longer exists.');
       if (s.currentLibrary !== id) {
         this.d.setState({ ...s, currentLibrary: id });
         await this.restartRuntime();
@@ -521,7 +556,7 @@ export class LibraryManager {
     return this.serial(async () => {
       const s = this.d.getState();
       const lib = s.libraries.find((l) => l.id === id);
-      if (!lib) throw new Error('That library no longer exists.');
+      if (!lib || lib.deleting) throw new Error('That library no longer exists.');
       const next = {
         ...change(lib),
         id: lib.id,
@@ -540,7 +575,7 @@ export class LibraryManager {
     return this.serial(async () => {
       if (id === DEFAULT_LIBRARY_ID) throw new Error('All files cannot be renamed.');
       const s = this.d.getState();
-      if (!s.libraries.some((l) => l.id === id)) throw new Error('That library no longer exists.');
+      if (!s.libraries.some((l) => l.id === id && !l.deleting)) throw new Error('That library no longer exists.');
       const clean = checkLibraryName(name, s.libraries, id);
       this.d.setState({ ...s, libraries: s.libraries.map((l) => (l.id === id ? { ...l, name: clean } : l)) });
       return this.changed();
@@ -548,27 +583,146 @@ export class LibraryManager {
   }
 
   /**
-   * Deletes a library: its workspace (vectors included), its section documents, its index, browse
-   * index and the copies of added files. Linked folders and the original files are never touched.
+   * Deletes a library and all its data (library-data.ts removeLibraryData: shell.json record,
+   * library folder, section documents, LanceDB table, database rows, vector and OCR cache entries).
+   * Linked folders and the original files are never touched. Not queued behind other library work:
+   * the record is marked deleting first (hidden at once, finished at the next start if the app
+   * stops midway), then the library's watcher is stopped wherever it is (crawling a large folder,
+   * walking it, indexing) without waiting for its job, then everything is removed.
    */
-  remove(id: string): Promise<LibrariesView> {
-    return this.serial(async () => {
-      if (id === DEFAULT_LIBRARY_ID) throw new Error('All files cannot be deleted.');
-      const s = this.d.getState();
-      const lib = s.libraries.find((l) => l.id === id);
-      if (!lib) throw new Error('That library no longer exists.');
-      if (s.currentLibrary === id) {
-        this.d.setState({ ...s, currentLibrary: DEFAULT_LIBRARY_ID });
-        await this.restartRuntime();
-      }
-      if (lib.workspaceSlug) await this.d.workspaces.remove(lib.workspaceSlug);
-      this.d.removeDocuments(docsFolderOf(id));
-      fs.rmSync(libraryDir(this.d.dataDir, id), { recursive: true, force: true });
-      const now = this.d.getState();
-      this.d.setState({ ...now, libraries: now.libraries.filter((l) => l.id !== id) });
-      this.log(`deleted ${id}`);
+  async remove(id: string): Promise<LibrariesView> {
+    if (id === DEFAULT_LIBRARY_ID) throw new Error('All files cannot be deleted.');
+    // A second Delete of the same library (a double click) waits for the first.
+    const pending = this.deletes.get(id);
+    if (pending) {
+      await pending;
       return this.changed();
+    }
+    const run = this.runDelete(id);
+    const tracked = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.deletes.set(id, tracked);
+    void tracked.then(() => this.deletes.delete(id));
+    return run;
+  }
+
+  private async runDelete(id: string): Promise<LibrariesView> {
+    const s = this.d.getState();
+    const lib = s.libraries.find((l) => l.id === id);
+    if (!lib || lib.deleting) throw new Error('That library no longer exists.');
+    const wasCurrent = s.currentLibrary === id;
+    this.d.setState({
+      ...s,
+      libraries: s.libraries.map((l) => (l.id === id ? { ...l, deleting: true } : l)),
+      ...(wasCurrent ? { currentLibrary: DEFAULT_LIBRARY_ID } : {}),
     });
+    this.log(`deleting ${id}`);
+    this.changed();
+    try {
+      this.d.closeLibrary?.(id);
+    } catch (e) {
+      this.log(`closing ${id} failed: ${(e as Error).message}`);
+    }
+    const abandoned = await this.abandonWatcherOf(id);
+    // All files takes over the window, queued behind whatever still holds the queue; the stop
+    // above has just released a start of this library that held it.
+    if (wasCurrent)
+      void this.serial(() => this.restartRuntime()).catch((e: Error) =>
+        this.log(`start after the delete failed: ${e.message}`),
+      );
+    try {
+      await this.finishRemoval(id);
+    } catch (e) {
+      this.log(`delete of ${id} stopped (${(e as Error).message}); it is finished at the next start`);
+    }
+    // The abandoned job may still have had a call in flight (an embed that brings the table back):
+    // once it has given up, the same removal runs again on what is left.
+    if (abandoned) void abandoned.settled().then(() => this.sweepAfter(id));
+    return this.changed();
+  }
+
+  /** Stops the watcher of library id, running or starting, without waiting for its job. */
+  private async abandonWatcherOf(id: string): Promise<WatcherLike | null> {
+    let w: WatcherLike | null = null;
+    if (this.starting?.id === id) {
+      w = this.starting.watcher;
+      this.starting = null;
+    }
+    if (this.runningId === id && this.watcher) {
+      w = this.watcher;
+      this.watcher = null;
+      this.runningId = null;
+      this.browseIndex = null;
+    }
+    if (!w) return null;
+    await w.stop({ abandon: true });
+    this.log(`watcher of ${id} stopped for the delete`);
+    return w;
+  }
+
+  /** Second pass after an abandoned job gave up: whatever it wrote meanwhile goes too. */
+  private async sweepAfter(id: string): Promise<void> {
+    const left = [libraryDir(this.d.dataDir, id), path.join(this.d.storageDir, 'documents', docsFolderOf(id))];
+    const marked = this.d.getState().libraries.some((l) => l.id === id);
+    if (!marked && !left.some((p) => fs.existsSync(p))) return;
+    if (!marked) {
+      for (const p of left) fs.rmSync(p, { recursive: true, force: true });
+      this.log(`removed what the stopped job of ${id} left`);
+      return;
+    }
+    await this.finishRemoval(id).catch((e: Error) => this.log(`second pass of ${id} failed: ${e.message}`));
+  }
+
+  /** Runs (or joins) the removal of a library marked deleting; the record goes last. */
+  private finishRemoval(id: string): Promise<void> {
+    const running = this.removals.get(id);
+    if (running) return running;
+    const lib = this.d.getState().libraries.find((l) => l.id === id);
+    const run = removeLibraryData({
+      dataDir: this.d.dataDir,
+      storageDir: this.d.storageDir,
+      ocrCacheDir: this.d.ocrCacheDir,
+      id,
+      workspaceSlug: lib?.workspaceSlug ?? null,
+      otherLibraryIds: this.d
+        .getState()
+        .libraries.filter((l) => l.id !== id)
+        .map((l) => l.id),
+      removeWorkspace: (ws) => this.d.workspaces.remove(ws),
+      removeRecord: () => {
+        const now = this.d.getState();
+        if (now.libraries.some((l) => l.id === id))
+          this.d.setState({ ...now, libraries: now.libraries.filter((l) => l.id !== id) });
+      },
+      log: this.d.log ?? (() => {}),
+      ...(this.d.beforeRemovalStep ? { beforeStep: this.d.beforeRemovalStep } : {}),
+    }).then(() => this.log(`deleted ${id}`));
+    const tracked = run.finally(() => this.removals.delete(id));
+    this.removals.set(id, tracked);
+    return tracked;
+  }
+
+  /**
+   * Finishes deletes the app could not finish (it quit or stopped midway, the server was down):
+   * every record marked deleting. Called at start, before the watcher starts. Returns the ids
+   * still marked because their removal failed again.
+   */
+  async resumeRemovals(): Promise<string[]> {
+    const marked = this.d.getState().libraries.filter((l) => l.deleting && l.id !== DEFAULT_LIBRARY_ID);
+    const failed: string[] = [];
+    for (const lib of marked) {
+      this.log(`finishing the delete of ${lib.id}`);
+      try {
+        await this.finishRemoval(lib.id);
+      } catch (e) {
+        failed.push(lib.id);
+        this.log(`delete of ${lib.id} not finished: ${(e as Error).message}`);
+      }
+    }
+    if (marked.length) this.changed();
+    return failed;
   }
 
   /** Links a folder into the current library; it is watched and never modified. */
@@ -720,6 +874,9 @@ export class LibraryManager {
       } else if (source?.kind === 'folder') {
         this.setLibrary(lib.id, (l) => ({ ...l, folders: l.folders.filter((f) => f.id !== sourceId) }));
         await this.restartRuntime();
+        // The reconcile removes the folder's files, except while the watcher keeps files of
+        // unknown sources (keepUnknownSources): this removal is the user's, so it goes either way.
+        if (this.runningId === lib.id) this.watcher?.removeRoot(sourceId);
       } else if (sourceId.startsWith(COPY_SOURCE_PREFIX) || sourceId.startsWith(FILE_ID_PREFIX)) {
         throw new Error('No such file in this library.');
       } else {

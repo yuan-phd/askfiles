@@ -52,7 +52,16 @@ import { SummaryService, type SummaryModel } from './summaries/index.js';
 import type { Env, Logger } from './config.js';
 import { FirstRun } from './first-run.js';
 import { LibraryManager, libraryDir, moveLegacyLibraryFiles, type AddDecision, type AddResult } from './libraries.js';
-import { deleteWorkspace, ensureApiKey, ensureLibrary, ensureWorkspace, workspaceNameOf } from './library.js';
+import { startupLibraryCheck } from './library-data.js';
+import { finishRestore, openShellState, shouldFinishRestore, type OpenedShellState } from './library-recovery.js';
+import {
+  deleteWorkspace,
+  ensureApiKey,
+  ensureLibrary,
+  ensureWorkspace,
+  listWorkspaces,
+  workspaceNameOf,
+} from './library.js';
 import { ModelManager, verifyPinnedModel } from './models/index.js';
 import { OllamaClient } from './ollama/index.js';
 import { findOriginal } from './open-original.js';
@@ -78,11 +87,13 @@ import {
   settingsView,
 } from './settings.js';
 import {
+  clearSelfCheckHold,
   currentLibraryOf,
   DEFAULT_LIBRARY_ID,
-  loadShellState,
+  readSelfCheckHold,
   saveShellState,
   type Settings,
+  type ShellStateSource,
   type ShellState,
 } from './shell-state.js';
 import { machineRam } from './platform.js';
@@ -118,12 +129,21 @@ export interface AppDeps {
 export class AppController implements BridgeHandlers {
   private readonly dataDir = app.getPath('userData');
   private readonly storageDir = path.join(this.dataDir, 'storage');
+  private readonly ocrCacheDir = path.join(this.dataDir, 'ocr-cache');
   private manager: ProcessManager | null = null;
   private presets: PresetFile | null = null;
   private presetsFile = '';
   /** The preset of this Mac's RAM tier, before the settings are applied. */
   private machinePreset: Preset | null = null;
   private state: ShellState;
+  /** Where the state came from at launch; the self-check runs only on shell.json itself. */
+  private readonly stateSource: ShellStateSource;
+  /** Every library id shell.json named at launch, damaged records included, and those rebuilt. */
+  private readonly knownLibraryIds: Set<string>;
+  /** The libraries came back from the backup or their own folders (library-recovery.ts). */
+  private readonly restored: boolean;
+  /** The self-check hold as it was at launch (library-recovery.ts); null when not held. */
+  private readonly selfCheckHold: OpenedShellState['hold'];
   private firstRun: FirstRun | null = null;
   private readonly libraries: LibraryManager;
   private page: StartPage | PageName | null = null;
@@ -149,9 +169,13 @@ export class AppController implements BridgeHandlers {
 
   constructor(private readonly d: AppDeps) {
     this.resourcesPath = d.dev?.resourcesPath ?? process.resourcesPath;
-    const loaded = loadShellState(this.dataDir, d.log);
-    const { migrated, ...state } = loaded;
+    const read = openShellState({ dataDir: this.dataDir, storageDir: this.storageDir, log: d.log });
+    const { migrated, ...state } = read.state;
     this.state = state;
+    this.stateSource = read.source;
+    this.knownLibraryIds = read.knownIds;
+    this.restored = read.restored;
+    this.selfCheckHold = read.hold;
     if (migrated) {
       // Sessions H to J kept one folder; it becomes the All files library.
       moveLegacyLibraryFiles(this.dataDir, (m) => d.log(`[libraries] ${m}`));
@@ -226,8 +250,15 @@ export class AppController implements BridgeHandlers {
       log(`ocr data not seeded: ${(e as Error).message}`);
     }
 
-    const start = chooseStartPage(this.d.env, this.state);
-    log(`start page ${start}`);
+    let start = chooseStartPage(this.d.env, this.state);
+    // Libraries restored after a lost shell.json: the models and server settings are still there,
+    // so the first run is not shown again; its library step runs once the server is up.
+    const restore =
+      start !== 'upstream' && shouldFinishRestore(this.state, this.restored, fs.existsSync(this.envFile()));
+    if (restore && start === 'onboarding') {
+      start = 'ask';
+      log('start page ask (libraries restored, setup not run again)');
+    } else log(`start page ${start}`);
     this.manager = new ProcessManager(
       bundledBackendConfig({
         platform: process.platform,
@@ -256,6 +287,15 @@ export class AppController implements BridgeHandlers {
       log(`backend failed: ${first}`);
       void win.loadURL(messagePage('AskFiles could not start its search engine.', first));
       return;
+    }
+
+    if (restore) {
+      try {
+        await this.finishRestore();
+      } catch (e) {
+        log(`[recovery] setup not finished without the first run: ${(e as Error).message}`);
+        start = chooseStartPage(this.d.env, this.state);
+      }
     }
 
     if (start === 'upstream') {
@@ -905,6 +945,8 @@ export class AppController implements BridgeHandlers {
     const { log } = this.d;
     return new LibraryManager({
       dataDir: this.dataDir,
+      storageDir: this.storageDir,
+      ocrCacheDir: this.ocrCacheDir,
       getState: () => this.state,
       setState: (s) => this.saveState(s),
       workspaces: {
@@ -941,12 +983,14 @@ export class AppController implements BridgeHandlers {
             ocr: collectorOcr({
               api,
               upscale: Boolean(preset.indexing?.ocrUpscale),
-              cacheDir: path.join(this.dataDir, 'ocr-cache'),
+              cacheDir: this.ocrCacheDir,
               log: (m) => log(`[watcher] ${m}`),
             }),
             log: (m) => log(`[watcher] ${m}`),
           }),
           watch: chokidarWatch,
+          // Read at every watcher start: the hold is lifted by a start's self-check, set by recovery.
+          keepUnknownSources: readSelfCheckHold(this.dataDir) !== null,
           log: (m) => log(`[watcher] ${m}`),
         });
         return watcher;
@@ -961,6 +1005,15 @@ export class AppController implements BridgeHandlers {
         return browse;
       },
       followWatcher: (browse, watcher) => followWatcher(browse, watcher, (m) => log(`[browse] ${m}`)),
+      closeLibrary: (id) => {
+        // A summary already being written may still land once; the next start's self-check removes it.
+        if (this.libraryViews?.libraryId === id) {
+          this.libraryViews.summaries.stop();
+          this.libraryViews.graph.stop();
+          this.libraryViews = null;
+        }
+        if (this.paragraphs?.key.startsWith(`${id}|`)) this.paragraphs = null;
+      },
       onChange: (v) => this.d.broadcast(CHANNELS.librariesEvent, v),
       onStatus: (s) => {
         // The summary queue waits while the library indexes (docs/summaries.md, Queue).
@@ -979,15 +1032,61 @@ export class AppController implements BridgeHandlers {
     });
   }
 
-  /** ASKFILES_LIBRARY_FOLDER first (smoke test), then the current library's watcher. */
+  /**
+   * Deletes the app could not finish first, then the self-check (library-data.ts selfCheck), both
+   * before any watcher writes; then ASKFILES_LIBRARY_FOLDER (smoke test) and the current library's
+   * watcher.
+   */
   private async startLibraries(): Promise<void> {
     const folder = presetFolder(this.d.env);
+    await this.checkLibraryData();
     try {
       if (folder) await this.libraries.linkPresetFolder(folder);
       await this.libraries.start();
     } catch (e) {
       this.d.log(`[libraries] not started: ${(e as Error).message}`);
     }
+  }
+
+  /** The first run's library step for a restored state (library-recovery.ts finishRestore). */
+  private async finishRestore(): Promise<void> {
+    const base = this.serverUrl();
+    if (!base) throw new Error('the search engine is not running');
+    const settings = workspaceSettings(this.requireMachinePreset());
+    const next = await finishRestore({
+      state: this.state,
+      ensureApiKey: (stored) => ensureApiKey(base, stored),
+      ensureDefault: (apiKey) => ensureLibrary(base, apiKey, settings),
+      ensureWorkspace: (apiKey, id) => ensureWorkspace(base, apiKey, workspaceNameOf(id), settings),
+      log: this.d.log,
+    });
+    this.saveState(next);
+    this.d.log('[recovery] setup finished without the first run');
+  }
+
+  private libraryDataChecked = false;
+
+  private async checkLibraryData(): Promise<void> {
+    if (this.libraryDataChecked) return;
+    this.libraryDataChecked = true;
+    const base = this.serverUrl();
+    const apiKey = this.state.apiKey;
+    await startupLibraryCheck({
+      source: this.stateSource,
+      resumeRemovals: () => this.libraries.resumeRemovals(),
+      dataDir: this.dataDir,
+      storageDir: this.storageDir,
+      state: this.state,
+      knownIds: this.knownLibraryIds,
+      hold: this.selfCheckHold,
+      liftHold: () => clearSelfCheckHold(this.dataDir),
+      listWorkspaces: async () => (base && apiKey ? listWorkspaces(base, apiKey) : null),
+      removeWorkspace: async (slug) => {
+        if (!base || !apiKey) throw new Error('the search engine is not running');
+        await deleteWorkspace(base, apiKey, slug);
+      },
+      log: this.d.log,
+    });
   }
 
   private createFirstRun(): FirstRun {

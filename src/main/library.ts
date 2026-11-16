@@ -115,6 +115,20 @@ export function workspaceNameOf(libraryId: string): string {
   return `askfiles-${libraryId}`;
 }
 
+/** GET /v1/workspaces: name and slug of every workspace on the server. */
+export async function listWorkspaces(
+  baseUrl: string,
+  apiKey: string,
+  fetchImpl: Fetch = fetch,
+): Promise<{ name: string; slug: string }[]> {
+  const r = await call(fetchImpl, baseUrl, 'GET', '/v1/workspaces', { apiKey });
+  if (!r.ok) throw failure('GET', '/v1/workspaces', r);
+  const list = (r.body as { workspaces?: { name?: unknown; slug?: unknown }[] } | null)?.workspaces ?? [];
+  return list
+    .filter((w) => typeof w.name === 'string' && typeof w.slug === 'string')
+    .map((w) => ({ name: w.name as string, slug: w.slug as string }));
+}
+
 /**
  * DELETE /v1/workspace/{slug}: upstream drops the workspace, its document links and its vectors.
  * A workspace that is already gone counts as deleted.

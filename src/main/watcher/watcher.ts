@@ -64,6 +64,13 @@ export interface FolderWatcherOptions {
   availabilityPollMs?: number;
   /** One entry per retry; after the last one the job goes to the dead-letter list. Default 1, 4, 16 s. */
   retryDelaysMs?: number[];
+  /**
+   * Keep the files whose source is not one of the roots instead of removing them: set while
+   * shell.json may be incomplete (the self-check hold, library-recovery.ts), when a missing source
+   * may be one the rebuild could not bring back rather than one the user removed. A source the user
+   * removes meanwhile still goes, through removeRoot. Default false.
+   */
+  keepUnknownSources?: boolean;
   log?: (msg: string) => void;
   now?: () => Date;
 }
@@ -102,6 +109,14 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
   private current: Job | null = null;
   private running: Promise<void> | null = null;
   private readonly idleWaiters: (() => void)[] = [];
+  /** Resolves when stop() is called, so a start waiting for a slow watch or walk gives up. */
+  private stopSignal: Promise<void> = new Promise(() => {});
+  private signalStop: () => void = () => {};
+  /**
+   * Set by stop({ abandon: true }) (a library being deleted): the job still running writes nothing
+   * more (no index.json, no section document, no further server call) and is not waited for.
+   */
+  private abandoned = false;
   readonly resolveSources: <T extends SourceLike>(sources: T[]) => T[];
 
   constructor(options: FolderWatcherOptions) {
@@ -113,6 +128,7 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
       stableMs: options.stableMs ?? 2000,
       retryDelaysMs: options.retryDelaysMs ?? [1000, 4000, 16000],
       availabilityPollMs: options.availabilityPollMs ?? 5000,
+      keepUnknownSources: options.keepUnknownSources ?? false,
       log: options.log ?? ((msg) => console.log(`[watcher] ${msg}`)),
       now: options.now ?? (() => new Date()),
     };
@@ -135,7 +151,9 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
    */
   async start(): Promise<void> {
     if (this.state !== 'stopped') throw new Error(`start() called while ${this.state}`);
+    if (this.abandoned) throw new Error('start() called after the watcher was abandoned');
     this.state = 'starting';
+    this.stopSignal = new Promise((resolve) => (this.signalStop = resolve));
     this.roots = [];
     this.unavailable = [];
     for (const r of this.given) {
@@ -153,19 +171,30 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
     this.watches = new Map();
     this.fileDirs = new Map();
     const opened = this.roots.map((r) => this.watchRoot(r)).filter((h): h is WatchHandle => !!h);
-    await Promise.all(opened.map((h) => h.ready));
+    // A folder of many nested folders keeps the watch crawling for minutes; stop() must not wait.
+    await Promise.race([Promise.all(opened.map((h) => h.ready)), this.stopSignal]);
+    if (this.isStopped()) return;
     await this.removePending();
+    if (this.isStopped()) return;
     await this.reconcile();
+    if (this.isStopped()) return;
     this.state = 'idle';
     this.startPoll();
     this.kick();
     this.emitStatus();
   }
 
-  /** Stops watching and waits for the job in progress. Queued work is picked up by the next start. */
-  async stop(): Promise<void> {
+  /**
+   * Stops watching and waits for the job in progress. Queued work is picked up by the next start.
+   * Works while starting too: a start still waiting for the watch or walking the folders gives up
+   * and resolves. With abandon (the library is being deleted) the job in progress is not waited
+   * for and writes nothing more; settled() resolves once it has given up.
+   */
+  async stop(o: { abandon?: boolean } = {}): Promise<void> {
+    if (o.abandon) this.abandoned = true;
     if (this.state === 'stopped') return;
     this.state = 'stopped';
+    this.signalStop();
     for (const { timer } of this.settling.values()) clearTimeout(timer);
     this.settling.clear();
     for (const t of this.retryTimers) clearTimeout(t);
@@ -176,10 +205,25 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
     const handles = [...this.watches.values()];
     this.watches = new Map();
     this.fileDirs = new Map();
-    await Promise.all(handles.map((h) => h.close()));
-    await this.running;
-    this.o.log('stopped');
+    await Promise.all(handles.map((h) => h.close().catch(() => undefined)));
+    if (!this.abandoned) await this.running;
+    this.o.log(this.abandoned ? 'stopped, job in progress abandoned' : 'stopped');
     this.flushIdle();
+  }
+
+  /** Resolves once no job runs any more (after an abandoning stop, once the job gave up). */
+  async settled(): Promise<void> {
+    while (this.running) await this.running.catch(() => undefined);
+  }
+
+  /** stop() was called (a start in progress checks this after every wait). */
+  private isStopped(): boolean {
+    return this.state === 'stopped';
+  }
+
+  /** Thrown inside a job of an abandoned watcher, so it ends before its next write. */
+  private checkAbandoned(): void {
+    if (this.abandoned) throw new AbandonedError();
   }
 
   status(): WatcherStatus {
@@ -470,12 +514,12 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
     const prev = this.settling.get(p);
     if (prev) clearTimeout(prev.timer);
     const size = sizeOf(p);
-    const timer = setTimeout(() => this.settled(p, size), delayMs);
+    const timer = setTimeout(() => this.onSettled(p, size), delayMs);
     this.settling.set(p, { timer, size });
     this.emitStatus();
   }
 
-  private settled(p: string, seenSize: number): void {
+  private onSettled(p: string, seenSize: number): void {
     this.settling.delete(p);
     if (this.state === 'stopped') return;
     const size = sizeOf(p);
@@ -528,6 +572,7 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
   private async runJob(job: Job): Promise<void> {
     try {
       const r = job.kind === 'upsert' ? await this.upsert(job.path) : await this.remove(job.path);
+      if (this.abandoned) return;
       this.o.log(`${r.outcome} ${job.path}${r.sections !== undefined ? ` (${r.sections} sections)` : ''}`);
       if (r.times) {
         const t = r.times;
@@ -538,6 +583,8 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
       }
       this.emit('file', { path: job.path, kind: job.kind, ...r });
     } catch (e) {
+      // The library is being deleted: nothing of this job is kept anywhere.
+      if (this.abandoned) return;
       const error = (e as Error).message;
       // The sections this attempt embedded are not in any saved record; a retry writes them again.
       await this.removePending([job.path]);
@@ -597,6 +644,7 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
     const t0 = Date.now();
     const stats: SplitStats = { ocrMs: 0, ocrPages: 0 };
     const chunks = (await this.o.splitter.split(p, stats)).filter((c) => c.text.trim() !== '');
+    this.checkAbandoned();
     const t1 = Date.now();
     // Names depend on path, bytes, split key and chunk position only: a changed file gets all new
     // names and is embedded afresh; an unchanged one keeps them (src/main/sections/documents.ts).
@@ -617,6 +665,7 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
     }
     const records: SectionRecord[] = [];
     for (const [i, { name, doc }] of docs.entries()) {
+      this.checkAbandoned();
       const location = `${this.docsFolder}/${name}`;
       if (readSectionText(this.o.storageDir, location) === null) writeSectionDocument(this.o.storageDir, location, doc);
       // Path and labels live only here, not in the document: LanceDB fixes a table's columns from
@@ -641,10 +690,13 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
     const t2 = Date.now();
     const slug = this.o.workspaceSlug;
     // Asking first makes a retry safe: upstream embeds a path again if it is posted twice.
+    this.checkAbandoned();
     let embedded = await this.o.api.workspaceDocuments(slug);
+    this.checkAbandoned();
     const adds = records.map((r) => r.location).filter((l) => !embedded.has(l));
     if (adds.length) {
       await this.o.api.updateEmbeddings(slug, { adds, deletes: [] });
+      this.checkAbandoned();
       // update-embeddings does not report per-document failures (docs/upstream-analysis.md Q9).
       embedded = await this.o.api.workspaceDocuments(slug);
       const missing = adds.filter((l) => !embedded.has(l));
@@ -654,7 +706,9 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
 
     const keep = new Set(records.map((r) => r.location));
     const stale = [...oldByLocation.keys()].filter((l) => !keep.has(l));
+    this.checkAbandoned();
     if (stale.length) await this.o.api.removeDocuments(slug, stale);
+    this.checkAbandoned();
 
     this.data.files[p] = {
       path: p,
@@ -693,10 +747,12 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
       this.setAside(root);
       return { outcome: 'unchanged', sections: old.sections.length };
     }
+    this.checkAbandoned();
     await this.o.api.removeDocuments(
       this.o.workspaceSlug,
       old.sections.map((s) => s.location),
     );
+    this.checkAbandoned();
     delete this.data.files[p];
     this.save();
     return { outcome: 'removed', sections: old.sections.length };
@@ -713,12 +769,15 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
           walked.push({ p: r.path, r });
         continue;
       }
-      for await (const p of walk(r.path, r.path)) {
+      for await (const p of walk(r.path, r.path, () => this.state === 'stopped')) {
+        // Walking dozens of repositories takes long; a stop (a delete, a quit) ends it.
+        if (this.state === 'stopped') return;
         if (!this.indexable(p, r) || this.rootOf(p) !== r) continue;
         walked.push({ p, r });
       }
     }
     for (const { p, r } of walked) {
+      if (this.state === 'stopped') return;
       found.add(p);
       const rec = this.data.files[p];
       let st: fs.Stats;
@@ -737,7 +796,17 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
     // Files of a folder that cannot be read now are kept; files of a folder no longer in the
     // library are not under any root and go.
     const keep = (p: string) => this.unavailable.some((u) => belongsTo(p, this.data.files[p], u));
+    const sourceIds = new Set(this.given.map((r) => r.id));
+    const unknownSource = (p: string) => {
+      const id = this.data.files[p]?.sourceId;
+      return this.o.keepUnknownSources && id !== undefined && !sourceIds.has(id);
+    };
+    let kept = 0;
     for (const p of Object.keys(this.data.files)) {
+      if (!found.has(p) && unknownSource(p)) {
+        kept++;
+        continue;
+      }
       if (!found.has(p) && !keep(p)) {
         // Check for updates runs this while jobs are queued: one job per path.
         const queued = this.queue.find((j) => j.path === p);
@@ -747,7 +816,9 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
         missing++;
       }
     }
-    this.o.log(`reconcile: ${found.size} files in folders, ${this.settling.size} to check, ${missing} to remove`);
+    this.o.log(
+      `reconcile: ${found.size} files in folders, ${this.settling.size} to check, ${missing} to remove${kept ? `, ${kept} of sources not in the library kept (shell.json may be incomplete)` : ''}`,
+    );
   }
 
   /**
@@ -757,7 +828,7 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
    */
   private async removePending(paths?: string[]): Promise<void> {
     const pending = this.data.pending;
-    if (!pending) return;
+    if (!pending || this.abandoned) return;
     for (const p of paths ?? Object.keys(pending)) {
       const names = pending[p];
       if (!names) continue;
@@ -777,6 +848,8 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
   }
 
   private save(): void {
+    // A library being deleted: writing would bring its folder back.
+    if (this.abandoned) return;
     saveIndex(this.indexFile, this.data);
   }
 
@@ -800,6 +873,12 @@ function belongsTo(p: string, rec: FileRecord | undefined, r: WatchRoot): boolea
   return !!rel && !rel.startsWith('..') && !path.isAbsolute(rel);
 }
 
+class AbandonedError extends Error {
+  constructor() {
+    super('the library is being deleted');
+  }
+}
+
 function sizeOf(p: string): number {
   try {
     return fs.statSync(p).size;
@@ -808,7 +887,8 @@ function sizeOf(p: string): number {
   }
 }
 
-async function* walk(dir: string, root: string): AsyncGenerator<string> {
+async function* walk(dir: string, root: string, stopped: () => boolean = () => false): AsyncGenerator<string> {
+  if (stopped()) return;
   let entries: fs.Dirent[];
   try {
     entries = await fsp.readdir(dir, { withFileTypes: true });
@@ -818,7 +898,7 @@ async function* walk(dir: string, root: string): AsyncGenerator<string> {
   for (const e of entries) {
     const p = path.join(dir, e.name);
     if (isHidden(p, root)) continue;
-    if (e.isDirectory()) yield* walk(p, root);
+    if (e.isDirectory()) yield* walk(p, root, stopped);
     else if (e.isFile()) yield p;
   }
 }
