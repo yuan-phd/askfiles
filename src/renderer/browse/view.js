@@ -167,12 +167,13 @@ function button(className, text, testid) {
 }
 
 /**
- * Page or sheet label; spreadsheets carry the sheet number in the page fields. When the PDF
+ * Page, sheet or slide label; spreadsheets carry the sheet number in the page fields, PowerPoint
+ * files the slide number. When the PDF
  * prints its own page labels (iv, A-3) they lead, with the PDF page index after them.
  */
 export function placeLabel(start, end, fileName = '', labelStart = null, labelEnd = null) {
   if (!start) return '';
-  const unit = /\.(xlsx|xlsm|xls|csv)$/i.test(fileName) ? 'Sheet' : 'Page';
+  const unit = /\.(xlsx|xlsm|xls|csv)$/i.test(fileName) ? 'Sheet' : /\.pptx$/i.test(fileName) ? 'Slide' : 'Page';
   const single = !end || end === start;
   if (labelStart && unit === 'Page') {
     const printed = single || !labelEnd ? labelStart : `${labelStart} to ${labelEnd}`;

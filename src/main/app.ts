@@ -98,7 +98,14 @@ import {
 } from './shell-state.js';
 import { machineRam } from './platform.js';
 import { seedTesseractData } from './tesseract.js';
-import { chokidarWatch, collectorOcr, createLibraryApi, FolderWatcher, sectionSplitter } from './watcher/index.js';
+import {
+  chokidarWatch,
+  collectorOcr,
+  createLibraryApi,
+  FolderWatcher,
+  sectionSplitter,
+  SUPPORTED_EXTENSIONS,
+} from './watcher/index.js';
 import { Wizard } from './wizard/index.js';
 
 /** The reranker process ends after this long without a question, to give its memory back. */
@@ -413,6 +420,9 @@ export class AppController implements BridgeHandlers {
       title: `Add files to ${currentLibraryOf(this.state).name}`,
       buttonLabel: 'Add',
       properties: ['openFile', 'multiSelections'],
+      // Only the types AskFiles reads can be chosen; a file of another type dropped on the window
+      // is refused by addPaths with the list of these types.
+      filters: [{ name: 'Documents', extensions: SUPPORTED_EXTENSIONS.map((e) => e.slice(1)) }],
     });
     if (r.canceled || !r.filePaths.length) return null;
     return this.libraries.addPaths(r.filePaths);

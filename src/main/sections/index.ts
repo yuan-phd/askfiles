@@ -4,6 +4,7 @@ import { chunkSections } from './chunk.js';
 import { parseDocx } from './docx.js';
 import { parseMarkdown } from './markdown.js';
 import { parsePdf } from './pdf.js';
+import { parsePptx } from './pptx.js';
 import { parsePlainText } from './text.js';
 import type { Chunk, ParsedDocument, SplitOptions } from './types.js';
 import { parseCsv, parseXls, parseXlsx } from './xlsx.js';
@@ -27,13 +28,19 @@ export { docTitleOf, paragraphs, parsePlainText } from './text.js';
  */
 export const SPLITTER_VERSION = 4;
 
+/**
+ * The only file types AskFiles reads, matched without regard to case (owner decision 2026-11-16,
+ * docs/plan.md): everything else in a linked folder is never read or indexed. CSV left the list
+ * then; parseFile still reads it for the eval harness and older tests. Adding a type here needs
+ * no splitter version bump, since no file of the type was split before.
+ */
 export const SUPPORTED_EXTENSIONS = [
   '.pdf',
   '.docx',
   '.xlsx',
   '.xlsm',
   '.xls',
-  '.csv',
+  '.pptx',
   '.md',
   '.markdown',
   '.txt',
@@ -61,6 +68,8 @@ export async function parseFile(
       return parseXlsx(buffer, o);
     case '.xls':
       return parseXls(buffer, o);
+    case '.pptx':
+      return parsePptx(buffer);
     case '.csv':
       return parseCsv(buffer, name, o);
     case '.md':

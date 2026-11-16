@@ -8,6 +8,7 @@ import type { BridgeHandlers } from './bridge/contract.js';
 import { registerBridge } from './bridge/register.js';
 import { createLogger, resolveLogDir, resolvePort, PORT_ENV, CONFIG_ENV } from './config.js';
 import { appDirs } from './platform.js';
+import { openFileLimit } from './open-files.js';
 import { loadTestBuild, removeTestRecord, type TestBuild } from './test-build.js';
 
 // Must run before the app is ready. standard and secure give the pages a real origin and a secure
@@ -117,6 +118,8 @@ function main(): void {
   }
   const log = createLogger(resolveLogDir(process.env, app.getPath('logs')), 'main');
   log(`starting version ${app.getVersion()} pid ${process.pid}${testModule ? ' (test build)' : ''}`);
+  const files = openFileLimit();
+  log(files ? `open-file limit ${files.soft} (hard ${files.hard})` : 'open-file limit unknown');
   if (dev) log(`dev run: backend from ${dev.resourcesPath}, node ${dev.nodePath}, ollama on ${dev.externalOllamaPort}`);
   if (!testModule) removeTestRecord(app.getPath('userData'), log);
   // Set once the bridge handlers exist; the record names the current library.

@@ -535,7 +535,9 @@ describe('FolderWatcher', () => {
       });
       await w.start();
       await w.whenIdle();
-      expect(watch.opened).toEqual([{ root: other, options: { depth: 0, only: new Set([a, b]) } }]);
+      expect(watch.opened).toEqual([
+        { root: other, options: { depth: 0, only: new Set([a, b]), onLimit: expect.any(Function) } },
+      ]);
       expect(Object.keys(readIndex().files).sort()).toEqual([a, b]);
       expect(readIndex().files[a]).toMatchObject({ sourceId: 'file-1', relPath: 'a.md' });
 

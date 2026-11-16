@@ -63,12 +63,12 @@ export interface Section {
 }
 
 /** Where the section boundaries came from. */
-export type OutlineSource = 'bookmarks' | 'font-size' | 'headings' | 'pages' | 'sheets' | 'none';
+export type OutlineSource = 'bookmarks' | 'font-size' | 'headings' | 'pages' | 'sheets' | 'slides' | 'none';
 
 export interface ParsedDocument {
   sections: Section[];
   outline: OutlineSource;
-  /** Page count for PDF, sheet count for spreadsheets, 0 otherwise. */
+  /** Page count for PDF, sheet count for spreadsheets, slide count for PowerPoint, 0 otherwise. */
   pages: number;
   /** A PDF without any text layer: the caller has to OCR it. sections is empty then. */
   needsOcr: boolean;

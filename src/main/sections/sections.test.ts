@@ -4,10 +4,11 @@ import { describe, expect, it } from 'vitest';
 import { chunkSections, foldEmptySections, splitLongByPage, splitToFit } from './chunk.js';
 import { directOutlineLevels, headingStyles, levelFromStyleName, sectionsFromHtml } from './docx.js';
 import { isAcceptableHeading } from './headings.js';
-import { isSupported, parseFile } from './index.js';
+import { isSupported, parseFile, splitFile } from './index.js';
 import { parseMarkdown } from './markdown.js';
 import { encodePng, pdfPageImages } from './pdf-images.js';
 import { isGarbled, linesFromItems, marksFromFontSize, pageQuality, sectionsFromMarks, type Line } from './pdf.js';
+import { parsePptx, slideText } from './pptx.js';
 import { decodeText, parseCsv, parseCsvRows, sheetToText } from './xlsx.js';
 import { readZipEntry } from './zip.js';
 import type { Section } from './types.js';
@@ -426,7 +427,9 @@ describe('spreadsheet types', () => {
       expect(doc.sections.map((s) => s.title)).toEqual(['Budget 2026', 'Headcount']);
       expect(doc.sections[0]!.blocks[0]!.text).toContain('Department: Engineering; Q1: 120000; Q2: 125000');
     }
-    expect(isSupported('a.XLSM') && isSupported('b.xls') && isSupported('c.csv')).toBe(true);
+    expect(isSupported('a.XLSM') && isSupported('b.xls')).toBe(true);
+    // CSV left the list of types AskFiles reads (owner decision 2026-11-16).
+    expect(isSupported('c.csv')).toBe(false);
   });
 
   it('reads CSV with quotes, semicolons and GB 18030, keeping leading zeros and long IDs', () => {
@@ -581,5 +584,54 @@ describe('splitLongByPage', () => {
       'Operational Matters (page 3)',
       'Child',
     ]);
+  });
+});
+
+describe('PowerPoint (.pptx)', () => {
+  it('makes one section per slide in deck order, titled by the title placeholder, page = slide number', async () => {
+    const doc = await parseFile(path.join(FIXTURES, 'deck.pptx'));
+    expect(doc.outline).toBe('slides');
+    expect(doc.pages).toBe(5);
+    expect(doc.sections.map((s) => [s.title, s.level, s.blocks.map((b) => [b.text, b.page])])).toEqual([
+      ['Garden club plan 2027', 1, [['Invented for tests', 1]]],
+      [
+        'Budget & members',
+        1,
+        [
+          ['Fees stay at 20 euros.', 2],
+          ['Students pay half.', 2],
+          ['Item | Cost', 2],
+          ['Seeds | 120', 2],
+          ['Tools | 300', 2],
+          ['Notes: Ask the treasurer about the tools.', 2],
+        ],
+      ],
+      // Slide 3 is a picture only: no section. The slide number placeholder of slide 2 is left out.
+      ['会议安排', 1, [['每月第一个周六开会。', 4]]],
+      ['Slide 5', 1, [['A text box with no title above it.', 5]]],
+    ]);
+    expect(isSupported('Deck.PPTX')).toBe(true);
+  });
+
+  it('splits a deck into chunks that carry the slide number', async () => {
+    const { chunks } = await splitFile(path.join(FIXTURES, 'deck.pptx'), { maxChars: 2000 });
+    expect(chunks.map((c) => [c.sectionTitle, c.pageStart, c.pageEnd])).toEqual([
+      ['Garden club plan 2027', 1, 1],
+      ['Budget & members', 2, 2],
+      ['会议安排', 4, 4],
+      ['Slide 5', 5, 5],
+    ]);
+  });
+
+  it('reads text with attributes once, and only the new form of a shape that has a fallback', () => {
+    const xml =
+      '<p:sld><p:sp><p:nvSpPr><p:nvPr><p:ph type="title"/></p:nvPr></p:nvSpPr><p:txBody><a:p><a:r><a:t xml:space="preserve">Fish &amp; chips </a:t></a:r><a:br/><a:r><a:t>today</a:t></a:r></a:p></p:txBody></p:sp>' +
+      '<mc:AlternateContent><mc:Choice Requires="a14"><p:sp><p:txBody><a:p><a:r><a:t>Once</a:t></a:r></a:p></p:txBody></p:sp></mc:Choice>' +
+      '<mc:Fallback><p:sp><p:txBody><a:p><a:r><a:t>Once</a:t></a:r></a:p></p:txBody></p:sp></mc:Fallback></mc:AlternateContent></p:sld>';
+    expect(slideText(xml)).toEqual({ title: 'Fish & chips\ntoday', lines: ['Once'] });
+  });
+
+  it('says what is wrong with a file that is not a deck', () => {
+    expect(() => parsePptx(Buffer.from('not a zip'))).toThrow('not a zip archive');
   });
 });

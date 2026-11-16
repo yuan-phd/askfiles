@@ -210,6 +210,14 @@ body {
   white-space: nowrap;
 }
 
+/* The library has more folders than are watched (WatcherStatus.notWatched). */
+.topbar .status-not-watched {
+  color: var(--text-muted, var(--text));
+  max-width: 22rem;
+  font-size: 0.85em;
+  line-height: 1.3;
+}
+
 .add-button {
   padding: var(--space-1) var(--space-4);
   border: 0;
@@ -227,6 +235,14 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text);
+}
+
+/* A file that cannot be read or a folder too large: the whole message, over a few lines. */
+.add-result.long {
+  max-width: 34rem;
+  white-space: normal;
+  font-size: 0.85em;
+  line-height: 1.3;
 }
 
 /* Menus */
