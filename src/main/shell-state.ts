@@ -122,7 +122,8 @@ function readSettings(v: unknown): Settings {
   };
 }
 
-function readLibrary(v: unknown): LibraryRecord | null {
+/** One library record as shell.json (or a library's library.json) stores it; null when unusable. */
+export function readLibrary(v: unknown): LibraryRecord | null {
   const d = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>;
   const id = str(d.id);
   const name = str(d.name);
@@ -190,6 +191,15 @@ export function migrateV1(d: Record<string, unknown>): ShellState {
 }
 
 export const SHELL_STATE_BACKUP = 'shell.json.bak';
+/**
+ * Marker of a start whose shell.json could not be trusted (src/main/library-recovery.ts). A file of
+ * its own, so no later save of shell.json can drop it: while it exists the self-check removes
+ * nothing, the watcher keeps files of sources it does not know, and saves never replace a good
+ * shell.json.bak.
+ */
+export const SELF_CHECK_HOLD = 'self-check-hold.json';
+/** A library's own copy of its record, under <dataDir>/libraries/<id>/, for rebuilding shell.json. */
+export const LIBRARY_RECORD_FILE = 'library.json';
 
 /**
  * Where a loaded state came from. Only 'file' is the app's latest word on which libraries exist:
@@ -235,14 +245,76 @@ function parseShellState(raw: string): { state: ShellState & { migrated?: 1 }; k
   };
 }
 
+function parses(text: string | null): boolean {
+  if (text === null) return false;
+  try {
+    parseShellState(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function readText(file: string): string | null {
+  try {
+    return fs.readFileSync(file, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+/** Why and since when the self-check is held; null when it is not. */
+export interface SelfCheckHold {
+  since: string;
+  reason: string;
+}
+
+/** The hold, or null. A marker that cannot be read still holds: it exists, so something went wrong. */
+export function readSelfCheckHold(dataDir: string): SelfCheckHold | null {
+  const text = readText(path.join(dataDir, SELF_CHECK_HOLD));
+  if (text === null) return fs.existsSync(path.join(dataDir, SELF_CHECK_HOLD)) ? { since: '', reason: '' } : null;
+  try {
+    const d = JSON.parse(text) as Record<string, unknown>;
+    return { since: str(d.since) ?? '', reason: str(d.reason) ?? '' };
+  } catch {
+    return { since: '', reason: '' };
+  }
+}
+
+/** Sets the hold; an existing one keeps its time and reason (the first trouble is the one to know). */
+export function setSelfCheckHold(dataDir: string, reason: string, now = new Date()): SelfCheckHold {
+  const held = readSelfCheckHold(dataDir);
+  if (held) return held;
+  fs.mkdirSync(dataDir, { recursive: true });
+  const hold = { since: now.toISOString(), reason };
+  replaceDurably(path.join(dataDir, SELF_CHECK_HOLD), JSON.stringify(hold) + '\n');
+  return hold;
+}
+
+export function clearSelfCheckHold(dataDir: string): void {
+  fs.rmSync(path.join(dataDir, SELF_CHECK_HOLD), { force: true });
+}
+
 /**
- * Reads shell.json. When it is missing or unreadable, the backup the last save kept
- * (shell.json.bak) is loaded and the event logged; an unreadable file is first moved aside as
- * shell.json.broken-<time> so it can be looked at. Without a usable backup a missing or unreadable
- * file is an empty state: the first run then starts again, which is safe because every first-run
- * step is idempotent (models already pulled are skipped, the library workspace is found by name, a
- * stored key is checked before reuse). migrated is set when the file was version 1, so the caller
- * can move that version's files and save the new shape.
+ * Keeps text as shell.json.bak. While the self-check is held, shell.json may be a rebuilt or reset
+ * state, so a backup that still reads is never replaced then: it may be the last good one.
+ */
+function keepBackup(dataDir: string, text: string): void {
+  const backup = path.join(dataDir, SHELL_STATE_BACKUP);
+  const current = readText(backup);
+  if (current === text) return;
+  if (readSelfCheckHold(dataDir) && parses(current)) return;
+  replaceDurably(backup, text);
+}
+
+/**
+ * Reads shell.json. When it is missing or unreadable, the backup (shell.json.bak) is loaded and the
+ * event logged; an unreadable file is first moved aside as shell.json.broken-<time> so it can be
+ * looked at. Without a usable backup a missing or unreadable file is an empty state. A file that
+ * reads is also kept as the backup when the backup differs, so a backup exists from the first
+ * start, not only after the first save. Rebuilding libraries from their own folders and the
+ * self-check hold are library-recovery.ts openShellState, which calls this. migrated is set when
+ * the file was version 1, so the caller can move that version's files and save the new shape.
  */
 export function readShellState(dataDir: string, log: (msg: string) => void = () => {}): ShellStateRead {
   const file = path.join(dataDir, SHELL_STATE_FILE);
@@ -250,7 +322,13 @@ export function readShellState(dataDir: string, log: (msg: string) => void = () 
   let source: ShellStateSource;
   let reason: string;
   try {
-    const parsed = parseShellState(fs.readFileSync(file, 'utf8'));
+    const raw = fs.readFileSync(file, 'utf8');
+    const parsed = parseShellState(raw);
+    try {
+      keepBackup(dataDir, raw);
+    } catch (e) {
+      log(`[shell-state] backup not refreshed: ${(e as Error).message}`);
+    }
     return { ...parsed, source: 'file' };
   } catch (e) {
     const missing = (e as NodeJS.ErrnoException).code === 'ENOENT';
@@ -273,8 +351,9 @@ export function readShellState(dataDir: string, log: (msg: string) => void = () 
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code !== 'ENOENT')
       log(`[shell-state] backup ${backup} unreadable too (${(e as Error).message})`);
+    else if (source === 'unreadable') log(`[shell-state] no backup ${backup}`);
   }
-  if (source === 'unreadable') log(`[shell-state] ${file} unreadable (${reason}), starting setup again`);
+  if (source === 'unreadable') log(`[shell-state] ${file} unreadable (${reason}), no state to load`);
   return { state: emptyShellState(), source, knownIds: new Set([DEFAULT_LIBRARY_ID]) };
 }
 
@@ -293,31 +372,49 @@ function writeDurably(file: string, text: string): void {
   }
 }
 
+function replaceDurably(file: string, text: string): void {
+  const tmp = `${file}.tmp-${process.pid}`;
+  writeDurably(tmp, text);
+  fs.renameSync(tmp, file);
+}
+
+/**
+ * Each library's record also goes to <dataDir>/libraries/<id>/library.json, so a lost shell.json
+ * can be rebuilt with names, kinds and sources (library-recovery.ts). Only into a folder that
+ * exists: a library without one has nothing to rebuild, and a library being deleted gets none.
+ */
+function writeLibraryRecords(dataDir: string, libraries: LibraryRecord[]): void {
+  for (const lib of libraries) {
+    if (lib.deleting) continue;
+    const dir = path.join(dataDir, 'libraries', lib.id);
+    if (!fs.existsSync(dir)) continue;
+    const file = path.join(dir, LIBRARY_RECORD_FILE);
+    const text = JSON.stringify(lib, null, 2) + '\n';
+    if (readText(file) !== text) replaceDurably(file, text);
+  }
+}
+
 /**
  * Temp file and rename, so a crash never leaves half a file. The version being replaced is kept as
- * shell.json.bak first, but only when it still reads: a damaged file never replaces a good backup.
+ * shell.json.bak first, but only when it still reads (a damaged file never replaces a good backup)
+ * and, while the self-check is held, only when the backup does not read either.
  */
 export function saveShellState(dataDir: string, state: ShellState): void {
   fs.mkdirSync(dataDir, { recursive: true });
   const file = path.join(dataDir, SHELL_STATE_FILE);
-  const tmp = `${file}.tmp-${process.pid}`;
   const { version, apiKey, setupCompletedAt, libraries, currentLibrary, settings } = state;
   const out = { version, apiKey, setupCompletedAt, libraries, currentLibrary, settings };
+  const tmp = `${file}.tmp-${process.pid}`;
   writeDurably(tmp, JSON.stringify(out, null, 2) + '\n');
-  let previous: string | null;
-  try {
-    previous = fs.readFileSync(file, 'utf8');
-    parseShellState(previous);
-  } catch {
-    previous = null;
-  }
-  if (previous !== null) {
-    const backup = path.join(dataDir, SHELL_STATE_BACKUP);
-    const bakTmp = `${backup}.tmp-${process.pid}`;
-    writeDurably(bakTmp, previous);
-    fs.renameSync(bakTmp, backup);
-  }
+  const previous = readText(file);
+  if (previous !== null && parses(previous)) keepBackup(dataDir, previous);
   fs.renameSync(tmp, file);
+  // After shell.json: a failure here leaves the library copies one save behind, never shell.json.
+  try {
+    writeLibraryRecords(dataDir, libraries);
+  } catch {
+    // The copies are a second line of defence; shell.json itself is saved.
+  }
 }
 
 export function currentLibraryOf(state: ShellState): LibraryRecord {

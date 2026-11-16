@@ -59,13 +59,16 @@ describe('shell.json', () => {
     expect(isSetupComplete(loadShellState(dir))).toBe(true);
 
     const logs: string[] = [];
+    // The reads above kept shell.json as the backup, so a damaged file finds it.
     fs.writeFileSync(file, '{"version": 3}');
-    expect(loadShellState(dir, (m) => logs.push(m))).toEqual(emptyShellState());
+    expect(loadShellState(dir, (m) => logs.push(m))).toEqual(complete);
+    fs.rmSync(path.join(dir, 'shell.json.bak'));
     fs.writeFileSync(file, 'not json');
     expect(loadShellState(dir, (m) => logs.push(m))).toEqual(emptyShellState());
-    // Each damaged file is moved aside and logged; without a backup setup starts again.
+    // Each damaged file is moved aside and logged; without a backup there is no state to load.
     expect(logs.filter((l) => l.includes('moved to'))).toHaveLength(2);
-    expect(logs.filter((l) => l.includes('starting setup again'))).toHaveLength(2);
+    expect(logs.filter((l) => l.includes('loaded the backup'))).toHaveLength(1);
+    expect(logs.filter((l) => l.includes('no state to load'))).toHaveLength(1);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 

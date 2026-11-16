@@ -339,12 +339,20 @@ export async function selfCheck(o: SelfCheckOptions): Promise<string[]> {
 
 /**
  * At start, before any watcher writes: deletes the app could not finish first (LibraryManager
- * resumeRemovals), then the self-check, but only when shell.json itself was read. From the backup
- * (one save behind) or an empty state, data of a library the latest file names could look unused,
- * so nothing is removed then.
+ * resumeRemovals), then the self-check, but only when shell.json itself was read and the
+ * self-check is not held. From the backup (one save behind) or an empty state, data of a library
+ * the latest file names could look unused, so nothing is removed then. The hold (set by a start
+ * like that, library-recovery.ts) is lifted only at a start where shell.json, as read, named every
+ * library folder on disk (hold.unnamed empty); a save after a reset that dropped a library can
+ * therefore never make its data look unused. The self-check then runs at that same start.
  */
 export async function startupLibraryCheck(
-  o: SelfCheckOptions & { source: ShellStateSource; resumeRemovals(): Promise<string[]> },
+  o: SelfCheckOptions & {
+    source: ShellStateSource;
+    resumeRemovals(): Promise<string[]>;
+    hold?: { since: string; reason: string; unnamed: string[] } | null;
+    liftHold?(): void;
+  },
 ): Promise<'done' | 'skipped'> {
   try {
     const failed = await o.resumeRemovals();
@@ -355,6 +363,22 @@ export async function startupLibraryCheck(
   if (o.source !== 'file') {
     o.log(`[self-check] skipped: shell.json was not read (${o.source}), so no data is known to be unused`);
     return 'skipped';
+  }
+  if (o.hold) {
+    const since = o.hold.since ? ` since ${o.hold.since}` : '';
+    if (o.hold.unnamed.length) {
+      o.log(
+        `[self-check] skipped: held${since} (${o.hold.reason || 'reason not readable'}); library folders shell.json did not name: ${o.hold.unnamed.join(', ')}`,
+      );
+      return 'skipped';
+    }
+    try {
+      o.liftHold?.();
+      o.log(`[self-check] hold${since} lifted: shell.json names every library folder`);
+    } catch (e) {
+      o.log(`[self-check] skipped: the hold could not be lifted (${(e as Error).message})`);
+      return 'skipped';
+    }
   }
   const t0 = Date.now();
   try {

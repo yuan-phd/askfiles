@@ -53,6 +53,7 @@ import type { Env, Logger } from './config.js';
 import { FirstRun } from './first-run.js';
 import { LibraryManager, libraryDir, moveLegacyLibraryFiles, type AddDecision, type AddResult } from './libraries.js';
 import { startupLibraryCheck } from './library-data.js';
+import { finishRestore, openShellState, shouldFinishRestore, type OpenedShellState } from './library-recovery.js';
 import {
   deleteWorkspace,
   ensureApiKey,
@@ -86,9 +87,10 @@ import {
   settingsView,
 } from './settings.js';
 import {
+  clearSelfCheckHold,
   currentLibraryOf,
   DEFAULT_LIBRARY_ID,
-  readShellState,
+  readSelfCheckHold,
   saveShellState,
   type Settings,
   type ShellStateSource,
@@ -136,8 +138,12 @@ export class AppController implements BridgeHandlers {
   private state: ShellState;
   /** Where the state came from at launch; the self-check runs only on shell.json itself. */
   private readonly stateSource: ShellStateSource;
-  /** Every library id shell.json named at launch, damaged records included. */
+  /** Every library id shell.json named at launch, damaged records included, and those rebuilt. */
   private readonly knownLibraryIds: Set<string>;
+  /** The libraries came back from the backup or their own folders (library-recovery.ts). */
+  private readonly restored: boolean;
+  /** The self-check hold as it was at launch (library-recovery.ts); null when not held. */
+  private readonly selfCheckHold: OpenedShellState['hold'];
   private firstRun: FirstRun | null = null;
   private readonly libraries: LibraryManager;
   private page: StartPage | PageName | null = null;
@@ -163,11 +169,13 @@ export class AppController implements BridgeHandlers {
 
   constructor(private readonly d: AppDeps) {
     this.resourcesPath = d.dev?.resourcesPath ?? process.resourcesPath;
-    const read = readShellState(this.dataDir, d.log);
+    const read = openShellState({ dataDir: this.dataDir, storageDir: this.storageDir, log: d.log });
     const { migrated, ...state } = read.state;
     this.state = state;
     this.stateSource = read.source;
     this.knownLibraryIds = read.knownIds;
+    this.restored = read.restored;
+    this.selfCheckHold = read.hold;
     if (migrated) {
       // Sessions H to J kept one folder; it becomes the All files library.
       moveLegacyLibraryFiles(this.dataDir, (m) => d.log(`[libraries] ${m}`));
@@ -242,8 +250,15 @@ export class AppController implements BridgeHandlers {
       log(`ocr data not seeded: ${(e as Error).message}`);
     }
 
-    const start = chooseStartPage(this.d.env, this.state);
-    log(`start page ${start}`);
+    let start = chooseStartPage(this.d.env, this.state);
+    // Libraries restored after a lost shell.json: the models and server settings are still there,
+    // so the first run is not shown again; its library step runs once the server is up.
+    const restore =
+      start !== 'upstream' && shouldFinishRestore(this.state, this.restored, fs.existsSync(this.envFile()));
+    if (restore && start === 'onboarding') {
+      start = 'ask';
+      log('start page ask (libraries restored, setup not run again)');
+    } else log(`start page ${start}`);
     this.manager = new ProcessManager(
       bundledBackendConfig({
         platform: process.platform,
@@ -272,6 +287,15 @@ export class AppController implements BridgeHandlers {
       log(`backend failed: ${first}`);
       void win.loadURL(messagePage('AskFiles could not start its search engine.', first));
       return;
+    }
+
+    if (restore) {
+      try {
+        await this.finishRestore();
+      } catch (e) {
+        log(`[recovery] setup not finished without the first run: ${(e as Error).message}`);
+        start = chooseStartPage(this.d.env, this.state);
+      }
     }
 
     if (start === 'upstream') {
@@ -965,6 +989,8 @@ export class AppController implements BridgeHandlers {
             log: (m) => log(`[watcher] ${m}`),
           }),
           watch: chokidarWatch,
+          // Read at every watcher start: the hold is lifted by a start's self-check, set by recovery.
+          keepUnknownSources: readSelfCheckHold(this.dataDir) !== null,
           log: (m) => log(`[watcher] ${m}`),
         });
         return watcher;
@@ -1022,6 +1048,22 @@ export class AppController implements BridgeHandlers {
     }
   }
 
+  /** The first run's library step for a restored state (library-recovery.ts finishRestore). */
+  private async finishRestore(): Promise<void> {
+    const base = this.serverUrl();
+    if (!base) throw new Error('the search engine is not running');
+    const settings = workspaceSettings(this.requireMachinePreset());
+    const next = await finishRestore({
+      state: this.state,
+      ensureApiKey: (stored) => ensureApiKey(base, stored),
+      ensureDefault: (apiKey) => ensureLibrary(base, apiKey, settings),
+      ensureWorkspace: (apiKey, id) => ensureWorkspace(base, apiKey, workspaceNameOf(id), settings),
+      log: this.d.log,
+    });
+    this.saveState(next);
+    this.d.log('[recovery] setup finished without the first run');
+  }
+
   private libraryDataChecked = false;
 
   private async checkLibraryData(): Promise<void> {
@@ -1036,6 +1078,8 @@ export class AppController implements BridgeHandlers {
       storageDir: this.storageDir,
       state: this.state,
       knownIds: this.knownLibraryIds,
+      hold: this.selfCheckHold,
+      liftHold: () => clearSelfCheckHold(this.dataDir),
       listWorkspaces: async () => (base && apiKey ? listWorkspaces(base, apiKey) : null),
       removeWorkspace: async (slug) => {
         if (!base || !apiKey) throw new Error('the search engine is not running');

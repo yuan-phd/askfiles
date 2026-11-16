@@ -874,6 +874,9 @@ export class LibraryManager {
       } else if (source?.kind === 'folder') {
         this.setLibrary(lib.id, (l) => ({ ...l, folders: l.folders.filter((f) => f.id !== sourceId) }));
         await this.restartRuntime();
+        // The reconcile removes the folder's files, except while the watcher keeps files of
+        // unknown sources (keepUnknownSources): this removal is the user's, so it goes either way.
+        if (this.runningId === lib.id) this.watcher?.removeRoot(sourceId);
       } else if (sourceId.startsWith(COPY_SOURCE_PREFIX) || sourceId.startsWith(FILE_ID_PREFIX)) {
         throw new Error('No such file in this library.');
       } else {

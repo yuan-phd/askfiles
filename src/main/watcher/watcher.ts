@@ -64,6 +64,13 @@ export interface FolderWatcherOptions {
   availabilityPollMs?: number;
   /** One entry per retry; after the last one the job goes to the dead-letter list. Default 1, 4, 16 s. */
   retryDelaysMs?: number[];
+  /**
+   * Keep the files whose source is not one of the roots instead of removing them: set while
+   * shell.json may be incomplete (the self-check hold, library-recovery.ts), when a missing source
+   * may be one the rebuild could not bring back rather than one the user removed. A source the user
+   * removes meanwhile still goes, through removeRoot. Default false.
+   */
+  keepUnknownSources?: boolean;
   log?: (msg: string) => void;
   now?: () => Date;
 }
@@ -121,6 +128,7 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
       stableMs: options.stableMs ?? 2000,
       retryDelaysMs: options.retryDelaysMs ?? [1000, 4000, 16000],
       availabilityPollMs: options.availabilityPollMs ?? 5000,
+      keepUnknownSources: options.keepUnknownSources ?? false,
       log: options.log ?? ((msg) => console.log(`[watcher] ${msg}`)),
       now: options.now ?? (() => new Date()),
     };
@@ -788,7 +796,17 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
     // Files of a folder that cannot be read now are kept; files of a folder no longer in the
     // library are not under any root and go.
     const keep = (p: string) => this.unavailable.some((u) => belongsTo(p, this.data.files[p], u));
+    const sourceIds = new Set(this.given.map((r) => r.id));
+    const unknownSource = (p: string) => {
+      const id = this.data.files[p]?.sourceId;
+      return this.o.keepUnknownSources && id !== undefined && !sourceIds.has(id);
+    };
+    let kept = 0;
     for (const p of Object.keys(this.data.files)) {
+      if (!found.has(p) && unknownSource(p)) {
+        kept++;
+        continue;
+      }
       if (!found.has(p) && !keep(p)) {
         // Check for updates runs this while jobs are queued: one job per path.
         const queued = this.queue.find((j) => j.path === p);
@@ -798,7 +816,9 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
         missing++;
       }
     }
-    this.o.log(`reconcile: ${found.size} files in folders, ${this.settling.size} to check, ${missing} to remove`);
+    this.o.log(
+      `reconcile: ${found.size} files in folders, ${this.settling.size} to check, ${missing} to remove${kept ? `, ${kept} of sources not in the library kept (shell.json may be incomplete)` : ''}`,
+    );
   }
 
   /**

@@ -263,7 +263,10 @@ describe('a data folder in the current layout', () => {
     });
     expect(outcome).toBe('done');
     expect(logs).toContain('[self-check] nothing to remove');
-    expect(snapshot()).toEqual(before);
+    // The one addition: the first start that reads shell.json keeps it as the backup.
+    const original = fs.readFileSync(file(), 'utf8');
+    expect(snapshot()).toEqual([...before, `${SHELL_STATE_BACKUP} ${original.length}`].sort());
+    expect(fs.readFileSync(backup(), 'utf8')).toBe(original);
 
     // The libraries show as before, sources included.
     let s = r.state;
@@ -296,7 +299,6 @@ describe('a data folder in the current layout', () => {
     ]);
 
     // The first save after the update writes the same records and keeps the old file as the backup.
-    const original = fs.readFileSync(file(), 'utf8');
     saveShellState(dataDir, r.state);
     expect(fs.readFileSync(backup(), 'utf8')).toBe(original);
     expect(JSON.parse(fs.readFileSync(file(), 'utf8'))).toEqual(shellJson);
