@@ -309,6 +309,23 @@ class LanceDb extends VectorDatabase {
     return true;
   }
 
+  // AskFiles: the vectors of many documents in one delete per 1000 ids; each delete writes a
+  // new table version, so one per document made removing a library's 1311 sections take 5 minutes.
+  async deleteDocumentsFromNamespace(namespace, docIds = []) {
+    const { client } = await this.connect();
+    if (!docIds.length || !(await this.namespaceExists(client, namespace))) return;
+    const { DocumentVectors } = require("../../../models/vectors");
+    const table = await client.openTable(namespace);
+    const vectorIds = (
+      await DocumentVectors.where({ docId: { in: docIds } })
+    ).map((record) => record.vectorId);
+    for (let i = 0; i < vectorIds.length; i += 1000) {
+      const ids = vectorIds.slice(i, i + 1000);
+      await table.delete(`id IN (${ids.map((v) => `'${v}'`).join(",")})`);
+    }
+    return true;
+  }
+
   async addDocumentToNamespace(
     namespace,
     documentData = {},

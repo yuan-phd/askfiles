@@ -252,6 +252,33 @@ const Document = {
     const VectorDb = getVectorDbClass();
     if (removals.length === 0) return;
 
+    // AskFiles: providers with a bulk delete remove many documents in one call per batch.
+    if (typeof VectorDb.deleteDocumentsFromNamespace === "function") {
+      for (let i = 0; i < removals.length; i += 500) {
+        const documents = await prisma.workspace_documents.findMany({
+          where: {
+            docpath: { in: removals.slice(i, i + 500) },
+            workspaceId: workspace.id,
+          },
+        });
+        if (!documents.length) continue;
+        const docIds = documents.map((d) => d.docId);
+        await VectorDb.deleteDocumentsFromNamespace(workspace.slug, docIds);
+        try {
+          await prisma.workspace_documents.deleteMany({
+            where: {
+              id: { in: documents.map((d) => d.id) },
+              workspaceId: workspace.id,
+            },
+          });
+          await prisma.document_vectors.deleteMany({
+            where: { docId: { in: docIds } },
+          });
+        } catch (error) {
+          console.error(error.message);
+        }
+      }
+    } else
     for (const path of removals) {
       const document = await this.get({
         docpath: path,

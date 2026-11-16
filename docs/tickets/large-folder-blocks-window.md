@@ -1,6 +1,6 @@
 # Ticket: adding a folder with thousands of subfolders freezes the window on macOS
 
-Status: mitigated by session/l-folder-limits (file types, skipped folders, a limit of 3,000 watched folders; docs/plan.md, File types and folder limit). The rework of the watch is docs/tickets/watch-without-one-watch-per-folder.md. Found in the manual test of local/library-delete (2026-11-16) with the invented tree of scripts/measure-library-delete.ts (13,640 Markdown files, each in its own nested folder). Not part of that branch.
+Status: mitigated by local/folder-limits (file types, skipped folders, a limit of 3,000 watched folders; docs/plan.md, File types and folder limit). The rework of the watch is docs/tickets/watch-without-one-watch-per-folder.md. Found in the manual test of local/library-delete (2026-11-16) with the invented tree of scripts/measure-library-delete.ts (13,640 Markdown files, each in its own nested folder). Not part of that branch.
 
 ## What happens
 

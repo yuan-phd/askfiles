@@ -1,6 +1,6 @@
 # Ticket: let the user choose to index now or later when the start is in trouble
 
-Status: open. Raised with session/l-folder-limits (owner decision 2026-11-16). No code yet.
+Status: open. Raised with local/folder-limits (owner decision 2026-11-16). No code yet.
 
 ## Why
 

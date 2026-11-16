@@ -664,6 +664,7 @@ function apiWorkspaceEndpoints(app) {
           sessionId = null,
           attachments = [],
           reset = false,
+          reasoningEffort = null,
         } = reqBody(request);
         const workspace = await Workspace.get({ slug: String(slug) });
 
@@ -706,6 +707,8 @@ function apiWorkspaceEndpoints(app) {
           sessionId: !!sessionId ? String(sessionId) : null,
           attachments,
           reset,
+          reasoningEffort:
+            typeof reasoningEffort === "string" ? reasoningEffort : null,
         });
 
         await Telemetry.sendTelemetry("sent_chat", {
@@ -819,6 +822,7 @@ function apiWorkspaceEndpoints(app) {
           sessionId = null,
           attachments = [],
           reset = false,
+          reasoningEffort = null,
         } = reqBody(request);
         const workspace = await Workspace.get({ slug: String(slug) });
 
@@ -868,6 +872,8 @@ function apiWorkspaceEndpoints(app) {
           sessionId: !!sessionId ? String(sessionId) : null,
           attachments,
           reset,
+          reasoningEffort:
+            typeof reasoningEffort === "string" ? reasoningEffort : null,
         });
         await Telemetry.sendTelemetry("sent_chat", {
           LLMSelection:

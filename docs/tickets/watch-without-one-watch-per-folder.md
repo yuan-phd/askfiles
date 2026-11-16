@@ -1,6 +1,6 @@
 # Ticket: watch a large folder without one watch per folder
 
-Status: open. Follows docs/tickets/large-folder-blocks-window.md. Not part of session/l-folder-limits, which limited what is read and how many folders are watched instead (owner decision 2026-11-16; docs/plan.md, File types and folder limit).
+Status: open. Follows docs/tickets/large-folder-blocks-window.md. Not part of local/folder-limits, which limited what is read and how many folders are watched instead (owner decision 2026-11-16; docs/plan.md, File types and folder limit).
 
 ## Why
 
