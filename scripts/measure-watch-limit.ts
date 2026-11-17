@@ -1,7 +1,8 @@
 // Where the one-watch-per-folder approach breaks (docs/tickets/large-folder-blocks-window.md): runs
 // the real chokidar watch of the shell (src/main/watcher/fs-watch.ts) over invented folder trees and
 // reports, per case, how many fs.watch calls were made on folders and on files, how many failed
-// with EMFILE, how long until ready, and the longest stall of the event loop (a 10 ms timer).
+// with EMFILE, how long until ready, the longest stall of the event loop (a 10 ms timer) and how
+// long closing every watch takes afterwards (synchronous: the process does nothing else meanwhile).
 // Every case runs in a fresh process, since the watches of one process share one FSEvents stream
 // on macOS (libuv), which is what the cases with several trees check.
 //
@@ -11,6 +12,7 @@
 //   node --import tsx scripts/measure-watch-limit.ts mixed 3000,2000       a tree of 3000 folders, then 2000 added-file folders
 //   node --import tsx scripts/measure-watch-limit.ts raw 4200:100         plain fs.watch on 4200 folders, 100 at a time with a yield between (0: no yield)
 //   node --import tsx scripts/measure-watch-limit.ts sweep                 the table for the PR
+//   node --import tsx scripts/measure-watch-limit.ts close                 time to close the watches of one tree, 500 to 3000 folders
 //
 // Each folder holds one invented Markdown file. Nothing is indexed; only watching is measured.
 import { spawnSync } from 'node:child_process';
@@ -28,6 +30,7 @@ interface Result {
   emfile: number;
   readyMs: number;
   maxStallMs: number;
+  closeMs: number;
 }
 
 /** A tree of n folders, nested ten wide, each with one Markdown file. Returns the folder paths. */
@@ -123,6 +126,9 @@ async function measure(kind: string, spec: string): Promise<void> {
     // FSEvents failures reach the handles about 200 ms after the last call; wait for them.
     if (kind !== 'raw')
       for (const s = performance.now(); performance.now() - s < 3000;) await new Promise((r) => setTimeout(r, 20));
+    const c0 = performance.now();
+    await Promise.all(handles.splice(0).map((h) => h.close()));
+    const closeMs = performance.now() - c0;
     const r: Result = {
       kase: `${kind} ${spec}`,
       folders: sizes.reduce((a, b) => a + b, 0),
@@ -131,6 +137,7 @@ async function measure(kind: string, spec: string): Promise<void> {
       emfile,
       readyMs,
       maxStallMs: maxStall,
+      closeMs,
     };
     process.stdout.write(JSON.stringify(r) + '\n');
   } finally {
@@ -171,18 +178,27 @@ const SWEEP: [string, string][] = [
   ['mixed', '3000,1500'],
 ];
 
+const CLOSE: [string, string][] = [
+  ['tree', '500'],
+  ['tree', '1000'],
+  ['tree', '2000'],
+  ['tree', '3000'],
+];
+
 async function run(): Promise<void> {
   const [kind, spec] = process.argv.slice(2);
-  if (kind && kind !== 'sweep') return measure(kind, spec!);
+  if (kind && kind !== 'sweep' && kind !== 'close') return measure(kind, spec!);
   console.log(
     `Node ${process.version}, ${os.platform()} ${os.arch()}, ${os.cpus().length} cores, each case in a fresh process\n`,
   );
-  console.log('| Case | Folders | fs.watch on folders | fs.watch on files | EMFILE | Ready after | Longest stall |');
-  console.log('| --- | ---: | ---: | ---: | ---: | ---: | ---: |');
-  for (const [k, s] of SWEEP) {
+  console.log(
+    '| Case | Folders | fs.watch on folders | fs.watch on files | EMFILE | Ready after | Longest stall | Closing all |',
+  );
+  console.log('| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |');
+  for (const [k, s] of kind === 'close' ? CLOSE : SWEEP) {
     const r = child(k, s);
     console.log(
-      `| ${r.kase} | ${r.folders} | ${r.dirWatches} | ${r.fileWatches} | ${r.emfile} | ${(r.readyMs / 1000).toFixed(1)} s | ${r.maxStallMs.toFixed(0)} ms |`,
+      `| ${r.kase} | ${r.folders} | ${r.dirWatches} | ${r.fileWatches} | ${r.emfile} | ${(r.readyMs / 1000).toFixed(1)} s | ${r.maxStallMs.toFixed(0)} ms | ${(r.closeMs / 1000).toFixed(1)} s |`,
     );
   }
 }

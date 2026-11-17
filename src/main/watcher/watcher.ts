@@ -190,7 +190,12 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
    * and resolves. With abandon (the library is being deleted) the job in progress is not waited
    * for and writes nothing more; settled() resolves once it has given up.
    */
-  async stop(o: { abandon?: boolean } = {}): Promise<void> {
+  /**
+   * quitting: the process exits next, which frees the watches, so they are not closed. Closing is
+   * synchronous in the main process and grows with the square of the folder count: 2.6 s for 1,000
+   * folders, 43 s for 3,000 (scripts/measure-watch-limit.ts close), during which the app hangs.
+   */
+  async stop(o: { abandon?: boolean; quitting?: boolean } = {}): Promise<void> {
     if (o.abandon) this.abandoned = true;
     if (this.state === 'stopped') return;
     this.state = 'stopped';
@@ -205,7 +210,7 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
     const handles = [...this.watches.values()];
     this.watches = new Map();
     this.fileDirs = new Map();
-    await Promise.all(handles.map((h) => h.close().catch(() => undefined)));
+    if (!o.quitting) await Promise.all(handles.map((h) => h.close().catch(() => undefined)));
     if (!this.abandoned) await this.running;
     this.o.log(this.abandoned ? 'stopped, job in progress abandoned' : 'stopped');
     this.flushIdle();

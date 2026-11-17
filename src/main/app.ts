@@ -1166,7 +1166,7 @@ export class AppController implements BridgeHandlers {
           this.reranker?.instance.stop();
           this.libraryViews?.summaries.stop();
           this.libraryViews?.graph.stop();
-          await this.libraries.stop();
+          await this.libraries.stop({ quitting: true });
           await this.manager?.stop();
         } finally {
           this.stopped = true;

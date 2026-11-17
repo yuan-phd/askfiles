@@ -97,8 +97,11 @@ function emptyResult(): AddResult {
 /** The parts of FolderWatcher the manager drives. */
 export interface WatcherLike {
   start(): Promise<void>;
-  /** abandon: the library is being deleted; the job in progress is not waited for (settled()). */
-  stop(o?: { abandon?: boolean }): Promise<void>;
+  /**
+   * abandon: the library is being deleted; the job in progress is not waited for (settled()).
+   * quitting: the app quits; the watches are left for the exit to free (FolderWatcher.stop).
+   */
+  stop(o?: { abandon?: boolean; quitting?: boolean }): Promise<void>;
   settled(): Promise<void>;
   clearIndex(): Promise<void>;
   status(): WatcherStatus;
@@ -419,11 +422,12 @@ export class LibraryManager {
 
   /**
    * Stops the watcher; queued work is picked up by the next start (quit, backend restart). A start
-   * still crawling a large folder is stopped first, so the quit does not wait behind it.
+   * still crawling a large folder is stopped first, so the quit does not wait behind it. quitting:
+   * the watches are not closed, which takes up to 43 s at the folder limit; the exit frees them.
    */
-  async stop(): Promise<void> {
-    await this.starting?.watcher.stop();
-    return this.serial(() => this.stopRuntime());
+  async stop(o: { quitting?: boolean } = {}): Promise<void> {
+    await this.starting?.watcher.stop(o);
+    return this.serial(() => this.stopRuntime(o));
   }
 
   /** Pauses and resumes the running watcher without rebuilding it (backend restart). */
@@ -509,11 +513,11 @@ export class LibraryManager {
     this.d.onStatus(this.status());
   }
 
-  private async stopRuntime(): Promise<void> {
+  private async stopRuntime(o: { quitting?: boolean } = {}): Promise<void> {
     const w = this.watcher;
     this.watcher = null;
     this.runningId = null;
-    await w?.stop();
+    await w?.stop(o);
   }
 
   private async restartRuntime(): Promise<void> {

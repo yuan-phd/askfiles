@@ -822,6 +822,24 @@ describe('deleting a library', () => {
     expect(await within(t.manager.stop(), 5000)).not.toBe('timed out');
   });
 
+  it('leaves the watches for the exit to free when the app quits, as closing them can take long', async () => {
+    // Closing 3,000 real folder watches blocks for about 43 s; this close never finishes.
+    let closes = 0;
+    const slowClose: WatchFactory = () => ({
+      ready: Promise.resolve(),
+      close: () => (closes++, new Promise<void>(() => {})),
+    });
+    put(path.join(tmp, 'Work', 'plan.md'), '# Plan\n\nInvented.');
+    const t = setup({
+      watch: slowClose,
+      state: (s) => s.libraries[0]!.folders.push({ id: 'folder-1', path: path.join(tmp, 'Work'), addedAt: '' }),
+    });
+    await t.manager.start();
+    await until(() => docTitles(t.manager).length === 1);
+    expect(await within(t.manager.stop({ quitting: true }), 5000)).not.toBe('timed out');
+    expect(closes).toBe(0);
+  });
+
   for (const step of ['vector-cache', 'ocr-cache', 'workspace', 'vectors', 'documents', 'records'] as const) {
     it(`finishes a delete that stopped before ${step} at the next start`, async () => {
       let fail = true;

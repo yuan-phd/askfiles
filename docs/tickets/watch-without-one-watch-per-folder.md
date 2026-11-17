@@ -9,6 +9,7 @@ chokidar 4 opens one fs.watch per folder. On macOS each is one path of the singl
 - a library of more than 3,000 folders (after the skips) cannot be added in one piece; the user adds subfolders;
 - in a library that grew past the limit, changes in the folders beyond it are found only by Check for updates and at the next start;
 - even below the limit, opening thousands of watches stalls the window for up to about 150 ms at start, and every switch, folder add or remove opens them all again.
+- closing them is worse: closing is synchronous and grows with the square of the folder count, 2.6 s for 1,000 folders, 11 s for 2,000, 43 s for 3,000 (scripts/measure-watch-limit.ts close). Quit no longer closes them (the exit frees them), but switching away from a library, removing a folder and deleting a library still do, and the window hangs that long.
 
 FSEvents and ReadDirectoryChangesW watch a whole tree natively with one handle. One recursive watch per linked folder would remove the limit on those platforms.
 
@@ -24,4 +25,5 @@ FSEvents and ReadDirectoryChangesW watch a whole tree natively with one handle. 
 
 - An invented tree of 13,640 nested folders is added in one piece on macOS; the longest stall of the main process's event loop stays below 100 ms during the add and the start (measured as in scripts/measure-watch-limit.ts, inside Electron, LOCAL).
 - A file added later in any folder of that tree is indexed without Check for updates or a restart.
+- Switching away from a library of that tree, and deleting it, keep the longest stall below 100 ms.
 - Linux behaviour unchanged; tests with invented folders only.
