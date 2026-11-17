@@ -14,7 +14,7 @@ None of the models is inside the DMG: the first-run wizard has Ollama pull them 
 
 | Component | Where it comes from | License |
 | --- | --- | --- |
-| Ollama v0.40.4 | Bundled in the app resources, folder ollama (docs/packaging.md step 2) | MIT, Copyright (c) Ollama (github.com/ollama/ollama, LICENSE at tag v0.40.4). The release archive does not hold this file, so THIRD-PARTY-NOTICES carries it (copy in scripts/notices/ollama-LICENSE). The archive does ship the license and notice files of llama.cpp, ggml, MLX, the Go toolchain and others; they stay in the bundle. |
+| Ollama v0.40.4 | Bundled in the app resources, folder ollama (docs/packaging.md step 2) | MIT, Copyright (c) Ollama (github.com/ollama/ollama, LICENSE at tag v0.40.4). The release archive does not hold this file, so THIRD-PARTY-NOTICES carries it (copy in scripts/notices/ollama-LICENSE). The archive does ship the license and notice files of llama.cpp, ggml, MLX, the Go modules (GO_LICENSE, without versions) and others; they stay in the bundle. The Go modules compiled into the binary are listed with versions and texts in THIRD-PARTY-NOTICES (below, Go modules compiled into Ollama). |
 | qwen3:14b-q4_K_M | Chat model of the 32 GB tier, from the Ollama library (config/presets.json) | Apache-2.0 (the model's license layer; Qwen/Qwen3-14B on Hugging Face is tagged apache-2.0) |
 | Qwen3-14B-Q3_K_M.gguf, hf.co/unsloth/Qwen3-14B-GGUF | Chat model of the 16 GB tier, pinned by sha256 (config/presets.json chatModelFile) | Apache-2.0 per the repository's Hugging Face license tag. The repository has no LICENSE file and its readme states no other terms; Ollama shows no license layer for it. A quantization of Qwen3-14B, which is Apache-2.0. |
 | (none) | The 8 GB tier has no chat model | |
@@ -23,6 +23,14 @@ None of the models is inside the DMG: the first-run wizard has Ollama pull them 
 | Tesseract language data, eng and chi_sim, 4.0.0_best_int | npm packages @tesseract.js-data/eng and @tesseract.js-data/chi_sim 1.0.0, shipped in app.asar and copied to the data directory at first run | The npm packages are MIT; the traineddata files come from tesseract-ocr/tessdata_best, Apache-2.0 |
 
 None of these licenses restricts how the models' output may be used.
+
+## Go modules compiled into Ollama
+
+The Ollama binary is a Go program; the Go standard library and the modules it uses are compiled into it. Read on 2026-11-18 from the build information the Go linker writes into the binary (what `go version -m` prints), with scripts/lib/ollama-go-modules.mjs, which needs no Go toolchain: the macOS binary of v0.40.4 (universal, one record per architecture, the same 51 modules in both) and the Windows ollama.exe of v0.40.4 (54 modules: the same 51 plus erikgeiser/coninput, inconshreveable/mousetrap and mattn/go-localereader). Both were built with go1.26.0 from Ollama commit 45e6011815c74acde6a346512856b69dd79dd22b.
+
+The license and notice files of each module at the version compiled in were taken from its module zip on proxy.golang.org, and Go's own LICENSE and PATENTS from the go1.26.0 tag; they are kept in scripts/notices/ollama-go-modules.json. THIRD-PARTY-NOTICES lists every module with its version and license and carries every text once (section "Go modules compiled into Ollama"). At packaging, `npm run notices -- --strict` reads the binary in resources/ollama and fails when it holds a module, version or Go release the record lacks; after an Ollama update, run `node scripts/lib/ollama-go-modules.mjs fetch <ollama binary>...` on the new binaries.
+
+Licenses found (54 modules): MIT 34, BSD-3-Clause 12, Apache-2.0 4, BSD-2-Clause 1, and three files with more than one license: github.com/emirpasic/gods/v2 (BSD-2-Clause and ISC), github.com/klauspost/compress (BSD-3-Clause, with MIT and Apache-2.0 parts in subpackages and in its LICENSE), gopkg.in/yaml.v3 (MIT for the files ported from libyaml, Apache-2.0 for the rest, with a NOTICE). The Go standard library and the golang.org/x modules are BSD-3-Clause with Google's patent grant (PATENTS). github.com/mattn/go-sqlite3 (MIT) compiles in the SQLite amalgamation, which is in the public domain and asks for no notice. Apache-2.0 modules: containerd/console, spf13/cobra, wk8/go-ordered-map/v2, inconshreveable/mousetrap (Windows), and the Apache parts of klauspost/compress and yaml.v3; only yaml.v3 ships a NOTICE file, which is reproduced.
 
 ## Windows build: runtime files from the Ollama release
 
@@ -33,10 +41,10 @@ Read on 2026-11-10 from ollama-windows-amd64.zip v0.40.4 (the archive the Window
 | lib/ollama/cuda_v12/msvcp140.dll, msvcp140_1.dll, msvcp140_2.dll, msvcp140_atomic_wait.dll, msvcp140_codecvt_ids.dll, vcruntime140.dll, vcruntime140_1.dll, vcruntime140_threads.dll, concrt140.dll, vccorlib140.dll | Microsoft Visual C++ runtime 14.44.35211.0 (Visual Studio 2022; FileVersion of the DLLs) | Distributable Code under the Visual Studio 2022 license terms (https://visualstudio.microsoft.com/license-terms/vs2022-ga-community/, section "Distributable Code"; the files are in VC\redist, which https://aka.ms/vs/17/redistribution allows to distribute unmodified). Distribution requirements: add significant primary functionality, and "require distributors and external end users to agree to terms that protect the Distributable Code at least as much as this agreement". The runtime's own license terms (Microsoft Visual C++ 2015 - 2022 Runtime) are reproduced. | Microsoft Visual C++ 2015 - 2022 Runtime license terms, from https://visualstudio.microsoft.com/license-terms/vs2022-cruntime/ (Visual-C-Runtime-2015-2022-License-1.docx, EULA ID Cpp_2015-2022_ENU.1033), text without Word's automatic list numbering |
 | lib/ollama/libc++.dll, libunwind.dll, libomp.dll | LLVM 18.1.8 runtimes, built by llvm-mingw 20240619 from llvm-project llvmorg-18.1.8 (commit 3b5b5c1ec4a3095ab096dd780e84d7ab81f3d7ff, named in the DLLs) | Apache License 2.0 with LLVM Exceptions (and the legacy dual NCSA/MIT license of these subprojects) | libcxx/LICENSE.TXT, libunwind/LICENSE.TXT and openmp/LICENSE.TXT at llvmorg-18.1.8 |
 | lib/ollama/libwinpthread-1.dll | MinGW-w64 winpthreads, built by llvm-mingw 20240619 from mingw-w64 commit 7c9cfe6708cafc83c14a2654308b2db62b126eae | MIT, and the BSD-style license of the Lockless Inc. code it derives from | mingw-w64-libraries/winpthreads/COPYING at that commit |
-| lib/ollama/cuda_v12/cudart64_12.dll, cublas64_12.dll, cublasLt64_12.dll | NVIDIA CUDA Toolkit 12 | NVIDIA CUDA Toolkit EULA (https://docs.nvidia.com/cuda/eula/index.html). Attachment A lists the CUDA Runtime and cuBLAS/cuBLASLt Windows DLLs as distributable with an application. Section 1.1.2: the application adds material functionality beyond the SDK, only the application accesses these files, and the terms it is distributed under are consistent with the EULA; section 1.2 forbids distributing the SDK as a stand-alone product and using it in a way that would make it subject to an open source license. | No text required; listed by name with the EULA link |
+| lib/ollama/cuda_v12/cudart64_12.dll, cublas64_12.dll, cublasLt64_12.dll | NVIDIA CUDA 12.8: CUDA Runtime 12.8.57 (FileVersion 6,14,11,12080), cuBLAS and cuBLASLt 12.8.3 (product version in the DLLs; checked 2026-11-18) | NVIDIA CUDA Toolkit EULA (https://docs.nvidia.com/cuda/eula/index.html, v13.5 of January 26, 2026; the CUDA 12.8 version of January 7, 2025 at https://docs.nvidia.com/cuda/archive/12.8.0/eula/index.html has the same sections 1.1, 1.2 and 2.6). Attachment A (section 2.6) lists "CUDA Runtime: cudart.dll" and "CUDA BLAS Library: cublas.dll, cublasLt.dll" for Windows, "including certain variations of these files that have version number or architecture specific information" (its example: cudart64_90.dll). **UNCERTAIN:** that cudart64_12.dll, cublas64_12.dll and cublasLt64_12.dll are such variations is a reading of that clause; the files are not named. Section 1.1.2: the application adds material functionality, only the application accesses these files, and the terms it is distributed under are consistent with the EULA; section 1.2 forbids distributing the SDK as a stand-alone product, removing NVIDIA's notices, and using it in a way that would make it subject to an open source license; section 2.1 licenses it for applications for systems with NVIDIA GPUs. The only notice text the EULA asks for ("This software contains source code provided by NVIDIA Corporation.") applies to modified sample source code, not to these DLLs. | No text required. The notices name the files and versions, the EULA and its conditions, and state that the files are NVIDIA's, proprietary, and not covered by AskFiles' Apache License or any other open source license |
 | lib/ollama/cuda_v12/ggml-cuda.dll, the other ggml and llama DLLs, llama-server.exe, llama-quantize.exe, ollama.exe | Ollama, llama.cpp and ggml | MIT; the archive's license files (LLAMA_CPP_LICENSE, CUDNN_LICENSE.txt, CUTLASS_LICENSE.txt, NVTX3_LICENSE.txt and the others) stay in the folder | Listed by name |
 
-Open points for the Windows build, not resolved here: the installer shows no license page, so end users do not actively agree to the Microsoft runtime terms that the Visual Studio terms ask distributors to require; and that redistributing the CUDA files inside the separately licensed Ollama (MIT) meets the NVIDIA EULA's conditions needs a lawyer's confirmation (docs/plan.md, Before formal release).
+Open points for the Windows build, not resolved here: the installer shows no license page, so end users do not actively agree to the Microsoft runtime terms that the Visual Studio terms ask distributors to require; and that redistributing the CUDA files inside the separately licensed Ollama (MIT), in an app whose own code is under Apache-2.0, meets the NVIDIA EULA's conditions (section 1.1.2 item 5, section 1.2 item 5) needs a lawyer's confirmation (docs/plan.md, Before formal release). The file list above was checked on 2026-11-18 against the real ollama-windows-amd64.zip v0.40.4 (sha256 as in the Windows workflow), trimmed with --keep cuda_v12: every .dll and .exe is in a group, and the versions match.
 
 ### Windows runtime license texts
 
@@ -1160,13 +1168,13 @@ DEALINGS IN THE SOFTWARE.
 
 Read by hand; the tables below the marker are the script's output.
 
-- LGPL-3.0-or-later: @img/sharp-libvips-darwin-arm64 (collector, through sharp 0.33) and the libvips 8.14.5 build inside the two copies of sharp 0.32.6 (server, and collector under @xenova/transformers; their own field says Apache-2.0, the THIRD-PARTY-NOTICES.md in their vendor folder lists the LGPL libraries). Dynamically linked shared libraries, shipped unmodified. THIRD-PARTY-NOTICES carries the LGPL-3.0 text with the GPL-3.0 text it builds on, and, since 2026-11-10, where the source of every shipped version is (section "Source code of the LGPL libraries", the same as below). FFmpeg inside Electron (LGPL-2.1, text in LICENSES.chromium.html) has its source pointer there too.
+- LGPL-3.0-or-later: @img/sharp-libvips-darwin-arm64 (collector, through sharp 0.33) and the libvips 8.14.5 build inside the two copies of sharp 0.32.6 (server, and collector under @xenova/transformers; their own field says Apache-2.0, the THIRD-PARTY-NOTICES.md in their vendor folder lists the LGPL libraries). Shipped unmodified and linked dynamically: sharp-libvips builds libvips and the libraries it uses into one shared library, libvips-cpp.42.dylib, which sharp's native module loads through @rpath (otool -L, 2026-11-18). sharp-libvips uses every one of them under LGPLv3, "via the 'any later version' clause of the LGPLv2 or LGPLv2.1" where the project's own license is an earlier version (THIRD-PARTY-NOTICES.md in each build); the original license of each project was not checked one by one (**UNCERTAIN**). THIRD-PARTY-NOTICES carries the LGPL-3.0 text with the GPL-3.0 text it builds on, the MPL-2.0 text for cairo, and where the source of every shipped version is (section "Source code of the LGPL libraries", the same as below), and says that these libraries may be replaced and how the app is signed again afterwards. FFmpeg inside Electron (libffmpeg.dylib, loaded by the Electron framework through @rpath; ffmpeg.dll on Windows) is LGPL-2.1; since 2026-11-18 its text is in THIRD-PARTY-NOTICES as well as in LICENSES.chromium.html.
 - MPL-2.0, web-push (server). Accepted by the owner as long as its files are not modified (they are not); shipped as its JavaScript source. Not pruned: server/utils/PushNotifications/index.js requires it at module scope and is loaded at server start. cairo inside libvips is MPL-2.0 as well; its source is listed with the LGPL libraries.
 - BlueOak-1.0.0, sax, jackspeak, path-scurry, package-json-from-dist: permissive, not on the allowed list.
 - MIT-0 (@csstools/color-helpers, nodemailer), (MIT AND Zlib) (pako), BSD without a variant (duck): permissive, not on the allowed list as written.
 - No license statement in the package (no license field, no license file, and the readme states none):
   - voyageai 0.0.3: removed by prune step providers; it came only with chromadb.
-  - buffers 0.1.1: came only with exceljs (exceljs > unzipper > binary > buffers), which upstream loads only for the agent's create-spreadsheet skill, a path AskFiles never reaches. Since 2026-11-10 scripts/prune.mjs removes exceljs as unused, and buffers with it (docs/bundle-report.md, step 4). No longer shipped.
+  - buffers 0.1.1: came only with exceljs (exceljs > unzipper > binary > buffers), which upstream loads only for the agent's create-spreadsheet skill, a path AskFiles never reaches. Since 2026-11-10 scripts/prune.mjs removes exceljs as unused, and buffers with it (docs/bundle-report.md, step 4), for every target. No longer shipped: none of exceljs, unzipper, binary or buffers is in the packaged mac app (checked 2026-11-18). Its source repository (github.com/substack/node-buffers, named in its package.json) answers 404; the published tarball (README.markdown, package.json, index.js, examples, test) states no license anywhere, and 0.1.1 is its last version. If exceljs is ever needed again, buffers must be replaced first (for example by an overrides entry that maps binary to a fork with a license), as there is no permission to redistribute it.
   - combine-errors 3.0.3: server, @mintplex-labs/bree > combine-errors. Its readme states MIT under a License heading; THIRD-PARTY-NOTICES records MIT from the readme. On a path AskFiles uses. Left in place.
 - Development dependencies (MPL-2.0 lightningcss, WTFPL truncate-utf8-bytes, BlueOak-1.0.0) are never shipped.
 
@@ -1174,42 +1182,52 @@ Read by hand; the tables below the marker are the script's output.
 
 ## Source code of the LGPL libraries
 
-AskFiles ships the libraries below as separate shared libraries, as their projects build them, without
-changes by AskFiles. They are covered by the GNU Lesser General Public License (cairo by the Mozilla Public
-License 2.0); you may replace them with your own builds. Their complete source code, at the versions
-shipped, is available at these locations:
+AskFiles uses the libraries below unchanged, as their projects build them, and links them dynamically:
+- libvips and the libraries built into it form one shared library in the lib folder of the package
+  named under "Shipped in" (libvips-cpp.42.dylib on macOS), which the package's native module loads
+  at run time. sharp-libvips uses each of them under the GNU LGPL version 3, through the "any later
+  version" clause where a project licenses it under LGPL 2 or 2.1; cairo is under the Mozilla Public
+  License 2.0.
+- FFmpeg is the separate shared library libffmpeg (libffmpeg.dylib in the Electron framework on
+  macOS, ffmpeg.dll on Windows), which Electron loads at run time; it is under the GNU LGPL
+  version 2.1.
+You may replace these shared libraries with your own builds, modified or not, for example from the
+source below. On macOS, changing a file inside the app invalidates its code signature; sign the app
+again (for example ad hoc: codesign --force --deep --sign - AskFiles.app).
+The license texts are under "License texts" below: LGPL-2.1, LGPL-3.0 (with the GPL-3.0 text it
+builds on) and MPL-2.0. The complete source code, at the versions shipped, is at these locations:
 
 - libvips 8.14.5 and the libraries built into it
   Shipped in: sharp@0.32.6 (upstream collector), sharp@0.32.6 (upstream server)
   Built by https://github.com/lovell/sharp-libvips at commit e3585e7e2de7c0a9f0fe81c2bd9a559bebc65f87 (tag v8.14.5):
   https://github.com/lovell/sharp-libvips/tree/e3585e7e2de7c0a9f0fe81c2bd9a559bebc65f87
   Its build/lin.sh downloads each source below and applies the patches it names.
-  - libvips 8.14.5 (LGPL): https://github.com/libvips/libvips/releases/download/v8.14.5/vips-8.14.5.tar.xz
-  - GLib 2.78.0 (LGPL): https://download.gnome.org/sources/glib/2.78/glib-2.78.0.tar.xz
-  - FriBidi 1.0.13 (LGPL): https://github.com/fribidi/fribidi/releases/download/v1.0.13/fribidi-1.0.13.tar.xz
-  - GdkPixbuf 2.42.10 (LGPL): https://download.gnome.org/sources/gdk-pixbuf/2.42/gdk-pixbuf-2.42.10.tar.xz
-  - libexif 0.6.24 (LGPL): https://github.com/libexif/libexif/releases/download/v0.6.24/libexif-0.6.24.tar.bz2
-  - libheif 1.16.2 (LGPL): https://github.com/strukturag/libheif/releases/download/v1.16.2/libheif-1.16.2.tar.gz
-  - librsvg 2.57.0 (LGPL): https://download.gnome.org/sources/librsvg/2.57/librsvg-2.57.0.tar.xz
-  - Pango 1.51.0 (LGPL): https://download.gnome.org/sources/pango/1.51/pango-1.51.0.tar.xz
-  - proxy-libintl 0.4 (LGPL): https://github.com/frida/proxy-libintl/archive/0.4.tar.gz
+  - libvips 8.14.5 (LGPL-3.0): https://github.com/libvips/libvips/releases/download/v8.14.5/vips-8.14.5.tar.xz
+  - GLib 2.78.0 (LGPL-3.0): https://download.gnome.org/sources/glib/2.78/glib-2.78.0.tar.xz
+  - FriBidi 1.0.13 (LGPL-3.0): https://github.com/fribidi/fribidi/releases/download/v1.0.13/fribidi-1.0.13.tar.xz
+  - GdkPixbuf 2.42.10 (LGPL-3.0): https://download.gnome.org/sources/gdk-pixbuf/2.42/gdk-pixbuf-2.42.10.tar.xz
+  - libexif 0.6.24 (LGPL-3.0): https://github.com/libexif/libexif/releases/download/v0.6.24/libexif-0.6.24.tar.bz2
+  - libheif 1.16.2 (LGPL-3.0): https://github.com/strukturag/libheif/releases/download/v1.16.2/libheif-1.16.2.tar.gz
+  - librsvg 2.57.0 (LGPL-3.0): https://download.gnome.org/sources/librsvg/2.57/librsvg-2.57.0.tar.xz
+  - Pango 1.51.0 (LGPL-3.0): https://download.gnome.org/sources/pango/1.51/pango-1.51.0.tar.xz
+  - proxy-libintl 0.4 (LGPL-3.0): https://github.com/frida/proxy-libintl/archive/0.4.tar.gz
   - cairo 1.17.8 (MPL-2.0): https://gitlab.freedesktop.org/cairo/cairo/-/archive/1.17.8/cairo-1.17.8.tar.bz2
 - libvips 8.15.3 and the libraries built into it
   Shipped in: @img/sharp-libvips-darwin-arm64@1.0.4 (upstream collector)
   Built by https://github.com/lovell/sharp-libvips at commit cb57c8e09460fa0b5c550806b667a2dfc3f7480b (tag v8.15.3):
   https://github.com/lovell/sharp-libvips/tree/cb57c8e09460fa0b5c550806b667a2dfc3f7480b
   Its build/lin.sh downloads each source below and applies the patches it names.
-  - libvips 8.15.3 (LGPL): https://github.com/libvips/libvips/releases/download/v8.15.3/vips-8.15.3.tar.xz
-  - GLib 2.81.1 (LGPL): https://download.gnome.org/sources/glib/2.81/glib-2.81.1.tar.xz
-  - FriBidi 1.0.15 (LGPL): https://github.com/fribidi/fribidi/releases/download/v1.0.15/fribidi-1.0.15.tar.xz
-  - libexif 0.6.24 (LGPL): https://github.com/libexif/libexif/releases/download/v0.6.24/libexif-0.6.24.tar.bz2
-  - libheif 1.18.2 (LGPL): https://github.com/strukturag/libheif/releases/download/v1.18.2/libheif-1.18.2.tar.gz
-  - librsvg 2.58.93 (LGPL): https://download.gnome.org/sources/librsvg/2.58/librsvg-2.58.93.tar.xz
-  - Pango 1.54.0 (LGPL): https://download.gnome.org/sources/pango/1.54/pango-1.54.0.tar.xz
-  - proxy-libintl 0.4 (LGPL): https://github.com/frida/proxy-libintl/archive/0.4.tar.gz
+  - libvips 8.15.3 (LGPL-3.0): https://github.com/libvips/libvips/releases/download/v8.15.3/vips-8.15.3.tar.xz
+  - GLib 2.81.1 (LGPL-3.0): https://download.gnome.org/sources/glib/2.81/glib-2.81.1.tar.xz
+  - FriBidi 1.0.15 (LGPL-3.0): https://github.com/fribidi/fribidi/releases/download/v1.0.15/fribidi-1.0.15.tar.xz
+  - libexif 0.6.24 (LGPL-3.0): https://github.com/libexif/libexif/releases/download/v0.6.24/libexif-0.6.24.tar.bz2
+  - libheif 1.18.2 (LGPL-3.0): https://github.com/strukturag/libheif/releases/download/v1.18.2/libheif-1.18.2.tar.gz
+  - librsvg 2.58.93 (LGPL-3.0): https://download.gnome.org/sources/librsvg/2.58/librsvg-2.58.93.tar.xz
+  - Pango 1.54.0 (LGPL-3.0): https://download.gnome.org/sources/pango/1.54/pango-1.54.0.tar.xz
+  - proxy-libintl 0.4 (LGPL-3.0): https://github.com/frida/proxy-libintl/archive/0.4.tar.gz
   - cairo 1.18.0 (MPL-2.0): https://cairographics.org/releases/cairo-1.18.0.tar.xz
 - FFmpeg in Electron 44.10.0 (libffmpeg in the Electron framework)
-  License: LGPL-2.1; its text is in LICENSES.chromium.html in the app resources.
+  License: LGPL-2.1 (text below; also in LICENSES.chromium.html in the app resources).
   Chromium 152.0.7977.169's copy at revision 2b68d2babae73714846961fb0ee47e3b3d2e39a9, with Chromium's build configuration
   in its chromium/ folder:
   https://chromium.googlesource.com/chromium/third_party/ffmpeg/+/2b68d2babae73714846961fb0ee47e3b3d2e39a9

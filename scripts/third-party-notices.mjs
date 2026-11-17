@@ -22,6 +22,14 @@ import { fileURLToPath } from 'node:url';
 import { PROVIDERS } from './prune.mjs';
 import { lgplSourceLines, libvipsBuildsIn } from './lib/lgpl-sources.mjs';
 import { windowsRuntimeLines, windowsRuntimes } from './lib/windows-runtimes.mjs';
+import {
+  RECORD_FILE as GO_MODULES_RECORD,
+  checkAgainstRecord,
+  goModuleLines,
+  modulesOf,
+  ollamaBinary,
+  readGoBuildInfo,
+} from './lib/ollama-go-modules.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -67,6 +75,10 @@ const LICENSE_ALIASES = {
   'bsd-2-clause': 'BSD-2-Clause',
   'bsd-3-clause': 'BSD-3-Clause',
   isc: 'ISC',
+  'lgpl-2.1': 'LGPL-2.1',
+  'lgpl-2.1-only': 'LGPL-2.1',
+  'lgpl-2.1-or-later': 'LGPL-2.1',
+  'lgpl-2.1+': 'LGPL-2.1',
   'lgpl-3.0': 'LGPL-3.0',
   'lgpl-3.0-only': 'LGPL-3.0',
   'lgpl-3.0-or-later': 'LGPL-3.0',
@@ -263,7 +275,8 @@ Components without an npm package
   under "AnythingLLM". Copyright and license notices inside the bundled folders are kept as shipped.
 - Ollama, MIT License, Copyright (c) Ollama. Full text below under "Ollama". The Ollama release
   bundled in the ollama folder of the app's resources ships the license and notice files of the
-  libraries it includes; they are kept there unchanged.
+  libraries it includes; they are kept there unchanged. The Go modules compiled into the Ollama
+  binary are listed with their versions under "Go modules compiled into Ollama" below.
 - Electron, MIT License, with Chromium and Node.js. Their licenses ship in the app bundle as
   LICENSE.electron.txt and LICENSES.chromium.html (Contents/Resources).
 - Tesseract language data (eng, chi_sim, 4.0.0_best_int) from tesseract-ocr/tessdata_best,
@@ -278,6 +291,16 @@ Components without an npm package
 export const WINDOWS_RUNTIME_HEADING = '=== Windows: runtime libraries in the Ollama folder ===';
 const WINDOWS_RUNTIME_INTRO =
   'The Windows build ships these files from the Ollama release in its ollama folder. Their license texts follow under "License texts", headed "Windows runtime".';
+
+/** Heading of the section listing the Go modules compiled into the Ollama binary. */
+export const GO_MODULES_HEADING = '=== Go modules compiled into Ollama ===';
+
+/** Texts the LGPL sources section refers to, added when no package brought them in already. */
+const LGPL_SECTION_TEXTS = {
+  'LGPL-2.1': 'The license of FFmpeg, under "Source code of the LGPL libraries" above.',
+  'LGPL-3.0': 'The license of the libvips libraries under "Source code of the LGPL libraries" above.',
+  'MPL-2.0': 'The license of cairo, built into libvips, under "Source code of the LGPL libraries" above.',
+};
 
 /** Heading of the section that points to the source of the LGPL libraries; the tests look for it. */
 export const LGPL_SOURCES_HEADING = '=== Source code of the LGPL libraries ===';
@@ -309,7 +332,8 @@ export function lgplSection(components, electronVersion) {
 /**
  * extra.ollamaLicense: Ollama's license text; extra.lgplLines: the body of the LGPL sources section
  * (lgplSection); extra.windowsRuntime: { lines, texts } from windowsRuntimeLines, on the Windows
- * package only. Each is left out when not given, as in the unit tests.
+ * package only; extra.goModules: { lines, texts } from goModuleLines. Each is left out when not
+ * given, as in the unit tests.
  */
 export function render(components, upstreamLicense, standardTexts = loadStandardTexts(), extra = {}) {
   const all = new Map();
@@ -347,9 +371,12 @@ export function render(components, upstreamLicense, standardTexts = loadStandard
   if (win?.lines.length) {
     lines.push('', '', WINDOWS_RUNTIME_HEADING, '', WINDOWS_RUNTIME_INTRO, '', ...win.lines);
   }
+  const goMods = extra.goModules;
+  if (goMods?.lines.length) lines.push('', '', GO_MODULES_HEADING, '', ...goMods.lines);
   lines.push('', '', 'License texts', '', '=== AnythingLLM ===', '', upstreamLicense.trim(), '');
   if (extra.ollamaLicense) lines.push('=== Ollama ===', '', extra.ollamaLicense.trim(), '');
   for (const t of win?.texts ?? []) lines.push(t.heading, '', t.text, '');
+  for (const t of goMods?.texts ?? []) lines.push(t.heading, '', t.text, '');
 
   const byText = new Map();
   const standardUsers = new Map();
@@ -376,17 +403,13 @@ export function render(components, upstreamLicense, standardTexts = loadStandard
     byText.set(h, g);
   }
   for (const g of byText.values()) lines.push(`=== Used by: ${g.users.join(', ')} ===`, '', g.text, '');
-  // The LGPL sources section refers to this text; a libvips build inside an Apache-2.0 package
-  // (sharp's vendor folder, @img/sharp-win32-*) would otherwise leave it out.
-  if (lgplLines.length && !standardUsers.has('LGPL-3.0') && standardTexts.has('LGPL-3.0')) {
-    lines.push(
-      standardTextHeading('LGPL-3.0'),
-      '',
-      'The license of the libraries under "Source code of the LGPL libraries" above.',
-      '',
-      standardTexts.get('LGPL-3.0'),
-      '',
-    );
+  // The LGPL sources section refers to these texts; libvips builds inside Apache-2.0 packages
+  // (sharp's vendor folder, @img/sharp-win32-*) and FFmpeg inside Electron would otherwise leave
+  // them out.
+  for (const [id, about] of Object.entries(LGPL_SECTION_TEXTS)) {
+    if (lgplLines.length && !standardUsers.has(id) && standardTexts.has(id)) {
+      lines.push(standardTextHeading(id), '', about, '', standardTexts.get(id), '');
+    }
   }
   for (const id of [...standardUsers.keys()].sort()) {
     lines.push(
@@ -472,10 +495,31 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     if (args.includes('--strict')) fail(message);
     console.warn(`[notices] WARNING: ${message}`);
   }
+  // The Go modules the Ollama binary in resources/ollama was built from, against the record of
+  // their license texts (scripts/lib/ollama-go-modules.mjs).
+  let goModules;
+  const ollamaBin = ollamaBinary(path.join(ROOT, 'resources', 'ollama'));
+  if (!ollamaBin) {
+    const message = 'no Ollama binary in resources/ollama, so the Go modules compiled into it are not listed';
+    if (args.includes('--strict')) fail(message);
+    console.warn(`[notices] WARNING: ${message}`);
+  } else {
+    const infos = readGoBuildInfo(fs.readFileSync(ollamaBin));
+    const record = readJson(GO_MODULES_RECORD);
+    const checked = checkAgainstRecord(modulesOf(infos), record, [...new Set(infos.map((i) => i.goVersion))]);
+    if (!infos.length) checked.errors.push(`${path.relative(ROOT, ollamaBin)} holds no Go build information`);
+    if (checked.errors.length) {
+      const message = `the Go modules of the Ollama binary are not all covered:\n  ${checked.errors.join('\n  ')}`;
+      if (args.includes('--strict')) fail(message);
+      console.warn(`[notices] WARNING: ${message}`);
+    }
+    goModules = goModuleLines(path.basename(ollamaBin), infos, checked.modules, checked.std);
+  }
   const text = render(components, fs.readFileSync(path.join(ROOT, 'upstream', 'LICENSE'), 'utf8'), undefined, {
     ollamaLicense: fs.readFileSync(OLLAMA_LICENSE, 'utf8'),
     lgplLines: lgpl.lines,
     windowsRuntime: windowsRuntimeLines(runtimes.groups),
+    goModules,
   });
   fs.writeFileSync(outFile, text);
   const count = new Set(components.flatMap((c) => [...c.packages.keys()])).size;

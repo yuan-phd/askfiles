@@ -19,7 +19,7 @@ const peVersion = (v) => Buffer.from(`\0\0FileVersion\0\0${v}\0\0ProductName\0`,
 const clang = (v) => Buffer.from(`xx\0clang version ${v}\0yy`, 'latin1');
 const LLVM = '18.1.8 (https://github.com/llvm/llvm-project.git 3b5b5c1ec4a3095ab096dd780e84d7ab81f3d7ff)';
 
-function windowsTree({ msvc = '14.44.35211.0', llvm = LLVM } = {}) {
+function windowsTree({ msvc = '14.44.35211.0', llvm = LLVM, cuda = '6,14,11,12080' } = {}) {
   file('ollama.exe');
   file('lib/ollama/ggml-base.dll');
   file('lib/ollama/llama-server.exe');
@@ -29,7 +29,7 @@ function windowsTree({ msvc = '14.44.35211.0', llvm = LLVM } = {}) {
   file('lib/ollama/libwinpthread-1.dll');
   file('lib/ollama/cuda_v12/msvcp140.dll', peVersion(msvc));
   file('lib/ollama/cuda_v12/vcruntime140_1.dll');
-  file('lib/ollama/cuda_v12/cudart64_12.dll');
+  file('lib/ollama/cuda_v12/cudart64_12.dll', peVersion(cuda));
   file('lib/ollama/cuda_v12/ggml-cuda.dll');
 }
 
@@ -56,9 +56,14 @@ describe('windowsRuntimes', () => {
   });
 
   it('fails on a file in no group and on runtime versions the texts were not taken for', () => {
-    windowsTree({ msvc: '15.0.1.0', llvm: '19.1.0 (https://github.com/llvm/llvm-project.git abc)' });
+    windowsTree({
+      msvc: '15.0.1.0',
+      llvm: '19.1.0 (https://github.com/llvm/llvm-project.git abc)',
+      cuda: '6,14,11,12090',
+    });
     file('lib/ollama/mystery.dll');
     expect(windowsRuntimes(dir).errors).toEqual([
+      'lib/ollama/cuda_v12/cudart64_12.dll: version 6,14,11,12090 is not the one the license texts in scripts/notices were taken for',
       'lib/ollama/cuda_v12/msvcp140.dll: version 15.0.1.0 is not the one the license texts in scripts/notices were taken for',
       'lib/ollama/libc++.dll: version 19.1.0 (https://github.com/llvm/llvm-project.git abc) is not the one the license texts in scripts/notices were taken for',
       'lib/ollama/mystery.dll is in no group of scripts/lib/windows-runtimes.mjs, so its license is not covered',

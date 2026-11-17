@@ -16,8 +16,10 @@ import {
   lgplSection,
   LGPL_SOURCES_HEADING,
   OLLAMA_LICENSE,
+  GO_MODULES_HEADING,
   WINDOWS_RUNTIME_HEADING,
 } from './third-party-notices.mjs';
+import { RECORD_FILE, checkAgainstRecord, modulesOf, ollamaBinary, readGoBuildInfo } from './lib/ollama-go-modules.mjs';
 import { noticeText, windowsRuntimes } from './lib/windows-runtimes.mjs';
 import { FFMPEG, LIBVIPS_POSIX } from './lib/lgpl-sources.mjs';
 
@@ -220,7 +222,42 @@ describe('third-party notices', () => {
       .devDependencies.electron;
     expect(section).toContain(`FFmpeg in Electron ${electron}`);
     expect(section).toContain(FFMPEG[electron].revision);
-    expect(text).toContain(standardTextHeading('LGPL-3.0'));
+    expect(section).toContain('links them dynamically');
+    // Every text the section refers to is in the file: LGPL 2.1 for FFmpeg, 3.0 for libvips, MPL for cairo.
+    for (const id of ['LGPL-2.1', 'LGPL-3.0', 'MPL-2.0']) expect(text).toContain(standardTextHeading(id));
+  });
+
+  it('lists the Go modules compiled into Ollama with the license texts at their versions', () => {
+    const text = fs.readFileSync(NOTICES, 'utf8');
+    const record = JSON.parse(fs.readFileSync(RECORD_FILE, 'utf8'));
+    const section = text.slice(text.indexOf(GO_MODULES_HEADING), text.indexOf('\nLicense texts\n'));
+    expect(section.length).toBeGreaterThan(GO_MODULES_HEADING.length);
+    // The committed file is the mac one: the modules of the darwin binary are all listed.
+    const darwin = record.binaries.filter((b) => b.goos === 'darwin');
+    expect(darwin.length).toBeGreaterThan(0);
+    for (const m of record.modules.filter((x) => section.includes(`- ${x.path} `))) {
+      expect(section).toContain(`- ${m.path} ${m.version}: ${m.license}`);
+      for (const f of m.files) expect(text).toContain(f.text);
+    }
+    for (const g of record.std) expect(section).toContain(`- Go standard library ${g.version}: ${g.license}`);
+    expect([...section.matchAll(/^- (\S+) v\S+: /gm)].length).toBeGreaterThan(40);
+  });
+
+  // Runs wherever resources/ollama holds the Ollama binary (the package builds, and a Mac set up as
+  // docs/packaging.md says): every module compiled into it has its texts in the record.
+  const binary = ollamaBinary(path.resolve(import.meta.dirname, '..', 'resources', 'ollama'));
+  it.skipIf(!binary)('has the license texts of every Go module in the bundled Ollama binary', () => {
+    const infos = readGoBuildInfo(fs.readFileSync(binary));
+    expect(infos.length).toBeGreaterThan(0);
+    const record = JSON.parse(fs.readFileSync(RECORD_FILE, 'utf8'));
+    const { errors, modules } = checkAgainstRecord(modulesOf(infos), record, [
+      ...new Set(infos.map((i) => i.goVersion)),
+    ]);
+    expect(errors).toEqual([]);
+    for (const m of modules) {
+      expect(m.license, m.path).not.toBe('UNKNOWN');
+      expect(m.files.length, m.path).toBeGreaterThan(0);
+    }
   });
 
   it('adds the LGPL sources section and its license text, and reports LGPL packages without a build', () => {
@@ -247,15 +284,39 @@ describe('third-party notices', () => {
     const electron = Object.keys(FFMPEG)[0];
     const { lines, errors } = lgplSection(components, electron);
     expect(errors).toEqual(['lonely@1.0.0 (upstream server) names an LGPL license but holds no libvips versions.json']);
-    const text = render(components, 'UPSTREAM', new Map([['LGPL-3.0', 'LGPL TEXT']]), {
-      ollamaLicense: 'OLLAMA MIT',
-      lgplLines: lines,
-    });
+    const text = render(
+      components,
+      'UPSTREAM',
+      new Map([
+        ['LGPL-2.1', 'LGPL 2.1 TEXT'],
+        ['LGPL-3.0', 'LGPL TEXT'],
+        ['MPL-2.0', 'MPL TEXT'],
+      ]),
+      {
+        ollamaLicense: 'OLLAMA MIT',
+        lgplLines: lines,
+      },
+    );
     expect(text).toContain(`${LGPL_SOURCES_HEADING}\n`);
     expect(text).toContain('Shipped in: sharp@0.32.6 (upstream server)');
     expect(text).toContain('=== Ollama ===\n\nOLLAMA MIT');
-    expect(text).toContain(`${standardTextHeading('LGPL-3.0')}\n\nThe license of the libraries under`);
-    expect(text).toContain('LGPL TEXT');
+    expect(text).toContain(`${standardTextHeading('LGPL-3.0')}\n\nThe license of the libvips libraries under`);
+    expect(text).toContain(`${standardTextHeading('LGPL-2.1')}\n\nThe license of FFmpeg`);
+    expect(text).toContain(`${standardTextHeading('MPL-2.0')}\n\nThe license of cairo`);
+    for (const t of ['LGPL TEXT', 'LGPL 2.1 TEXT', 'MPL TEXT']) expect(text).toContain(t);
+  });
+
+  it('adds the Go module section and texts only when given', () => {
+    const components = [{ label: 'shell', missing: [], packages: new Map() }];
+    expect(render(components, 'UPSTREAM', new Map())).not.toContain(GO_MODULES_HEADING);
+    const text = render(components, 'UPSTREAM', new Map(), {
+      goModules: {
+        lines: ['- example.com/m v1.0.0: MIT'],
+        texts: [{ heading: '=== Go module in Ollama: m ===', text: 'M TEXT' }],
+      },
+    });
+    expect(text).toContain(`${GO_MODULES_HEADING}\n\n- example.com/m v1.0.0: MIT`);
+    expect(text.indexOf('=== Go module in Ollama: m ===\n\nM TEXT')).toBeGreaterThan(text.indexOf('\nLicense texts\n'));
   });
 
   it('adds the Windows runtime section and texts only when given', () => {
