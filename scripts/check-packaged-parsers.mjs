@@ -7,7 +7,9 @@
 // Usage: node scripts/check-packaged-parsers.mjs [resources-dir]
 //   resources-dir  holds app.asar; default "release/mac-arm64/AskFiles.app/Contents/Resources"
 // Environment:
-//   ELECTRON       Electron binary run as Node; default the one in node_modules/electron
+//   ELECTRON       Electron binary run as Node; default the packaged app's own executable, as the
+//                  app runs its server and collector (ELECTRON_RUN_AS_NODE), so the check needs
+//                  nothing from node_modules/electron
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -15,13 +17,6 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const RES = path.resolve(process.argv[2] ?? path.join(ROOT, 'release/mac-arm64/AskFiles.app/Contents/Resources'));
-const ELECTRON =
-  process.env.ELECTRON ??
-  (process.platform === 'darwin'
-    ? path.join(ROOT, 'node_modules/electron/dist/Electron.app/Contents/MacOS/Electron')
-    : process.platform === 'win32'
-      ? path.join(ROOT, 'node_modules/electron/dist/electron.exe')
-      : path.join(ROOT, 'node_modules/electron/dist/electron'));
 const FIXTURES = path.join(ROOT, 'test/fixtures');
 
 // One invented file per entry of SUPPORTED_EXTENSIONS; the check fails if the list gains a type
@@ -43,6 +38,22 @@ if (!fs.existsSync(asar)) {
   console.error(`[check-packaged-parsers] no app.asar in ${RES}`);
   process.exit(2);
 }
+
+/** The app's executable: Contents/MacOS/<name> beside Resources on macOS, the folder above resources elsewhere. */
+function packagedExecutable() {
+  if (process.env.ELECTRON) return process.env.ELECTRON;
+  const macos = path.join(RES, '..', 'MacOS');
+  const dir = fs.existsSync(macos) ? macos : path.dirname(RES);
+  const exe = fs
+    .readdirSync(dir, { withFileTypes: true })
+    .filter((e) => e.isFile() && (fs.existsSync(macos) || /^[^.]+(\.exe)?$/.test(e.name)))
+    .map((e) => path.join(dir, e.name))
+    .find((f) => (process.platform === 'win32' ? f.endsWith('.exe') : (fs.statSync(f).mode & 0o111) !== 0));
+  if (!exe) throw new Error(`no app executable found in ${dir}; set ELECTRON`);
+  return exe;
+}
+const ELECTRON = packagedExecutable();
+console.log(`[check-packaged-parsers] running ${ELECTRON}`);
 
 const tmp = fs.mkdtempSync(path.join(fs.realpathSync(process.env.TMPDIR ?? '/tmp'), 'askfiles-parsers-'));
 try {
@@ -85,6 +96,9 @@ try {
   });
   for (const line of `${r.stdout ?? ''}`.split('\n').filter(Boolean)) console.log(`[check-packaged-parsers] ${line}`);
   if (r.status !== 0) {
+    // A binary that cannot start leaves no output; say why (spawn error, exit code, signal).
+    if (r.error) console.error(`[check-packaged-parsers] could not run ${ELECTRON}: ${r.error.message}`);
+    else console.error(`[check-packaged-parsers] exit code ${r.status}, signal ${r.signal}`);
     if (r.stderr) console.error(r.stderr.trim());
     console.error(`[check-packaged-parsers] failed in ${asar}`);
     process.exit(1);

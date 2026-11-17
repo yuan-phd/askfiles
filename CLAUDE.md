@@ -54,7 +54,7 @@ Some of these are created by Session B. Until then, the upstream commands still 
 - node --expose-gc --import tsx scripts/measure-file-watch.ts [idle-seconds]   memory and idle CPU of watching 900 invented added files over 200 folders, against one linked folder (docs/app.md, Libraries)
 - node --import tsx scripts/measure-library-delete.ts [repos] [depth] [fanout] [timeout-seconds]   time of deleting a library while its watcher crawls an invented tree of nested repositories (docs/app.md, Libraries)
 - node --import tsx scripts/measure-watch-limit.ts sweep|close   watch errors, time to ready, longest event-loop stall and time to close of the real chokidar watch over invented folder trees, each case in a fresh process (docs/app.md, File types and folder limit)
-- node scripts/check-packaged-parsers.mjs [resources-dir]   parses one invented file of every supported type with the splitter inside a packaged app.asar under Electron's Node; package:mac and package:mac:test run it
+- node scripts/check-packaged-parsers.mjs [resources-dir]   parses one invented file of every supported type with the splitter inside a packaged app.asar, run by the packaged app's own executable as Node; package:mac and package:mac:test run it
 - bash scripts/measure-bundle.sh [resources-dir]   largest dependency folders of a packaged app, as Markdown for docs/bundle-report.md (Linux packaging: PACKAGE_TARGET=linux-x64 bash scripts/build.sh, then npx electron-builder --config electron-builder.yml --linux dir)
 - Upstream only: cd upstream/server && yarn install && npx prisma generate. Same with yarn for upstream/collector and upstream/frontend.
 
