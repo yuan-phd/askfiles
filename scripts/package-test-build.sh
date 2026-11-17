@@ -35,6 +35,7 @@ case "${1:-}" in
     rm -rf "$OUT/mac-arm64"
     npx electron-builder "${COMMON[@]}" --mac dir --arm64
     bash scripts/sign-adhoc.sh "$ROOT/$OUT/mac-arm64/$NAME.app"
+    node scripts/check-packaged-parsers.mjs "$OUT/mac-arm64/$NAME.app/Contents/Resources"
     npx electron-builder "${COMMON[@]}" "-c.dmg.artifactName=$NAME.dmg" --mac dmg --arm64 \
       --prepackaged "$OUT/mac-arm64/$NAME.app"
     ls -l "$OUT/$NAME.dmg"

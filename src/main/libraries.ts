@@ -12,6 +12,7 @@ import {
   type LibraryRecord,
   type ShellState,
 } from './shell-state.js';
+import { countFolders, WATCH_FOLDER_LIMIT, type CountRoot } from './watcher/folder-limit.js';
 import { loadIndex } from './watcher/index-store.js';
 import type { FileEvent, FileRecord, SourceLike, WatchRoot, WatcherStatus } from './watcher/index.js';
 
@@ -70,9 +71,17 @@ export interface AddConflict {
 export type AddDecision = { action: 'replace'; replaces: string } | { action: 'keep' };
 
 /** What an add returns to the page: how many sources were added and what was left out, and why. */
+/**
+ * Why an item was not added, for the page to word in the user's language (src/renderer/shared/messages.js):
+ * unsupported, a file of a type AskFiles does not read; too-large, a folder that would take the
+ * library past the folder limit. Absent for the other reasons, which are shown as they are.
+ */
+export type SkipCode = 'unsupported' | 'too-large';
+
 export interface AddResult {
   added: number;
-  skipped: { name: string; reason: string }[];
+  /** limit: the folder limit, with too-large. */
+  skipped: { name: string; reason: string; code?: SkipCode; limit?: number }[];
   /** Names of files whose path is already in the library: nothing is done, they are kept up to date. */
   already: string[];
   /** Files not added yet: each waits for Replace or Keep both (addPaths with a decision). */
@@ -88,8 +97,11 @@ function emptyResult(): AddResult {
 /** The parts of FolderWatcher the manager drives. */
 export interface WatcherLike {
   start(): Promise<void>;
-  /** abandon: the library is being deleted; the job in progress is not waited for (settled()). */
-  stop(o?: { abandon?: boolean }): Promise<void>;
+  /**
+   * abandon: the library is being deleted; the job in progress is not waited for (settled()).
+   * quitting: the app quits; the watches are left for the exit to free (FolderWatcher.stop).
+   */
+  stop(o?: { abandon?: boolean; quitting?: boolean }): Promise<void>;
   settled(): Promise<void>;
   clearIndex(): Promise<void>;
   status(): WatcherStatus;
@@ -135,6 +147,12 @@ export interface LibraryManagerDeps {
    * store) stops now, before its data goes.
    */
   closeLibrary?: (id: string) => void;
+  /**
+   * Most folders one library may have, counted after the skips (watcher/folder-limit.ts). Checked
+   * when a folder is added; default WATCH_FOLDER_LIMIT. Only the current library is watched, so
+   * the limit is per library; the watch itself never exceeds it across the process either.
+   */
+  folderLimit?: number;
   /** Tests: called before each step of a delete (library-data.ts removeLibraryData). */
   beforeRemovalStep?: (step: RemovalStep) => void | Promise<void>;
 }
@@ -327,6 +345,7 @@ export class LibraryManager {
       indexed: this.indexedCount(lib.id),
       deadLetters: [],
       unavailable: [],
+      notWatched: 0,
     };
     const n = base.unavailable.length;
     const error =
@@ -403,11 +422,12 @@ export class LibraryManager {
 
   /**
    * Stops the watcher; queued work is picked up by the next start (quit, backend restart). A start
-   * still crawling a large folder is stopped first, so the quit does not wait behind it.
+   * still crawling a large folder is stopped first, so the quit does not wait behind it. quitting:
+   * the watches are not closed, which takes up to 43 s at the folder limit; the exit frees them.
    */
-  async stop(): Promise<void> {
-    await this.starting?.watcher.stop();
-    return this.serial(() => this.stopRuntime());
+  async stop(o: { quitting?: boolean } = {}): Promise<void> {
+    await this.starting?.watcher.stop(o);
+    return this.serial(() => this.stopRuntime(o));
   }
 
   /** Pauses and resumes the running watcher without rebuilding it (backend restart). */
@@ -493,11 +513,11 @@ export class LibraryManager {
     this.d.onStatus(this.status());
   }
 
-  private async stopRuntime(): Promise<void> {
+  private async stopRuntime(o: { quitting?: boolean } = {}): Promise<void> {
     const w = this.watcher;
     this.watcher = null;
     this.runningId = null;
-    await w?.stop();
+    await w?.stop(o);
   }
 
   private async restartRuntime(): Promise<void> {
@@ -728,7 +748,7 @@ export class LibraryManager {
   /** Links a folder into the current library; it is watched and never modified. */
   addFolder(folder: string): Promise<AddResult> {
     return this.serial(async () => {
-      const r = this.linkFolders([folder]);
+      const r = await this.linkFoldersWithinLimit([folder]);
       if (r.added) await this.restartRuntime();
       this.changed();
       return r;
@@ -759,7 +779,8 @@ export class LibraryManager {
         }
         if (st.isDirectory()) folders.push(p);
         else if (!st.isFile()) result.skipped.push({ name, reason: 'not a file' });
-        else if (!isSupported(p)) result.skipped.push({ name, reason: 'not a type AskFiles can read' });
+        else if (!isSupported(p))
+          result.skipped.push({ name, reason: 'not a type AskFiles can read', code: 'unsupported' });
         else {
           try {
             const root = this.linkFile(libId, p, decisions[p], result);
@@ -769,7 +790,7 @@ export class LibraryManager {
           }
         }
       }
-      const linked = this.linkFolders(folders, libId);
+      const linked = await this.linkFoldersWithinLimit(folders, libId);
       result.added += linked.added;
       result.skipped.push(...linked.skipped);
       // A new folder needs a restart; added files are watched by the running watcher at once.
@@ -986,10 +1007,66 @@ export class LibraryManager {
     return this.serial(async () => {
       const def = this.d.getState().libraries[0]!;
       if (def.folders.length) return;
-      const r = this.linkFolders([folder], DEFAULT_LIBRARY_ID);
+      const r = await this.linkFoldersWithinLimit([folder], DEFAULT_LIBRARY_ID);
       for (const s of r.skipped) this.log(`preset folder ${folder} not linked: ${s.reason}`);
       if (r.added && this.d.getState().currentLibrary === DEFAULT_LIBRARY_ID) await this.restartRuntime();
     });
+  }
+
+  /**
+   * linkFolders, after counting each folder: one that would take the library past the folder limit
+   * is not linked. Folders are counted one after another, so two dropped together count together.
+   */
+  private async linkFoldersWithinLimit(
+    folders: string[],
+    libraryId = this.d.getState().currentLibrary,
+  ): Promise<AddResult> {
+    const result = emptyResult();
+    for (const folder of folders) {
+      const limit = this.d.folderLimit ?? WATCH_FOLDER_LIMIT;
+      const roots = this.countRootsWith(libraryId, folder);
+      if (roots) {
+        const t0 = Date.now();
+        const { count, over } = await countFolders(roots, { stopAbove: limit });
+        this.log(
+          `folder count of ${libraryId} with ${folder}: ${over ? `more than ${limit}` : count} folders, limit ${limit}, ${Date.now() - t0} ms`,
+        );
+        if (over) {
+          result.skipped.push({
+            name: path.basename(folder),
+            reason: `the folder holds more than ${limit} folders`,
+            code: 'too-large',
+            limit,
+          });
+          continue;
+        }
+      }
+      const r = this.linkFolders([folder], libraryId);
+      result.added += r.added;
+      result.skipped.push(...r.skipped);
+    }
+    return result;
+  }
+
+  /**
+   * The folders the library would watch with folder linked, as countFolders takes them; null when
+   * the folder cannot be linked anyway (linkFolders then says why).
+   */
+  private countRootsWith(libraryId: string, folder: string): CountRoot[] | null {
+    const lib = this.libraryOf(libraryId);
+    let next: FolderSource[];
+    try {
+      if (!fs.statSync(folder).isDirectory()) return null;
+      next = linkFolder(lib.folders, folder, { dataDir: this.d.dataDir, id: 'count', addedAt: '' }).folders;
+    } catch {
+      return null;
+    }
+    const copies = filesDir(this.d.dataDir, lib.id);
+    return [
+      ...next.map((f) => ({ path: realOrResolved(f.path), recursive: true })),
+      ...(fs.existsSync(copies) ? [{ path: copies, recursive: true }] : []),
+      ...(lib.files ?? []).map((f) => ({ path: path.dirname(f.path), recursive: false })),
+    ];
   }
 
   private linkFolders(folders: string[], libraryId = this.d.getState().currentLibrary): AddResult {

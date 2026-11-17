@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module';
 import readXlsxFile from 'read-excel-file/node';
 import { docTitleOf } from './text.js';
 import { looksLikeHeader } from './tables.js';
@@ -86,9 +87,12 @@ export async function parseXlsx(buffer: Buffer, o: SplitOptions = {}): Promise<P
 /**
  * Legacy binary .xls (BIFF), which read-excel-file does not read, through SheetJS. Loaded on first
  * use only, as it is a large module. Dates come as Date objects in UTC like read-excel-file's.
+ * Loaded with require, which resolves to xlsx.js: an import resolves to xlsx.mjs, which the package
+ * leaves out (electron-builder.yml), so .xls failed only in the packaged app
+ * (scripts/check-packaged-parsers.mjs).
  */
 export async function parseXls(buffer: Buffer, o: SplitOptions = {}): Promise<ParsedDocument> {
-  const XLSX = await import('xlsx');
+  const XLSX = createRequire(__filename)('xlsx') as typeof import('xlsx');
   const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true, UTC: true });
   return sheetsToDocument(
     wb.SheetNames.map((name) => ({

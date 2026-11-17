@@ -53,6 +53,7 @@ function setup(
     state?: (s: ShellState) => void;
     beforeRemovalStep?: LibraryManagerDeps['beforeRemovalStep'];
     removeWorkspace?: (slug: string) => Promise<void>;
+    folderLimit?: number;
   } = {},
 ) {
   let state: ShellState = emptyShellState();
@@ -102,6 +103,7 @@ function setup(
     onStatus: () => {},
     log: (m) => logs.push(m),
     closeLibrary: (id) => closed.push(id),
+    ...(o.folderLimit !== undefined ? { folderLimit: o.folderLimit } : {}),
     ...(o.beforeRemovalStep ? { beforeRemovalStep: o.beforeRemovalStep } : {}),
   });
   return { manager, api, splitter, workspaces, views, logs, closed, state: () => state };
@@ -206,7 +208,7 @@ describe('LibraryManager', () => {
     expect(r).toEqual({
       added: 2,
       skipped: [
-        { name: 'photo.heic', reason: 'not a type AskFiles can read' },
+        { name: 'photo.heic', reason: 'not a type AskFiles can read', code: 'unsupported' },
         { name: 'x.pdf', reason: 'not found' },
       ],
       already: [],
@@ -820,6 +822,24 @@ describe('deleting a library', () => {
     expect(await within(t.manager.stop(), 5000)).not.toBe('timed out');
   });
 
+  it('leaves the watches for the exit to free when the app quits, as closing them can take long', async () => {
+    // Closing 3,000 real folder watches blocks for about 43 s; this close never finishes.
+    let closes = 0;
+    const slowClose: WatchFactory = () => ({
+      ready: Promise.resolve(),
+      close: () => (closes++, new Promise<void>(() => {})),
+    });
+    put(path.join(tmp, 'Work', 'plan.md'), '# Plan\n\nInvented.');
+    const t = setup({
+      watch: slowClose,
+      state: (s) => s.libraries[0]!.folders.push({ id: 'folder-1', path: path.join(tmp, 'Work'), addedAt: '' }),
+    });
+    await t.manager.start();
+    await until(() => docTitles(t.manager).length === 1);
+    expect(await within(t.manager.stop({ quitting: true }), 5000)).not.toBe('timed out');
+    expect(closes).toBe(0);
+  });
+
   for (const step of ['vector-cache', 'ocr-cache', 'workspace', 'vectors', 'documents', 'records'] as const) {
     it(`finishes a delete that stopped before ${step} at the next start`, async () => {
       let fail = true;
@@ -873,6 +893,145 @@ describe('deleting a library', () => {
     down = false;
     expect(await t.manager.resumeRemovals()).toEqual([]);
     expect(t.state().libraries.map((l) => l.id)).toEqual(['all-files']);
+    await t.manager.stop();
+  });
+});
+
+describe('folder limit and file types (owner decision 2026-11-16)', () => {
+  /** A folder of invented subfolders: top and n folders below it, one note each. */
+  function tree(top: string, n: number): string {
+    fs.mkdirSync(top, { recursive: true });
+    for (let i = 0; i < n; i++) put(path.join(top, `part-${i}`, 'note.md'), `# Part ${i}\n\nInvented.`);
+    return top;
+  }
+  const folderPaths = (t: ReturnType<typeof setup>, id = 'all-files') =>
+    t
+      .state()
+      .libraries.find((l) => l.id === id)!
+      .folders.map((f) => path.basename(f.path));
+
+  it('refuses a folder that alone passes the limit, and says why', async () => {
+    const t = setup({ watch: manualWatch(), folderLimit: 5 });
+    await t.manager.start();
+    // Big and its five folders: six.
+    const r = await t.manager.addFolder(tree(path.join(tmp, 'Big'), 5));
+    expect(r).toMatchObject({
+      added: 0,
+      skipped: [{ name: 'Big', reason: 'the folder holds more than 5 folders', code: 'too-large', limit: 5 }],
+    });
+    expect(folderPaths(t)).toEqual([]);
+    expect(t.logs).toContainEqual(
+      expect.stringMatching(
+        /^\[libraries\] folder count of all-files with .*Big: more than 5 folders, limit 5, \d+ ms$/,
+      ),
+    );
+    // Skipped folders do not count: the same size with its extra folders hidden away fits.
+    const fits = tree(path.join(tmp, 'Fits'), 4);
+    fs.mkdirSync(path.join(fits, '.git', 'objects', 'aa'), { recursive: true });
+    fs.mkdirSync(path.join(fits, 'node_modules', 'a', 'b'), { recursive: true });
+    expect(await t.manager.addFolder(fits)).toMatchObject({ added: 1, skipped: [] });
+    await t.manager.stop();
+  });
+
+  it('counts the folders of earlier adds and of added files, and of two folders dropped together', async () => {
+    const t = setup({ watch: manualWatch(), folderLimit: 6 });
+    await t.manager.start();
+    expect(await t.manager.addFolder(tree(path.join(tmp, 'A'), 2))).toMatchObject({ added: 1 });
+    // A and its two: three. B and its two would make six; C and its one, then eight.
+    const r = await t.manager.addPaths([tree(path.join(tmp, 'B'), 2), tree(path.join(tmp, 'C'), 1)]);
+    expect(r).toMatchObject({ added: 1, skipped: [{ name: 'C', code: 'too-large' }] });
+    expect(folderPaths(t).sort()).toEqual(['A', 'B']);
+
+    // Added files are watched through their folders: a file in a new folder takes one more.
+    const t2 = setup({ watch: manualWatch(), folderLimit: 4 });
+    await t2.manager.start();
+    await t2.manager.addPaths([
+      put(path.join(tmp, 'Desk', 'one.md'), '# One'),
+      put(path.join(tmp, 'Mail', 'two.md'), '# Two'),
+      put(path.join(tmp, 'Mail', 'three.md'), '# Three'),
+    ]);
+    // Desk and Mail are two; D and its one make four, E and its two would make five.
+    expect(await t2.manager.addFolder(tree(path.join(tmp, 'D'), 1))).toMatchObject({ added: 1 });
+    expect(await t2.manager.addFolder(tree(path.join(tmp, 'E'), 2))).toMatchObject({
+      added: 0,
+      skipped: [{ code: 'too-large' }],
+    });
+    await t.manager.stop();
+    await t2.manager.stop();
+  });
+
+  it('is a limit per library: only the current library is watched', async () => {
+    const t = setup({ watch: manualWatch(), folderLimit: 5 });
+    await t.manager.start();
+    expect(await t.manager.addFolder(tree(path.join(tmp, 'A'), 3))).toMatchObject({ added: 1 });
+    await t.manager.create('Second');
+    const second = t.state().libraries.find((l) => l.name === 'Second')!.id;
+    expect(await t.manager.addFolder(tree(path.join(tmp, 'B'), 3))).toMatchObject({ added: 1 });
+    expect(folderPaths(t, second)).toEqual(['B']);
+    // Still per library: a second folder of four does not fit next to B.
+    expect(await t.manager.addFolder(tree(path.join(tmp, 'C'), 1))).toMatchObject({
+      added: 0,
+      skipped: [{ code: 'too-large' }],
+    });
+    await t.manager.stop();
+  });
+
+  it('adds PowerPoint files and refuses other types with a code the page words', async () => {
+    const t = setup({ watch: manualWatch() });
+    await t.manager.start();
+    const deck = put(path.join(tmp, 'Desk', 'Plan.PPTX'), 'invented');
+    const table = put(path.join(tmp, 'Desk', 'table.csv'), 'a,b\n');
+    const r = await t.manager.addPaths([deck, table]);
+    expect(r).toMatchObject({ added: 1, skipped: [{ name: 'table.csv', code: 'unsupported' }] });
+    await t.manager.stop();
+  });
+
+  it('keeps files indexed before the rules at start, and Reindex rebuilds with the rules', async () => {
+    const t = setup();
+    await t.manager.start();
+    const folder = path.join(tmp, 'Docs');
+    const plan = put(path.join(folder, 'plan.md'), '# Plan\n\nInvented plan.');
+    const csv = put(path.join(folder, 'table.csv'), 'a,b\n1,2\n');
+    const readme = put(path.join(folder, 'tool', 'node_modules', 'x', 'README.md'), '# X\n\nInvented.');
+    await t.manager.addFolder(folder);
+    await until(() => !!t.manager.watcherOf()?.file(plan));
+    await t.manager.watcherOf()!.whenIdle();
+    await t.manager.stop();
+
+    // As an earlier version would have left them: indexed, embedded.
+    const indexPath = path.join(libraryDir(dataDir, 'all-files'), 'index.json');
+    const data = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
+    const planRec = data.files[plan];
+    for (const [p, loc] of [
+      [csv, 'askfiles/all-files/old-csv.json'],
+      [readme, 'askfiles/all-files/old-readme.json'],
+    ] as const) {
+      data.files[p] = {
+        ...planRec,
+        path: p,
+        url: pathToFileURL(p).href,
+        sections: [{ ...planRec.sections[0], location: loc }],
+      };
+      t.api.embedded.set(loc, `doc-${loc}`);
+    }
+    fs.writeFileSync(indexPath, JSON.stringify(data));
+
+    await t.manager.start();
+    await t.manager.watcherOf()!.whenIdle();
+    expect(t.manager.status()).toMatchObject({ state: 'idle', pending: 0, indexed: 3 });
+    expect(t.api.embedded.has('askfiles/all-files/old-csv.json')).toBe(true);
+
+    await t.manager.reindex();
+    await until(() => !!t.manager.watcherOf()?.file(plan));
+    await t.manager.watcherOf()!.whenIdle();
+    expect(
+      t.manager
+        .watcherOf()!
+        .files()
+        .map((f) => f.path),
+    ).toEqual([plan]);
+    expect(t.api.embedded.has('askfiles/all-files/old-csv.json')).toBe(false);
+    expect(t.api.embedded.has('askfiles/all-files/old-readme.json')).toBe(false);
     await t.manager.stop();
   });
 });

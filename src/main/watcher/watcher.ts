@@ -4,7 +4,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { sectionDocuments } from '../sections/index.js';
-import { isHidden, isIndexable, SUPPORTED_EXTENSIONS } from './file-types.js';
+import { isIndexable, isOutsideRules, isSkippedFolderName, SUPPORTED_EXTENSIONS, VENV_MARKER } from './file-types.js';
 import { loadIndex, saveIndex } from './index-store.js';
 import { DOCS_FOLDER, hashFile, readSectionText, writeSectionDocument } from './section-docs.js';
 import { createSourceResolver, type SourceLike } from './sources.js';
@@ -190,7 +190,12 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
    * and resolves. With abandon (the library is being deleted) the job in progress is not waited
    * for and writes nothing more; settled() resolves once it has given up.
    */
-  async stop(o: { abandon?: boolean } = {}): Promise<void> {
+  /**
+   * quitting: the process exits next, which frees the watches, so they are not closed. Closing is
+   * synchronous in the main process and grows with the square of the folder count: 2.6 s for 1,000
+   * folders, 43 s for 3,000 (scripts/measure-watch-limit.ts close), during which the app hangs.
+   */
+  async stop(o: { abandon?: boolean; quitting?: boolean } = {}): Promise<void> {
     if (o.abandon) this.abandoned = true;
     if (this.state === 'stopped') return;
     this.state = 'stopped';
@@ -205,7 +210,7 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
     const handles = [...this.watches.values()];
     this.watches = new Map();
     this.fileDirs = new Map();
-    await Promise.all(handles.map((h) => h.close().catch(() => undefined)));
+    if (!o.quitting) await Promise.all(handles.map((h) => h.close().catch(() => undefined)));
     if (!this.abandoned) await this.running;
     this.o.log(this.abandoned ? 'stopped, job in progress abandoned' : 'stopped');
     this.flushIdle();
@@ -234,7 +239,15 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
       indexed: Object.keys(this.data.files).length,
       deadLetters: [...this.dead.values()],
       unavailable: this.unavailable.map((r) => r.path),
+      notWatched: this.notWatched(),
     };
+  }
+
+  /** Folders left unwatched by the folder limit, over every watch of this library. */
+  private notWatched(): number {
+    let n = 0;
+    for (const h of this.watches.values()) n += h.notWatched?.() ?? 0;
+    return n;
   }
 
   /**
@@ -347,7 +360,7 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
    */
   private watchRoot(r: WatchRoot): WatchHandle | null {
     if (!r.file) {
-      const h = this.o.watch(r.path, this.onEvent, this.onWatchError);
+      const h = this.o.watch(r.path, this.onEvent, this.onWatchError, { onLimit: this.onLimit });
       this.watches.set(r.path, h);
       return h;
     }
@@ -359,7 +372,7 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
     }
     const only = new Set([r.path]);
     this.fileDirs.set(dir, only);
-    const h = this.o.watch(dir, this.onEvent, this.onWatchError, { depth: 0, only });
+    const h = this.o.watch(dir, this.onEvent, this.onWatchError, { depth: 0, only, onLimit: this.onLimit });
     this.watches.set(dir, h);
     return h;
   }
@@ -446,6 +459,13 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
   private polling = false;
 
   private readonly onEvent = (_type: string, p: string): void => this.onPath(p);
+
+  /** The folder limit refused a folder: logged once per watch at the first refusal, shown in the status. */
+  private readonly onLimit = (refused: number): void => {
+    if (refused === 1)
+      this.o.log(`folder limit reached: some folders are not watched; Check for updates finds their changes`);
+    if (this.state !== 'starting') this.emitStatus();
+  };
 
   private readonly onWatchError = (err: Error): void => {
     // Not 'error': an EventEmitter throws on an 'error' event nobody listens to.
@@ -793,6 +813,19 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
       if (changed || moved || rec.splitKey !== this.o.splitter.splitKey) this.settle(p);
     }
     let missing = 0;
+    let outside = 0;
+    const venvCache = new Map<string, boolean>();
+    /**
+     * Indexed before the file types and skipped folders (owner decision 2026-11-16): such a file is
+     * not walked, and stays in the index as it is, causing no work. Removing it would queue slow
+     * removals ahead of every new file (docs/tickets/slow-section-removal.md); Reindex and deleting
+     * the library take it out.
+     */
+    const outsideRules = (p: string) => {
+      const r = this.rootOf(p);
+      if (!r || r.file) return !!r && !this.o.extensions.includes(path.extname(p).toLowerCase());
+      return isOutsideRules(p, r.path, this.o.extensions, venvCache);
+    };
     // Files of a folder that cannot be read now are kept; files of a folder no longer in the
     // library are not under any root and go.
     const keep = (p: string) => this.unavailable.some((u) => belongsTo(p, this.data.files[p], u));
@@ -807,6 +840,10 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
         kept++;
         continue;
       }
+      if (!found.has(p) && outsideRules(p)) {
+        outside++;
+        continue;
+      }
       if (!found.has(p) && !keep(p)) {
         // Check for updates runs this while jobs are queued: one job per path.
         const queued = this.queue.find((j) => j.path === p);
@@ -817,7 +854,7 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
       }
     }
     this.o.log(
-      `reconcile: ${found.size} files in folders, ${this.settling.size} to check, ${missing} to remove${kept ? `, ${kept} of sources not in the library kept (shell.json may be incomplete)` : ''}`,
+      `reconcile: ${found.size} files in folders, ${this.settling.size} to check, ${missing} to remove${outside ? `, ${outside} indexed before the file types and skipped folders kept as they are` : ''}${kept ? `, ${kept} of sources not in the library kept (shell.json may be incomplete)` : ''}`,
     );
   }
 
@@ -887,6 +924,11 @@ function sizeOf(p: string): number {
   }
 }
 
+/**
+ * Files below dir, never entering a skipped folder (file-types.ts): hidden ones, node_modules and
+ * the like, macOS packages, and Python virtual environments, found by their pyvenv.cfg. The
+ * linked folder itself is read whatever its name.
+ */
 async function* walk(dir: string, root: string, stopped: () => boolean = () => false): AsyncGenerator<string> {
   if (stopped()) return;
   let entries: fs.Dirent[];
@@ -895,10 +937,11 @@ async function* walk(dir: string, root: string, stopped: () => boolean = () => f
   } catch {
     return;
   }
+  if (dir !== root && entries.some((e) => e.isFile() && e.name === VENV_MARKER)) return;
   for (const e of entries) {
     const p = path.join(dir, e.name);
-    if (isHidden(p, root)) continue;
-    if (e.isDirectory()) yield* walk(p, root, stopped);
-    else if (e.isFile()) yield p;
+    if (e.isDirectory()) {
+      if (!isSkippedFolderName(e.name)) yield* walk(p, root, stopped);
+    } else if (e.isFile() && !e.name.startsWith('.')) yield p;
   }
 }

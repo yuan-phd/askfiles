@@ -5,6 +5,7 @@
 // by drag and drop anywhere in the window. Everything goes through window.askfiles (the preload
 // bridge); without it (a plain browser) the bar shows the status counts only.
 
+import { notWatchedText, notWatchedTip, tooLargeText, unsupportedText } from './messages.js';
 import { menuSources, moreText, sameNameFolders, sourceMenuText, sourceStatus } from './sources.js';
 
 const MARKUP = `
@@ -25,6 +26,7 @@ const MARKUP = `
     <span class="check-icon" aria-hidden="true">&#x21bb;</span>
   </button>
   <span class="status-failed" data-testid="status-failed" hidden></span>
+  <span class="status-not-watched" data-testid="status-not-watched" hidden></span>
   <span class="summaries-status" data-testid="summaries-status" role="status" hidden>
     <span class="summaries-text" data-testid="summaries-text"></span>
     <button type="button" class="link" data-testid="summaries-pause">Pause</button>
@@ -103,8 +105,16 @@ const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 /** The text of the add-result line for files already in the library (src/main/libraries.ts AddResult.already). */
 const ALREADY = 'Already in this library; it is kept up to date.';
 
+/**
+ * True when an add result says something the user has to act on (a file AskFiles cannot read, a
+ * folder too large): the line then wraps and stays longer.
+ */
+export function addResultIsLong(r) {
+  return !!r?.skipped?.some((s) => s.code === 'unsupported' || s.code === 'too-large');
+}
+
 /** One line about an add: what went in, what was already there, and what was left out. */
-export function addResultText(r) {
+export function addResultText(r, lang) {
   if (!r) return '';
   const parts = [];
   if (r.added) parts.push(`Added ${plural(r.added, 'item', 'items')}.`);
@@ -115,9 +125,15 @@ export function addResultText(r) {
     parts.push(`${already[0]} and ${already.length - 1} more: already in this library; they are kept up to date.`);
   for (const k of r.kept || [])
     parts.push(`A file named ${k.name} is already in this library (${k.path}); both will be kept.`);
-  if (r.skipped?.length) {
-    const first = r.skipped[0];
-    const more = r.skipped.length > 1 ? ` and ${r.skipped.length - 1} more` : '';
+  const skipped = r.skipped || [];
+  const unsupported = skipped.filter((s) => s.code === 'unsupported');
+  const tooLarge = skipped.filter((s) => s.code === 'too-large');
+  const other = skipped.filter((s) => s.code !== 'unsupported' && s.code !== 'too-large');
+  for (const s of tooLarge) parts.push(tooLargeText(s, lang));
+  if (unsupported.length) parts.push(unsupportedText(unsupported, lang));
+  if (other.length) {
+    const first = other[0];
+    const more = other.length > 1 ? ` and ${other.length - 1} more` : '';
     parts.push(`Not added: ${first.name} (${first.reason})${more}.`);
   }
   return parts.join(' ') || 'Nothing was added.';
@@ -236,6 +252,12 @@ export function mountTopBar(
     failed.hidden = dead.length === 0;
     failed.textContent = plural(dead.length, 'file could not be read', 'files could not be read');
     failed.title = dead.map((d) => `${d.path}: ${d.error}`).join('\n');
+    const limited = q('status-not-watched');
+    limited.hidden = !(s?.notWatched > 0);
+    if (!limited.hidden) {
+      limited.textContent = notWatchedText();
+      limited.title = notWatchedTip();
+    }
   }
 
   function applyStatus(s) {
@@ -543,10 +565,13 @@ export function mountTopBar(
     const node = q('add-result');
     clearTimeout(resultTimer);
     node.textContent = text || addResultText(r);
-    // The line is cut to one row; the whole of it on hover.
+    // The line is cut to one row; the whole of it on hover. A line the user has to act on wraps
+    // and stays longer.
+    const long = !text && addResultIsLong(r);
+    node.classList.toggle('long', long);
     node.title = node.textContent;
     node.hidden = false;
-    resultTimer = setTimeout(() => (node.hidden = true), 8000);
+    resultTimer = setTimeout(() => (node.hidden = true), long ? 20000 : 8000);
   }
 
   /**

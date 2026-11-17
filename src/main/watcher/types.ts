@@ -55,6 +55,8 @@ export interface WatchHandle {
   /** Resolves once changes are being reported. */
   ready: Promise<void>;
   close(): Promise<void>;
+  /** Folders this watch left unwatched because the process watches as many as it may (folder-limit.ts). */
+  notWatched?: () => number;
 }
 
 /**
@@ -75,6 +77,8 @@ export type WatchFactory = (
 export interface WatchOptions {
   depth?: number;
   only?: ReadonlySet<string>;
+  /** Called with the number of folders refused so far, each time the folder limit refuses one more. */
+  onLimit?: (refused: number) => void;
 }
 
 export interface SectionRecord {
@@ -145,6 +149,12 @@ export interface WatcherStatus {
   deadLetters: DeadLetter[];
   /** Folders of the library that could not be read at start; their files stay in the index. */
   unavailable: string[];
+  /**
+   * Folders the library has but does not watch, because the folder limit was reached
+   * (folder-limit.ts): changes in them are found by Check for updates and at the next start. 0
+   * when every folder is watched. Counts the top folders refused; their subfolders are not watched either.
+   */
+  notWatched: number;
 }
 
 export interface FileEvent {

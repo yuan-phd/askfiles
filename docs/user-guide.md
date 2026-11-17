@@ -9,7 +9,11 @@ Click Add at the top right:
 - **Add files** adds files where they are. AskFiles reads them from their own folder and follows them for changes, but never changes them. Files that earlier versions of AskFiles copied into the library show as Copy.
 - **Add folder** links a folder. AskFiles watches it and reads new and changed files, but never changes the folder itself.
 
-You can also drop files or folders anywhere on the window. AskFiles reads PDF, Word, Excel, CSV, Markdown and text files.
+You can also drop files or folders anywhere on the window. AskFiles reads PDF, Word (.docx), Excel (.xlsx, .xlsm, .xls), PowerPoint (.pptx), Markdown (.md, .markdown) and text (.txt) files. Other files in a folder are left alone; a file of another type that you add on its own is not added, and AskFiles says so.
+
+AskFiles never looks inside folders that hold program files rather than documents: hidden folders (names starting with a dot), node_modules, __pycache__, Python environments, and Mac packages such as apps and photo libraries.
+
+A library can follow up to 3,000 folders. If a folder you add has more, AskFiles does not add it and asks you to add smaller folders inside it instead. If a library has more folders than it can follow, the top bar says that changes in some folders are not followed; click ↻ (Check for updates) to read them.
 
 While AskFiles reads new files, the top bar says Indexing and how many are left.
 
