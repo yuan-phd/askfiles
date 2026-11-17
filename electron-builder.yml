@@ -39,9 +39,11 @@ files:
   - NOTICE
   # OCR data is seeded from 4.0.0_best_int only (src/main/tesseract.ts); the 4.0.0 copies add 30 MB.
   - '!node_modules/@tesseract.js-data/*/4.0.0/**'
-  # SheetJS reads legacy .xls through require('xlsx'), which is xlsx.js; the browser builds in
-  # dist/ and the ES module copy add 6.8 MB and are never loaded.
-  - '!node_modules/xlsx/dist/**'
+  # SheetJS reads legacy .xls through require('xlsx'), which is xlsx.js (src/main/sections/xlsx.ts);
+  # it loads dist/cpexcel.js, the code pages of older .xls files. The browser builds in dist/ and
+  # the ES module copy add 6.8 MB and are never loaded. scripts/check-packaged-parsers.mjs, run at
+  # packaging, fails if an .xls no longer parses inside app.asar.
+  - '!node_modules/xlsx/dist/!(cpexcel.js)'
   - '!node_modules/xlsx/xlsx.mjs'
   # The Graph page loads only d3's prebuilt dist/d3.min.js (src/main/app-protocol.ts VENDOR_FILES),
   # which holds every d3 module; the separate modules, their sources and the unminified copy are
