@@ -16,7 +16,10 @@ import path from 'node:path';
  * commit downloads each library's source from the URL listed and applies the patches it names
  * (mac.sh is a link to lin.sh). @img/sharp-libvips-* 1.0.4 was published from commit cb57c8e
  * (npm registry gitHead), sharp 0.32.6 downloads the 8.14.5 release built at tag v8.14.5.
- * Only the LGPL libraries, and cairo (MPL-2.0, which asks for the same pointer), are listed.
+ * Only the LGPL libraries, and cairo (MPL-2.0, which asks for the same pointer), are listed. The
+ * license is the one sharp-libvips names in the THIRD-PARTY-NOTICES.md it ships with each build:
+ * LGPLv3 for every one, "via the 'any later version' clause of the LGPLv2 or LGPLv2.1" for those
+ * whose projects license them under an earlier version.
  */
 export const LIBVIPS_POSIX = {
   '8.15.3': {
@@ -28,56 +31,56 @@ export const LIBVIPS_POSIX = {
         key: 'vips',
         name: 'libvips',
         version: '8.15.3',
-        license: 'LGPL',
+        license: 'LGPL-3.0',
         url: 'https://github.com/libvips/libvips/releases/download/v8.15.3/vips-8.15.3.tar.xz',
       },
       {
         key: 'glib',
         name: 'GLib',
         version: '2.81.1',
-        license: 'LGPL',
+        license: 'LGPL-3.0',
         url: 'https://download.gnome.org/sources/glib/2.81/glib-2.81.1.tar.xz',
       },
       {
         key: 'fribidi',
         name: 'FriBidi',
         version: '1.0.15',
-        license: 'LGPL',
+        license: 'LGPL-3.0',
         url: 'https://github.com/fribidi/fribidi/releases/download/v1.0.15/fribidi-1.0.15.tar.xz',
       },
       {
         key: 'exif',
         name: 'libexif',
         version: '0.6.24',
-        license: 'LGPL',
+        license: 'LGPL-3.0',
         url: 'https://github.com/libexif/libexif/releases/download/v0.6.24/libexif-0.6.24.tar.bz2',
       },
       {
         key: 'heif',
         name: 'libheif',
         version: '1.18.2',
-        license: 'LGPL',
+        license: 'LGPL-3.0',
         url: 'https://github.com/strukturag/libheif/releases/download/v1.18.2/libheif-1.18.2.tar.gz',
       },
       {
         key: 'rsvg',
         name: 'librsvg',
         version: '2.58.93',
-        license: 'LGPL',
+        license: 'LGPL-3.0',
         url: 'https://download.gnome.org/sources/librsvg/2.58/librsvg-2.58.93.tar.xz',
       },
       {
         key: 'pango',
         name: 'Pango',
         version: '1.54.0',
-        license: 'LGPL',
+        license: 'LGPL-3.0',
         url: 'https://download.gnome.org/sources/pango/1.54/pango-1.54.0.tar.xz',
       },
       {
         key: 'proxy-libintl',
         name: 'proxy-libintl',
         version: '0.4',
-        license: 'LGPL',
+        license: 'LGPL-3.0',
         url: 'https://github.com/frida/proxy-libintl/archive/0.4.tar.gz',
       },
       {
@@ -98,63 +101,63 @@ export const LIBVIPS_POSIX = {
         key: 'vips',
         name: 'libvips',
         version: '8.14.5',
-        license: 'LGPL',
+        license: 'LGPL-3.0',
         url: 'https://github.com/libvips/libvips/releases/download/v8.14.5/vips-8.14.5.tar.xz',
       },
       {
         key: 'glib',
         name: 'GLib',
         version: '2.78.0',
-        license: 'LGPL',
+        license: 'LGPL-3.0',
         url: 'https://download.gnome.org/sources/glib/2.78/glib-2.78.0.tar.xz',
       },
       {
         key: 'fribidi',
         name: 'FriBidi',
         version: '1.0.13',
-        license: 'LGPL',
+        license: 'LGPL-3.0',
         url: 'https://github.com/fribidi/fribidi/releases/download/v1.0.13/fribidi-1.0.13.tar.xz',
       },
       {
         key: 'gdkpixbuf',
         name: 'GdkPixbuf',
         version: '2.42.10',
-        license: 'LGPL',
+        license: 'LGPL-3.0',
         url: 'https://download.gnome.org/sources/gdk-pixbuf/2.42/gdk-pixbuf-2.42.10.tar.xz',
       },
       {
         key: 'exif',
         name: 'libexif',
         version: '0.6.24',
-        license: 'LGPL',
+        license: 'LGPL-3.0',
         url: 'https://github.com/libexif/libexif/releases/download/v0.6.24/libexif-0.6.24.tar.bz2',
       },
       {
         key: 'heif',
         name: 'libheif',
         version: '1.16.2',
-        license: 'LGPL',
+        license: 'LGPL-3.0',
         url: 'https://github.com/strukturag/libheif/releases/download/v1.16.2/libheif-1.16.2.tar.gz',
       },
       {
         key: 'rsvg',
         name: 'librsvg',
         version: '2.57.0',
-        license: 'LGPL',
+        license: 'LGPL-3.0',
         url: 'https://download.gnome.org/sources/librsvg/2.57/librsvg-2.57.0.tar.xz',
       },
       {
         key: 'pango',
         name: 'Pango',
         version: '1.51.0',
-        license: 'LGPL',
+        license: 'LGPL-3.0',
         url: 'https://download.gnome.org/sources/pango/1.51/pango-1.51.0.tar.xz',
       },
       {
         key: 'proxy-libintl',
         name: 'proxy-libintl',
         version: '0.4',
-        license: 'LGPL',
+        license: 'LGPL-3.0',
         url: 'https://github.com/frida/proxy-libintl/archive/0.4.tar.gz',
       },
       {
@@ -238,10 +241,20 @@ export function libvipsBuildsIn(dir, name) {
 export function lgplSourceLines(builds, electronVersion) {
   const errors = [];
   const lines = [
-    'AskFiles ships the libraries below as separate shared libraries, as their projects build them, without',
-    'changes by AskFiles. They are covered by the GNU Lesser General Public License (cairo by the Mozilla Public',
-    'License 2.0); you may replace them with your own builds. Their complete source code, at the versions',
-    'shipped, is available at these locations:',
+    'AskFiles uses the libraries below unchanged, as their projects build them, and links them dynamically:',
+    '- libvips and the libraries built into it form one shared library in the lib folder of the package',
+    '  named under "Shipped in" (libvips-cpp.42.dylib on macOS), which the package\'s native module loads',
+    '  at run time. sharp-libvips uses each of them under the GNU LGPL version 3, through the "any later',
+    '  version" clause where a project licenses it under LGPL 2 or 2.1; cairo is under the Mozilla Public',
+    '  License 2.0.',
+    '- FFmpeg is the separate shared library libffmpeg (libffmpeg.dylib in the Electron framework on',
+    '  macOS, ffmpeg.dll on Windows), which Electron loads at run time; it is under the GNU LGPL',
+    '  version 2.1.',
+    'You may replace these shared libraries with your own builds, modified or not, for example from the',
+    'source below. On macOS, changing a file inside the app invalidates its code signature; sign the app',
+    'again (for example ad hoc: codesign --force --deep --sign - AskFiles.app).',
+    'The license texts are under "License texts" below: LGPL-2.1, LGPL-3.0 (with the GPL-3.0 text it',
+    'builds on) and MPL-2.0. The complete source code, at the versions shipped, is at these locations:',
     '',
   ];
   const byKey = new Map();
@@ -293,7 +306,7 @@ export function lgplSourceLines(builds, electronVersion) {
   } else {
     lines.push(
       `- FFmpeg in Electron ${electronVersion} (libffmpeg in the Electron framework)`,
-      '  License: LGPL-2.1; its text is in LICENSES.chromium.html in the app resources.',
+      '  License: LGPL-2.1 (text below; also in LICENSES.chromium.html in the app resources).',
       `  Chromium ${ff.chromium}'s copy at revision ${ff.revision}, with Chromium's build configuration`,
       '  in its chromium/ folder:',
       `  https://chromium.googlesource.com/chromium/third_party/ffmpeg/+/${ff.revision}`,
