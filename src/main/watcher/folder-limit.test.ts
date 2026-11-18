@@ -31,7 +31,7 @@ function tree(top: string, n: number): void {
 }
 
 describe('countFolders', () => {
-  it('counts the root and every folder below it that is not skipped', async () => {
+  it('counts every folder below the root that is not skipped, not the root itself', async () => {
     dirs('Docs/HR/2026', 'Docs/Finance', 'Docs/build', 'Docs/dist/old');
     dirs('Docs/.git/objects/aa', 'Docs/app/node_modules/pkg/lib', 'Docs/py/__pycache__', 'Docs/Tool.app/Contents');
     dirs(
@@ -43,8 +43,8 @@ describe('countFolders', () => {
     dirs('Docs/py/env/lib/site-packages/pkg');
     fs.writeFileSync(path.join(tmp, 'Docs/py/env/pyvenv.cfg'), 'home = /usr/bin\n');
     const r = await countFolders([{ path: path.join(tmp, 'Docs'), recursive: true }]);
-    // Docs, HR, 2026, Finance, build, dist, old, app, py.
-    expect(r).toEqual({ count: 9, over: false });
+    // HR, 2026, Finance, build, dist, old, app, py; not Docs, the linked folder.
+    expect(r).toEqual({ count: 8, over: false });
   });
 
   it('counts the folder of added files once, and not again when a linked folder holds it', async () => {
@@ -56,17 +56,22 @@ describe('countFolders', () => {
       { path: path.join(tmp, 'Downloads'), recursive: false },
       { path: path.join(tmp, 'Docs', 'HR'), recursive: false },
     ]);
-    // Docs, HR (walked), Desktop, Downloads (not its sub folder).
-    expect(r).toEqual({ count: 4, over: false });
+    // HR (walked), Desktop, Downloads (not its sub folder); not Docs, the linked folder.
+    expect(r).toEqual({ count: 3, over: false });
   });
 
-  it('stops as soon as the count passes the limit', async () => {
+  it('stops as soon as the count passes the limit, and lets exactly the limit through', async () => {
     tree(path.join(tmp, 'Big'), 500);
     const r = await countFolders([{ path: path.join(tmp, 'Big'), recursive: true }], { stopAbove: 100 });
     expect(r).toEqual({ count: 101, over: true });
-    expect(await countFolders([{ path: path.join(tmp, 'Big'), recursive: true }], { stopAbove: 501 })).toEqual({
-      count: 501,
+    // 500 subfolders against a limit of 500: the linked folder itself does not count.
+    expect(await countFolders([{ path: path.join(tmp, 'Big'), recursive: true }], { stopAbove: 500 })).toEqual({
+      count: 500,
       over: false,
+    });
+    expect(await countFolders([{ path: path.join(tmp, 'Big'), recursive: true }], { stopAbove: 499 })).toEqual({
+      count: 500,
+      over: true,
     });
   });
 
@@ -104,8 +109,22 @@ describe('WatchBudget', () => {
     expect(b.admit('/d', two)).toBe(true);
   });
 
-  it('defaults to 3,000, a quarter below the 4,096 folders at which macOS watches fail', () => {
-    expect(WATCH_FOLDER_LIMIT).toBe(3000);
-    expect(new WatchBudget().limit).toBe(3000);
+  it('lets the root of a linked folder through without taking a place', () => {
+    const b = new WatchBudget(2);
+    const w = new Set<string>();
+    expect(b.admit('/Docs', w, { counts: false })).toBe(true);
+    expect(['/Docs/a', '/Docs/b', '/Docs/c'].map((d) => b.admit(d, w))).toEqual([true, true, false]);
+    expect(b.size).toBe(2);
+    // A second linked folder is still watched at the limit; its subfolders are not.
+    expect(b.admit('/Mail', w, { counts: false })).toBe(true);
+    expect(b.admit('/Mail/x', w)).toBe(false);
+    b.release(w);
+    expect(b.size).toBe(0);
+    expect(['/Mail/x', '/Mail/y'].map((d) => b.admit(d, w))).toEqual([true, true]);
+  });
+
+  it('defaults to 1,000 subfolders, where closing the watches froze the window for 2.9 s', () => {
+    expect(WATCH_FOLDER_LIMIT).toBe(1000);
+    expect(new WatchBudget().limit).toBe(1000);
   });
 });

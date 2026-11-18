@@ -220,27 +220,27 @@ describe('the folder limit in the watch', () => {
 
   it('never watches more folders than the limit, also for folders made while watching', async () => {
     folders(2);
-    const budget = new WatchBudget(5);
+    const budget = new WatchBudget(4);
     const { w, statuses } = make(createChokidarWatch(budget));
     await w.start();
-    // Documents, area, f0, f1.
-    expect(budget.size).toBe(4);
+    // area, f0, f1; Documents, the linked folder itself, takes no place.
+    expect(budget.size).toBe(3);
     expect(w.status().notWatched).toBe(0);
     // One at a time: folders made together reach chokidar as one event on their parent, whose
     // read it throttles, which would make the test depend on timing.
     // Under load the FSEvents stream may start a moment after chokidar says ready, and a folder
     // made in between is never reported: make it again until the watch is live.
     const first = path.join(root, 'new-0');
-    for (let tries = 0; budget.size < 5 && tries < 12; tries++) {
+    for (let tries = 0; budget.size < 4 && tries < 12; tries++) {
       fs.rmSync(first, { recursive: true, force: true });
       fs.mkdirSync(first);
-      await until(() => budget.size === 5, 'the fifth folder watched', 2000).catch(() => undefined);
+      await until(() => budget.size === 4, 'the fourth folder watched', 2000).catch(() => undefined);
     }
-    expect(budget.size).toBe(5);
+    expect(budget.size).toBe(4);
     for (let i = 1; i <= 3; i++) {
       fs.mkdirSync(path.join(root, `new-${i}`));
       await until(() => w.status().notWatched === i, `new folder ${i} refused`);
-      expect(budget.size).toBe(5);
+      expect(budget.size).toBe(4);
     }
     expect(statuses.at(-1)!.notWatched).toBe(3);
   });
@@ -253,12 +253,12 @@ describe('the folder limit in the watch', () => {
     write('Tool.app/Contents/MacOS/x.txt');
     write('py/env/lib/site.txt');
     write('py/env/pyvenv.cfg', 'home = /usr/bin\n');
-    const budget = new WatchBudget(7);
+    const budget = new WatchBudget(6);
     const { w } = make(createChokidarWatch(budget));
     await w.start();
     await w.whenIdle();
-    // Documents, area, f0, f1, repo, py: six of seven.
-    expect(budget.size).toBe(6);
+    // area, f0, f1, repo, py: five of six (Documents, the linked folder itself, takes no place).
+    expect(budget.size).toBe(5);
     expect(w.status().notWatched).toBe(0);
     const inSkipped = write('repo/node_modules/a/new.md');
     const ordinary = write('area/f0/new.md');
@@ -267,21 +267,22 @@ describe('the folder limit in the watch', () => {
   });
 
   it('is shared by every watch of the process: the next library gets the folders the last one freed', async () => {
-    // Documents, area and five folders: seven, one over.
+    // area and five folders below Documents: six, one over.
     folders(5);
     const other = path.join(tmp, 'Other');
     for (let i = 0; i < 4; i++) fs.mkdirSync(path.join(other, `g${i}`), { recursive: true });
-    const budget = new WatchBudget(6);
+    const budget = new WatchBudget(5);
     const watch = createChokidarWatch(budget);
     const a = make(watch);
     await a.w.start();
-    expect(budget.size).toBe(6);
+    expect(budget.size).toBe(5);
     expect(a.w.status().notWatched).toBeGreaterThan(0);
     await a.w.stop();
     expect(budget.size).toBe(0);
     const b = make(watch, other);
     await b.w.start();
-    expect(budget.size).toBe(5);
+    // g0 to g3; Other itself takes no place.
+    expect(budget.size).toBe(4);
     expect(b.w.status().notWatched).toBe(0);
   });
 });

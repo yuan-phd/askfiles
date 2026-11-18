@@ -4,12 +4,12 @@ Status: open. Follows docs/tickets/large-folder-blocks-window.md. Not part of lo
 
 ## Why
 
-chokidar 4 opens one fs.watch per folder. On macOS each is one path of the single FSEvents stream libuv keeps per process; at 4,097 paths the stream cannot start, every watch fails with EMFILE and the main process stalls for 80 to 130 s (measured, docs/app.md, File types and folder limit). The limit of 3,000 folders per library, with a guard on the watch itself, keeps the app responsive but has costs:
+chokidar 4 opens one fs.watch per folder. On macOS each is one path of the single FSEvents stream libuv keeps per process; at 4,097 paths the stream cannot start, every watch fails with EMFILE and the main process stalls for 80 to 130 s (measured, docs/app.md, File types and folder limit). The limit of 1,000 subfolders per library (3,000 folders until 2026-11-18), with a guard on the watch itself, keeps the app responsive but has costs:
 
-- a library of more than 3,000 folders (after the skips) cannot be added in one piece; the user adds subfolders;
+- a library of more than 1,000 subfolders (after the skips) cannot be added in one piece; the user adds subfolders;
 - in a library that grew past the limit, changes in the folders beyond it are found only by Check for updates and at the next start;
 - even below the limit, opening thousands of watches stalls the window for up to about 150 ms at start, and every switch, folder add or remove opens them all again.
-- closing them is worse: closing is synchronous and grows with the square of the folder count, 2.6 s for 1,000 folders, 11 s for 2,000, 43 s for 3,000 (scripts/measure-watch-limit.ts close). Quit no longer closes them (the exit frees them), but switching away from a library, removing a folder and deleting a library still do, and the window hangs that long.
+- closing them is worse: closing is synchronous and grows with the square of the folder count, 2.6 s for 1,000 folders, 11 s for 2,000, 43 s for 3,000 (scripts/measure-watch-limit.ts close). Quit no longer closes them (the exit frees them), but switching away from a library, removing a folder and deleting a library still do, and the window hangs that long. In the packaged app: 2.9 s at 1,000 subfolders, 14 s at 2,000 (docs/tickets/large-folder-blocks-window.md); this is why the limit went down to 1,000.
 
 FSEvents and ReadDirectoryChangesW watch a whole tree natively with one handle. One recursive watch per linked folder would remove the limit on those platforms.
 
