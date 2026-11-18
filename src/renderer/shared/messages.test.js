@@ -32,12 +32,14 @@ describe('messages about file types and the folder limit', () => {
   });
 
   it('words a folder too large and the notice for folders not followed', () => {
-    expect(tooLargeText({ name: 'Projects', limit: 3000 }, 'en-US')).toBe(
-      'Not added: Projects. This folder is too large: it holds more than 3,000 folders, more than AskFiles can follow. Add smaller folders inside it instead, one at a time.',
+    expect(tooLargeText({ name: 'Projects', limit: 1000 }, 'en-US')).toBe(
+      'Not added: Projects. This folder is too large: it holds more than 1,000 subfolders, more than AskFiles can follow. Add smaller folders inside it instead, one at a time.',
     );
-    expect(tooLargeText({ name: 'Projects', limit: 3000 }, 'zh-CN')).toBe(
-      '未添加：Projects。这个文件夹太大，其中的文件夹超过 3,000 个，AskFiles 无法跟踪。请改为分别添加其中较小的子文件夹。',
+    expect(tooLargeText({ name: 'Projects', limit: 1000 }, 'zh-CN')).toBe(
+      '未添加：Projects。这个文件夹太大，其中的子文件夹超过 1,000 个，AskFiles 无法跟踪。请改为分别添加其中较小的子文件夹。',
     );
+    // Without a limit in the result (an older main process), the default limit.
+    expect(tooLargeText({ name: 'Projects' }, 'en')).toMatch(/more than 1,000 subfolders/);
     expect(notWatchedText('en')).toBe(
       'Changes in some folders are not followed. Click ↻ Check for updates to find them.',
     );
@@ -50,7 +52,7 @@ describe('messages about file types and the folder limit', () => {
     const r = {
       added: 1,
       skipped: [
-        { name: 'Projects', reason: 'the folder holds more than 3000 folders', code: 'too-large', limit: 3000 },
+        { name: 'Projects', reason: 'the folder holds more than 1000 subfolders', code: 'too-large', limit: 1000 },
         { name: 'x.zip', reason: 'not a type AskFiles can read', code: 'unsupported' },
         { name: 'y.pdf', reason: 'not found' },
       ],

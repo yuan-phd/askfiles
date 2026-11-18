@@ -148,7 +148,8 @@ export interface LibraryManagerDeps {
    */
   closeLibrary?: (id: string) => void;
   /**
-   * Most folders one library may have, counted after the skips (watcher/folder-limit.ts). Checked
+   * Most subfolders one library may have, counted after the skips; a linked folder itself does not
+   * count, a folder of added files does (watcher/folder-limit.ts). Checked
    * when a folder is added; default WATCH_FOLDER_LIMIT. Only the current library is watched, so
    * the limit is per library; the watch itself never exceeds it across the process either.
    */
@@ -1029,12 +1030,12 @@ export class LibraryManager {
         const t0 = Date.now();
         const { count, over } = await countFolders(roots, { stopAbove: limit });
         this.log(
-          `folder count of ${libraryId} with ${folder}: ${over ? `more than ${limit}` : count} folders, limit ${limit}, ${Date.now() - t0} ms`,
+          `folder count of ${libraryId} with ${folder}: ${over ? `more than ${limit}` : count} subfolders, limit ${limit}, ${Date.now() - t0} ms`,
         );
         if (over) {
           result.skipped.push({
             name: path.basename(folder),
-            reason: `the folder holds more than ${limit} folders`,
+            reason: `the folder holds more than ${limit} subfolders`,
             code: 'too-large',
             limit,
           });

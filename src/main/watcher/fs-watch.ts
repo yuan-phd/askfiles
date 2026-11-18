@@ -12,7 +12,7 @@ import type { WatchFactory } from './types.js';
  * chokidar opens one fs.watch per folder (and one per file, which macOS serves through kqueue and
  * does not count against the FSEvents limit). Every folder asks budget first (folder-limit.ts): a
  * folder refused is not watched, nor anything below it, so the process never reaches the 4,096
- * folders at which every watch fails and the window freezes.
+ * folders at which every watch fails, and closing the watches stays short.
  */
 export function createChokidarWatch(budget: WatchBudget): WatchFactory {
   return (root, onEvent, onError, options = {}) => {
@@ -38,7 +38,8 @@ export function createChokidarWatch(budget: WatchBudget): WatchFactory {
           if (v === undefined) venv.set(p, (v = isVenvFolder(p)));
           if (v) return true;
         }
-        if (budget.admit(p, mine)) return false;
+        // The linked folder itself takes no place under the limit; the folder of added files does.
+        if (budget.admit(p, mine, { counts: !(p === root && options.depth === undefined) })) return false;
         if (!refused.has(p)) {
           refused.add(p);
           options.onLimit?.(refused.size);

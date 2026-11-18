@@ -48,10 +48,10 @@ export function unsupportedText(items, lang) {
 /** A folder that would take the library past the folder limit (src/main/watcher/folder-limit.ts). */
 export function tooLargeText(item, lang) {
   const zh = isChinese(lang);
-  const limit = Number(item.limit) || 3000;
+  const limit = Number(item.limit) || 1000;
   return zh
-    ? `未添加：${item.name}。这个文件夹太大，其中的文件夹超过 ${limit.toLocaleString('en-US')} 个，AskFiles 无法跟踪。请改为分别添加其中较小的子文件夹。`
-    : `Not added: ${item.name}. This folder is too large: it holds more than ${limit.toLocaleString('en-US')} folders, more than AskFiles can follow. Add smaller folders inside it instead, one at a time.`;
+    ? `未添加：${item.name}。这个文件夹太大，其中的子文件夹超过 ${limit.toLocaleString('en-US')} 个，AskFiles 无法跟踪。请改为分别添加其中较小的子文件夹。`
+    : `Not added: ${item.name}. This folder is too large: it holds more than ${limit.toLocaleString('en-US')} subfolders, more than AskFiles can follow. Add smaller folders inside it instead, one at a time.`;
 }
 
 /** The notice for a library with folders left unwatched by the folder limit (WatcherStatus.notWatched). */

@@ -913,31 +913,34 @@ describe('folder limit and file types (owner decision 2026-11-16)', () => {
   it('refuses a folder that alone passes the limit, and says why', async () => {
     const t = setup({ watch: manualWatch(), folderLimit: 5 });
     await t.manager.start();
-    // Big and its five folders: six.
-    const r = await t.manager.addFolder(tree(path.join(tmp, 'Big'), 5));
+    // Six subfolders, one over; Big itself does not count.
+    const r = await t.manager.addFolder(tree(path.join(tmp, 'Big'), 6));
     expect(r).toMatchObject({
       added: 0,
-      skipped: [{ name: 'Big', reason: 'the folder holds more than 5 folders', code: 'too-large', limit: 5 }],
+      skipped: [{ name: 'Big', reason: 'the folder holds more than 5 subfolders', code: 'too-large', limit: 5 }],
     });
     expect(folderPaths(t)).toEqual([]);
     expect(t.logs).toContainEqual(
       expect.stringMatching(
-        /^\[libraries\] folder count of all-files with .*Big: more than 5 folders, limit 5, \d+ ms$/,
+        /^\[libraries\] folder count of all-files with .*Big: more than 5 subfolders, limit 5, \d+ ms$/,
       ),
     );
-    // Skipped folders do not count: the same size with its extra folders hidden away fits.
-    const fits = tree(path.join(tmp, 'Fits'), 4);
+    // Exactly the limit fits, and skipped folders do not count: five subfolders and hidden extras.
+    const fits = tree(path.join(tmp, 'Fits'), 5);
     fs.mkdirSync(path.join(fits, '.git', 'objects', 'aa'), { recursive: true });
     fs.mkdirSync(path.join(fits, 'node_modules', 'a', 'b'), { recursive: true });
     expect(await t.manager.addFolder(fits)).toMatchObject({ added: 1, skipped: [] });
+    expect(t.logs).toContainEqual(
+      expect.stringMatching(/^\[libraries\] folder count of all-files with .*Fits: 5 subfolders, limit 5, \d+ ms$/),
+    );
     await t.manager.stop();
   });
 
   it('counts the folders of earlier adds and of added files, and of two folders dropped together', async () => {
-    const t = setup({ watch: manualWatch(), folderLimit: 6 });
+    const t = setup({ watch: manualWatch(), folderLimit: 4 });
     await t.manager.start();
     expect(await t.manager.addFolder(tree(path.join(tmp, 'A'), 2))).toMatchObject({ added: 1 });
-    // A and its two: three. B and its two would make six; C and its one, then eight.
+    // A's two; B's two make four, the limit; C's one would make five.
     const r = await t.manager.addPaths([tree(path.join(tmp, 'B'), 2), tree(path.join(tmp, 'C'), 1)]);
     expect(r).toMatchObject({ added: 1, skipped: [{ name: 'C', code: 'too-large' }] });
     expect(folderPaths(t).sort()).toEqual(['A', 'B']);
@@ -950,9 +953,9 @@ describe('folder limit and file types (owner decision 2026-11-16)', () => {
       put(path.join(tmp, 'Mail', 'two.md'), '# Two'),
       put(path.join(tmp, 'Mail', 'three.md'), '# Three'),
     ]);
-    // Desk and Mail are two; D and its one make four, E and its two would make five.
-    expect(await t2.manager.addFolder(tree(path.join(tmp, 'D'), 1))).toMatchObject({ added: 1 });
-    expect(await t2.manager.addFolder(tree(path.join(tmp, 'E'), 2))).toMatchObject({
+    // Desk and Mail are two; D's two make four, the limit; E's one would make five.
+    expect(await t2.manager.addFolder(tree(path.join(tmp, 'D'), 2))).toMatchObject({ added: 1 });
+    expect(await t2.manager.addFolder(tree(path.join(tmp, 'E'), 1))).toMatchObject({
       added: 0,
       skipped: [{ code: 'too-large' }],
     });
@@ -968,8 +971,8 @@ describe('folder limit and file types (owner decision 2026-11-16)', () => {
     const second = t.state().libraries.find((l) => l.name === 'Second')!.id;
     expect(await t.manager.addFolder(tree(path.join(tmp, 'B'), 3))).toMatchObject({ added: 1 });
     expect(folderPaths(t, second)).toEqual(['B']);
-    // Still per library: a second folder of four does not fit next to B.
-    expect(await t.manager.addFolder(tree(path.join(tmp, 'C'), 1))).toMatchObject({
+    // Still per library: C's three would make six next to B's three.
+    expect(await t.manager.addFolder(tree(path.join(tmp, 'C'), 3))).toMatchObject({
       added: 0,
       skipped: [{ code: 'too-large' }],
     });
