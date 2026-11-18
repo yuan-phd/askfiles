@@ -239,7 +239,9 @@ describe('selfCheck', () => {
       listWorkspaces: async () => (o.workspaces === undefined ? [] : o.workspaces),
       removeWorkspace: async (slug) => void removedWorkspaces.push(slug),
       log: (m) => log.push(m),
-      ...(o.now ? { now: () => o.now! } : {}),
+      // In the app the check starts long after the entries were written. Here the test writes them
+      // in the same millisecond, and an entry whose mtime is not before the start is kept as new.
+      now: () => o.now ?? Date.now() + 1000,
     });
     return { removed, log, removedWorkspaces };
   }
