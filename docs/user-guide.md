@@ -13,7 +13,7 @@ You can also drop files or folders anywhere on the window. AskFiles reads PDF, W
 
 AskFiles never looks inside folders that hold program files rather than documents: hidden folders (names starting with a dot), node_modules, __pycache__, Python environments, and Mac packages such as apps and photo libraries.
 
-A library can follow up to 3,000 folders. If a folder you add has more, AskFiles does not add it and asks you to add smaller folders inside it instead. If a library has more folders than it can follow, the top bar says that changes in some folders are not followed; click ↻ (Check for updates) to read them.
+A library can follow up to 1,000 subfolders. If a folder you add has more, AskFiles does not add it and asks you to add smaller folders inside it instead. If a library has more folders than it can follow, the top bar says that changes in some folders are not followed; click ↻ (Check for updates) to read them.
 
 While AskFiles reads new files, the top bar says Indexing and how many are left.
 
