@@ -21,7 +21,7 @@ import {
 } from './third-party-notices.mjs';
 import { RECORD_FILE, checkAgainstRecord, modulesOf, ollamaBinary, readGoBuildInfo } from './lib/ollama-go-modules.mjs';
 import { noticeText, windowsRuntimes } from './lib/windows-runtimes.mjs';
-import { FFMPEG, LIBVIPS_POSIX } from './lib/lgpl-sources.mjs';
+import { FFMPEG, LIBVIPS_POSIX, LIBVIPS_WIN32 } from './lib/lgpl-sources.mjs';
 
 const NOTICES = path.resolve(import.meta.dirname, '..', 'THIRD-PARTY-NOTICES');
 
@@ -212,16 +212,23 @@ describe('third-party notices', () => {
       (m) => m[1],
     );
     expect(posix.length + win32.length).toBeGreaterThan(0);
-    for (const v of posix) {
-      expect(LIBVIPS_POSIX[v], `libvips ${v}`).toBeTruthy();
-      expect(section).toContain(`${LIBVIPS_POSIX[v].repo}/tree/${LIBVIPS_POSIX[v].commit}`);
-      for (const lib of LIBVIPS_POSIX[v].libraries) expect(section).toContain(lib.url);
+    for (const [table, versions] of [
+      [LIBVIPS_POSIX, posix],
+      [LIBVIPS_WIN32, win32],
+    ]) {
+      for (const v of versions) {
+        expect(table[v], `libvips ${v}`).toBeTruthy();
+        for (const f of [...table[v].recipes, ...(table[v].patches ?? []), ...table[v].libraries])
+          expect(section).toContain(f.url);
+      }
     }
-    for (const v of win32) expect(section).toContain(`https://github.com/libvips/build-win64-mxe/tree/v${v}`);
     const electron = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '..', 'package.json'), 'utf8'))
       .devDependencies.electron;
     expect(section).toContain(`FFmpeg in Electron ${electron}`);
     expect(section).toContain(FFMPEG[electron].revision);
+    expect(section).toContain(
+      `https://chromium.googlesource.com/chromium/third_party/ffmpeg/+/${FFMPEG[electron].revision}`,
+    );
     expect(section).toContain('links them dynamically');
     // Every text the section refers to is in the file: LGPL 2.1 for FFmpeg, 3.0 for libvips, MPL for cairo.
     for (const id of ['LGPL-2.1', 'LGPL-3.0', 'MPL-2.0']) expect(text).toContain(standardTextHeading(id));

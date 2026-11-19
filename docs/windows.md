@@ -4,14 +4,11 @@ Phase 5 of docs/plan.md. Windows 10 and 11, x64. Built and smoke tested on the G
 
 ## Install
 
-Two downloads, the same app:
+One download, the installer **AskFiles-<version>-x64-setup.exe**. Double-click it. It first shows the license terms (AskFiles' Apache License 2.0 and the terms of the NVIDIA and Microsoft files it includes; docs/licenses.md, Windows installer license page); click **I Agree** to install, or Cancel. Then it installs for the current user only, into `%LOCALAPPDATA%\Programs\AskFiles`, without an administrator password or a UAC prompt, adds AskFiles to the Start menu and the desktop, and opens AskFiles when it is done. To remove it: Settings > Apps > Installed apps > AskFiles > Uninstall.
 
-- **AskFiles-<version>-x64-setup.exe**, the installer. Double-click it. It installs for the current user only, into `%LOCALAPPDATA%\Programs\AskFiles`, without an administrator password or a UAC prompt, adds AskFiles to the Start menu and the desktop, and opens AskFiles when it is done. To remove it: Settings > Apps > Installed apps > AskFiles > Uninstall.
-- **AskFiles-<version>-x64-portable.zip**, for people who cannot run installers. Right-click > Extract All to any folder, then open `AskFiles.exe` in it. Nothing is added to the Start menu. The portable copy keeps its library and models in the same place as the installed app (Data locations below), so the two share one library.
+There is no portable zip (since 2026-11-19): AskFiles is shared only as the installer, whose license page is where users accept the terms of the NVIDIA and Microsoft files it includes (docs/licenses.md, Windows installer license page).
 
 The download is large (about 1.2 to 1.6 GB, the job summary of each workflow run gives the exact size) because it carries the search engine, the model engine with its NVIDIA runtime and the reading tools. Models are downloaded on the first launch, a few more gigabytes depending on the machine's memory.
-
-Silent install, for scripts and IT: `AskFiles-<version>-x64-setup.exe /S`. The smoke job installs this way.
 
 ## SmartScreen
 
@@ -38,7 +35,7 @@ Memory tier on Windows: Windows reports the memory left after the firmware and t
 
 | What | Where |
 | --- | --- |
-| The app | `%LOCALAPPDATA%\Programs\AskFiles` (installer), or the folder the zip was extracted to |
+| The app | `%LOCALAPPDATA%\Programs\AskFiles` |
 | Library, index, search database, settings | `%LOCALAPPDATA%\AskFiles` (shell.json, libraries\, storage\, server\.env) |
 | Models | `%LOCALAPPDATA%\AskFiles\ollama` (Ollama's OLLAMA_MODELS), `%LOCALAPPDATA%\AskFiles\models\reranker` and the OCR language data in `%LOCALAPPDATA%\AskFiles\storage\models\tesseract` |
 | Logs | `%LOCALAPPDATA%\AskFiles\logs` (main.log, manager.log, ollama.log, collector.log, server.log, migrate.log) |
@@ -54,7 +51,7 @@ Uninstalling removes the app but keeps `%LOCALAPPDATA%\AskFiles`, so a reinstall
 
 1. `PACKAGE_TARGET=win-x64 bash scripts/build.sh`: patches, frontend, the production installs of server and collector on this machine (so every native module gets its Windows prebuild), `prisma generate` (the Windows query engine), then only the Windows Prisma engines are kept (query_engine-windows.dll.node, schema-engine-windows.exe) and scripts/prune.mjs prunes for win32-x64: ELF and Mach-O files go, and of the PE files only x64 ones and 32-bit executables stay (a 32-bit DLL cannot load into the 64-bit app). A last step, longpaths, removes files whose installed path would pass 260 characters when they are empty modules nothing in their package mentions: elevenlabs 0.5.0 (a text-to-speech client the server loads at start) ships type-only request files named after whole API routes, 272 and 277 characters under a 20 character user name.
 2. THIRD-PARTY-NOTICES regenerated from the pruned Windows trees and its test.
-3. electron-builder: the NSIS installer and the zip. The shell is packed in app.asar, which keeps its own paths short; server, collector and Ollama are plain folders in resources, as on the Mac (native modules and engines load from real paths).
+3. electron-builder: the NSIS installer. The shell is packed in app.asar, which keeps its own paths short; server, collector and Ollama are plain folders in resources, as on the Mac (native modules and engines load from real paths).
 
 Ollama: the workflow downloads ollama-windows-amd64.zip of the pinned release (v0.40.4, published 2026-10-12, the version the Mac build ships), checks its sha256 (from the release's asset digest), unpacks it into resources/ollama and runs `node scripts/lib/ollama-runtimes.mjs resources/ollama --keep cuda_v12`. The package holds ollama.exe, the CPU libraries (always kept), and the GPU runtimes cuda_v12 (1.1 GB), cuda_v13 (634 MB) and vulkan (43 MB); ROCm, the AMD runtime, is a separate download that the build never fetches. Only cuda_v12 is kept: CUDA 12 runs on older NVIDIA drivers and cards than CUDA 13, and two CUDA generations would bring the installer near NSIS's 2 GB limit. The kept set is OLLAMA_WINDOWS_KEEP in the workflow.
 
@@ -84,6 +81,6 @@ The handbook goes in through the app's own folder link, not through the server's
 - **AMD and Intel GPUs**: not used. ROCm is not shipped and the Vulkan runtime is removed, so these machines answer on the CPU, which is slower.
 - **Windows on ARM**: not built. The x64 app should run under emulation (Prism) on Windows 11 ARM; not checked. Planned as a LOCAL check in a Windows 11 ARM virtual machine on the Mac (docs/plan.md, phase 5).
 - **SmartScreen** warns on every new version until the app is signed (above).
-- **Path length**: the build checks the longest installed path for a 20 character user name. A user who installs into a deeper folder by hand (the portable zip) could still exceed 260 characters; the app itself reads its files through Node, which handles long paths, but Explorer and some tools do not.
+- **Path length**: the build checks the longest installed path for a 20 character user name. A user who copies the installed folder somewhere deeper by hand could still exceed 260 characters; the app itself reads its files through Node, which handles long paths, but Explorer and some tools do not.
 - **Force quit**: ending AskFiles.exe in Task Manager with End task on the main process leaves its children running (the same open point as on the Mac, docs/process-manager.md); End process tree, or the next sign-out, clears them.
 - **Not observed on a real machine**: the SmartScreen texts above follow Microsoft's current wording and were not seen on this build; the first launch, the window and the Start menu entry have only been run on the CI runner.

@@ -1,4 +1,4 @@
-# Builds the Windows x64 installer and portable zip on a Windows runner and smoke tests the
+# Builds the Windows x64 installer on a Windows runner and smoke tests the
 # installer (docs/plan.md phase 5, docs/windows.md). Unsigned; needs no secrets, so forks work the
 # same. The unit tests and lint run in the test job of .github/workflows/mac.yml (Linux).
 name: windows
@@ -119,7 +119,7 @@ jobs:
           du -sh resources/ollama resources/ollama/lib/ollama/*/
 
       # tsc, scripts/build.sh with PACKAGE_TARGET=win-x64, THIRD-PARTY-NOTICES from the pruned win32
-      # trees and its test, then electron-builder for the NSIS installer and the zip (package.json).
+      # trees and its test, then electron-builder for the NSIS installer (package.json).
       - name: Build and package
         run: bash .github/scripts/annotate-run.sh "Build and package" npm run package:win
         env:
@@ -133,16 +133,16 @@ jobs:
       # The release build is compiled without the test build's logging code (docs/test-build.md).
       - name: Check the release app has no test record
         run: bash .github/scripts/annotate-run.sh "Test record check" node scripts/check-test-record.mjs release/win-unpacked/resources | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: Measure the installer, the zip and the app
+      - name: Measure the installer and the app
         run: |
-          ls -l release/*.exe release/*.zip
+          ls -l release/*.exe
           du -sk release/win-unpacked release/win-unpacked/resources/*
           {
             echo '## Sizes'
             echo
             echo '| File | Bytes |'
             echo '| --- | --- |'
-            for f in release/*.exe release/*.zip; do echo "| $(basename "$f") | $(stat -c %s "$f") |"; done
+            for f in release/*.exe; do echo "| $(basename "$f") | $(stat -c %s "$f") |"; done
             echo "| win-unpacked (KB) | $(du -sk release/win-unpacked | cut -f1) |"
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
@@ -161,14 +161,6 @@ jobs:
           if-no-files-found: error
           retention-days: 14
           # Already compressed.
-          compression-level: 0
-      - name: Upload the portable zip
-        uses: actions/upload-artifact@v4
-        with:
-          name: askfiles-windows-portable-${{ github.sha }}
-          path: release/*-portable.zip
-          if-no-files-found: error
-          retention-days: 14
           compression-level: 0
 
       # The test build, AskFiles-Test-Setup.exe (docs/test-build.md): the same prepared tree with the

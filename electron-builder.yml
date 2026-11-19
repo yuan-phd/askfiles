@@ -126,21 +126,25 @@ win:
   target:
     - target: nsis
       arch: x64
-    - target: zip
-      arch: x64
   # No certificate: electron-builder skips signing. rcedit still writes the version and name into
   # AskFiles.exe.
   signAndEditExecutable: true
-  # The portable zip; nsis.artifactName below names the installer. Unpack anywhere and run
-  # AskFiles.exe; it keeps its data in %LOCALAPPDATA%\AskFiles like the installed app.
-  artifactName: AskFiles-${version}-x64-portable.${ext}
+  # Only the installer is built and shared: its license page is where users accept the NVIDIA and
+  # Microsoft terms, which a portable zip would skip (docs/licenses.md, Windows installer license
+  # page).
 
 # One-click per-user install into %LOCALAPPDATA%\Programs\AskFiles: no administrator prompt and
 # no UAC. /S installs silently (the smoke job). Data stays in %LOCALAPPDATA%\AskFiles and survives
 # an uninstall unless the user removes it (docs/windows.md).
+# The license page comes first: the user must click I Agree to install. It holds AskFiles' Apache
+# License and the end-user terms for the NVIDIA and Microsoft files in the package (written by
+# scripts/installer-license.mjs; docs/licenses.md, Windows installer license page). The one-click
+# installer shows it too, so the install stays one click after it, with no install-mode page;
+# an update over an existing install (--updated) skips it.
 nsis:
   oneClick: true
   perMachine: false
+  license: build/license.txt
   deleteAppDataOnUninstall: false
   artifactName: AskFiles-${version}-x64-setup.${ext}
   shortcutName: AskFiles

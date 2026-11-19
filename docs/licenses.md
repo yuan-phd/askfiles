@@ -44,7 +44,7 @@ Read on 2026-11-10 from ollama-windows-amd64.zip v0.40.4 (the archive the Window
 | lib/ollama/cuda_v12/cudart64_12.dll, cublas64_12.dll, cublasLt64_12.dll | NVIDIA CUDA 12.8: CUDA Runtime 12.8.57 (FileVersion 6,14,11,12080), cuBLAS and cuBLASLt 12.8.3 (product version in the DLLs; checked 2026-11-18) | NVIDIA CUDA Toolkit EULA (https://docs.nvidia.com/cuda/eula/index.html, v13.5 of January 26, 2026; the CUDA 12.8 version of January 7, 2025 at https://docs.nvidia.com/cuda/archive/12.8.0/eula/index.html has the same sections 1.1, 1.2 and 2.6). Attachment A (section 2.6) lists "CUDA Runtime: cudart.dll" and "CUDA BLAS Library: cublas.dll, cublasLt.dll" for Windows, "including certain variations of these files that have version number or architecture specific information" (its example: cudart64_90.dll). **UNCERTAIN:** that cudart64_12.dll, cublas64_12.dll and cublasLt64_12.dll are such variations is a reading of that clause; the files are not named. Section 1.1.2: the application adds material functionality, only the application accesses these files, and the terms it is distributed under are consistent with the EULA; section 1.2 forbids distributing the SDK as a stand-alone product, removing NVIDIA's notices, and using it in a way that would make it subject to an open source license; section 2.1 licenses it for applications for systems with NVIDIA GPUs. The only notice text the EULA asks for ("This software contains source code provided by NVIDIA Corporation.") applies to modified sample source code, not to these DLLs. | No text required. The notices name the files and versions, the EULA and its conditions, and state that the files are NVIDIA's, proprietary, and not covered by AskFiles' Apache License or any other open source license |
 | lib/ollama/cuda_v12/ggml-cuda.dll, the other ggml and llama DLLs, llama-server.exe, llama-quantize.exe, ollama.exe | Ollama, llama.cpp and ggml | MIT; the archive's license files (LLAMA_CPP_LICENSE, CUDNN_LICENSE.txt, CUTLASS_LICENSE.txt, NVTX3_LICENSE.txt and the others) stay in the folder | Listed by name |
 
-Open points for the Windows build, not resolved here: the installer shows no license page, so end users do not actively agree to the Microsoft runtime terms that the Visual Studio terms ask distributors to require; and that redistributing the CUDA files inside the separately licensed Ollama (MIT), in an app whose own code is under Apache-2.0, meets the NVIDIA EULA's conditions (section 1.1.2 item 5, section 1.2 item 5) needs a lawyer's confirmation (docs/plan.md, Before formal release). The file list above was checked on 2026-11-18 against the real ollama-windows-amd64.zip v0.40.4 (sha256 as in the Windows workflow), trimmed with --keep cuda_v12: every .dll and .exe is in a group, and the versions match.
+The Windows installer shows these terms on a license page the user must accept before installing (Windows installer license page, below). The CUDA files stay bundled for the current, non-commercial use; each NVIDIA condition and how it is met, and the accepted risk about the _12 file names, are in docs/tickets/windows-cuda-terms.md (resolved for the current use, to reopen if the use becomes commercial or wide). The file list above was checked on 2026-11-18 against the real ollama-windows-amd64.zip v0.40.4 (sha256 as in the Windows workflow), trimmed with --keep cuda_v12: every .dll and .exe is in a group, and the versions match.
 
 ### Windows runtime license texts
 
@@ -1164,6 +1164,86 @@ DEALINGS IN THE SOFTWARE.
 </details>
 
 
+## Windows installer license page
+
+Since 2026-11-19 (branch local/release-compliance) the NSIS installer shows a license page first. The user must click I Agree to install; Cancel ends the installer. The text is build/license.txt, written by scripts/installer-license.mjs (scripts/installer-license.test.mjs checks that the committed file matches):
+
+1. AskFiles: NOTICE and the Apache License 2.0 (LICENSE), in full.
+2. The NVIDIA CUDA files: what they are, that they are NVIDIA's and proprietary and not covered by the Apache License or any open source license, and the user's obligations, consistent with the NVIDIA CUDA Toolkit EULA (docs/tickets/windows-cuda-terms.md).
+3. The Microsoft Visual C++ runtime files: the Microsoft Visual C++ 2015 - 2022 Runtime license terms, in full (scripts/notices/msvc-runtime-LICENSE.txt).
+
+Before part 1, the page also says: "AskFiles may be passed on only unmodified and together with these terms." (since 2026-11-19).
+
+What the terms ask of end users, read on 2026-11-19 (not legal advice):
+
+- **Microsoft, Visual Studio 2022 license terms, section 4, Distributable Code.** Read on 2026-11-19 from Visual-Studio-2022-Community-License-EN.docx (MICROSOFT SOFTWARE LICENSE TERMS, MICROSOFT VISUAL STUDIO COMMUNITY 2022, EULAID: VS_Comm_2022_ENU.1033), downloaded by the owner from https://visualstudio.microsoft.com/license-terms/vs2022-ga-community/. Verbatim; Word's automatic list numbering is not part of the text, and typographic quotes are shown as straight quotes:
+
+  > DISTRIBUTABLE CODE. The software contains code that you may distribute in applications you develop as described in this Section. For purposes of this Section 4, the term "distribution" also means deployment of your applications for third parties to access over the Internet.
+  >
+  > Right to Use and Distribute. The code and text files listed below are "Distributable Code".
+  >
+  > Distributable List. You may copy and distribute the object code form of code listed on the Distributable List located at https://aka.ms/vs/17/redistribution.
+  >
+  > Sample Code, Templates and Styles. You may copy, modify and distribute the source and object code form of code marked as "sample", "template", "simple styles" and "sketch styles".
+  >
+  > Third Party Distribution. You may permit distributors of your applications to copy and distribute the Distributable Code as part of those applications.
+  >
+  > Distribution Requirements. For any Distributable Code you distribute, you must:
+  >
+  > add significant primary functionality to it in your applications; and
+  >
+  > require distributors and external end users to agree to terms that protect the Distributable Code at least as much as this agreement.
+  >
+  > Distribution Restrictions. You may not:
+  >
+  > distribute components or runtimes that are marked "Preview", "Pre-release" or "Beta";
+  >
+  > use Microsoft's trademarks in your applications' names or in a way that suggests your applications come from or are endorsed by Microsoft; or
+  >
+  > modify or distribute the source code of any Distributable Code so that any part of it becomes subject to an Excluded License. An "Excluded License" is one that requires, as a condition of use, modification or distribution of code, that (i) it be disclosed or distributed in source code form; or (ii) others have the right to modify it.
+
+  This version of the terms has no indemnity requirement. How AskFiles meets each item:
+
+  | Item | Met? | How |
+  | --- | --- | --- |
+  | Distributable List | Yes, as recorded | The ten runtime DLLs are the Visual C++ runtime in VC\redist, which the list (https://aka.ms/vs/17/redistribution) allows in object code, unmodified (Windows build table above, recorded 2026-11-10; the list was not read again on 2026-11-19). They ship as built, inside Ollama's cuda_v12 folder. |
+  | Third Party Distribution | Yes | AskFiles has no distributors; the author shares the installer directly. Anyone who passes it on has accepted the license page, which says AskFiles may be passed on only unmodified and with its terms. |
+  | Requirement: add significant primary functionality | Yes | The DLLs are only the C++ runtime that Ollama's CUDA libraries need; AskFiles is a document question-and-answer app. |
+  | Requirement: distributors and external end users agree to terms that protect the Distributable Code at least as much as this agreement | Yes for the installer, the only package shared; **not met for a silent install** (used only by the CI smoke job) | The license page shows, and the user must accept (I Agree), the Microsoft Visual C++ 2015 - 2022 Runtime license terms in full (build/license.txt, part 3). Compared with the Visual Studio 2022 terms on 2026-11-19, they carry the same restrictions on the software (SCOPE OF LICENSE: work around technical limitations; reverse engineer, decompile or disassemble; remove, minimize, block or modify Microsoft's notices; use against the law; share, publish, rent or lease; provide as a stand-alone offering or combine with an application for others to use, or transfer), the same export restrictions, the same disclaimer of warranty and the same limitation on damages (US $5.00), differing only in wording. Gaps: see below. |
+  | Restriction: nothing marked Preview, Pre-release or Beta | Yes, as far as checked | The DLLs are runtime 14.44.35211.0 (FileVersion), the release toolset of Visual Studio 2022; no Preview, Pre-release or Beta marking was recorded. Their file properties were not read again on 2026-11-19. |
+  | Restriction: no Microsoft trademarks in the name, no suggested endorsement | Yes | The app is named AskFiles; neither the app, the installer nor the docs suggest Microsoft endorsement. The license page names Microsoft only as the licensor of its runtime files. |
+  | Restriction: no Excluded License | Yes | No source code of the Distributable Code is modified or distributed. The installer and THIRD-PARTY-NOTICES place the runtime under Microsoft's terms; the Apache License covers only AskFiles' own code. |
+
+  How the earlier gaps were closed (2026-11-19, owner):
+
+  - **The portable zip** had no installer page, so its users accepted nothing. The zip target is gone; only the installer is built and shared (electron-builder.yml, docs/windows.md).
+  - **Silent install (`/S`)** skips the page. It stays only for the CI smoke job, which installs on a throwaway runner; docs/windows.md no longer offers it to users. An installer still accepts /S on the command line, so someone who knows NSIS can skip the page; that is accepted.
+  - **A friend who passes the installer on** has accepted the license page, which now says that AskFiles may be passed on only unmodified and together with these terms; whoever installs from that copy sees and accepts the page too.
+
+  **Accepted uncertainty: the Visual Studio edition Ollama used is unknown.** The ten runtime DLLs were built into and first distributed by Ollama's Windows release; which Visual Studio 2022 edition (Community, Professional, Enterprise or Build Tools) Ollama's build used is not stated anywhere checked. The Distributable Code section above is the Community edition's; that the other editions' terms ask the same was not checked. Accepted by the owner for the current non-commercial use (2026-11-19); revisit if the use changes.
+- **NVIDIA CUDA Toolkit EULA** (v13.5, January 26, 2026), section 1.1.2 item 5: "The terms under which you distribute your application must be consistent with the terms of this Agreement, including (without limitation) terms relating to the license grant and license restrictions and protection of NVIDIA's intellectual property rights. Additionally, you agree that you will protect the privacy, security and legal rights of your application users." Item 6: "You agree to notify NVIDIA in writing of any known or suspected distribution or use of the SDK not in compliance with the requirements of this Agreement, and to enforce the terms of your agreements with respect to distributed SDK." The EULA requires no notice text for these files (item 3 applies to modified sample source code only). Every condition and how it is met: docs/tickets/windows-cuda-terms.md.
+- Other conditions that apply: keep NVIDIA's and Microsoft's notices (the files ship unmodified; THIRD-PARTY-NOTICES names them); never distribute either set on its own (they ship only inside AskFiles).
+
+Limits:
+
+- A silent install (`/S`) skips the page. Only the CI smoke job uses it; it is not offered to users (above).
+- An update installed over an existing installation (--updated) skips the page, which the user accepted at the first install.
+- The page was compiled into an installer on the Mac (electron-builder 26.17.0, makensis 3.0.4.1; the generated script inserts MUI_PAGE_LICENSE with build/license.txt before the install step) but has not been seen on Windows yet: the Windows workflow builds the real installer on the pull request.
+
+## Mac build: nothing to accept
+
+Checked 2026-11-19 against the packaged app (release/mac-arm64/AskFiles.app): it contains no file whose terms ask end users to accept a license. Ollama's macOS build carries no NVIDIA or Microsoft files; its own libraries (llama.cpp, ggml, MLX) are open source, with their license files in the ollama folder. The notices it needs are already there: LICENSE and NOTICE on the About page, THIRD-PARTY-NOTICES (every package with its license text, and the source of the LGPL libraries), LICENSE.electron.txt and LICENSES.chromium.html from Electron, AnythingLLM's license (Resources/licenses), and the license files in the ollama folder (Ollama's own MIT license, which its release archive lacks, is in THIRD-PARTY-NOTICES). The LGPL libraries (libvips-cpp.42.dylib, libffmpeg.dylib) are separate shared libraries a user can replace, and THIRD-PARTY-NOTICES says where their source is (below). The DMG therefore shows no license.
+
+## Where the LGPL sources are
+
+The section "Source code of the LGPL libraries" (below, and in THIRD-PARTY-NOTICES) points to the upstream locations the builds got their files from, each at an exact version, tag or pinned commit, never a moving branch: for both libvips builds (8.14.5 and 8.15.3) on both platforms, the source archive of every LGPL library and of cairo, the patches sharp-libvips build/lin.sh applies, and the build recipes (sharp-libvips at both commits; for Windows, build-win64-mxe at both tags and MXE at the revisions they pin, listed library by library); and Chromium's FFmpeg at the revision chromium/src DEPS pins at 152.0.7977.169. lin.sh at v8.14.5 reads one patch from build-win64-mxe master; the pointer pins the last commit that changed it before the build (eb98ddf510, 2023-06-22), the same file as at tag v8.14.5.
+
+Verification, 2026-11-19: each library archive matched the sha256 in the build recipes (MXE and build-win64-mxe), and where the project publishes one, its own checksum file (GNOME .sha256sum, cairographics.org .sha256sum). Archives with no published checksum were checked against the git tree of their pinned commit (sharp-libvips, build-win64-mxe, MXE, FFmpeg, the cairo 1.17.8 tag archive). scripts/lib/lgpl-sources.test.mjs checks that every pointer names a version or a commit and none a branch.
+
+AskFiles keeps no copy of these sources (no mirror release). Not needed for the current non-commercial use (owner, 2026-11-19); the pointers depend on the upstream servers staying up. Revisit if the use changes (docs/plan.md, License and release items).
+
+A dependency update that brings another libvips or Electron fails the notices step (--strict) until scripts/lib/lgpl-sources.mjs has its entry.
+
 ## Notes on the packages outside the allowed list
 
 Read by hand; the tables below the marker are the script's output.
@@ -1196,13 +1276,15 @@ You may replace these shared libraries with your own builds, modified or not, fo
 source below. On macOS, changing a file inside the app invalidates its code signature; sign the app
 again (for example ad hoc: codesign --force --deep --sign - AskFiles.app).
 The license texts are under "License texts" below: LGPL-2.1, LGPL-3.0 (with the GPL-3.0 text it
-builds on) and MPL-2.0. The complete source code, at the versions shipped, is at these locations:
+builds on) and MPL-2.0. The complete source code, at the versions shipped, with the build scripts
+and patches used, is at these locations, each at a fixed version, tag or commit:
 
 - libvips 8.14.5 and the libraries built into it
   Shipped in: sharp@0.32.6 (upstream collector), sharp@0.32.6 (upstream server)
-  Built by https://github.com/lovell/sharp-libvips at commit e3585e7e2de7c0a9f0fe81c2bd9a559bebc65f87 (tag v8.14.5):
-  https://github.com/lovell/sharp-libvips/tree/e3585e7e2de7c0a9f0fe81c2bd9a559bebc65f87
-  Its build/lin.sh downloads each source below and applies the patches it names.
+  Built by sharp-libvips build/lin.sh, which downloads each source below and applies the patches named:
+  - lovell/sharp-libvips at commit e3585e7e2de7c0a9f0fe81c2bd9a559bebc65f87 (tag v8.14.5): https://github.com/lovell/sharp-libvips/tree/e3585e7e2de7c0a9f0fe81c2bd9a559bebc65f87
+  - patch to GLib: https://gist.github.com/kleisauke/284d685efa00908da99ea6afbaaf39ae/raw/e826724a837825226057347b75567059dabc85d4/glib-without-gregex.patch
+  - patch to libvips: https://raw.githubusercontent.com/libvips/build-win64-mxe/eb98ddf510/build/patches/vips-8-pr-3476.patch
   - libvips 8.14.5 (LGPL-3.0): https://github.com/libvips/libvips/releases/download/v8.14.5/vips-8.14.5.tar.xz
   - GLib 2.78.0 (LGPL-3.0): https://download.gnome.org/sources/glib/2.78/glib-2.78.0.tar.xz
   - FriBidi 1.0.13 (LGPL-3.0): https://github.com/fribidi/fribidi/releases/download/v1.0.13/fribidi-1.0.13.tar.xz
@@ -1215,9 +1297,11 @@ builds on) and MPL-2.0. The complete source code, at the versions shipped, is at
   - cairo 1.17.8 (MPL-2.0): https://gitlab.freedesktop.org/cairo/cairo/-/archive/1.17.8/cairo-1.17.8.tar.bz2
 - libvips 8.15.3 and the libraries built into it
   Shipped in: @img/sharp-libvips-darwin-arm64@1.0.4 (upstream collector)
-  Built by https://github.com/lovell/sharp-libvips at commit cb57c8e09460fa0b5c550806b667a2dfc3f7480b (tag v8.15.3):
-  https://github.com/lovell/sharp-libvips/tree/cb57c8e09460fa0b5c550806b667a2dfc3f7480b
-  Its build/lin.sh downloads each source below and applies the patches it names.
+  Built by sharp-libvips build/lin.sh, which downloads each source below and applies the patches named:
+  - lovell/sharp-libvips at commit cb57c8e09460fa0b5c550806b667a2dfc3f7480b (tag v8.15.3): https://github.com/lovell/sharp-libvips/tree/cb57c8e09460fa0b5c550806b667a2dfc3f7480b
+  - patch to GLib: https://gist.github.com/kleisauke/284d685efa00908da99ea6afbaaf39ae/raw/36e32c79e7962c5ea96cbb3f9c629e9145253e30/glib-without-gregex.patch
+  - patch to libexif: https://github.com/lovell/libexif/commit/db84aefa1deb103604c5860dd6486b1dd3af676b.patch
+  - patch to libvips: https://github.com/libvips/build-win64-mxe/raw/v8.15.3/build/patches/vips-8-heifsave-disable-hbr-support.patch
   - libvips 8.15.3 (LGPL-3.0): https://github.com/libvips/libvips/releases/download/v8.15.3/vips-8.15.3.tar.xz
   - GLib 2.81.1 (LGPL-3.0): https://download.gnome.org/sources/glib/2.81/glib-2.81.1.tar.xz
   - FriBidi 1.0.15 (LGPL-3.0): https://github.com/fribidi/fribidi/releases/download/v1.0.15/fribidi-1.0.15.tar.xz

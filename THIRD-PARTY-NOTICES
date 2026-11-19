@@ -1344,13 +1344,15 @@ You may replace these shared libraries with your own builds, modified or not, fo
 source below. On macOS, changing a file inside the app invalidates its code signature; sign the app
 again (for example ad hoc: codesign --force --deep --sign - AskFiles.app).
 The license texts are under "License texts" below: LGPL-2.1, LGPL-3.0 (with the GPL-3.0 text it
-builds on) and MPL-2.0. The complete source code, at the versions shipped, is at these locations:
+builds on) and MPL-2.0. The complete source code, at the versions shipped, with the build scripts
+and patches used, is at these locations, each at a fixed version, tag or commit:
 
 - libvips 8.14.5 and the libraries built into it
   Shipped in: sharp@0.32.6 (upstream collector), sharp@0.32.6 (upstream server)
-  Built by https://github.com/lovell/sharp-libvips at commit e3585e7e2de7c0a9f0fe81c2bd9a559bebc65f87 (tag v8.14.5):
-  https://github.com/lovell/sharp-libvips/tree/e3585e7e2de7c0a9f0fe81c2bd9a559bebc65f87
-  Its build/lin.sh downloads each source below and applies the patches it names.
+  Built by sharp-libvips build/lin.sh, which downloads each source below and applies the patches named:
+  - lovell/sharp-libvips at commit e3585e7e2de7c0a9f0fe81c2bd9a559bebc65f87 (tag v8.14.5): https://github.com/lovell/sharp-libvips/tree/e3585e7e2de7c0a9f0fe81c2bd9a559bebc65f87
+  - patch to GLib: https://gist.github.com/kleisauke/284d685efa00908da99ea6afbaaf39ae/raw/e826724a837825226057347b75567059dabc85d4/glib-without-gregex.patch
+  - patch to libvips: https://raw.githubusercontent.com/libvips/build-win64-mxe/eb98ddf510/build/patches/vips-8-pr-3476.patch
   - libvips 8.14.5 (LGPL-3.0): https://github.com/libvips/libvips/releases/download/v8.14.5/vips-8.14.5.tar.xz
   - GLib 2.78.0 (LGPL-3.0): https://download.gnome.org/sources/glib/2.78/glib-2.78.0.tar.xz
   - FriBidi 1.0.13 (LGPL-3.0): https://github.com/fribidi/fribidi/releases/download/v1.0.13/fribidi-1.0.13.tar.xz
@@ -1363,9 +1365,11 @@ builds on) and MPL-2.0. The complete source code, at the versions shipped, is at
   - cairo 1.17.8 (MPL-2.0): https://gitlab.freedesktop.org/cairo/cairo/-/archive/1.17.8/cairo-1.17.8.tar.bz2
 - libvips 8.15.3 and the libraries built into it
   Shipped in: @img/sharp-libvips-darwin-arm64@1.0.4 (upstream collector)
-  Built by https://github.com/lovell/sharp-libvips at commit cb57c8e09460fa0b5c550806b667a2dfc3f7480b (tag v8.15.3):
-  https://github.com/lovell/sharp-libvips/tree/cb57c8e09460fa0b5c550806b667a2dfc3f7480b
-  Its build/lin.sh downloads each source below and applies the patches it names.
+  Built by sharp-libvips build/lin.sh, which downloads each source below and applies the patches named:
+  - lovell/sharp-libvips at commit cb57c8e09460fa0b5c550806b667a2dfc3f7480b (tag v8.15.3): https://github.com/lovell/sharp-libvips/tree/cb57c8e09460fa0b5c550806b667a2dfc3f7480b
+  - patch to GLib: https://gist.github.com/kleisauke/284d685efa00908da99ea6afbaaf39ae/raw/36e32c79e7962c5ea96cbb3f9c629e9145253e30/glib-without-gregex.patch
+  - patch to libexif: https://github.com/lovell/libexif/commit/db84aefa1deb103604c5860dd6486b1dd3af676b.patch
+  - patch to libvips: https://github.com/libvips/build-win64-mxe/raw/v8.15.3/build/patches/vips-8-heifsave-disable-hbr-support.patch
   - libvips 8.15.3 (LGPL-3.0): https://github.com/libvips/libvips/releases/download/v8.15.3/vips-8.15.3.tar.xz
   - GLib 2.81.1 (LGPL-3.0): https://download.gnome.org/sources/glib/2.81/glib-2.81.1.tar.xz
   - FriBidi 1.0.15 (LGPL-3.0): https://github.com/fribidi/fribidi/releases/download/v1.0.15/fribidi-1.0.15.tar.xz

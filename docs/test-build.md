@@ -8,7 +8,7 @@ Release plan step 2 (docs/plan.md, Release plan): a build for user testing that 
 | --- | --- | --- |
 | Name | AskFiles | AskFiles Test |
 | macOS file | AskFiles-<version>-arm64.dmg, AskFiles.app | AskFiles Test.dmg, AskFiles Test.app |
-| Windows file | AskFiles-<version>-x64-setup.exe, portable zip | AskFiles-Test-Setup.exe (installer only) |
+| Windows file | AskFiles-<version>-x64-setup.exe | AskFiles-Test-Setup.exe |
 | Window title | AskFiles | AskFiles (test build) |
 | About page | version and credits | plus one line: Test build. It records your questions and actions on this computer only; see Settings, Test record. |
 | Logging code, export button, notice | not compiled, not packaged | compiled in |
@@ -38,7 +38,7 @@ CI builds both flavours on every push and pull request (.github/workflows/mac.ym
 | --- | --- |
 | askfiles-dmg-<sha> | release DMG |
 | askfiles-test-dmg-<sha> | AskFiles Test.dmg |
-| askfiles-windows-installer-<sha>, askfiles-windows-portable-<sha> | release installer and zip |
+| askfiles-windows-installer-<sha> | release installer |
 | askfiles-test-windows-installer-<sha> | AskFiles-Test-Setup.exe |
 
 After packaging the release app, CI runs `node scripts/check-test-record.mjs <Resources>` on it; the step fails if app.asar holds any file of dist/main/test-record or src/renderer/test-record, or any file containing the module's marker (askfiles-test-record-module) or its channel prefix. On the test build it runs the same check with `--expect present`, which shows the check can see the module. The smoke tests run on the release builds only.
