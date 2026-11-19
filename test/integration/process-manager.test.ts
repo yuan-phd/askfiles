@@ -1,7 +1,7 @@
 // Boots the real Ollama, collector and server through the process manager with every patch in
 // patches/ applied. Needs RUN_INTEGRATION=1, an ollama binary on PATH (or OLLAMA_BIN), qwen3:0.6b
 // pulled, and the upstream packages installed (scripts/install_pkgs.sh). Prints what it checks,
-// including the ss output used for the bind check.
+// including the listening sockets (ss on Linux, lsof on macOS) used for the bind check.
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -66,7 +66,9 @@ interface Listener {
   line: string;
 }
 
+/** Listening TCP sockets with their owner pids: ss on Linux, lsof on macOS, which has no ss. */
 function listeners(): Listener[] {
+  if (process.platform === 'darwin') return lsofListeners();
   const out = execFileSync('ss', ['-ltnpH'], { encoding: 'utf8' });
   return out
     .split('\n')
@@ -76,6 +78,30 @@ function listeners(): Listener[] {
       const pids = [...line.matchAll(/pid=(\d+)/g)].map((m) => Number(m[1]));
       return { local: cols[3]!, pids, line: line.trim() };
     });
+}
+
+/**
+ * lsof -F output: a p<pid> line, then one n<address>:<port> line per listening socket of that
+ * process (127.0.0.1:5000, *:5000 for every address, [::1]:5000), the same form ss prints.
+ */
+function lsofListeners(): Listener[] {
+  let out: string;
+  try {
+    out = execFileSync('lsof', ['-nP', '-iTCP', '-sTCP:LISTEN', '-Fpn'], { encoding: 'utf8' });
+  } catch (e) {
+    // Exit status 1 with no output: nothing listens.
+    out = (e as { stdout?: string }).stdout ?? '';
+  }
+  const found: Listener[] = [];
+  let pid = 0;
+  for (const line of out.split('\n')) {
+    if (line.startsWith('p')) pid = Number(line.slice(1));
+    else if (line.startsWith('n')) {
+      const local = line.slice(1);
+      found.push({ local, pids: [pid], line: `${local} pid=${pid}` });
+    }
+  }
+  return found;
 }
 
 function prismaGenerate(): void {
@@ -177,7 +203,7 @@ describe.skipIf(reason !== null)('process manager with real ollama, collector an
     const groups = Object.values(status.processes).map((p) => p.pid!);
     const members = groupMembers(groups);
     const ours = listeners().filter((l) => l.pids.some((p) => members.includes(p)));
-    log(`ss -ltnp, sockets owned by the three process groups:\n${ours.map((l) => l.line).join('\n')}`);
+    log(`listening sockets (ss or lsof) owned by the three process groups:\n${ours.map((l) => l.line).join('\n')}`);
     expect(ours.length).toBeGreaterThan(0);
     for (const l of ours) expect(l.local).toMatch(/^127\.0\.0\.1:\d+$/);
     const locals = ours.map((l) => l.local);
