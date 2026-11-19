@@ -183,6 +183,8 @@ export function registerBridge(ipc: IpcMainLike, h: BridgeHandlers): void {
         }
         case 'settingsSet':
           return h.settingsSet(args[0] && typeof args[0] === 'object' ? args[0] : {});
+        case 'librariesAnswerStart':
+          return h.librariesAnswerStart(args[0] === 'now' ? 'now' : 'later');
         default:
           return (h[name] as () => unknown)();
       }

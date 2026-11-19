@@ -126,6 +126,7 @@ import {
   sourcesCountText,
 } from '../shared/sources.js';
 import { createGraphPage } from './graph.js';
+import { notCheckedText } from '../shared/messages.js';
 
 const bridge = window.askfiles?.browse;
 const librariesBridge = window.askfiles?.libraries;
@@ -353,6 +354,10 @@ export function createBrowseView(root, { history: shared = null } = {}) {
     if (s?.error) {
       kind = 'error';
       text = 'Folder not available';
+    } else if (s?.startChoice) {
+      // Open with its index only after a start that did not finish, as the top bar says.
+      kind = 'not-checked';
+      text = notCheckedText();
     } else if (s && (s.state === 'working' || s.state === 'starting')) {
       kind = 'indexing';
       const pending = Number(s.pending) || 0;

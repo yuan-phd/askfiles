@@ -331,7 +331,10 @@ describe('preload bridge', () => {
     await a.libraries.removeSource('folder-1');
     await a.libraries.reindex();
     await a.libraries.checkUpdates();
+    await a.libraries.answerStart('now');
+    expect(t.calls).toContainEqual(['librariesAnswerStart', 'now']);
     await a.libraries.answerStart('later');
+    expect(t.calls).toContainEqual(['librariesAnswerStart', 'later']);
     await a.settings.get();
     await a.settings.set({ answerScope: 'strict' });
     await a.developer.info();
