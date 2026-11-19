@@ -19,6 +19,7 @@ describe('Windows installer license page', () => {
     for (const f of ['cudart64_12.dll', 'cublas64_12.dll', 'cublasLt64_12.dll']) expect(text).toContain(f);
     expect(text).toContain('https://docs.nvidia.com/cuda/eula/index.html');
     expect(text).toMatch(/not\s+covered by the Apache License/);
+    expect(text).toContain('AskFiles may be passed on only unmodified and together with these terms.');
   });
 
   it('is shown by the installer, which keeps its one-click per-user install', () => {

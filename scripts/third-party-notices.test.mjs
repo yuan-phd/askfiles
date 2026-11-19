@@ -21,7 +21,7 @@ import {
 } from './third-party-notices.mjs';
 import { RECORD_FILE, checkAgainstRecord, modulesOf, ollamaBinary, readGoBuildInfo } from './lib/ollama-go-modules.mjs';
 import { noticeText, windowsRuntimes } from './lib/windows-runtimes.mjs';
-import { FFMPEG, LIBVIPS_POSIX, LIBVIPS_WIN32, MIRROR, MIRROR_PAGE } from './lib/lgpl-sources.mjs';
+import { FFMPEG, LIBVIPS_POSIX, LIBVIPS_WIN32 } from './lib/lgpl-sources.mjs';
 
 const NOTICES = path.resolve(import.meta.dirname, '..', 'THIRD-PARTY-NOTICES');
 
@@ -219,15 +219,16 @@ describe('third-party notices', () => {
       for (const v of versions) {
         expect(table[v], `libvips ${v}`).toBeTruthy();
         for (const f of [...table[v].recipes, ...(table[v].patches ?? []), ...table[v].libraries])
-          expect(section).toContain(`${MIRROR}/${f.file}`);
+          expect(section).toContain(f.url);
       }
     }
-    expect(section).toContain(MIRROR_PAGE);
     const electron = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '..', 'package.json'), 'utf8'))
       .devDependencies.electron;
     expect(section).toContain(`FFmpeg in Electron ${electron}`);
     expect(section).toContain(FFMPEG[electron].revision);
-    expect(section).toContain(`${MIRROR}/${FFMPEG[electron].file}`);
+    expect(section).toContain(
+      `https://chromium.googlesource.com/chromium/third_party/ffmpeg/+/${FFMPEG[electron].revision}`,
+    );
     expect(section).toContain('links them dynamically');
     // Every text the section refers to is in the file: LGPL 2.1 for FFmpeg, 3.0 for libvips, MPL for cairo.
     for (const id of ['LGPL-2.1', 'LGPL-3.0', 'MPL-2.0']) expect(text).toContain(standardTextHeading(id));

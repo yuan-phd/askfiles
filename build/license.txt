@@ -11,6 +11,8 @@ AskFiles also includes open source software from others under their own licenses
 with their license texts and where to get the source code of the LGPL libraries, are in
 THIRD-PARTY-NOTICES, which the About page of AskFiles opens.
 
+AskFiles may be passed on only unmodified and together with these terms.
+
 ========================================================================
 PART 1. ASKFILES: APACHE LICENSE 2.0
 ========================================================================

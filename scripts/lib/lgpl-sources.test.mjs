@@ -2,16 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  FFMPEG,
-  LIBVIPS_POSIX,
-  LIBVIPS_WIN32,
-  MIRROR,
-  MIRROR_PAGE,
-  lgplSourceLines,
-  libvipsBuildsIn,
-  mirrorFiles,
-} from './lgpl-sources.mjs';
+import { FFMPEG, LIBVIPS_POSIX, LIBVIPS_WIN32, lgplSourceLines, libvipsBuildsIn } from './lgpl-sources.mjs';
 
 let root;
 beforeEach(() => {
@@ -54,7 +45,7 @@ describe('libvipsBuildsIn', () => {
 describe('lgplSourceLines', () => {
   const electron = Object.keys(FFMPEG)[0];
 
-  it('points every shipped LGPL library, patch, build script and FFmpeg to the mirror', () => {
+  it('points every shipped LGPL library, patch, build script and FFmpeg to its upstream source', () => {
     const { lines, errors } = lgplSourceLines(
       [
         { vips: '8.15.3', family: 'posix', versions: versionsOf('8.15.3'), carriers: ['x@1 (collector)'] },
@@ -65,18 +56,17 @@ describe('lgplSourceLines', () => {
     expect(errors).toEqual([]);
     const text = lines.join('\n');
     expect(text).toContain('Shipped in: x@1 (collector), y@1 (server)');
-    expect(text).toContain(MIRROR_PAGE);
     const entry = LIBVIPS_POSIX['8.15.3'];
-    for (const f of [...entry.recipes, ...entry.patches, ...entry.libraries])
-      expect(text).toContain(`${MIRROR}/${f.file}`);
-    expect(text).toContain(`${MIRROR}/${FFMPEG[electron].file}`);
-    expect(text).toContain(FFMPEG[electron].revision);
-    // No pointer depends on a third-party server any more.
-    const urls = text.match(/https?:\/\/\S+/g);
-    for (const u of urls) expect(u.startsWith(MIRROR) || u === MIRROR_PAGE, u).toBe(true);
+    for (const f of [...entry.recipes, ...entry.patches, ...entry.libraries]) expect(text).toContain(f.url);
+    expect(text).toContain(
+      `https://chromium.googlesource.com/chromium/third_party/ffmpeg/+/${FFMPEG[electron].revision}`,
+    );
+    expect(text).toContain('You may replace these shared libraries');
+    // No pointer goes through a copy kept by AskFiles.
+    expect(text).not.toMatch(/yuan-phd|lgpl-sources-1/);
   });
 
-  it('lists the sources, build-win64-mxe and MXE archives of Windows builds', () => {
+  it('lists the sources, build-win64-mxe and MXE trees of Windows builds', () => {
     for (const v of Object.keys(LIBVIPS_WIN32)) {
       const { lines, errors } = lgplSourceLines(
         [{ vips: v, family: 'win32', versions: versionsOf(v, LIBVIPS_WIN32), carriers: ['w@1'] }],
@@ -85,20 +75,24 @@ describe('lgplSourceLines', () => {
       expect(errors).toEqual([]);
       const text = lines.join('\n');
       expect(text).toContain(`- libvips ${v} for Windows and the libraries built into it`);
-      expect(text).toContain(`${MIRROR}/build-win64-mxe-v${v}.tar.gz`);
-      expect(text).toMatch(new RegExp(`${MIRROR}/mxe-[0-9a-f]{40}\\.tar\\.gz`));
-      for (const l of LIBVIPS_WIN32[v].libraries) expect(text).toContain(`${MIRROR}/${l.file}`);
+      expect(text).toContain(`https://github.com/libvips/build-win64-mxe/tree/v${v}`);
+      expect(text).toMatch(/https:\/\/github\.com\/mxe\/mxe\/tree\/[0-9a-f]{40}/);
+      for (const l of LIBVIPS_WIN32[v].libraries) expect(text).toContain(l.url);
     }
   });
 
-  it('names exactly the files of the release, whose sha256 are recorded in scripts/notices', () => {
-    const recorded = fs
-      .readFileSync(path.resolve(import.meta.dirname, '..', 'notices', 'lgpl-sources-1.sha256'), 'utf8')
-      .trim()
-      .split('\n')
-      .map((l) => l.split(/\s+/));
-    for (const [sha] of recorded) expect(sha).toMatch(/^[0-9a-f]{64}$/);
-    expect(mirrorFiles()).toEqual(recorded.map(([, f]) => f).sort());
+  it('pins every pointer to a version, tag or commit, never a moving branch', () => {
+    const urls = [];
+    for (const table of [LIBVIPS_POSIX, LIBVIPS_WIN32])
+      for (const b of Object.values(table))
+        for (const f of [...b.recipes, ...(b.patches ?? []), ...b.libraries]) urls.push(f.url);
+    expect(urls.length).toBeGreaterThan(0);
+    for (const u of urls) {
+      expect(u, u).toMatch(/^https:\/\//);
+      expect(u, u).not.toMatch(/\/(master|main|HEAD)\//);
+      // Every URL names an exact version or a commit hash.
+      expect(u, u).toMatch(/\d+\.\d+(\.\d+)?|[0-9a-f]{10,40}/);
+    }
   });
 
   it('fails for an unknown libvips or Electron version and for a library at another version', () => {

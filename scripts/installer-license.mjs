@@ -7,7 +7,9 @@
 // - terms for the NVIDIA CUDA files that are consistent with the NVIDIA CUDA Toolkit EULA, section
 //   1.1.2 item 5 (docs/tickets/windows-cuda-terms.md);
 // - the Microsoft Visual C++ runtime license terms, so end users agree to terms that protect the
-//   runtime at least as much as the Visual Studio 2022 terms ask (Distributable Code).
+//   runtime at least as much as the Visual Studio 2022 terms ask (Distributable Code);
+// - one line that AskFiles may be passed on only unmodified and with these terms, so anyone who
+//   passes the installer on has accepted terms too.
 // scripts/installer-license.test.mjs fails when the committed file differs from what this writes.
 //
 // Usage: node scripts/installer-license.mjs [out-file]
@@ -36,6 +38,8 @@ export function installerLicenseText() {
     'AskFiles also includes open source software from others under their own licenses. All of them,',
     'with their license texts and where to get the source code of the LGPL libraries, are in',
     'THIRD-PARTY-NOTICES, which the About page of AskFiles opens.',
+    '',
+    'AskFiles may be passed on only unmodified and together with these terms.',
     '',
     RULE,
     'PART 1. ASKFILES: APACHE LICENSE 2.0',

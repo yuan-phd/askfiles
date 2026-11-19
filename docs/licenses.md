@@ -1172,6 +1172,8 @@ Since 2026-11-19 (branch local/release-compliance) the NSIS installer shows a li
 2. The NVIDIA CUDA files: what they are, that they are NVIDIA's and proprietary and not covered by the Apache License or any open source license, and the user's obligations, consistent with the NVIDIA CUDA Toolkit EULA (docs/tickets/windows-cuda-terms.md).
 3. The Microsoft Visual C++ runtime files: the Microsoft Visual C++ 2015 - 2022 Runtime license terms, in full (scripts/notices/msvc-runtime-LICENSE.txt).
 
+Before part 1, the page also says: "AskFiles may be passed on only unmodified and together with these terms." (since 2026-11-19).
+
 What the terms ask of end users, read on 2026-11-19 (not legal advice):
 
 - **Microsoft, Visual Studio 2022 license terms, section 4, Distributable Code.** Read on 2026-11-19 from Visual-Studio-2022-Community-License-EN.docx (MICROSOFT SOFTWARE LICENSE TERMS, MICROSOFT VISUAL STUDIO COMMUNITY 2022, EULAID: VS_Comm_2022_ENU.1033), downloaded by the owner from https://visualstudio.microsoft.com/license-terms/vs2022-ga-community/. Verbatim; Word's automatic list numbering is not part of the text, and typographic quotes are shown as straight quotes:
@@ -1205,47 +1207,42 @@ What the terms ask of end users, read on 2026-11-19 (not legal advice):
   | Item | Met? | How |
   | --- | --- | --- |
   | Distributable List | Yes, as recorded | The ten runtime DLLs are the Visual C++ runtime in VC\redist, which the list (https://aka.ms/vs/17/redistribution) allows in object code, unmodified (Windows build table above, recorded 2026-11-10; the list was not read again on 2026-11-19). They ship as built, inside Ollama's cuda_v12 folder. |
-  | Third Party Distribution | Yes | AskFiles has no distributors; the author shares the builds directly. |
+  | Third Party Distribution | Yes | AskFiles has no distributors; the author shares the installer directly. Anyone who passes it on has accepted the license page, which says AskFiles may be passed on only unmodified and with its terms. |
   | Requirement: add significant primary functionality | Yes | The DLLs are only the C++ runtime that Ollama's CUDA libraries need; AskFiles is a document question-and-answer app. |
-  | Requirement: distributors and external end users agree to terms that protect the Distributable Code at least as much as this agreement | Yes for the installer; **not met for the portable zip, a silent install, or anyone who passes the installer on** | The license page shows, and the user must accept (I Agree), the Microsoft Visual C++ 2015 - 2022 Runtime license terms in full (build/license.txt, part 3). Compared with the Visual Studio 2022 terms on 2026-11-19, they carry the same restrictions on the software (SCOPE OF LICENSE: work around technical limitations; reverse engineer, decompile or disassemble; remove, minimize, block or modify Microsoft's notices; use against the law; share, publish, rent or lease; provide as a stand-alone offering or combine with an application for others to use, or transfer), the same export restrictions, the same disclaimer of warranty and the same limitation on damages (US $5.00), differing only in wording. Gaps: see below. |
+  | Requirement: distributors and external end users agree to terms that protect the Distributable Code at least as much as this agreement | Yes for the installer, the only package shared; **not met for a silent install** (used only by the CI smoke job) | The license page shows, and the user must accept (I Agree), the Microsoft Visual C++ 2015 - 2022 Runtime license terms in full (build/license.txt, part 3). Compared with the Visual Studio 2022 terms on 2026-11-19, they carry the same restrictions on the software (SCOPE OF LICENSE: work around technical limitations; reverse engineer, decompile or disassemble; remove, minimize, block or modify Microsoft's notices; use against the law; share, publish, rent or lease; provide as a stand-alone offering or combine with an application for others to use, or transfer), the same export restrictions, the same disclaimer of warranty and the same limitation on damages (US $5.00), differing only in wording. Gaps: see below. |
   | Restriction: nothing marked Preview, Pre-release or Beta | Yes, as far as checked | The DLLs are runtime 14.44.35211.0 (FileVersion), the release toolset of Visual Studio 2022; no Preview, Pre-release or Beta marking was recorded. Their file properties were not read again on 2026-11-19. |
   | Restriction: no Microsoft trademarks in the name, no suggested endorsement | Yes | The app is named AskFiles; neither the app, the installer nor the docs suggest Microsoft endorsement. The license page names Microsoft only as the licensor of its runtime files. |
   | Restriction: no Excluded License | Yes | No source code of the Distributable Code is modified or distributed. The installer and THIRD-PARTY-NOTICES place the runtime under Microsoft's terms; the Apache License covers only AskFiles' own code. |
 
-  Requirements AskFiles does not meet, for the record:
+  How the earlier gaps were closed (2026-11-19, owner):
 
-  - **The portable zip.** Its users accept nothing: it has no installer page. The terms ship with it (THIRD-PARTY-NOTICES on the About page), but the Distribution Requirements ask that external end users "agree to terms". To meet it: share only the installer, drop the zip target, or add a first-run acceptance to the app on Windows.
-  - **Silent install (`/S`).** The page is skipped, so the users agree to nothing. It meets the requirement only if whoever runs it has the users agree to the terms some other way. Used by the CI smoke job, and documented for scripts and IT (docs/windows.md).
-  - **A friend who passes the installer on** is a distributor who has agreed to nothing. Whoever installs from that copy still sees and accepts the page, so end users are covered; the distributor is not. AskFiles permits no distributors, but says so nowhere; the license page could add a line that the package may be shared only unmodified with its terms.
+  - **The portable zip** had no installer page, so its users accepted nothing. The zip target is gone; only the installer is built and shared (electron-builder.yml, docs/windows.md).
+  - **Silent install (`/S`)** skips the page. It stays only for the CI smoke job, which installs on a throwaway runner; docs/windows.md no longer offers it to users. An installer still accepts /S on the command line, so someone who knows NSIS can skip the page; that is accepted.
+  - **A friend who passes the installer on** has accepted the license page, which now says that AskFiles may be passed on only unmodified and together with these terms; whoever installs from that copy sees and accepts the page too.
 
-  Uncertain: the DLLs were built and first distributed by Ollama, whose Visual Studio edition is unknown. The Distributable Code section above is the Community edition's; that the Professional, Enterprise or Build Tools terms ask the same was not checked.
+  **Accepted uncertainty: the Visual Studio edition Ollama used is unknown.** The ten runtime DLLs were built into and first distributed by Ollama's Windows release; which Visual Studio 2022 edition (Community, Professional, Enterprise or Build Tools) Ollama's build used is not stated anywhere checked. The Distributable Code section above is the Community edition's; that the other editions' terms ask the same was not checked. Accepted by the owner for the current non-commercial use (2026-11-19); revisit if the use changes.
 - **NVIDIA CUDA Toolkit EULA** (v13.5, January 26, 2026), section 1.1.2 item 5: "The terms under which you distribute your application must be consistent with the terms of this Agreement, including (without limitation) terms relating to the license grant and license restrictions and protection of NVIDIA's intellectual property rights. Additionally, you agree that you will protect the privacy, security and legal rights of your application users." Item 6: "You agree to notify NVIDIA in writing of any known or suspected distribution or use of the SDK not in compliance with the requirements of this Agreement, and to enforce the terms of your agreements with respect to distributed SDK." The EULA requires no notice text for these files (item 3 applies to modified sample source code only). Every condition and how it is met: docs/tickets/windows-cuda-terms.md.
 - Other conditions that apply: keep NVIDIA's and Microsoft's notices (the files ship unmodified; THIRD-PARTY-NOTICES names them); never distribute either set on its own (they ship only inside AskFiles).
 
 Limits:
 
-- A silent install (`/S`, for scripts and IT; the smoke job) skips the page, so its users agree to nothing (above).
-- The portable zip has no installer and so no page. It ships the same terms (THIRD-PARTY-NOTICES on the About page), but nobody clicks I Agree, so it does not meet the Microsoft requirement that external end users "agree to terms" (above). To meet it: share the installer only, drop the zip target, or add a first-run acceptance to the app.
+- A silent install (`/S`) skips the page. Only the CI smoke job uses it; it is not offered to users (above).
 - An update installed over an existing installation (--updated) skips the page, which the user accepted at the first install.
 - The page was compiled into an installer on the Mac (electron-builder 26.17.0, makensis 3.0.4.1; the generated script inserts MUI_PAGE_LICENSE with build/license.txt before the install step) but has not been seen on Windows yet: the Windows workflow builds the real installer on the pull request.
 
 ## Mac build: nothing to accept
 
-Checked 2026-11-19 against the packaged app (release/mac-arm64/AskFiles.app): it contains no file whose terms ask end users to accept a license. Ollama's macOS build carries no NVIDIA or Microsoft files; its own libraries (llama.cpp, ggml, MLX) are open source, with their license files in the ollama folder. The notices it needs are already there: LICENSE and NOTICE on the About page, THIRD-PARTY-NOTICES (every package with its license text, and the source of the LGPL libraries), LICENSE.electron.txt and LICENSES.chromium.html from Electron, AnythingLLM's license (Resources/licenses), and the license files in the ollama folder (Ollama's own MIT license, which its release archive lacks, is in THIRD-PARTY-NOTICES). The LGPL libraries (libvips-cpp.42.dylib, libffmpeg.dylib) are separate shared libraries a user can replace, and their source is mirrored (below). The DMG therefore shows no license.
+Checked 2026-11-19 against the packaged app (release/mac-arm64/AskFiles.app): it contains no file whose terms ask end users to accept a license. Ollama's macOS build carries no NVIDIA or Microsoft files; its own libraries (llama.cpp, ggml, MLX) are open source, with their license files in the ollama folder. The notices it needs are already there: LICENSE and NOTICE on the About page, THIRD-PARTY-NOTICES (every package with its license text, and the source of the LGPL libraries), LICENSE.electron.txt and LICENSES.chromium.html from Electron, AnythingLLM's license (Resources/licenses), and the license files in the ollama folder (Ollama's own MIT license, which its release archive lacks, is in THIRD-PARTY-NOTICES). The LGPL libraries (libvips-cpp.42.dylib, libffmpeg.dylib) are separate shared libraries a user can replace, and THIRD-PARTY-NOTICES says where their source is (below). The DMG therefore shows no license.
 
-## LGPL source mirror
+## Where the LGPL sources are
 
-Since 2026-11-19 every file the section "Source code of the LGPL libraries" points to is a copy in the release lgpl-sources-1 of this repository (https://github.com/yuan-phd/askfiles/releases/tag/lgpl-sources-1), so the pointers depend on no third-party server, gist or moving branch. It holds, for both libvips builds (8.14.5 and 8.15.3) on both platforms and for Electron's FFmpeg:
+The section "Source code of the LGPL libraries" (below, and in THIRD-PARTY-NOTICES) points to the upstream locations the builds got their files from, each at an exact version, tag or pinned commit, never a moving branch: for both libvips builds (8.14.5 and 8.15.3) on both platforms, the source archive of every LGPL library and of cairo, the patches sharp-libvips build/lin.sh applies, and the build recipes (sharp-libvips at both commits; for Windows, build-win64-mxe at both tags and MXE at the revisions they pin, listed library by library); and Chromium's FFmpeg at the revision chromium/src DEPS pins at 152.0.7977.169. lin.sh at v8.14.5 reads one patch from build-win64-mxe master; the pointer pins the last commit that changed it before the build (eb98ddf510, 2023-06-22), the same file as at tag v8.14.5.
 
-- the source archive of every LGPL library (and cairo), exactly as the builds downloaded it; the mac and Windows builds of libvips 8.14.5 downloaded different archives of cairo 1.17.8, so both are there;
-- the patches sharp-libvips build/lin.sh downloads and applies (the mac builds). lin.sh at v8.14.5 reads one patch from build-win64-mxe master; the copy is master as of the build (2023-09-18), the same file as at tag v8.14.5, unchanged from 2023-06-22 to 2023-10-18;
-- the build recipes: sharp-libvips at both commits, build-win64-mxe at both tags, and MXE at the two revisions those tags pin, which hold the Windows patches;
-- Chromium's FFmpeg at revision 2b68d2babae73714846961fb0ee47e3b3d2e39a9, the revision chromium/src DEPS pins at 152.0.7977.169;
-- manifest.json (where each file came from, which build uses it, how it was verified) and SHA256SUMS.
+Verification, 2026-11-19: each library archive matched the sha256 in the build recipes (MXE and build-win64-mxe), and where the project publishes one, its own checksum file (GNOME .sha256sum, cairographics.org .sha256sum). Archives with no published checksum were checked against the git tree of their pinned commit (sharp-libvips, build-win64-mxe, MXE, FFmpeg, the cairo 1.17.8 tag archive). scripts/lib/lgpl-sources.test.mjs checks that every pointer names a version or a commit and none a branch.
 
-Verification, 2026-11-19: each library archive matched the sha256 in the build recipes (MXE and build-win64-mxe), and where the project publishes one, its own checksum file (GNOME .sha256sum, cairographics.org .sha256sum). Archives with no published checksum were checked against the git tree of their pinned commit (sharp-libvips, build-win64-mxe, MXE, FFmpeg, the cairo 1.17.8 tag archive). The three patches fetched from a gist or a commit URL have no published checksum; their sha256 is recorded. scripts/notices/lgpl-sources-1.sha256 is a copy of SHA256SUMS; scripts/lib/lgpl-sources.test.mjs checks that the notices name exactly those files. The copies are kept outside the repository in the owner's evaluation folder.
+AskFiles keeps no copy of these sources (no mirror release). Not needed for the current non-commercial use (owner, 2026-11-19); the pointers depend on the upstream servers staying up. Revisit if the use changes (docs/plan.md, License and release items).
 
-A dependency update that brings another libvips or Electron fails the notices step (--strict) until its files are in a new release (lgpl-sources-2) and scripts/lib/lgpl-sources.mjs points to it.
+A dependency update that brings another libvips or Electron fails the notices step (--strict) until scripts/lib/lgpl-sources.mjs has its entry.
 
 ## Notes on the packages outside the allowed list
 
@@ -1280,48 +1277,45 @@ source below. On macOS, changing a file inside the app invalidates its code sign
 again (for example ad hoc: codesign --force --deep --sign - AskFiles.app).
 The license texts are under "License texts" below: LGPL-2.1, LGPL-3.0 (with the GPL-3.0 text it
 builds on) and MPL-2.0. The complete source code, at the versions shipped, with the build scripts
-and patches used, is kept by AskFiles in the release lgpl-sources-1 of its repository:
-https://github.com/yuan-phd/askfiles/releases/tag/lgpl-sources-1
-Each file is an exact copy of what the build downloaded; manifest.json and SHA256SUMS in that
-release name where each file came from and its sha256.
+and patches used, is at these locations, each at a fixed version, tag or commit:
 
 - libvips 8.14.5 and the libraries built into it
   Shipped in: sharp@0.32.6 (upstream collector), sharp@0.32.6 (upstream server)
   Built by sharp-libvips build/lin.sh, which downloads each source below and applies the patches named:
-  - lovell/sharp-libvips at commit e3585e7e2de7c0a9f0fe81c2bd9a559bebc65f87 (tag v8.14.5): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/sharp-libvips-e3585e7e2de7c0a9f0fe81c2bd9a559bebc65f87.tar.gz
-  - patch to GLib: https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/sharp-libvips-8.14.5-glib-without-gregex.patch
-  - patch to libvips: https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/sharp-libvips-8.14.5-vips-8-pr-3476.patch
-  - libvips 8.14.5 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/vips-8.14.5.tar.xz
-  - GLib 2.78.0 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/glib-2.78.0.tar.xz
-  - FriBidi 1.0.13 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/fribidi-1.0.13.tar.xz
-  - GdkPixbuf 2.42.10 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/gdk-pixbuf-2.42.10.tar.xz
-  - libexif 0.6.24 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/libexif-0.6.24.tar.bz2
-  - libheif 1.16.2 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/libheif-1.16.2.tar.gz
-  - librsvg 2.57.0 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/librsvg-2.57.0.tar.xz
-  - Pango 1.51.0 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/pango-1.51.0.tar.xz
-  - proxy-libintl 0.4 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/proxy-libintl-0.4.tar.gz
-  - cairo 1.17.8 (MPL-2.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/cairo-1.17.8.tar.bz2
+  - lovell/sharp-libvips at commit e3585e7e2de7c0a9f0fe81c2bd9a559bebc65f87 (tag v8.14.5): https://github.com/lovell/sharp-libvips/tree/e3585e7e2de7c0a9f0fe81c2bd9a559bebc65f87
+  - patch to GLib: https://gist.github.com/kleisauke/284d685efa00908da99ea6afbaaf39ae/raw/e826724a837825226057347b75567059dabc85d4/glib-without-gregex.patch
+  - patch to libvips: https://raw.githubusercontent.com/libvips/build-win64-mxe/eb98ddf510/build/patches/vips-8-pr-3476.patch
+  - libvips 8.14.5 (LGPL-3.0): https://github.com/libvips/libvips/releases/download/v8.14.5/vips-8.14.5.tar.xz
+  - GLib 2.78.0 (LGPL-3.0): https://download.gnome.org/sources/glib/2.78/glib-2.78.0.tar.xz
+  - FriBidi 1.0.13 (LGPL-3.0): https://github.com/fribidi/fribidi/releases/download/v1.0.13/fribidi-1.0.13.tar.xz
+  - GdkPixbuf 2.42.10 (LGPL-3.0): https://download.gnome.org/sources/gdk-pixbuf/2.42/gdk-pixbuf-2.42.10.tar.xz
+  - libexif 0.6.24 (LGPL-3.0): https://github.com/libexif/libexif/releases/download/v0.6.24/libexif-0.6.24.tar.bz2
+  - libheif 1.16.2 (LGPL-3.0): https://github.com/strukturag/libheif/releases/download/v1.16.2/libheif-1.16.2.tar.gz
+  - librsvg 2.57.0 (LGPL-3.0): https://download.gnome.org/sources/librsvg/2.57/librsvg-2.57.0.tar.xz
+  - Pango 1.51.0 (LGPL-3.0): https://download.gnome.org/sources/pango/1.51/pango-1.51.0.tar.xz
+  - proxy-libintl 0.4 (LGPL-3.0): https://github.com/frida/proxy-libintl/archive/0.4.tar.gz
+  - cairo 1.17.8 (MPL-2.0): https://gitlab.freedesktop.org/cairo/cairo/-/archive/1.17.8/cairo-1.17.8.tar.bz2
 - libvips 8.15.3 and the libraries built into it
   Shipped in: @img/sharp-libvips-darwin-arm64@1.0.4 (upstream collector)
   Built by sharp-libvips build/lin.sh, which downloads each source below and applies the patches named:
-  - lovell/sharp-libvips at commit cb57c8e09460fa0b5c550806b667a2dfc3f7480b (tag v8.15.3): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/sharp-libvips-cb57c8e09460fa0b5c550806b667a2dfc3f7480b.tar.gz
-  - patch to GLib: https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/sharp-libvips-8.15.3-glib-without-gregex.patch
-  - patch to libexif: https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/sharp-libvips-8.15.3-libexif-db84aefa.patch
-  - patch to libvips: https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/sharp-libvips-8.15.3-vips-8-heifsave-disable-hbr-support.patch
-  - libvips 8.15.3 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/vips-8.15.3.tar.xz
-  - GLib 2.81.1 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/glib-2.81.1.tar.xz
-  - FriBidi 1.0.15 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/fribidi-1.0.15.tar.xz
-  - libexif 0.6.24 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/libexif-0.6.24.tar.bz2
-  - libheif 1.18.2 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/libheif-1.18.2.tar.gz
-  - librsvg 2.58.93 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/librsvg-2.58.93.tar.xz
-  - Pango 1.54.0 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/pango-1.54.0.tar.xz
-  - proxy-libintl 0.4 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/proxy-libintl-0.4.tar.gz
-  - cairo 1.18.0 (MPL-2.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/cairo-1.18.0.tar.xz
+  - lovell/sharp-libvips at commit cb57c8e09460fa0b5c550806b667a2dfc3f7480b (tag v8.15.3): https://github.com/lovell/sharp-libvips/tree/cb57c8e09460fa0b5c550806b667a2dfc3f7480b
+  - patch to GLib: https://gist.github.com/kleisauke/284d685efa00908da99ea6afbaaf39ae/raw/36e32c79e7962c5ea96cbb3f9c629e9145253e30/glib-without-gregex.patch
+  - patch to libexif: https://github.com/lovell/libexif/commit/db84aefa1deb103604c5860dd6486b1dd3af676b.patch
+  - patch to libvips: https://github.com/libvips/build-win64-mxe/raw/v8.15.3/build/patches/vips-8-heifsave-disable-hbr-support.patch
+  - libvips 8.15.3 (LGPL-3.0): https://github.com/libvips/libvips/releases/download/v8.15.3/vips-8.15.3.tar.xz
+  - GLib 2.81.1 (LGPL-3.0): https://download.gnome.org/sources/glib/2.81/glib-2.81.1.tar.xz
+  - FriBidi 1.0.15 (LGPL-3.0): https://github.com/fribidi/fribidi/releases/download/v1.0.15/fribidi-1.0.15.tar.xz
+  - libexif 0.6.24 (LGPL-3.0): https://github.com/libexif/libexif/releases/download/v0.6.24/libexif-0.6.24.tar.bz2
+  - libheif 1.18.2 (LGPL-3.0): https://github.com/strukturag/libheif/releases/download/v1.18.2/libheif-1.18.2.tar.gz
+  - librsvg 2.58.93 (LGPL-3.0): https://download.gnome.org/sources/librsvg/2.58/librsvg-2.58.93.tar.xz
+  - Pango 1.54.0 (LGPL-3.0): https://download.gnome.org/sources/pango/1.54/pango-1.54.0.tar.xz
+  - proxy-libintl 0.4 (LGPL-3.0): https://github.com/frida/proxy-libintl/archive/0.4.tar.gz
+  - cairo 1.18.0 (MPL-2.0): https://cairographics.org/releases/cairo-1.18.0.tar.xz
 - FFmpeg in Electron 44.10.0 (libffmpeg in the Electron framework)
   License: LGPL-2.1 (text below; also in LICENSES.chromium.html in the app resources).
   Chromium 152.0.7977.169's copy at revision 2b68d2babae73714846961fb0ee47e3b3d2e39a9, with Chromium's build configuration
   in its chromium/ folder:
-  https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/chromium-ffmpeg-2b68d2babae73714846961fb0ee47e3b3d2e39a9.tar.gz
+  https://chromium.googlesource.com/chromium/third_party/ffmpeg/+/2b68d2babae73714846961fb0ee47e3b3d2e39a9
 
 ## Licenses outside the allowed list
 
