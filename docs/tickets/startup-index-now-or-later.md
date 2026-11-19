@@ -22,13 +22,13 @@ The answer applies to this start only. Open questions: where the question appear
 ## Decisions (owner, 2026-11-19)
 
 1. Ask only when the previous start did not finish, before anything is watched. No size or time triggers: with the 1,000-subfolder limit, trouble from size is rare, and unmeasured thresholds would be guesses. (The file count to check is only known after the walk, the slow step itself.)
-2. The question is a line in the shared top bar with two buttons, Start indexing now and Later, on Ask and Browse.
+2. The question is a line in the shared top bar with two buttons, Check now and Later (the first named Start indexing now until the owner renamed it, 2026-11-19, to match the question), on Ask and Browse.
 3. No answer counts as Later. A normal quit is recorded as a clean stop, so the next start is normal.
 4. Summaries keep running: Later only skips walking and watching the folders.
 5. Later applies only to that library, until Check for updates or the next app start. Another library starts normally; switching back keeps the first as it was.
 6. Detection: a marker file, startup.json in the data folder, written just before the watcher starts and removed when the log says `library <id> running` or on a clean stop. It catches only an unfinished start, which is enough for 1. A data folder from an older version has no marker and starts normally.
 
-Decided in the implementation (not listed above, so recorded here):
+Decided in the implementation (not listed above, so recorded here; approved by the owner 2026-11-19):
 
 - Unanswered, the marker stays on disk, so a crash before an answer asks again; Later removes it at once.
 - A start that ends with an error (the library could not be read) also removes the marker: the start finished and said why.

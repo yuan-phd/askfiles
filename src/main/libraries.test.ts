@@ -1123,7 +1123,7 @@ describe('a start that did not finish (docs/tickets/startup-index-now-or-later.m
     await t.manager.stop({ quitting: true });
   });
 
-  it('Start indexing now runs the normal start at once', async () => {
+  it('Check now runs the normal start at once', async () => {
     const state = await indexedLibrary();
     writeStartMarker(dataDir, 'all-files');
     const alpha = path.join(notes(), 'alpha.md');

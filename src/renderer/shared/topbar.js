@@ -703,7 +703,7 @@ export function mountTopBar(
     else renderStatus();
   });
 
-  // The question after a start that did not finish. Start indexing now shows Checking until the
+  // The question after a start that did not finish. Check now shows Checking until the
   // library has been walked, as Check for updates does; Later only hides the question.
   q('start-choice-text').textContent = startChoiceText();
   q('start-now').textContent = startNowLabel();

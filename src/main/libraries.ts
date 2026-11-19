@@ -308,7 +308,7 @@ export class LibraryManager {
    * browse pages use it; nothing is watched, so it never starts, and pause and resume skip it.
    */
   private held: { id: string; watcher: WatcherLike } | null = null;
-  /** StartChoice by library id; each lasts until Check for updates, Start indexing now or the next app start. */
+  /** StartChoice by library id; each lasts until Check for updates, Check now or the next app start. */
   private readonly choices = new Map<string, StartChoice>();
   /** startup.json is read once, at the first start of this run. */
   private markerRead = false;

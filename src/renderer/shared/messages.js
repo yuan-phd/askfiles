@@ -80,7 +80,7 @@ export function startChoiceText(lang) {
 }
 
 export function startNowLabel(lang) {
-  return isChinese(lang) ? '现在开始读取' : 'Start indexing now';
+  return isChinese(lang) ? '现在开始读取' : 'Check now';
 }
 
 export function startLaterLabel(lang) {

@@ -17,7 +17,7 @@ A library can follow up to 1,000 subfolders. If a folder you add has more, AskFi
 
 While AskFiles reads new files, the top bar says Indexing and how many are left.
 
-If AskFiles did not finish starting last time (it froze or was forced to quit while reading your folders), the top bar asks whether to check the library's folders for changes now. Choose Start indexing now to read them as usual, or Later to use the library as it was: you can still ask and browse, and nothing in your folders is read until you click ↻ (Check for updates). If you do not answer, it counts as Later.
+If AskFiles did not finish starting last time (it froze or was forced to quit while reading your folders), the top bar asks whether to check the library's folders for changes now. Choose Check now to read them as usual, or Later to use the library as it was: you can still ask and browse, and nothing in your folders is read until you click ↻ (Check for updates). If you do not answer, it counts as Later.
 
 ## Libraries
 

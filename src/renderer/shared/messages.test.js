@@ -78,7 +78,7 @@ describe('the question after a start that did not finish', () => {
     expect(startChoiceText('en-US')).toBe(
       "AskFiles did not finish starting last time. Check this library's folders for changes now? Until then, you can still search the files already read.",
     );
-    expect(startNowLabel('en')).toBe('Start indexing now');
+    expect(startNowLabel('en')).toBe('Check now');
     expect(startLaterLabel('en')).toBe('Later');
     expect(notCheckedText('en')).toBe('Not checked for changes');
     expect(startChoiceText('zh-CN')).toBe(
