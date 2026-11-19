@@ -11,7 +11,7 @@ Two downloads, the same app:
 
 The download is large (about 1.2 to 1.6 GB, the job summary of each workflow run gives the exact size) because it carries the search engine, the model engine with its NVIDIA runtime and the reading tools. Models are downloaded on the first launch, a few more gigabytes depending on the machine's memory.
 
-Silent install, for scripts and IT: `AskFiles-<version>-x64-setup.exe /S`. It skips the license page, so whoever runs it accepts the terms for the users. The smoke job installs this way.
+Silent install, for scripts and IT: `AskFiles-<version>-x64-setup.exe /S`. It skips the license page, so whoever runs it must have the users agree to the terms another way (docs/licenses.md, Windows installer license page). The smoke job installs this way.
 
 ## SmartScreen
 

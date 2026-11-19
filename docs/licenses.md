@@ -1174,14 +1174,58 @@ Since 2026-11-19 (branch local/release-compliance) the NSIS installer shows a li
 
 What the terms ask of end users, read on 2026-11-19 (not legal advice):
 
-- **Microsoft, Visual Studio 2022 license terms, Distributable Code.** The distribution requirements include: "add significant primary functionality" to the code in the application, and "require distributors and external end users to agree to terms that protect the Distributable Code at least as much as this agreement" (quoted from the record of 2026-11-10 above). **UNVERIFIED:** the full section could not be read again on 2026-11-19, because the license page (https://visualstudio.microsoft.com/license-terms/vs2022-ga-community/) delivers no terms to a plain download. The standard section has further conditions, to be checked against the page: indemnify Microsoft for claims related to the distribution or use of the application (except claims based solely on the unmodified Distributable Code); do not use Microsoft's trademarks in the application's name or suggest Microsoft endorsement; do not make the code subject to a license that requires it to be disclosed in source form. AskFiles meets them as far as it can: the runtime adds no functionality on its own and ships unmodified inside Ollama's CUDA folder; end users accept Microsoft's own runtime terms on the license page; AskFiles' name and pages use no Microsoft mark; the Apache License covers only AskFiles' own code. The indemnity is an obligation of the author.
+- **Microsoft, Visual Studio 2022 license terms, section 4, Distributable Code.** Read on 2026-11-19 from Visual-Studio-2022-Community-License-EN.docx (MICROSOFT SOFTWARE LICENSE TERMS, MICROSOFT VISUAL STUDIO COMMUNITY 2022, EULAID: VS_Comm_2022_ENU.1033), downloaded by the owner from https://visualstudio.microsoft.com/license-terms/vs2022-ga-community/. Verbatim; Word's automatic list numbering is not part of the text, and typographic quotes are shown as straight quotes:
+
+  > DISTRIBUTABLE CODE. The software contains code that you may distribute in applications you develop as described in this Section. For purposes of this Section 4, the term "distribution" also means deployment of your applications for third parties to access over the Internet.
+  >
+  > Right to Use and Distribute. The code and text files listed below are "Distributable Code".
+  >
+  > Distributable List. You may copy and distribute the object code form of code listed on the Distributable List located at https://aka.ms/vs/17/redistribution.
+  >
+  > Sample Code, Templates and Styles. You may copy, modify and distribute the source and object code form of code marked as "sample", "template", "simple styles" and "sketch styles".
+  >
+  > Third Party Distribution. You may permit distributors of your applications to copy and distribute the Distributable Code as part of those applications.
+  >
+  > Distribution Requirements. For any Distributable Code you distribute, you must:
+  >
+  > add significant primary functionality to it in your applications; and
+  >
+  > require distributors and external end users to agree to terms that protect the Distributable Code at least as much as this agreement.
+  >
+  > Distribution Restrictions. You may not:
+  >
+  > distribute components or runtimes that are marked "Preview", "Pre-release" or "Beta";
+  >
+  > use Microsoft's trademarks in your applications' names or in a way that suggests your applications come from or are endorsed by Microsoft; or
+  >
+  > modify or distribute the source code of any Distributable Code so that any part of it becomes subject to an Excluded License. An "Excluded License" is one that requires, as a condition of use, modification or distribution of code, that (i) it be disclosed or distributed in source code form; or (ii) others have the right to modify it.
+
+  This version of the terms has no indemnity requirement. How AskFiles meets each item:
+
+  | Item | Met? | How |
+  | --- | --- | --- |
+  | Distributable List | Yes, as recorded | The ten runtime DLLs are the Visual C++ runtime in VC\redist, which the list (https://aka.ms/vs/17/redistribution) allows in object code, unmodified (Windows build table above, recorded 2026-11-10; the list was not read again on 2026-11-19). They ship as built, inside Ollama's cuda_v12 folder. |
+  | Third Party Distribution | Yes | AskFiles has no distributors; the author shares the builds directly. |
+  | Requirement: add significant primary functionality | Yes | The DLLs are only the C++ runtime that Ollama's CUDA libraries need; AskFiles is a document question-and-answer app. |
+  | Requirement: distributors and external end users agree to terms that protect the Distributable Code at least as much as this agreement | Yes for the installer; **not met for the portable zip, a silent install, or anyone who passes the installer on** | The license page shows, and the user must accept (I Agree), the Microsoft Visual C++ 2015 - 2022 Runtime license terms in full (build/license.txt, part 3). Compared with the Visual Studio 2022 terms on 2026-11-19, they carry the same restrictions on the software (SCOPE OF LICENSE: work around technical limitations; reverse engineer, decompile or disassemble; remove, minimize, block or modify Microsoft's notices; use against the law; share, publish, rent or lease; provide as a stand-alone offering or combine with an application for others to use, or transfer), the same export restrictions, the same disclaimer of warranty and the same limitation on damages (US $5.00), differing only in wording. Gaps: see below. |
+  | Restriction: nothing marked Preview, Pre-release or Beta | Yes, as far as checked | The DLLs are runtime 14.44.35211.0 (FileVersion), the release toolset of Visual Studio 2022; no Preview, Pre-release or Beta marking was recorded. Their file properties were not read again on 2026-11-19. |
+  | Restriction: no Microsoft trademarks in the name, no suggested endorsement | Yes | The app is named AskFiles; neither the app, the installer nor the docs suggest Microsoft endorsement. The license page names Microsoft only as the licensor of its runtime files. |
+  | Restriction: no Excluded License | Yes | No source code of the Distributable Code is modified or distributed. The installer and THIRD-PARTY-NOTICES place the runtime under Microsoft's terms; the Apache License covers only AskFiles' own code. |
+
+  Requirements AskFiles does not meet, for the record:
+
+  - **The portable zip.** Its users accept nothing: it has no installer page. The terms ship with it (THIRD-PARTY-NOTICES on the About page), but the Distribution Requirements ask that external end users "agree to terms". To meet it: share only the installer, drop the zip target, or add a first-run acceptance to the app on Windows.
+  - **Silent install (`/S`).** The page is skipped, so the users agree to nothing. It meets the requirement only if whoever runs it has the users agree to the terms some other way. Used by the CI smoke job, and documented for scripts and IT (docs/windows.md).
+  - **A friend who passes the installer on** is a distributor who has agreed to nothing. Whoever installs from that copy still sees and accepts the page, so end users are covered; the distributor is not. AskFiles permits no distributors, but says so nowhere; the license page could add a line that the package may be shared only unmodified with its terms.
+
+  Uncertain: the DLLs were built and first distributed by Ollama, whose Visual Studio edition is unknown. The Distributable Code section above is the Community edition's; that the Professional, Enterprise or Build Tools terms ask the same was not checked.
 - **NVIDIA CUDA Toolkit EULA** (v13.5, January 26, 2026), section 1.1.2 item 5: "The terms under which you distribute your application must be consistent with the terms of this Agreement, including (without limitation) terms relating to the license grant and license restrictions and protection of NVIDIA's intellectual property rights. Additionally, you agree that you will protect the privacy, security and legal rights of your application users." Item 6: "You agree to notify NVIDIA in writing of any known or suspected distribution or use of the SDK not in compliance with the requirements of this Agreement, and to enforce the terms of your agreements with respect to distributed SDK." The EULA requires no notice text for these files (item 3 applies to modified sample source code only). Every condition and how it is met: docs/tickets/windows-cuda-terms.md.
 - Other conditions that apply: keep NVIDIA's and Microsoft's notices (the files ship unmodified; THIRD-PARTY-NOTICES names them); never distribute either set on its own (they ship only inside AskFiles).
 
-Limits, accepted for the current use:
+Limits:
 
-- A silent install (`/S`, for scripts and IT; the smoke job) skips the page. Whoever runs it accepts on behalf of the users.
-- The portable zip has no installer and so no page. It ships the same terms (THIRD-PARTY-NOTICES on the About page), but nobody clicks I Agree. **UNCERTAIN** whether that is enough for the Microsoft requirement that end users "agree to terms"; to be fully covered, share the installer only, or add a first-run acceptance to the app.
+- A silent install (`/S`, for scripts and IT; the smoke job) skips the page, so its users agree to nothing (above).
+- The portable zip has no installer and so no page. It ships the same terms (THIRD-PARTY-NOTICES on the About page), but nobody clicks I Agree, so it does not meet the Microsoft requirement that external end users "agree to terms" (above). To meet it: share the installer only, drop the zip target, or add a first-run acceptance to the app.
 - An update installed over an existing installation (--updated) skips the page, which the user accepted at the first install.
 - The page was compiled into an installer on the Mac (electron-builder 26.17.0, makensis 3.0.4.1; the generated script inserts MUI_PAGE_LICENSE with build/license.txt before the install step) but has not been seen on Windows yet: the Windows workflow builds the real installer on the pull request.
 
