@@ -1,8 +1,8 @@
 // The first run as src/main/app.ts wires it, without Electron: the real wizard against the real
 // Ollama, server restart through the process manager, the All files library and API key through
 // the API, setup marked complete in shell.json, no folder asked for. Then the library manager links
-// one folder (a text PDF and a scanned PDF, OCRed page by page) and adds one file by copy, as the
-// Add button does; all three become queryable and a question with the stored key gets an answer
+// one folder (a text PDF and a scanned PDF, OCRed page by page) and adds one file, linked by its path
+// as the Add button does (since 2026-11-09, not copied); all three become queryable and a question with the stored key gets an answer
 // whose sources carry section titles. Needs RUN_INTEGRATION=1, Ollama with the test models, the
 // upstream packages, and the compiled main process (npm run build:main).
 import fs from 'node:fs';
@@ -139,6 +139,8 @@ describe.skipIf(reason !== null)('first run and libraries against the real stack
       const api = createLibraryApi({ baseUrl: serverUrl, apiKey });
       manager = new LibraryManager({
         dataDir,
+        storageDir,
+        ocrCacheDir: path.join(dataDir, 'ocr-cache'),
         getState: () => state,
         setState: (s) => {
           saveShellState(dataDir, s);
@@ -170,9 +172,13 @@ describe.skipIf(reason !== null)('first run and libraries against the real stack
       });
       await manager.start();
       expect(manager.isEmpty()).toBe(true);
-      expect(await manager.addFolder(folder)).toEqual({ added: 1, skipped: [] });
-      expect(await manager.addPaths([loose])).toEqual({ added: 1, skipped: [] });
-      expect(fs.existsSync(path.join(filesDir(dataDir, 'all-files'), 'leave-policy-v2.md'))).toBe(true);
+      const nothingElse = { already: [], conflicts: [], kept: [] };
+      expect(await manager.addFolder(folder)).toEqual({ added: 1, skipped: [], ...nothingElse });
+      expect(await manager.addPaths([loose])).toEqual({ added: 1, skipped: [], ...nothingElse });
+      // Added files are linked by their path and never copied (commit e28cd98, docs/plan.md Libraries).
+      expect(state.libraries[0]!.folders.map((f) => f.path)).toEqual([folder]);
+      expect((state.libraries[0]!.files ?? []).map((f) => f.path)).toEqual([loose]);
+      expect(fs.existsSync(path.join(filesDir(dataDir, 'all-files'), 'leave-policy-v2.md'))).toBe(false);
 
       const t1 = Date.now();
       for (;;) {

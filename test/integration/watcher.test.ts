@@ -125,7 +125,14 @@ describe.skipIf(reason !== null)('folder watcher against the real server', () =>
       fs.rmSync(dropped);
       const gone = await until('PDF removed', 60_000, async () => ((await search()).length === 0 ? true : null));
       log(`removed after ${gone.elapsed} ms`);
-      expect(JSON.parse(fs.readFileSync(path.join(tmp, 'shell', 'index.json'), 'utf8')).files).toEqual({});
+      // The watcher removes the sections from the server first and saves index.json after, so the
+      // search can be empty a moment before the record goes; wait for it rather than read once.
+      const indexFile = path.join(tmp, 'shell', 'index.json');
+      const files = () => JSON.parse(fs.readFileSync(indexFile, 'utf8')).files as Record<string, unknown>;
+      await until('index.json empty', 10_000, async () => (Object.keys(files()).length === 0 ? true : null)).catch(
+        () => null,
+      );
+      expect(files()).toEqual({});
     } finally {
       await watcher.stop();
     }
