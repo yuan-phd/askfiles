@@ -67,3 +67,27 @@ export function notWatchedTip(lang) {
     ? '这个资料库的文件夹太多，AskFiles 只跟踪其中一部分。所有文件仍可搜索；其余文件夹中的新文件和更改，在检查更新或下次启动时读取。'
     : 'This library has more folders than AskFiles can follow. All its files can still be searched; new and changed files in the other folders are read when you check for updates and at the next start.';
 }
+
+/**
+ * The question after a start that did not finish (docs/tickets/startup-index-now-or-later.md):
+ * the line and its two buttons in the top bar. Until the user answers, the library is open as
+ * with Later.
+ */
+export function startChoiceText(lang) {
+  return isChinese(lang)
+    ? '上次 AskFiles 没有完成启动。现在检查这个资料库的文件夹有没有更改吗？在此之前，仍可以搜索已读取的文件。'
+    : "AskFiles did not finish starting last time. Check this library's folders for changes now? Until then, you can still search the files already read.";
+}
+
+export function startNowLabel(lang) {
+  return isChinese(lang) ? '现在开始读取' : 'Check now';
+}
+
+export function startLaterLabel(lang) {
+  return isChinese(lang) ? '稍后' : 'Later';
+}
+
+/** The top bar status while the library is open without checking its folders. */
+export function notCheckedText(lang) {
+  return isChinese(lang) ? '未检查更改' : 'Not checked for changes';
+}

@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { BrowseIndex } from './browse/index.js';
 import { removeLibraryData, type RemovalStep } from './library-data.js';
 import { isSupported } from './sections/index.js';
+import { clearStartMarker, readStartMarker, writeStartMarker } from './startup-marker.js';
 import {
   currentLibraryOf,
   DEFAULT_LIBRARY_ID,
@@ -54,8 +55,16 @@ export interface LibrariesView {
   libraries: LibraryView[];
 }
 
+/**
+ * After a start that did not finish (docs/tickets/startup-index-now-or-later.md): ask, the top bar
+ * asks whether to index now or later, and until the user answers the library is open as with
+ * Later; later, the library is open with its existing index, nothing walked or watched, until
+ * Check for updates or the next app start.
+ */
+export type StartChoice = 'ask' | 'later';
+
 /** Watcher status of the current library as the pages show it. */
-export type LibraryStatus = WatcherStatus & { libraryId: string; error?: string };
+export type LibraryStatus = WatcherStatus & { libraryId: string; error?: string; startChoice?: StartChoice };
 
 /**
  * An added file with the name of files already added on its own: the page lists every one of
@@ -113,6 +122,8 @@ export interface WatcherLike {
   removeRoot(id: string): void;
   forget(path: string): void;
   checkNow(): Promise<{ toCheck: number }>;
+  /** Loads the index without watching or walking (FolderWatcher.openIndex). */
+  openIndex(): void;
   on(event: 'status', listener: (s: WatcherStatus) => void): unknown;
   on(event: 'file', listener: (e: FileEvent) => void): unknown;
 }
@@ -292,6 +303,15 @@ export class LibraryManager {
   /** remove() calls in progress, so a second Delete of the same library joins the first. */
   private readonly deletes = new Map<string, Promise<void>>();
   private startError: string | null = null;
+  /**
+   * The current library opened with its index only (a StartChoice is in force): answers and the
+   * browse pages use it; nothing is watched, so it never starts, and pause and resume skip it.
+   */
+  private held: { id: string; watcher: WatcherLike } | null = null;
+  /** StartChoice by library id; each lasts until Check for updates, Check now or the next app start. */
+  private readonly choices = new Map<string, StartChoice>();
+  /** startup.json is read once, at the first start of this run. */
+  private markerRead = false;
   private queue: Promise<unknown> = Promise.resolve();
   /** Added files whose original went away, dropped from the record together (onFileEvent). */
   private readonly gone = new Set<string>();
@@ -311,7 +331,7 @@ export class LibraryManager {
   }
 
   watcherOf(): WatcherLike | null {
-    return this.watcher;
+    return this.watcher ?? this.held?.watcher ?? null;
   }
 
   browse(): BrowseIndex | null {
@@ -352,7 +372,8 @@ export class LibraryManager {
     const error =
       this.startError ??
       (n ? (n === 1 ? `${base.unavailable[0]} is not available` : `${n} sources are not available`) : null);
-    return { ...base, libraryId: lib.id, ...(error ? { error } : {}) };
+    const choice = this.choices.get(lib.id);
+    return { ...base, libraryId: lib.id, ...(error ? { error } : {}), ...(choice ? { startChoice: choice } : {}) };
   }
 
   /** The library's profile id: its own when it is still offered, else the default. */
@@ -428,7 +449,9 @@ export class LibraryManager {
    */
   async stop(o: { quitting?: boolean } = {}): Promise<void> {
     await this.starting?.watcher.stop(o);
-    return this.serial(() => this.stopRuntime(o));
+    await this.serial(() => this.stopRuntime(o));
+    // A clean stop, also with the question unanswered (no answer counts as Later): the next start is normal.
+    this.clearMarker();
   }
 
   /** Pauses and resumes the running watcher without rebuilding it (backend restart). */
@@ -450,12 +473,24 @@ export class LibraryManager {
   }
 
   private async startRuntime(): Promise<void> {
-    if (this.watcher) return;
+    if (this.watcher || this.held) return;
     const lib = this.current();
     if (!lib.workspaceSlug) {
       this.log(`library ${lib.id} has no workspace yet; not watching`);
       return;
     }
+    if (!this.markerRead) {
+      this.markerRead = true;
+      const m = readStartMarker(this.d.dataDir);
+      // Kept on disk until an answer or a clean stop, so a crash before either asks again.
+      if (m) {
+        this.log(`previous start of ${m.libraryId} did not finish (started ${m.startedAt || 'at an unknown time'})`);
+        if (this.d.getState().libraries.some((l) => l.id === m.libraryId && !l.deleting))
+          this.choices.set(m.libraryId, 'ask');
+        else this.clearMarker();
+      }
+    }
+    const choice = this.choices.get(lib.id);
     const dir = libraryDir(this.d.dataDir, lib.id);
     const watcher = this.d.createWatcher({
       roots: this.roots(lib),
@@ -484,10 +519,26 @@ export class LibraryManager {
     this.d.followWatcher(browse, watcher);
     this.browseIndex = browse;
     this.startError = null;
+    if (choice) {
+      // Later, or no answer yet: the index answers; no folder is walked, watched or read.
+      try {
+        watcher.openIndex();
+        browse.sync(watcher.files());
+      } catch (e) {
+        this.log(`index of ${lib.id} not opened: ${(e as Error).message}`);
+      }
+      this.held = { id: lib.id, watcher };
+      this.log(`library ${lib.id} open without checking for changes (${choice})`);
+      this.d.onStatus(this.status());
+      return;
+    }
+    this.writeMarker(lib.id);
     this.starting = { id: lib.id, watcher };
     try {
       await watcher.start();
     } catch (e) {
+      // Not a freeze: the start ended and says why, so the next start is normal.
+      this.clearMarker();
       this.startError = `The library could not be read: ${(e as Error).message}`;
       this.log(`watcher of ${lib.id} not started: ${(e as Error).message}`);
       this.d.onStatus(this.status());
@@ -497,6 +548,7 @@ export class LibraryManager {
     }
     // Stopped while starting: a delete or a quit came first.
     if (watcher.status().state === 'stopped') {
+      this.clearMarker();
       this.log(`start of ${lib.id} stopped`);
       if (this.browseIndex === browse) this.browseIndex = null;
       return;
@@ -510,6 +562,7 @@ export class LibraryManager {
     } catch (e) {
       this.log(`browse sync of ${lib.id} failed: ${(e as Error).message}`);
     }
+    this.clearMarker();
     this.log(`library ${lib.id} running`);
     this.d.onStatus(this.status());
   }
@@ -518,7 +571,56 @@ export class LibraryManager {
     const w = this.watcher;
     this.watcher = null;
     this.runningId = null;
+    // The held watcher watches nothing; dropping it is enough.
+    this.held = null;
     await w?.stop(o);
+  }
+
+  private writeMarker(id: string): void {
+    try {
+      writeStartMarker(this.d.dataDir, id, this.now());
+    } catch (e) {
+      this.log(`start marker not written: ${(e as Error).message}`);
+    }
+  }
+
+  private clearMarker(): void {
+    try {
+      clearStartMarker(this.d.dataDir);
+    } catch (e) {
+      this.log(`start marker not removed: ${(e as Error).message}`);
+    }
+  }
+
+  /**
+   * The answer to the start question: now runs the normal start (as Check for updates does), later
+   * keeps the library open with its index only. Either way the next start is normal.
+   */
+  answerStart(answer: 'now' | 'later'): Promise<LibraryStatus> {
+    if (answer === 'now') return this.checkUpdates();
+    return this.serial(async () => {
+      const id = this.current().id;
+      if (this.choices.get(id) === 'ask') {
+        this.choices.set(id, 'later');
+        this.clearMarker();
+        this.log(`library ${id}: later chosen, not checked for changes`);
+      }
+      const s = this.status();
+      this.d.onStatus(s);
+      return s;
+    });
+  }
+
+  /**
+   * The user acts on a library's sources (add, remove, reindex): its StartChoice ends, and a
+   * library held with its index only is started normally once the change is recorded.
+   */
+  private endChoice(id: string): void {
+    if (this.choices.delete(id)) this.log(`library ${id}: sources changed, checking for changes again`);
+  }
+
+  private async startIfReleased(): Promise<void> {
+    if (this.held && !this.choices.has(this.held.id)) await this.restartRuntime();
   }
 
   private async restartRuntime(): Promise<void> {
@@ -677,6 +779,11 @@ export class LibraryManager {
       this.runningId = null;
       this.browseIndex = null;
     }
+    this.choices.delete(id);
+    if (this.held?.id === id) {
+      this.held = null;
+      this.browseIndex = null;
+    }
     if (!w) return null;
     await w.stop({ abandon: true });
     this.log(`watcher of ${id} stopped for the delete`);
@@ -750,6 +857,7 @@ export class LibraryManager {
   addFolder(folder: string): Promise<AddResult> {
     return this.serial(async () => {
       const r = await this.linkFoldersWithinLimit([folder]);
+      if (r.added) this.endChoice(this.current().id);
       if (r.added) await this.restartRuntime();
       this.changed();
       return r;
@@ -794,9 +902,11 @@ export class LibraryManager {
       const linked = await this.linkFoldersWithinLimit(folders, libId);
       result.added += linked.added;
       result.skipped.push(...linked.skipped);
+      if (linked.added || added.length) this.endChoice(libId);
       // A new folder needs a restart; added files are watched by the running watcher at once.
       if (linked.added) await this.restartRuntime();
       else if (added.length && this.watcher && this.runningId === libId) await this.watcher.addRoots(added);
+      await this.startIfReleased();
       this.log(
         `added ${result.added} to ${libId}, skipped ${result.skipped.length}, already in ${result.already.length}, asking about ${result.conflicts.length}`,
       );
@@ -891,6 +1001,7 @@ export class LibraryManager {
       const lib = this.current();
       // Only a source the library lists, so an id from a page can never point outside it.
       const source = this.sourcesOf(lib).find((x) => x.id === sourceId);
+      if (source) this.endChoice(lib.id);
       if (source?.kind === 'file' || source?.kind === 'copy') {
         this.dropSource(lib.id, source);
       } else if (source?.kind === 'folder') {
@@ -904,6 +1015,8 @@ export class LibraryManager {
       } else {
         throw new Error('That folder is no longer in this library.');
       }
+      // A removed file leaves the index through the normal start's comparison.
+      await this.startIfReleased();
       return this.changed();
     });
   }
@@ -914,6 +1027,13 @@ export class LibraryManager {
    */
   checkUpdates(): Promise<LibraryStatus> {
     return this.serial(async () => {
+      const id = this.current().id;
+      if (this.choices.delete(id)) {
+        // Held with its index only: the normal start is the check; checking again would walk twice.
+        this.log(`library ${id}: checking for changes now`);
+        await this.restartRuntime();
+        return this.status();
+      }
       // A library whose watcher could not start gets another try: its folder may be back.
       if (!this.watcher) await this.startRuntime();
       const r = await this.watcher?.checkNow();
@@ -982,6 +1102,7 @@ export class LibraryManager {
   reindex(): Promise<LibrariesView> {
     return this.serial(async () => {
       const lib = this.current();
+      this.endChoice(lib.id);
       await this.stopRuntime();
       // A watcher only for clearing, so a library whose watcher could not start can still be reset.
       if (lib.workspaceSlug) {

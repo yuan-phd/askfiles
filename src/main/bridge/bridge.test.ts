@@ -157,6 +157,10 @@ function recordingHandlers() {
       'librariesCheckUpdates',
       Promise.resolve(null),
     ) as unknown as BridgeHandlers['librariesCheckUpdates'],
+    librariesAnswerStart: rec(
+      'librariesAnswerStart',
+      Promise.resolve(null),
+    ) as unknown as BridgeHandlers['librariesAnswerStart'],
     settingsGet: rec('settingsGet', settings) as unknown as BridgeHandlers['settingsGet'],
     settingsSet: rec('settingsSet', Promise.resolve(settings)) as unknown as BridgeHandlers['settingsSet'],
     developerInfo: rec('developerInfo', {}) as unknown as BridgeHandlers['developerInfo'],
@@ -253,6 +257,7 @@ describe('preload bridge', () => {
         'askfiles.libraries.addFiles',
         'askfiles.libraries.addFolder',
         'askfiles.libraries.addPaths',
+        'askfiles.libraries.answerStart',
         'askfiles.libraries.checkUpdates',
         'askfiles.libraries.create',
         'askfiles.libraries.list',
@@ -326,6 +331,10 @@ describe('preload bridge', () => {
     await a.libraries.removeSource('folder-1');
     await a.libraries.reindex();
     await a.libraries.checkUpdates();
+    await a.libraries.answerStart('now');
+    expect(t.calls).toContainEqual(['librariesAnswerStart', 'now']);
+    await a.libraries.answerStart('later');
+    expect(t.calls).toContainEqual(['librariesAnswerStart', 'later']);
     await a.settings.get();
     await a.settings.set({ answerScope: 'strict' });
     await a.developer.info();

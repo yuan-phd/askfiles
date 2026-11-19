@@ -44,6 +44,7 @@ export const CHANNELS = {
   librariesRemoveSource: 'askfiles:libraries:remove-source',
   librariesReindex: 'askfiles:libraries:reindex',
   librariesCheckUpdates: 'askfiles:libraries:check-updates',
+  librariesAnswerStart: 'askfiles:libraries:answer-start',
   settingsGet: 'askfiles:settings:get',
   settingsSet: 'askfiles:settings:set',
   developerInfo: 'askfiles:developer:info',
@@ -165,6 +166,8 @@ export interface BridgeHandlers {
   librariesReindex(): Promise<LibrariesView>;
   /** Check for updates: the start-up comparison now; the status after it. */
   librariesCheckUpdates(): Promise<WatcherView>;
+  /** The answer to the question after a start that did not finish: now starts the library, later keeps it as it is. */
+  librariesAnswerStart(answer: 'now' | 'later'): Promise<WatcherView>;
   settingsGet(): SettingsView;
   /** Stores and applies a change; model and context changes restart the server. */
   settingsSet(change: Partial<Settings>): Promise<SettingsView>;
@@ -262,6 +265,7 @@ export interface AskfilesBridge {
     removeSource(sourceId: string): Promise<LibrariesView>;
     reindex(): Promise<LibrariesView>;
     checkUpdates(): Promise<WatcherView>;
+    answerStart(answer: 'now' | 'later'): Promise<WatcherView>;
     /** The path of a dropped File (webUtils.getPathForFile); empty when it has none. */
     pathForFile(file: File): string;
   };
