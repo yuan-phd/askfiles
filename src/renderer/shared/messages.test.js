@@ -2,13 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { SUPPORTED_EXTENSIONS } from '../../main/sections/index.js';
 import {
   isChinese,
+  notCheckedText,
   notWatchedText,
   notWatchedTip,
+  startChoiceText,
+  startLaterLabel,
+  startNowLabel,
   SUPPORTED_TYPES,
   tooLargeText,
   unsupportedText,
 } from './messages.js';
-import { addResultIsLong, addResultText } from './topbar.js';
+import { addResultIsLong, addResultText, lockLine, statusOf } from './topbar.js';
 
 describe('messages about file types and the folder limit', () => {
   it('lists exactly the types the main process reads', () => {
@@ -66,5 +70,32 @@ describe('messages about file types and the folder limit', () => {
     );
     expect(addResultIsLong(r)).toBe(true);
     expect(addResultIsLong({ added: 0, skipped: [{ name: 'y.pdf', reason: 'not found' }] })).toBe(false);
+  });
+});
+
+describe('the question after a start that did not finish', () => {
+  it('words the question, its buttons and the status in English and Chinese', () => {
+    expect(startChoiceText('en-US')).toBe(
+      "AskFiles did not finish starting last time. Check this library's folders for changes now? Until then, you can still search the files already read.",
+    );
+    expect(startNowLabel('en')).toBe('Start indexing now');
+    expect(startLaterLabel('en')).toBe('Later');
+    expect(notCheckedText('en')).toBe('Not checked for changes');
+    expect(startChoiceText('zh-CN')).toBe(
+      '上次 AskFiles 没有完成启动。现在检查这个资料库的文件夹有没有更改吗？在此之前，仍可以搜索已读取的文件。',
+    );
+    expect(startNowLabel('zh-TW')).toBe('现在开始读取');
+    expect(startLaterLabel('zh')).toBe('稍后');
+    expect(notCheckedText('zh-Hans-CN')).toBe('未检查更改');
+  });
+
+  it('shows Not checked for changes while a choice is in force, and never locks the question box', () => {
+    const base = { state: 'stopped', pending: 0, indexed: 3, deadLetters: [], unavailable: [], notWatched: 0 };
+    for (const startChoice of ['ask', 'later']) {
+      const s = { ...base, startChoice };
+      expect(statusOf(s).kind).toBe('not-checked');
+      expect(lockLine(s)).toBeNull();
+    }
+    expect(statusOf(base)).toEqual({ kind: 'ready', text: 'Up to date' });
   });
 });

@@ -447,6 +447,10 @@ export class AppController implements BridgeHandlers {
     return this.libraries.checkUpdates();
   }
 
+  librariesAnswerStart(answer: 'now' | 'later') {
+    return this.libraries.answerStart(answer === 'now' ? 'now' : 'later');
+  }
+
   librariesRemoveSource(sourceId: string) {
     return this.libraries.removeSource(sourceId);
   }

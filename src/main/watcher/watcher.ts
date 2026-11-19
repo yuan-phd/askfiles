@@ -500,6 +500,17 @@ export class FolderWatcher extends EventEmitter<{ status: [WatcherStatus]; file:
   }
 
   /** A copy of the index, for the status bar and the browse view. */
+  /**
+   * Loads index.json without watching, walking or reading any file of the folders: the library
+   * opened with Later after a start that did not finish (docs/tickets/startup-index-now-or-later.md).
+   * files(), file() and resolveSources() answer from it; the state stays stopped.
+   */
+  openIndex(): void {
+    if (this.state !== 'stopped') throw new Error(`openIndex() called while ${this.state}`);
+    this.data = loadIndex(this.indexFile, this.o.log);
+    this.o.log(`index opened without watching, ${Object.keys(this.data.files).length} files in index`);
+  }
+
   files(): FileRecord[] {
     return structuredClone(Object.values(this.data.files));
   }

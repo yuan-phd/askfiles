@@ -16,6 +16,7 @@ import {
   type LibraryManagerDeps,
 } from './libraries.js';
 import { emptyShellState, loadShellState, saveShellState, type ShellState } from './shell-state.js';
+import { readStartMarker, writeStartMarker } from './startup-marker.js';
 import { countingSplitter, fakeApi, manualWatch } from './watcher/__fixtures__/fakes.js';
 import { chokidarWatch, FolderWatcher, type WatchFactory } from './watcher/index.js';
 
@@ -1036,5 +1037,173 @@ describe('folder limit and file types (owner decision 2026-11-16)', () => {
     expect(t.api.embedded.has('askfiles/all-files/old-csv.json')).toBe(false);
     expect(t.api.embedded.has('askfiles/all-files/old-readme.json')).toBe(false);
     await t.manager.stop();
+  });
+});
+
+describe('a start that did not finish (docs/tickets/startup-index-now-or-later.md)', () => {
+  const notes = () => path.join(tmp, 'Notes');
+  const linked = (s: ShellState) =>
+    s.libraries[0]!.folders.push({ id: 'folder-1', path: notes(), addedAt: '2026-11-19T08:00:00.000Z' });
+
+  /** A watch that never gets ready for the folder, like the start that froze while crawling. */
+  const frozen: WatchFactory = () => ({ ready: new Promise<void>(() => {}), close: async () => {} });
+
+  /** All files with two invented notes indexed, stopped cleanly; returns its shell state. */
+  async function indexedLibrary(): Promise<ShellState> {
+    put(path.join(notes(), 'alpha.md'), '# Alpha\n\nInvented first note.');
+    put(path.join(notes(), 'beta.md'), '# Beta\n\nInvented second note.');
+    const t = setup({ state: linked });
+    await t.manager.start();
+    await until(() => docTitles(t.manager).length === 2);
+    await t.manager.watcherOf()!.whenIdle();
+    await t.manager.stop({ quitting: true });
+    expect(readStartMarker(dataDir)).toBeNull();
+    return t.state();
+  }
+
+  const copyOf = (state: ShellState) => (s: ShellState) => Object.assign(s, structuredClone(state));
+
+  it('detects at the next start a start that never finished, and opens the index without reading a file', async () => {
+    const state = await indexedLibrary();
+    // The start freezes while crawling: the marker is written and never cleared.
+    const froze = setup({ watch: frozen, state: copyOf(state) });
+    void froze.manager.start();
+    await until(() => readStartMarker(dataDir) !== null);
+    expect(readStartMarker(dataDir)!.libraryId).toBe('all-files');
+    // Changed while the app was down: Later must not read it.
+    fs.writeFileSync(path.join(notes(), 'alpha.md'), '# Alpha\n\nInvented, changed.');
+
+    const next = setup({ state: copyOf(state) });
+    await next.manager.start();
+    const s = next.manager.status();
+    expect(s.startChoice).toBe('ask');
+    expect(s.state).toBe('stopped');
+    expect(s.indexed).toBe(2);
+    expect(next.logs).toContain(
+      '[libraries] previous start of all-files did not finish (started ' + readStartMarker(dataDir)!.startedAt + ')',
+    );
+    // Answerable from the existing index; the browse pages list it; nothing was split.
+    expect(
+      next.manager
+        .watcherOf()!
+        .files()
+        .map((f) => path.basename(f.path))
+        .sort(),
+    ).toEqual(['alpha.md', 'beta.md']);
+    expect(docTitles(next.manager)).toEqual(['alpha.md', 'beta.md']);
+    expect(next.splitter.calls).toEqual([]);
+    // Unanswered, the marker stays: a crash now asks again.
+    expect(readStartMarker(dataDir)).not.toBeNull();
+    await next.manager.stop({ quitting: true });
+  });
+
+  it('Later reads nothing and stays until Check for updates, which runs the normal start', async () => {
+    const state = await indexedLibrary();
+    writeStartMarker(dataDir, 'all-files');
+    const alpha = path.join(notes(), 'alpha.md');
+    fs.writeFileSync(alpha, '# Alpha\n\nInvented, changed.');
+    const t = setup({ state: copyOf(state) });
+    await t.manager.start();
+
+    const later = await t.manager.answerStart('later');
+    expect(later.startChoice).toBe('later');
+    expect(readStartMarker(dataDir)).toBeNull();
+    // Nothing is watched: a change now is not seen either.
+    put(path.join(notes(), 'gamma.md'), '# Gamma\n\nInvented third note.');
+    await new Promise((r) => setTimeout(r, 300));
+    expect(t.splitter.calls).toEqual([]);
+    expect(t.manager.watcherOf()!.files()).toHaveLength(2);
+
+    const checked = await t.manager.checkUpdates();
+    expect(checked.startChoice).toBeUndefined();
+    await t.manager.watcherOf()!.whenIdle();
+    expect(t.splitter.calls.sort()).toEqual([alpha, path.join(notes(), 'gamma.md')].sort());
+    expect(t.logs).toContain('[libraries] library all-files running');
+    expect(readStartMarker(dataDir)).toBeNull();
+    await t.manager.stop({ quitting: true });
+  });
+
+  it('Start indexing now runs the normal start at once', async () => {
+    const state = await indexedLibrary();
+    writeStartMarker(dataDir, 'all-files');
+    const alpha = path.join(notes(), 'alpha.md');
+    fs.writeFileSync(alpha, '# Alpha\n\nInvented, changed.');
+    const t = setup({ state: copyOf(state) });
+    await t.manager.start();
+    expect(t.manager.status().startChoice).toBe('ask');
+    const s = await t.manager.answerStart('now');
+    expect(s.startChoice).toBeUndefined();
+    await t.manager.watcherOf()!.whenIdle();
+    expect(t.splitter.calls).toEqual([alpha]);
+    expect(readStartMarker(dataDir)).toBeNull();
+    await t.manager.stop({ quitting: true });
+  });
+
+  it('counts no answer as Later, and a clean quit makes the next start normal', async () => {
+    const state = await indexedLibrary();
+    writeStartMarker(dataDir, 'all-files');
+    const t = setup({ state: copyOf(state) });
+    await t.manager.start();
+    expect(t.manager.status().startChoice).toBe('ask');
+    await t.manager.stop({ quitting: true });
+    expect(readStartMarker(dataDir)).toBeNull();
+
+    const next = setup({ state: copyOf(state) });
+    await next.manager.start();
+    expect(next.manager.status().startChoice).toBeUndefined();
+    expect(next.manager.status().state).toBe('idle');
+    await next.manager.stop({ quitting: true });
+  });
+
+  it('applies to that library only: another starts normally, and switching back keeps it open as it was', async () => {
+    const state = await indexedLibrary();
+    writeStartMarker(dataDir, 'all-files');
+    const t = setup({ state: copyOf(state) });
+    await t.manager.start();
+    await t.manager.answerStart('later');
+    const { current: work } = await t.manager.create('Work');
+    expect(t.manager.status()).toMatchObject({ libraryId: work, state: 'idle' });
+    expect(t.manager.status().startChoice).toBeUndefined();
+    await t.manager.select('all-files');
+    expect(t.manager.status()).toMatchObject({ libraryId: 'all-files', state: 'stopped', startChoice: 'later' });
+    expect(docTitles(t.manager)).toEqual(['alpha.md', 'beta.md']);
+    expect(t.splitter.calls).toEqual([]);
+    await t.manager.stop({ quitting: true });
+  });
+
+  it('ends when the user adds a file: the library starts normally and the file is read', async () => {
+    const state = await indexedLibrary();
+    writeStartMarker(dataDir, 'all-files');
+    const t = setup({ state: copyOf(state) });
+    await t.manager.start();
+    await t.manager.answerStart('later');
+    const single = put(path.join(tmp, 'Single', 'delta.md'), '# Delta\n\nInvented added note.');
+    await t.manager.addPaths([single]);
+    expect(t.manager.status().startChoice).toBeUndefined();
+    await until(() => docTitles(t.manager).length === 3);
+    await t.manager.watcherOf()!.whenIdle();
+    expect(t.splitter.calls).toEqual([single]);
+    await t.manager.stop({ quitting: true });
+  });
+
+  it('changes nothing for a normal start: no question, and no marker once running', async () => {
+    put(path.join(notes(), 'alpha.md'), '# Alpha\n\nInvented first note.');
+    const t = setup({ state: linked });
+    await t.manager.start();
+    expect(t.manager.status().startChoice).toBeUndefined();
+    expect(t.manager.status().state).not.toBe('stopped');
+    expect(readStartMarker(dataDir)).toBeNull();
+    expect(t.logs.some((l) => l.includes('did not finish'))).toBe(false);
+    await t.manager.stop({ quitting: true });
+  });
+
+  it('starts normally when the marker names a library that no longer exists', async () => {
+    const state = await indexedLibrary();
+    writeStartMarker(dataDir, 'lib-gone00');
+    const t = setup({ state: copyOf(state) });
+    await t.manager.start();
+    expect(t.manager.status().startChoice).toBeUndefined();
+    expect(readStartMarker(dataDir)).toBeNull();
+    await t.manager.stop({ quitting: true });
   });
 });

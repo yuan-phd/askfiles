@@ -5,7 +5,16 @@
 // by drag and drop anywhere in the window. Everything goes through window.askfiles (the preload
 // bridge); without it (a plain browser) the bar shows the status counts only.
 
-import { notWatchedText, notWatchedTip, tooLargeText, unsupportedText } from './messages.js';
+import {
+  notCheckedText,
+  notWatchedText,
+  notWatchedTip,
+  startChoiceText,
+  startLaterLabel,
+  startNowLabel,
+  tooLargeText,
+  unsupportedText,
+} from './messages.js';
 import { menuSources, moreText, sameNameFolders, sourceMenuText, sourceStatus } from './sources.js';
 
 const MARKUP = `
@@ -27,6 +36,11 @@ const MARKUP = `
   </button>
   <span class="status-failed" data-testid="status-failed" hidden></span>
   <span class="status-not-watched" data-testid="status-not-watched" hidden></span>
+  <span class="start-choice" data-testid="start-choice" role="status" hidden>
+    <span class="start-choice-text" data-testid="start-choice-text"></span>
+    <button type="button" data-testid="start-now"></button>
+    <button type="button" class="link" data-testid="start-later"></button>
+  </span>
   <span class="summaries-status" data-testid="summaries-status" role="status" hidden>
     <span class="summaries-text" data-testid="summaries-text"></span>
     <button type="button" class="link" data-testid="summaries-pause">Pause</button>
@@ -159,6 +173,8 @@ const CHECK_MIN_MS = 600;
 export function statusOf(s) {
   if (!s) return null;
   if (s.error) return { kind: 'error', text: 'Folder not available' };
+  // Open with its index only after a start that did not finish: nothing walked or watched.
+  if (s.startChoice) return { kind: 'not-checked', text: notCheckedText() };
   if (s.state === 'working' || s.state === 'starting') {
     const pending = Number(s.pending) || 0;
     return { kind: 'indexing', text: pending > 0 ? `Indexing, ${pending} left` : 'Indexing' };
@@ -252,6 +268,8 @@ export function mountTopBar(
     failed.hidden = dead.length === 0;
     failed.textContent = plural(dead.length, 'file could not be read', 'files could not be read');
     failed.title = dead.map((d) => `${d.path}: ${d.error}`).join('\n');
+    const choice = q('start-choice');
+    choice.hidden = s?.startChoice !== 'ask' || state.checking;
     const limited = q('status-not-watched');
     limited.hidden = !(s?.notWatched > 0);
     if (!limited.hidden) {
@@ -683,6 +701,36 @@ export function mountTopBar(
     q('check-updates').removeAttribute('aria-disabled');
     if (s) applyStatus(s);
     else renderStatus();
+  });
+
+  // The question after a start that did not finish. Start indexing now shows Checking until the
+  // library has been walked, as Check for updates does; Later only hides the question.
+  q('start-choice-text').textContent = startChoiceText();
+  q('start-now').textContent = startNowLabel();
+  q('start-later').textContent = startLaterLabel();
+  q('start-now').addEventListener('click', async () => {
+    if (!bridge?.answerStart || state.checking) return;
+    state.checking = true;
+    q('check-updates').setAttribute('aria-disabled', 'true');
+    renderStatus();
+    let s = null;
+    try {
+      s = await bridge.answerStart('now');
+    } catch (e) {
+      console.warn('[topbar] start indexing failed', e.message);
+    }
+    state.checking = false;
+    q('check-updates').removeAttribute('aria-disabled');
+    if (s) applyStatus(s);
+    else renderStatus();
+  });
+  q('start-later').addEventListener('click', async () => {
+    if (!bridge?.answerStart || state.checking) return;
+    try {
+      applyStatus(await bridge.answerStart('later'));
+    } catch (e) {
+      console.warn('[topbar] later failed', e.message);
+    }
   });
 
   q('add-files').addEventListener('click', () => add('files'));

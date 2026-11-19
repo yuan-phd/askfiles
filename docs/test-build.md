@@ -155,6 +155,10 @@ One per click on a source card button, under an answer or under nothing found.
 
 The questions-only export writes the same lines with these fields emptied: question `answer` (null), `cited` ([]) and `error` (null); browse `document` (null); source `file` (""), `section` and `page` (null). It keeps the question text, the switches (including the files named-file detection found, which come from the question itself), the outcome, the starred count and the time.
 
+## Release checklist
+
+- Next Windows test build: one person installs it on Windows and looks at the installer's license page: that it shows before installing, that I Agree is needed to go on, and that the line "AskFiles may be passed on only unmodified and together with these terms." is there (docs/licenses.md, Windows installer license page). No one has seen this page on Windows yet.
+
 ## Summarizing the exports
 
 Put every file testers sent in one folder and run:

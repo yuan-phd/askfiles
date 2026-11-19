@@ -218,6 +218,31 @@ body {
   line-height: 1.3;
 }
 
+/* The question after a start that did not finish: one line, two buttons. */
+.topbar .start-choice:not([hidden]) {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 34rem;
+  font-size: 0.85em;
+  line-height: 1.3;
+}
+
+.topbar .start-choice [data-testid='start-now'] {
+  padding: var(--space-1) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-small);
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.topbar .start-choice [data-testid='start-later'] {
+  white-space: nowrap;
+}
+
 .add-button {
   padding: var(--space-1) var(--space-4);
   border: 0;

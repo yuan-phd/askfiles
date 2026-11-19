@@ -30,6 +30,7 @@ const INVOKE: Record<string, keyof BridgeHandlers> = {
   [CHANNELS.librariesRemoveSource]: 'librariesRemoveSource',
   [CHANNELS.librariesReindex]: 'librariesReindex',
   [CHANNELS.librariesCheckUpdates]: 'librariesCheckUpdates',
+  [CHANNELS.librariesAnswerStart]: 'librariesAnswerStart',
   [CHANNELS.settingsGet]: 'settingsGet',
   [CHANNELS.settingsSet]: 'settingsSet',
   [CHANNELS.developerInfo]: 'developerInfo',
