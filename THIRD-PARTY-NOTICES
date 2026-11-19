@@ -1344,42 +1344,49 @@ You may replace these shared libraries with your own builds, modified or not, fo
 source below. On macOS, changing a file inside the app invalidates its code signature; sign the app
 again (for example ad hoc: codesign --force --deep --sign - AskFiles.app).
 The license texts are under "License texts" below: LGPL-2.1, LGPL-3.0 (with the GPL-3.0 text it
-builds on) and MPL-2.0. The complete source code, at the versions shipped, is at these locations:
+builds on) and MPL-2.0. The complete source code, at the versions shipped, with the build scripts
+and patches used, is kept by AskFiles in the release lgpl-sources-1 of its repository:
+https://github.com/yuan-phd/askfiles/releases/tag/lgpl-sources-1
+Each file is an exact copy of what the build downloaded; manifest.json and SHA256SUMS in that
+release name where each file came from and its sha256.
 
 - libvips 8.14.5 and the libraries built into it
   Shipped in: sharp@0.32.6 (upstream collector), sharp@0.32.6 (upstream server)
-  Built by https://github.com/lovell/sharp-libvips at commit e3585e7e2de7c0a9f0fe81c2bd9a559bebc65f87 (tag v8.14.5):
-  https://github.com/lovell/sharp-libvips/tree/e3585e7e2de7c0a9f0fe81c2bd9a559bebc65f87
-  Its build/lin.sh downloads each source below and applies the patches it names.
-  - libvips 8.14.5 (LGPL-3.0): https://github.com/libvips/libvips/releases/download/v8.14.5/vips-8.14.5.tar.xz
-  - GLib 2.78.0 (LGPL-3.0): https://download.gnome.org/sources/glib/2.78/glib-2.78.0.tar.xz
-  - FriBidi 1.0.13 (LGPL-3.0): https://github.com/fribidi/fribidi/releases/download/v1.0.13/fribidi-1.0.13.tar.xz
-  - GdkPixbuf 2.42.10 (LGPL-3.0): https://download.gnome.org/sources/gdk-pixbuf/2.42/gdk-pixbuf-2.42.10.tar.xz
-  - libexif 0.6.24 (LGPL-3.0): https://github.com/libexif/libexif/releases/download/v0.6.24/libexif-0.6.24.tar.bz2
-  - libheif 1.16.2 (LGPL-3.0): https://github.com/strukturag/libheif/releases/download/v1.16.2/libheif-1.16.2.tar.gz
-  - librsvg 2.57.0 (LGPL-3.0): https://download.gnome.org/sources/librsvg/2.57/librsvg-2.57.0.tar.xz
-  - Pango 1.51.0 (LGPL-3.0): https://download.gnome.org/sources/pango/1.51/pango-1.51.0.tar.xz
-  - proxy-libintl 0.4 (LGPL-3.0): https://github.com/frida/proxy-libintl/archive/0.4.tar.gz
-  - cairo 1.17.8 (MPL-2.0): https://gitlab.freedesktop.org/cairo/cairo/-/archive/1.17.8/cairo-1.17.8.tar.bz2
+  Built by sharp-libvips build/lin.sh, which downloads each source below and applies the patches named:
+  - lovell/sharp-libvips at commit e3585e7e2de7c0a9f0fe81c2bd9a559bebc65f87 (tag v8.14.5): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/sharp-libvips-e3585e7e2de7c0a9f0fe81c2bd9a559bebc65f87.tar.gz
+  - patch to GLib: https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/sharp-libvips-8.14.5-glib-without-gregex.patch
+  - patch to libvips: https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/sharp-libvips-8.14.5-vips-8-pr-3476.patch
+  - libvips 8.14.5 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/vips-8.14.5.tar.xz
+  - GLib 2.78.0 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/glib-2.78.0.tar.xz
+  - FriBidi 1.0.13 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/fribidi-1.0.13.tar.xz
+  - GdkPixbuf 2.42.10 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/gdk-pixbuf-2.42.10.tar.xz
+  - libexif 0.6.24 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/libexif-0.6.24.tar.bz2
+  - libheif 1.16.2 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/libheif-1.16.2.tar.gz
+  - librsvg 2.57.0 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/librsvg-2.57.0.tar.xz
+  - Pango 1.51.0 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/pango-1.51.0.tar.xz
+  - proxy-libintl 0.4 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/proxy-libintl-0.4.tar.gz
+  - cairo 1.17.8 (MPL-2.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/cairo-1.17.8.tar.bz2
 - libvips 8.15.3 and the libraries built into it
   Shipped in: @img/sharp-libvips-darwin-arm64@1.0.4 (upstream collector)
-  Built by https://github.com/lovell/sharp-libvips at commit cb57c8e09460fa0b5c550806b667a2dfc3f7480b (tag v8.15.3):
-  https://github.com/lovell/sharp-libvips/tree/cb57c8e09460fa0b5c550806b667a2dfc3f7480b
-  Its build/lin.sh downloads each source below and applies the patches it names.
-  - libvips 8.15.3 (LGPL-3.0): https://github.com/libvips/libvips/releases/download/v8.15.3/vips-8.15.3.tar.xz
-  - GLib 2.81.1 (LGPL-3.0): https://download.gnome.org/sources/glib/2.81/glib-2.81.1.tar.xz
-  - FriBidi 1.0.15 (LGPL-3.0): https://github.com/fribidi/fribidi/releases/download/v1.0.15/fribidi-1.0.15.tar.xz
-  - libexif 0.6.24 (LGPL-3.0): https://github.com/libexif/libexif/releases/download/v0.6.24/libexif-0.6.24.tar.bz2
-  - libheif 1.18.2 (LGPL-3.0): https://github.com/strukturag/libheif/releases/download/v1.18.2/libheif-1.18.2.tar.gz
-  - librsvg 2.58.93 (LGPL-3.0): https://download.gnome.org/sources/librsvg/2.58/librsvg-2.58.93.tar.xz
-  - Pango 1.54.0 (LGPL-3.0): https://download.gnome.org/sources/pango/1.54/pango-1.54.0.tar.xz
-  - proxy-libintl 0.4 (LGPL-3.0): https://github.com/frida/proxy-libintl/archive/0.4.tar.gz
-  - cairo 1.18.0 (MPL-2.0): https://cairographics.org/releases/cairo-1.18.0.tar.xz
+  Built by sharp-libvips build/lin.sh, which downloads each source below and applies the patches named:
+  - lovell/sharp-libvips at commit cb57c8e09460fa0b5c550806b667a2dfc3f7480b (tag v8.15.3): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/sharp-libvips-cb57c8e09460fa0b5c550806b667a2dfc3f7480b.tar.gz
+  - patch to GLib: https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/sharp-libvips-8.15.3-glib-without-gregex.patch
+  - patch to libexif: https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/sharp-libvips-8.15.3-libexif-db84aefa.patch
+  - patch to libvips: https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/sharp-libvips-8.15.3-vips-8-heifsave-disable-hbr-support.patch
+  - libvips 8.15.3 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/vips-8.15.3.tar.xz
+  - GLib 2.81.1 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/glib-2.81.1.tar.xz
+  - FriBidi 1.0.15 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/fribidi-1.0.15.tar.xz
+  - libexif 0.6.24 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/libexif-0.6.24.tar.bz2
+  - libheif 1.18.2 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/libheif-1.18.2.tar.gz
+  - librsvg 2.58.93 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/librsvg-2.58.93.tar.xz
+  - Pango 1.54.0 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/pango-1.54.0.tar.xz
+  - proxy-libintl 0.4 (LGPL-3.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/proxy-libintl-0.4.tar.gz
+  - cairo 1.18.0 (MPL-2.0): https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/cairo-1.18.0.tar.xz
 - FFmpeg in Electron 44.10.0 (libffmpeg in the Electron framework)
   License: LGPL-2.1 (text below; also in LICENSES.chromium.html in the app resources).
   Chromium 152.0.7977.169's copy at revision 2b68d2babae73714846961fb0ee47e3b3d2e39a9, with Chromium's build configuration
   in its chromium/ folder:
-  https://chromium.googlesource.com/chromium/third_party/ffmpeg/+/2b68d2babae73714846961fb0ee47e3b3d2e39a9
+  https://github.com/yuan-phd/askfiles/releases/download/lgpl-sources-1/chromium-ffmpeg-2b68d2babae73714846961fb0ee47e3b3d2e39a9.tar.gz
 
 The GNU LGPL version 3 text, with the GNU GPL version 3 text it builds on, is under "=== Standard license text: LGPL-3.0 ===" below.
 
