@@ -257,14 +257,16 @@ Owner, 2026-11-07. In this order:
 
 Rule for findings from user testing: verification-layer bugs use the budget of two per release (Stopping conditions for a phase); anything the owner classes as a capability limit goes into the limits list; no new tuning round is opened from test findings.
 
-### Before formal release
+### License and release items
 
-Owner, 2026-11-10, after the license work (docs/licenses.md). To be done before the first formal release:
+Owner, 2026-11-10, after the license work (docs/licenses.md); updated 2026-11-19.
 
-- **Mirror the LGPL sources.** Copy the exact source archives the THIRD-PARTY-NOTICES section "Source code of the LGPL libraries" points to (libvips and the libraries built into it, for both builds shipped, with the patches the sharp-libvips build scripts apply; Electron's FFmpeg at the Chromium revision listed) into a dedicated GitHub release of this repository, and point the notices there, so the pointers no longer depend on gists, moving branches or third-party servers (scripts/lib/lgpl-sources.mjs).
-- **NVIDIA CUDA runtime.** Have a lawyer confirm that redistributing the NVIDIA CUDA runtime files of the Windows build (cudart, cuBLAS, cuBLASLt, inside the bundled Ollama) with the application meets the NVIDIA CUDA Toolkit EULA (docs/licenses.md, Windows build), or stop bundling them (docs/tickets/windows-cuda-terms.md).
-- **Installer license page.** Give the Windows installer a license page covering the Microsoft Visual C++ runtime terms, which the Visual Studio 2022 terms ask distributors to have end users agree to (docs/licenses.md, Windows build); the NSIS installer shows none today.
-- **Trademark search.** Run an official trademark search for the name AskFiles (USPTO, EUIPO, WIPO Global Brand Database and the national offices of the markets the app is released in, classes 9 and 42 at least) before relying on the name.
+Use (owner, 2026-11-19): AskFiles is a non-commercial portfolio app, shared with friends as Mac and Windows builds. The items below make it license-compliant for that use; no further license work is planned unless the use changes (commercial, or wide distribution), which reopens the items marked so. Not legal advice; what is uncertain is marked in docs/licenses.md and the tickets.
+
+- **Mirror the LGPL sources.** Done 2026-11-19 (branch local/release-compliance). Every source archive, patch and build recipe THIRD-PARTY-NOTICES points to (libvips and the libraries built into it for the mac and Windows builds, both libvips versions; Electron's FFmpeg at the Chromium revision) is a copy in the release lgpl-sources-1 of this repository, with manifest.json and SHA256SUMS; the notices point only there (scripts/lib/lgpl-sources.mjs; docs/licenses.md, LGPL source mirror). The owner creates the release and uploads the files.
+- **Installer license page.** Done 2026-11-19 (branch local/release-compliance). The Windows installer shows a license page the user must accept (I Agree) before installing: AskFiles' Apache License 2.0, the end-user terms for the NVIDIA CUDA files, and the Microsoft Visual C++ runtime terms (build/license.txt, scripts/installer-license.mjs; docs/licenses.md, Windows installer license page). The installer stays one-click and per-user.
+- **NVIDIA CUDA runtime.** Done for the current use 2026-11-19 (owner decision): the files stay bundled; each NVIDIA condition and how it is met is in docs/tickets/windows-cuda-terms.md, with the file-name question accepted as a risk. Reopen if the use becomes commercial or wide.
+- **Trademark search.** Not needed for non-commercial use (owner, 2026-11-19). Revisit if the use changes or before relying on the name AskFiles commercially.
 
 ### Next release
 
@@ -272,6 +274,7 @@ Recorded 2026-11-07 (owner), nothing built in this release.
 
 - **File-reference detection.** Cross-document questions that describe the documents instead of naming their files ("the 2024 directive", "the guidance") are the main remaining loss: file detection does not fire, so neither the per-file quota nor judgeRerank applies. Its scope is set from the real questions collected in user testing (Release plan, step 5).
 - **Numbers in citation verification.** Verification compares content words and treats a number as one more token, so a sentence with a wrong figure passes when its other words match the cited section. Proposed rule: every number in a sentence must appear in the section it is attributed to, otherwise the sentence is marked unsupported. Not built now because this release's two verification-layer fixes (leadInExempt, verifyStemEnglish) are used.
+- **Portfolio presentation.** Not started (owner, 2026-11-19). A README first screen with screenshots or a short video of the app, and a write-up of how cross-document answers were evaluated and improved: the sealed holdout set and the per-question gating of the keep rule (Acceptance and stopping rules).
 
 ### Phase 2 result
 

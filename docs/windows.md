@@ -6,12 +6,12 @@ Phase 5 of docs/plan.md. Windows 10 and 11, x64. Built and smoke tested on the G
 
 Two downloads, the same app:
 
-- **AskFiles-<version>-x64-setup.exe**, the installer. Double-click it. It installs for the current user only, into `%LOCALAPPDATA%\Programs\AskFiles`, without an administrator password or a UAC prompt, adds AskFiles to the Start menu and the desktop, and opens AskFiles when it is done. To remove it: Settings > Apps > Installed apps > AskFiles > Uninstall.
+- **AskFiles-<version>-x64-setup.exe**, the installer. Double-click it. It first shows the license terms (AskFiles' Apache License 2.0 and the terms of the NVIDIA and Microsoft files it includes; docs/licenses.md, Windows installer license page); click **I Agree** to install, or Cancel. Then it installs for the current user only, into `%LOCALAPPDATA%\Programs\AskFiles`, without an administrator password or a UAC prompt, adds AskFiles to the Start menu and the desktop, and opens AskFiles when it is done. To remove it: Settings > Apps > Installed apps > AskFiles > Uninstall.
 - **AskFiles-<version>-x64-portable.zip**, for people who cannot run installers. Right-click > Extract All to any folder, then open `AskFiles.exe` in it. Nothing is added to the Start menu. The portable copy keeps its library and models in the same place as the installed app (Data locations below), so the two share one library.
 
 The download is large (about 1.2 to 1.6 GB, the job summary of each workflow run gives the exact size) because it carries the search engine, the model engine with its NVIDIA runtime and the reading tools. Models are downloaded on the first launch, a few more gigabytes depending on the machine's memory.
 
-Silent install, for scripts and IT: `AskFiles-<version>-x64-setup.exe /S`. The smoke job installs this way.
+Silent install, for scripts and IT: `AskFiles-<version>-x64-setup.exe /S`. It skips the license page, so whoever runs it accepts the terms for the users. The smoke job installs this way.
 
 ## SmartScreen
 
