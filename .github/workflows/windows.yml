@@ -60,22 +60,23 @@ jobs:
         if: steps.root-modules.outputs.cache-hit != 'true'
         run: npm ci
 
-      # As in mac.yml: the build stamps decide whether a restored tree is reused.
+      # As in mac.yml: the build works in upstream-build/run, the stamps decide whether a restored
+      # tree is reused, and the modules are cached unpruned (pruning happens in upstream-build/package).
       - name: Cache the frontend build
         id: frontend-dist
         uses: actions/cache@v4
         with:
-          path: upstream/frontend/dist
-          key: frontend-dist-v2-win32-${{ hashFiles('upstream/frontend/**', 'patches/**') }}
-      - name: Cache the pruned server and collector node_modules
+          path: upstream-build/run/frontend/dist
+          key: frontend-dist-v3-win32-${{ hashFiles('upstream/frontend/**', 'patches/**') }}
+      - name: Cache the server and collector node_modules
         id: upstream-modules
         uses: actions/cache@v4
         with:
           path: |
-            upstream/server/node_modules
-            upstream/collector/node_modules
-          key: upstream-modules-win32-x64-node22-${{ hashFiles('upstream/server/package.json', 'upstream/server/yarn.lock', 'upstream/server/prisma/**', 'upstream/collector/package.json', 'upstream/collector/yarn.lock', 'patches/**', 'scripts/build.sh', 'scripts/prune.mjs', 'scripts/lib/prisma-engines.mjs', 'scripts/lib/load-graph.mjs') }}
-          restore-keys: upstream-modules-win32-x64-node22-
+            upstream-build/run/server/node_modules
+            upstream-build/run/collector/node_modules
+          key: upstream-run-modules-win32-x64-node22-${{ hashFiles('upstream/server/package.json', 'upstream/server/yarn.lock', 'upstream/server/prisma/**', 'upstream/collector/package.json', 'upstream/collector/yarn.lock', 'patches/**', 'scripts/build.sh') }}
+          restore-keys: upstream-run-modules-win32-x64-node22-
       - name: Locate the yarn cache
         id: yarn-cache
         if: steps.frontend-dist.outputs.cache-hit != 'true' || steps.upstream-modules.outputs.cache-hit != 'true'
@@ -118,8 +119,10 @@ jobs:
           ls resources/ollama/lib/ollama
           du -sh resources/ollama resources/ollama/lib/ollama/*/
 
-      # tsc, scripts/build.sh with PACKAGE_TARGET=win-x64, THIRD-PARTY-NOTICES from the pruned win32
-      # trees and its test, then electron-builder for the NSIS installer (package.json).
+      # tsc, scripts/build.sh with PACKAGE_TARGET=win-x64 (upstream-build/run, then the pruned
+      # upstream-build/package), THIRD-PARTY-NOTICES from the pruned win32 trees and its test, then
+      # electron-builder for the NSIS installer and the check that the packaged server and collector
+      # hold every patch (package.json).
       - name: Build and package
         run: bash .github/scripts/annotate-run.sh "Build and package" npm run package:win
         env:
@@ -127,6 +130,9 @@ jobs:
           # read-only job token avoids the anonymous rate limit (as in mac.yml).
           GITHUB_TOKEN: ${{ github.token }}
 
+      # Nothing may write to upstream/, not even ignored build output (as in mac.yml).
+      - name: Check upstream/ is unchanged after packaging
+        run: bash .github/scripts/check-upstream-unchanged.sh
       # Native module prebuilds, PE machines and the installed path length (docs/windows.md).
       - name: Check the unpacked app
         run: bash .github/scripts/annotate-run.sh "Package check" node scripts/check-windows-package.mjs release/win-unpacked | tee -a "$GITHUB_STEP_SUMMARY"
@@ -174,6 +180,8 @@ jobs:
         run: |
           node scripts/check-test-record.mjs release-test/win-unpacked/resources --expect present | tee -a "$GITHUB_STEP_SUMMARY"
           node scripts/check-windows-package.mjs release-test/win-unpacked --paths-only --install-name "AskFiles Test" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Check upstream/ is unchanged after the test build
+        run: bash .github/scripts/check-upstream-unchanged.sh
       - name: Upload the test build installer
         uses: actions/upload-artifact@v4
         with:

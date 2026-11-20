@@ -16,7 +16,12 @@ release/
 resources/ollama*
 *.log
 
-# upstream build products (upstream/ itself is vendored and tracked)
+# The patched, installed copy of upstream/ that dev runs, tests and packaging use (scripts/build.sh,
+# scripts/lib/upstream-copy.mjs). upstream/ itself is vendored, tracked and never written to.
+/upstream-build/
+
+# Build output older versions of scripts/build.sh left inside upstream/; kept ignored so
+# git clean -X upstream/ can remove it.
 upstream/server/public/
 upstream/frontend/dist/
 upstream/collector/hotdir/*

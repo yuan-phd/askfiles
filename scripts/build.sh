@@ -1,11 +1,17 @@
 #!/bin/bash
-# Prepares upstream/ for packaging: applies patches, builds the frontend into server/public,
-# installs production dependencies for server and collector, generates the Prisma client,
-# prunes Prisma engines and other files for the package target (scripts/prune.mjs) and checks that
-# dev dependencies are gone. Idempotent: every step can run again on an already built tree.
+# Prepares the patched copy of upstream/ that dev runs, tests and packaging use; upstream/ itself is
+# only read (scripts/lib/upstream-copy.mjs). Into upstream-build/run it copies the tracked upstream/
+# files and applies patches/, builds the frontend into server/public, installs production
+# dependencies for server and collector, generates the Prisma client and checks that dev
+# dependencies are gone. run is never pruned, so it still runs on the build machine. With a
+# PACKAGE_TARGET it then rebuilds upstream-build/package from run (an APFS clone on the Mac) and
+# removes Prisma engines and other files there for that target (scripts/prune.mjs).
+# Idempotent: every step can run again on an already built tree, and a run with nothing changed
+# takes seconds.
 #
-# electron-builder then copies upstream/server and upstream/collector as plain folders into
-# Contents/Resources (electron-builder.yml, extraResources), so the tree left here is what ships.
+# electron-builder then copies upstream-build/package/server and upstream-build/package/collector as
+# plain folders into Contents/Resources (electron-builder.yml, extraResources), so the tree left
+# there is what ships.
 #
 # PACKAGE_TARGET=mac-arm64  keep only darwin-arm64 Prisma engines and prune for darwin-arm64
 #                           (set by npm run package:mac).
@@ -13,15 +19,17 @@
 #                           cloud session measures and boot-checks (docs/bundle-report.md).
 # PACKAGE_TARGET=win-x64    keep only the Windows Prisma engines and prune for win32-x64 (set by
 #                           npm run package:win, on a Windows machine under Git Bash; never cross-built).
-# Unset                     no pruning, so the result still runs on the build machine.
+# Unset                     upstream-build/run only; upstream-build/package is left as it is.
 #
-# The frontend build is skipped when upstream/frontend/dist was built from the same sources: the
-# hash of upstream/frontend and patches/ is stamped into dist/.askfiles-source-hash.
+# The frontend build is skipped when run/frontend/dist was built from the same sources: the hash of
+# upstream/frontend and patches/ is stamped into dist/.askfiles-source-hash.
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-UPSTREAM="$ROOT/upstream"
+# What this script builds; upstream/ is only read, for the sources and their hashes.
+RUN="$ROOT/upstream-build/run"
+PKG="$ROOT/upstream-build/package"
 START=$(date +%s)
 PACKAGE_TARGET="${PACKAGE_TARGET:-}"
 
@@ -60,121 +68,131 @@ case "$PACKAGE_TARGET" in
   *) fail "unknown PACKAGE_TARGET '$PACKAGE_TARGET' (expected mac-arm64, linux-x64, win-x64 or unset)" ;;
 esac
 
-step "1/8 apply patches"
-node "$ROOT/scripts/lib/patches.mjs" apply "$ROOT" || fail "patching upstream failed; see the message above"
+step "1/7 copy upstream/ into upstream-build/run and apply patches"
+node "$ROOT/scripts/lib/upstream-copy.mjs" sync "$ROOT" || fail "preparing upstream-build/run failed; see the message above"
 
-step "2/8 build frontend (VITE_API_BASE=$VITE_API_BASE)"
+step "2/7 build frontend (VITE_API_BASE=$VITE_API_BASE)"
 # Tracked blob hashes plus any uncommitted change, so an edit invalidates the stamp without a commit.
 FRONTEND_HASH=$( (echo "VITE_API_BASE=$VITE_API_BASE"; git -C "$ROOT" ls-files -s -- upstream/frontend patches;
   git -C "$ROOT" diff HEAD -- upstream/frontend patches) |
   "$NODE_BIN" -e 'process.stdout.write(require("crypto").createHash("sha256").update(require("fs").readFileSync(0)).digest("hex"))')
-STAMP="$UPSTREAM/frontend/dist/.askfiles-source-hash"
+STAMP="$RUN/frontend/dist/.askfiles-source-hash"
 # The frontend's packages as this build bundled them, for THIRD-PARTY-NOTICES: a reused dist comes
 # without frontend/node_modules (the mac workflow caches dist alone).
-NOTICES_SNAPSHOT="$UPSTREAM/frontend/dist/.askfiles-notices.json"
-if [ -f "$UPSTREAM/frontend/dist/_index.html" ] && [ -f "$NOTICES_SNAPSHOT" ] &&
+NOTICES_SNAPSHOT="$RUN/frontend/dist/.askfiles-notices.json"
+if [ -f "$RUN/frontend/dist/_index.html" ] && [ -f "$NOTICES_SNAPSHOT" ] &&
   [ "$(cat "$STAMP" 2>/dev/null)" = "$FRONTEND_HASH" ]; then
   echo "[build] frontend sources unchanged since the last build, reusing frontend/dist"
 else
-  rm -rf "$UPSTREAM/frontend/dist"
-  (cd "$UPSTREAM/frontend" && yarn install --frozen-lockfile --non-interactive --network-timeout 100000)
+  rm -rf "$RUN/frontend/dist"
+  (cd "$RUN/frontend" && yarn install --frozen-lockfile --non-interactive --network-timeout 100000)
   # vite.config.js defines process.env as the whole build environment, which ends up in the shipped
   # JavaScript. Build with an empty environment so no token, proxy or home path leaks into the bundle.
   # Windows processes need SystemRoot to start children (esbuild); it holds no user data.
   SYSTEM_ROOT="${SYSTEMROOT:-${SystemRoot:-}}"
-  (cd "$UPSTREAM/frontend" && env -i PATH=/usr/bin:/bin VITE_API_BASE="$VITE_API_BASE" \
+  (cd "$RUN/frontend" && env -i PATH=/usr/bin:/bin VITE_API_BASE="$VITE_API_BASE" \
     ${SYSTEM_ROOT:+SYSTEMROOT="$SYSTEM_ROOT"} \
     "$NODE_BIN" node_modules/vite/bin/vite.js build --logLevel warn)
-  (cd "$UPSTREAM/frontend" && "$NODE_BIN" scripts/postbuild.js)
-  [ -f "$UPSTREAM/frontend/dist/_index.html" ] || fail "frontend build did not produce dist/_index.html"
+  (cd "$RUN/frontend" && "$NODE_BIN" scripts/postbuild.js)
+  [ -f "$RUN/frontend/dist/_index.html" ] || fail "frontend build did not produce dist/_index.html"
   "$NODE_BIN" "$ROOT/scripts/third-party-notices.mjs" --snapshot frontend || fail "could not record the frontend packages"
   printf '%s' "$FRONTEND_HASH" > "$STAMP"
 fi
-rm -rf "$UPSTREAM/server/public"
-cp -R "$UPSTREAM/frontend/dist" "$UPSTREAM/server/public"
-rm -f "$UPSTREAM/server/public/.askfiles-source-hash" "$UPSTREAM/server/public/.askfiles-notices.json"
+rm -rf "$RUN/server/public"
+cp -R "$RUN/frontend/dist" "$RUN/server/public"
+rm -f "$RUN/server/public/.askfiles-source-hash" "$RUN/server/public/.askfiles-notices.json"
 
-# Everything that decides what steps 3 to 7 leave in server and collector node_modules, plus each
-# tree's .yarn-integrity, which any later yarn install rewrites. Step 7 writes it into
+# Everything that decides what steps 3 to 5 leave in server and collector node_modules, plus each
+# tree's .yarn-integrity, which any later yarn install rewrites. Step 5 writes it into
 # <pkg>/node_modules/.askfiles-build-stamp; when both stamps still match, the trees are the output
-# of an earlier build with the same inputs (the CI cache restores them) and steps 3 to 5 are skipped.
+# of an earlier build with the same inputs (the CI cache restores them) and steps 3 and 4 are skipped.
+# The package target is not part of it: run is never pruned.
 STAMP_PATHS=(upstream/server/package.json upstream/server/yarn.lock upstream/server/prisma
-  upstream/collector/package.json upstream/collector/yarn.lock patches scripts/build.sh scripts/prune.mjs
-  scripts/lib/prisma-engines.mjs scripts/lib/load-graph.mjs)
+  upstream/collector/package.json upstream/collector/yarn.lock patches scripts/build.sh)
 tree_hash() {
-  (echo "PACKAGE_TARGET=$PACKAGE_TARGET node=$("$NODE_BIN" -p 'process.versions.node.split(".")[0]')"
+  (echo "node=$("$NODE_BIN" -p 'process.versions.node.split(".")[0]')"
     git -C "$ROOT" ls-files -s -- "${STAMP_PATHS[@]}"
     git -C "$ROOT" diff HEAD -- "${STAMP_PATHS[@]}"
     # Missing before the first install; pipefail would otherwise end the script here without a message.
-    cat "$UPSTREAM/server/node_modules/.yarn-integrity" "$UPSTREAM/collector/node_modules/.yarn-integrity" 2>/dev/null || true) |
+    cat "$RUN/server/node_modules/.yarn-integrity" "$RUN/collector/node_modules/.yarn-integrity" 2>/dev/null || true) |
     "$NODE_BIN" -e 'process.stdout.write(require("crypto").createHash("sha256").update(require("fs").readFileSync(0)).digest("hex"))'
 }
 TREE_HASH=$(tree_hash)
 REUSE=0
-if [ "$(cat "$UPSTREAM/server/node_modules/.askfiles-build-stamp" 2>/dev/null)" = "$TREE_HASH" ] &&
-  [ "$(cat "$UPSTREAM/collector/node_modules/.askfiles-build-stamp" 2>/dev/null)" = "$TREE_HASH" ]; then
+if [ "$(cat "$RUN/server/node_modules/.askfiles-build-stamp" 2>/dev/null)" = "$TREE_HASH" ] &&
+  [ "$(cat "$RUN/collector/node_modules/.askfiles-build-stamp" 2>/dev/null)" = "$TREE_HASH" ]; then
   REUSE=1
 fi
 
-step "3/8 install server and collector production dependencies"
+step "3/7 install server and collector production dependencies"
 if [ "$REUSE" = 1 ]; then
-  echo "[build] server and collector node_modules match their build stamp, skipping steps 3 to 5"
+  echo "[build] server and collector node_modules match their build stamp, skipping the installs"
 else
   for pkg in server collector; do
-    # scripts/install_pkgs.sh stamps full dev installs; this install changes node_modules, so drop the
-    # stamp and let the next cloud session reinstall dev dependencies if it needs them.
-    rm -f "$UPSTREAM/$pkg/node_modules/.install_pkgs.sha256" "$UPSTREAM/$pkg/node_modules/.askfiles-build-stamp"
-    # --check-files puts back what an earlier step 7 pruned; yarn's integrity check alone does not
+    rm -f "$RUN/$pkg/node_modules/.askfiles-build-stamp"
+    # --check-files puts back files missing from node_modules; yarn's integrity check alone does not
     # look at the files.
-    (cd "$UPSTREAM/$pkg" && yarn install --production --frozen-lockfile --check-files --non-interactive --network-timeout 100000)
+    (cd "$RUN/$pkg" && yarn install --production --frozen-lockfile --check-files --non-interactive --network-timeout 100000)
   done
 fi
 
-step "4/8 prisma generate"
-# The build stamp cannot tell a client generated while upstream/ was restored (unpatched schema,
-# hard-coded database path) from a good one, so a reused client must also match the patched schema.
-if [ "$REUSE" = 1 ] && node "$ROOT/scripts/lib/prisma-client.mjs" check "$UPSTREAM/server" >/dev/null 2>&1; then
+step "4/7 prisma generate"
+# A reused client must also match the patched schema: the build stamp cannot tell a client
+# generated from another schema from a good one.
+if [ "$REUSE" = 1 ] && node "$ROOT/scripts/lib/prisma-client.mjs" check "$RUN/server" >/dev/null 2>&1; then
   echo "[build] reusing node_modules/.prisma/client"
 else
-  [ "$REUSE" = 1 ] && echo "[build] node_modules/.prisma/client does not match prisma/schema.prisma (generated while upstream/ was restored?), generating again"
-  (cd "$UPSTREAM/server" && "$NODE_BIN" node_modules/prisma/build/index.js generate --schema prisma/schema.prisma)
+  [ "$REUSE" = 1 ] && echo "[build] node_modules/.prisma/client does not match prisma/schema.prisma, generating again"
+  (cd "$RUN/server" && "$NODE_BIN" node_modules/prisma/build/index.js generate --schema prisma/schema.prisma)
 fi
-[ -f "$UPSTREAM/server/node_modules/.prisma/client/index.js" ] || fail "prisma generate did not produce node_modules/.prisma/client"
-node "$ROOT/scripts/lib/prisma-client.mjs" check "$UPSTREAM/server" || fail "the generated Prisma client does not match the patched schema; see the message above"
+[ -f "$RUN/server/node_modules/.prisma/client/index.js" ] || fail "prisma generate did not produce node_modules/.prisma/client"
+node "$ROOT/scripts/lib/prisma-client.mjs" check "$RUN/server" || fail "the generated Prisma client does not match the patched schema; see the message above"
 
-step "5/8 prisma engines"
-if [ "$PACKAGE_TARGET" = "mac-arm64" ]; then
-  node "$ROOT/scripts/lib/prisma-engines.mjs" "$UPSTREAM/server/node_modules" --keep darwin-arm64
-elif [ "$PACKAGE_TARGET" = "win-x64" ]; then
-  # query_engine-windows.dll.node and schema-engine-windows.exe.
-  node "$ROOT/scripts/lib/prisma-engines.mjs" "$UPSTREAM/server/node_modules" --keep windows
-else
-  echo "[build] PACKAGE_TARGET is neither mac-arm64 nor win-x64, keeping all engines"
-  node "$ROOT/scripts/lib/prisma-engines.mjs" "$UPSTREAM/server/node_modules"
-fi
-
-step "6/8 check dev dependencies"
+step "5/7 check dev dependencies"
 # yarn install --production in step 3 removes dev-only packages; this confirms it.
 for pkg in server collector; do
-  node "$ROOT/scripts/lib/dev-deps.mjs" "$UPSTREAM/$pkg"
+  node "$ROOT/scripts/lib/dev-deps.mjs" "$RUN/$pkg"
 done
-
-step "7/8 prune for the package target"
-if [ -n "$PRUNE_TARGET" ]; then
-  # Safe to run again on its own output; a reused tree prunes nothing.
-  node "$ROOT/scripts/prune.mjs" "$UPSTREAM" --target "$PRUNE_TARGET" || fail "pruning failed; see the message above"
-else
-  echo "[build] PACKAGE_TARGET not set, nothing pruned"
-fi
 TREE_HASH=$(tree_hash)
-for pkg in server collector; do printf '%s' "$TREE_HASH" > "$UPSTREAM/$pkg/node_modules/.askfiles-build-stamp"; done
+for pkg in server collector; do printf '%s' "$TREE_HASH" > "$RUN/$pkg/node_modules/.askfiles-build-stamp"; done
 
-step "8/8 summary"
+step "6/7 upstream-build/package for the package target"
+if [ -n "$PACKAGE_TARGET" ]; then
+  rm -rf "$PKG"
+  mkdir -p "$PKG"
+  # Only server and collector ship. A clone shares the file blocks with run until pruning removes
+  # files, so on the Mac this costs seconds and almost no disk.
+  for pkg in server collector; do
+    case "$(uname -s)" in
+      Darwin) cp -c -R "$RUN/$pkg" "$PKG/$pkg" 2>/dev/null || { rm -rf "$PKG/$pkg"; cp -R "$RUN/$pkg" "$PKG/$pkg"; } ;;
+      Linux) cp -R --reflink=auto "$RUN/$pkg" "$PKG/$pkg" ;;
+      *) cp -R "$RUN/$pkg" "$PKG/$pkg" ;;
+    esac
+  done
+  if [ "$PACKAGE_TARGET" = "mac-arm64" ]; then
+    node "$ROOT/scripts/lib/prisma-engines.mjs" "$PKG/server/node_modules" --keep darwin-arm64
+  elif [ "$PACKAGE_TARGET" = "win-x64" ]; then
+    # query_engine-windows.dll.node and schema-engine-windows.exe.
+    node "$ROOT/scripts/lib/prisma-engines.mjs" "$PKG/server/node_modules" --keep windows
+  else
+    echo "[build] PACKAGE_TARGET is neither mac-arm64 nor win-x64, keeping all engines"
+    node "$ROOT/scripts/lib/prisma-engines.mjs" "$PKG/server/node_modules"
+  fi
+  node "$ROOT/scripts/prune.mjs" "$PKG" --target "$PRUNE_TARGET" || fail "pruning failed; see the message above"
+else
+  echo "[build] PACKAGE_TARGET not set, upstream-build/package left as it is"
+fi
+
+step "7/7 summary"
 ELAPSED=$(( $(date +%s) - START ))
 echo "[build] patches:            $(find "$ROOT/patches" -maxdepth 1 -type f \( -name '*.patch' -o -name '*.diff' \) | wc -l | tr -d ' ')"
-echo "[build] server/public:      $(du -sh "$UPSTREAM/server/public" | cut -f1) in $(find "$UPSTREAM/server/public" -type f | wc -l | tr -d ' ') files"
-echo "[build] server/node_modules:    $(du -sh "$UPSTREAM/server/node_modules" | cut -f1)"
-echo "[build] collector/node_modules: $(du -sh "$UPSTREAM/collector/node_modules" | cut -f1)"
-echo "[build] package target:     ${PACKAGE_TARGET:-none (nothing pruned)}"
+echo "[build] server/public:      $(du -sh "$RUN/server/public" | cut -f1) in $(find "$RUN/server/public" -type f | wc -l | tr -d ' ') files"
+echo "[build] run server/node_modules:    $(du -sh "$RUN/server/node_modules" | cut -f1)"
+echo "[build] run collector/node_modules: $(du -sh "$RUN/collector/node_modules" | cut -f1)"
+if [ -n "$PACKAGE_TARGET" ]; then
+  echo "[build] package server/node_modules:    $(du -sh "$PKG/server/node_modules" | cut -f1)"
+  echo "[build] package collector/node_modules: $(du -sh "$PKG/collector/node_modules" | cut -f1)"
+fi
+echo "[build] package target:     ${PACKAGE_TARGET:-none (upstream-build/run only)}"
 echo "[build] elapsed:            ${ELAPSED}s"
 echo "[build] done"

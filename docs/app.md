@@ -31,9 +31,9 @@ Then:
 npm run dev
 ```
 
-It compiles src/main, makes sure the patches are applied to upstream/ (idempotent; build.sh leaves them applied, while the packaging commands restore upstream/ when they end), makes sure upstream/server's generated Prisma client matches the patched schema (scripts/lib/prisma-client.mjs ensure: a client generated while upstream/ was restored is generated again, with one line saying so, and the start stops only if it still does not match) and starts Electron on the repository with ASKFILES_DEV=1. With that variable the unpackaged app runs the same AppController as the packaged one, with three differences (src/main/app-mode.ts, devBackend):
+It compiles src/main, runs scripts/build.sh, which brings upstream-build/run up to date (the tracked upstream/ files copied with patches/ applied, installed and with its Prisma client generated from the patched schema; seconds when nothing changed, a fresh copy when upstream/ or a patch changed; upstream/ itself is never written to), and starts Electron on the repository with ASKFILES_DEV=1. With that variable the unpackaged app runs the same AppController as the packaged one, with three differences (src/main/app-mode.ts, devBackend):
 
-- Server and collector come from upstream/server and upstream/collector and run under the Node that runs npm (npm_node_execpath), not under Electron, because yarn built their native modules for that Node.
+- Server and collector come from upstream-build/run/server and upstream-build/run/collector and run under the Node that runs npm (npm_node_execpath), not under Electron, because yarn built their native modules for that Node.
 - No bundled Ollama: the app uses the Ollama already running on 127.0.0.1:11434 (ASKFILES_OLLAMA_PORT for another port) and its models in ~/.ollama. Start the Ollama app first; the start fails with a message when nothing answers. The first run pulls the tier's models there if they are missing, and the Models page removes from there.
 - Data in ~/Library/Application Support/AskFiles-dev, logs in ~/Library/Logs/AskFiles, so a dev run never touches the installed app's library.
 

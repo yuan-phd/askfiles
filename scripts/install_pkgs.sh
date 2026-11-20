@@ -1,8 +1,9 @@
 #!/bin/bash
 # Runs at the start of every cloud session (SessionStart hook in .claude/settings.json).
-# Exits immediately on a local machine. In the cloud it installs dependencies for the shell and
-# for the vendored upstream packages, skipping any directory whose package.json, lock file and
-# this script are unchanged since the last successful install.
+# Exits immediately on a local machine. In the cloud it installs dependencies for the shell
+# (skipped when package.json, the lock file and this script are unchanged since the last successful
+# install) and builds upstream-build/run, the patched copy of upstream/ that the integration tests
+# run from, with scripts/build.sh (seconds when nothing changed). upstream/ is never installed into.
 
 if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   exit 0
@@ -76,31 +77,26 @@ seed_ripgrep_cache() {
   fi
 }
 
-# Fallback for the same problem: if the server install still fails, give @vscode/ripgrep a bin/ directory
-# with the system rg so its postinstall exits early, then install again.
-install_server_with_fallback() {
-  local dir="$ROOT/upstream/server"
-  [ -f "$dir/package.json" ] || return 0
-  install_dir "$dir" yarn
-  if [ ! -f "$dir/node_modules/.install_pkgs.sha256" ] && [ -d "$dir/node_modules/@vscode/ripgrep" ] && command -v rg >/dev/null 2>&1; then
-    echo "[install_pkgs] retrying server install with the system rg linked into @vscode/ripgrep/bin"
-    mkdir -p "$dir/node_modules/@vscode/ripgrep/bin"
-    ln -sf "$(command -v rg)" "$dir/node_modules/@vscode/ripgrep/bin/rg"
-    install_dir "$dir" yarn
+# Fallback for the same problem: if the build still fails in the server install, give @vscode/ripgrep a
+# bin/ directory with the system rg so its postinstall exits early, then build again. The build also
+# generates the Prisma client from the patched schema (engines from binaries.prisma.sh, on the default
+# allowlist). Not run in a cloud session since the move to upstream-build/run (unverified there).
+build_upstream_with_fallback() {
+  command -v yarn >/dev/null 2>&1 || { echo "[install_pkgs] yarn is not on PATH, upstream-build/run not built"; return 0; }
+  bash "$ROOT/scripts/build.sh" && return 0
+  local rg_dir="$ROOT/upstream-build/run/server/node_modules/@vscode/ripgrep"
+  if [ -d "$rg_dir" ] && command -v rg >/dev/null 2>&1; then
+    echo "[install_pkgs] retrying the build with the system rg linked into @vscode/ripgrep/bin"
+    mkdir -p "$rg_dir/bin"
+    ln -sf "$(command -v rg)" "$rg_dir/bin/rg"
+    bash "$ROOT/scripts/build.sh" && return 0
   fi
+  echo "[install_pkgs] building upstream-build/run FAILED"
 }
 
 install_dir "$ROOT" npm
 seed_ripgrep_cache
-install_server_with_fallback
-install_dir "$ROOT/upstream/collector" yarn
-install_dir "$ROOT/upstream/frontend" yarn
-
-# Prisma client for the upstream server. Downloads engines from binaries.prisma.sh, which is on the
-# default allowlist. Skipped when the server has not been installed.
-if [ -d "$ROOT/upstream/server/node_modules" ] && [ -f "$ROOT/upstream/server/prisma/schema.prisma" ]; then
-  ( cd "$ROOT/upstream/server" && npx prisma generate ) || echo "[install_pkgs] prisma generate failed"
-fi
+build_upstream_with_fallback
 
 # Start Ollama for integration tests. The environment cache keeps files, not running processes.
 if command -v ollama >/dev/null 2>&1 && ! curl -fs http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then

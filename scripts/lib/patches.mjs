@@ -1,11 +1,13 @@
-// Lists, applies and reverts the unified diffs in patches/ in upstream/. apply is called by
-// scripts/build.sh and npm run dev; restore by the packaging commands once electron-builder has
-// copied the patched tree, so upstream/ is back at its committed state after a package run.
-// Usage: node scripts/lib/patches.mjs apply|restore <repoRoot>
+// Lists the unified diffs in patches/, applies them to a copy of upstream/ and checks that a tree
+// holds them. upstream/ itself is never patched: scripts/lib/upstream-copy.mjs copies it into
+// upstream-build/run and applies the patches there, and packaging checks the packaged app with check.
+// Usage: node scripts/lib/patches.mjs check <dir> [repoRoot]
+//   dir  holds server/ and collector/ like upstream/, for example the app's Contents/Resources
 import { spawnSync } from 'node:child_process';
-import { readdirSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const PATCH_FILE = /\.(patch|diff)$/;
 
@@ -17,42 +19,33 @@ export function listPatches(patchesDir) {
     .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 }
 
-function gitApply(repoRoot, upstreamDir, args, patchPath) {
-  // Patches are written relative to upstream/ (a/server/index.js), so --directory maps them into
-  // the subtree whether or not repoRoot is a git work tree.
-  return spawnSync('git', ['apply', `--directory=${upstreamDir}`, ...args, patchPath], {
-    cwd: repoRoot,
+function gitApply(dir, args, patchPath) {
+  // Patches are written relative to upstream/ (a/server/index.js), so they apply with dir as the
+  // working directory. The ceiling keeps git from finding a repository above dir: inside this
+  // repository git would read the paths relative to its top level instead.
+  return spawnSync('git', ['apply', ...args, patchPath], {
+    cwd: dir,
     encoding: 'utf8',
+    env: { ...process.env, GIT_CEILING_DIRECTORIES: dirname(resolve(dir)) },
   });
 }
 
 /**
- * Applies every patch that is not applied yet. A patch whose reverse applies cleanly is treated as
- * already applied, which makes repeated builds idempotent. Throws on the first patch that neither
- * applies nor is already applied, before touching any file for that patch.
+ * Applies every patch to dir, a fresh copy of upstream/. Throws on the first patch that does not
+ * apply, before touching any file for that patch.
  */
-export function applyPatches({
-  repoRoot,
-  patchesDir = join(repoRoot, 'patches'),
-  upstreamDir = 'upstream',
-  log = console.log,
-}) {
+export function applyPatches({ dir, patchesDir, log = console.log }) {
   const results = [];
   for (const name of listPatches(patchesDir)) {
     const patchPath = join(patchesDir, name);
-    if (gitApply(repoRoot, upstreamDir, ['--reverse', '--check'], patchPath).status === 0) {
-      log(`[build] patch ${name} already applied`);
-      results.push({ name, action: 'skipped' });
-      continue;
-    }
-    const check = gitApply(repoRoot, upstreamDir, ['--check'], patchPath);
+    const check = gitApply(dir, ['--check'], patchPath);
     if (check.status !== 0) {
       throw new Error(
-        `patch ${name} does not apply to ${upstreamDir}/. Upstream changed or the patch is stale; ` +
+        `patch ${name} does not apply to upstream/. Upstream changed or the patch is stale; ` +
           `refresh it against the tag in UPSTREAM_VERSION.\n${(check.stderr || '').trim()}`,
       );
     }
-    const apply = gitApply(repoRoot, upstreamDir, [], patchPath);
+    const apply = gitApply(dir, [], patchPath);
     if (apply.status !== 0) {
       throw new Error(`patch ${name} passed --check but failed to apply:\n${(apply.stderr || '').trim()}`);
     }
@@ -62,61 +55,57 @@ export function applyPatches({
   return results;
 }
 
+/** Paths a patch changes, relative to upstream/ (the +++ b/... lines). */
+export function patchedFiles(patchText) {
+  return [...patchText.matchAll(/^\+\+\+ b\/(.+?)\s*$/gm)].map((m) => m[1]);
+}
+
 /**
- * Reverts every applied patch, last patch first: a later patch may change lines an earlier one
- * added, so the earlier one only reverts once the later one is gone. A patch that is not applied
- * is skipped. Throws on a patch that is neither applied nor cleanly unapplied (upstream/ was
- * edited by hand), leaving that patch's files as they are. Only the patches' own lines change, so
- * anything else edited under upstream/ stays visible in git status.
+ * Which patches dir holds. The files the patches change are copied to a temporary folder and the
+ * patches reverted there last first, as several patches change the same file (001, 004 and 005 all
+ * change server/index.js): a patch counts as applied when it reverts cleanly after the later ones.
+ * dir is only read.
  */
-export function restorePatches({
-  repoRoot,
-  patchesDir = join(repoRoot, 'patches'),
-  upstreamDir = 'upstream',
-  log = console.log,
-}) {
-  const results = [];
-  for (const name of listPatches(patchesDir).reverse()) {
-    const patchPath = join(patchesDir, name);
-    if (gitApply(repoRoot, upstreamDir, ['--reverse', '--check'], patchPath).status === 0) {
-      const revert = gitApply(repoRoot, upstreamDir, ['--reverse'], patchPath);
-      if (revert.status !== 0) {
-        throw new Error(
-          `patch ${name} passed --reverse --check but failed to revert:\n${(revert.stderr || '').trim()}`,
-        );
+export function checkPatches({ dir, patchesDir }) {
+  const names = listPatches(patchesDir);
+  const work = mkdtempSync(join(tmpdir(), 'askfiles-patch-check-'));
+  try {
+    for (const name of names) {
+      for (const rel of patchedFiles(readFileSync(join(patchesDir, name), 'utf8'))) {
+        const from = join(dir, rel);
+        if (!existsSync(from)) continue;
+        mkdirSync(dirname(join(work, rel)), { recursive: true });
+        copyFileSync(from, join(work, rel));
       }
-      log(`[build] patch ${name} reverted`);
-      results.push({ name, action: 'reverted' });
-      continue;
     }
-    if (gitApply(repoRoot, upstreamDir, ['--check'], patchPath).status === 0) {
-      results.push({ name, action: 'skipped' });
-      continue;
+    const applied = new Map();
+    for (const name of [...names].reverse()) {
+      applied.set(name, gitApply(work, ['--reverse'], join(patchesDir, name)).status === 0);
     }
-    throw new Error(
-      `patch ${name} is neither applied nor cleanly unapplied in ${upstreamDir}/; its files were edited ` +
-        `by hand. Check git status ${upstreamDir}/ and restore them with git checkout -- <file>.`,
-    );
+    return names.map((name) => ({ name, applied: applied.get(name) }));
+  } finally {
+    rmSync(work, { recursive: true, force: true });
   }
-  return results;
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
-  const [command, repoRoot] = process.argv.slice(2);
-  if ((command !== 'apply' && command !== 'restore') || !repoRoot) {
-    console.error('usage: node scripts/lib/patches.mjs apply|restore <repoRoot>');
+  const [command, dir, repoRoot] = process.argv.slice(2);
+  if (command !== 'check' || !dir) {
+    console.error('usage: node scripts/lib/patches.mjs check <dir> [repoRoot]');
     process.exit(2);
   }
-  try {
-    if (command === 'restore') {
-      const reverted = restorePatches({ repoRoot: resolve(repoRoot) }).filter((r) => r.action === 'reverted');
-      console.log(`[build] upstream/ restored: ${reverted.length} patches reverted`);
-      process.exit(0);
-    }
-    const results = applyPatches({ repoRoot: resolve(repoRoot) });
-    if (results.length === 0) console.log('[build] no patches to apply');
-  } catch (err) {
-    console.error(`[build] ERROR: ${err.message}`);
+  const root = repoRoot ? resolve(repoRoot) : resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+  const results = checkPatches({ dir: resolve(dir), patchesDir: join(root, 'patches') });
+  const missing = results.filter((r) => !r.applied).map((r) => r.name);
+  if (results.length === 0) {
+    console.error(`[patches] ERROR: no patches found in ${join(root, 'patches')}`);
     process.exit(1);
   }
+  if (missing.length) {
+    console.error(
+      `[patches] ERROR: ${dir} lacks ${missing.length} of ${results.length} patches: ${missing.join(', ')}`,
+    );
+    process.exit(1);
+  }
+  console.log(`[patches] ok: all ${results.length} patches are applied in ${dir}`);
 }

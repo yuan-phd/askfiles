@@ -63,26 +63,29 @@ jobs:
         if: steps.root-modules.outputs.cache-hit != 'true'
         run: npm ci
 
-      # scripts/build.sh skips the frontend build when dist/.askfiles-source-hash matches its sources,
-      # and the server and collector installs when node_modules/.askfiles-build-stamp matches; these
-      # two caches bring both back. The keys only pick a candidate: the stamps decide.
+      # scripts/build.sh builds in upstream-build/run, never in upstream/. It skips the frontend build
+      # when dist/.askfiles-source-hash matches its sources, and the server and collector installs
+      # when node_modules/.askfiles-build-stamp matches; these two caches bring both back. The keys
+      # only pick a candidate: the stamps decide. The modules are cached unpruned: pruning happens in
+      # upstream-build/package, rebuilt by every package run.
       - name: Cache the frontend build
         id: frontend-dist
         uses: actions/cache@v4
         with:
-          path: upstream/frontend/dist
-          # v2: dist also holds .askfiles-notices.json, the frontend packages THIRD-PARTY-NOTICES lists.
-          key: frontend-dist-v2-${{ hashFiles('upstream/frontend/**', 'patches/**') }}
-      - name: Cache the pruned server and collector node_modules
+          path: upstream-build/run/frontend/dist
+          # v3: built in upstream-build/run. v2: dist also holds .askfiles-notices.json, the frontend
+          # packages THIRD-PARTY-NOTICES lists.
+          key: frontend-dist-v3-${{ hashFiles('upstream/frontend/**', 'patches/**') }}
+      - name: Cache the server and collector node_modules
         id: upstream-modules
         uses: actions/cache@v4
         with:
           path: |
-            upstream/server/node_modules
-            upstream/collector/node_modules
-          key: upstream-modules-macos-arm64-node22-${{ hashFiles('upstream/server/package.json', 'upstream/server/yarn.lock', 'upstream/server/prisma/**', 'upstream/collector/package.json', 'upstream/collector/yarn.lock', 'patches/**', 'scripts/build.sh', 'scripts/prune.mjs', 'scripts/lib/prisma-engines.mjs', 'scripts/lib/load-graph.mjs') }}
-          # An older tree is still a warm start: yarn --check-files only adds what changed or was pruned.
-          restore-keys: upstream-modules-macos-arm64-node22-
+            upstream-build/run/server/node_modules
+            upstream-build/run/collector/node_modules
+          key: upstream-run-modules-macos-arm64-node22-${{ hashFiles('upstream/server/package.json', 'upstream/server/yarn.lock', 'upstream/server/prisma/**', 'upstream/collector/package.json', 'upstream/collector/yarn.lock', 'patches/**', 'scripts/build.sh') }}
+          # An older tree is still a warm start: yarn --check-files only adds what changed.
+          restore-keys: upstream-run-modules-macos-arm64-node22-
       # The yarn download cache is 2 GB and only needed when a yarn install runs.
       - name: Locate the yarn cache
         id: yarn-cache
@@ -120,9 +123,10 @@ jobs:
           tar -xzf "$RUNNER_TEMP/ollama-darwin.tgz" -C resources/ollama
           resources/ollama/ollama --version || true
 
-      # Runs tsc, scripts/build.sh with PACKAGE_TARGET=mac-arm64 (the make build step), then
-      # THIRD-PARTY-NOTICES regenerated from the pruned darwin trees and its test, then electron-builder,
-      # scripts/sign-adhoc.sh and the DMG step, in that order (package.json).
+      # Runs tsc, scripts/build.sh with PACKAGE_TARGET=mac-arm64 (upstream-build/run, then the pruned
+      # upstream-build/package), then THIRD-PARTY-NOTICES regenerated from the pruned darwin trees and
+      # its test, then electron-builder, scripts/sign-adhoc.sh, the parser check, the check that the
+      # packaged server and collector hold every patch, and the DMG step, in that order (package.json).
       - name: Build, package and sign
         run: npm run package:mac
         env:
@@ -130,6 +134,10 @@ jobs:
           # unauthenticated calls from shared runners hit the rate limit (403). This is the automatic
           # read-only job token, not a configured secret, so forks work the same.
           GITHUB_TOKEN: ${{ github.token }}
+      # Nothing may write to upstream/, not even ignored build output: the build works in
+      # upstream-build/. On a fresh checkout git status shows nothing there.
+      - name: Check upstream/ is unchanged after packaging
+        run: bash .github/scripts/check-upstream-unchanged.sh
       - name: Check the signature
         run: codesign --verify --deep --strict --verbose=2 release/mac-arm64/AskFiles.app
       # The committed THIRD-PARTY-NOTICES and the generated part of docs/licenses.md must be what the
@@ -158,7 +166,8 @@ jobs:
           bash scripts/measure-bundle.sh release/mac-arm64/AskFiles.app/Contents/Resources | tee -a "$GITHUB_STEP_SUMMARY"
 
       # Timings of the three rerankers the presets may name, on this Mac, through the shell's own code
-      # (dist/main/answer) and the pruned server's @xenova/transformers; docs/plan.md records them.
+      # (dist/main/answer) and the pruned server's @xenova/transformers (upstream-build/package);
+      # docs/plan.md records them.
       - name: Cache the reranker models
         uses: actions/cache@v4
         with:
@@ -201,6 +210,8 @@ jobs:
           set -o pipefail
           codesign --verify --deep --strict "release-test/mac-arm64/AskFiles Test.app"
           node scripts/check-test-record.mjs "release-test/mac-arm64/AskFiles Test.app/Contents/Resources" --expect present | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Check upstream/ is unchanged after the test build
+        run: bash .github/scripts/check-upstream-unchanged.sh
       - uses: actions/upload-artifact@v4
         with:
           name: askfiles-test-dmg-${{ github.sha }}

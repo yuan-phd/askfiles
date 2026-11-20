@@ -164,10 +164,10 @@ describe('shell.json version 2', () => {
 });
 
 describe('devBackend', () => {
-  it('is off unless ASKFILES_DEV=1, and takes the backend from the repository', () => {
+  it('is off unless ASKFILES_DEV=1, and takes the backend from the patched copy in the repository', () => {
     expect(devBackend({}, '/repo')).toBeNull();
     expect(devBackend({ ASKFILES_DEV: '1', npm_node_execpath: '/n/node' }, '/repo')).toEqual({
-      resourcesPath: path.join('/repo', 'upstream'),
+      resourcesPath: path.join('/repo', 'upstream-build', 'run'),
       nodePath: '/n/node',
       externalOllamaPort: 11434,
     });

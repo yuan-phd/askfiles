@@ -27,7 +27,7 @@ Changing section count or rerank floor needs no new retrieval; changing a retrie
 
 ## What a run does
 
-1. Starts its own Ollama, collector and server from upstream/ with the patches applied (reverted at the end), or connects to a running server when the config has a baseUrl.
+1. Starts its own Ollama, collector and server from upstream-build/run, the patched copy of upstream/ that it first brings up to date with scripts/build.sh (seconds when nothing changed; upstream/ is never written to), or connects to a running server when the config has a baseUrl.
 2. Checks that Ollama has the embedding model (and the chat model for stage 2 and --upstream) and records their tags, digests and quantization.
 3. Splits every file in the corpus by section (PDF bookmarks or font size, Word headings, Markdown headings, one section per spreadsheet sheet), cuts sections longer than chunkMax into sub-chunks that each start with the section title, and writes one document JSON per chunk into STORAGE_DIR/documents/askfiles-eval. The split is the watcher's own (splitWithOcr, docs/app.md, OCR in the watcher): a PDF without a text layer, and the garbled pages of one with a text layer, go through the collector page by page, cached by file hash under STORAGE_DIR/askfiles-eval-cache/ocr-pages, and run.json lists the replaced pages per file (library.files[].ocrPages). Long sections without sub-headings are split by page.
 4. Creates or reuses the workspace for the embedding model, applies the settings from the config, and embeds only the documents it does not hold yet. Document names come from the file's path and bytes, the chunk maximum, the splitter version and the embedding model, so an unchanged corpus is not embedded twice and a new chunk maximum embeds again.
@@ -43,12 +43,10 @@ npm install
 ```
 
 ```bash
-cd upstream/server && PUPPETEER_SKIP_DOWNLOAD=1 yarn install --frozen-lockfile && cd ../..
+npm run build:upstream
 ```
 
-```bash
-cd upstream/collector && PUPPETEER_SKIP_DOWNLOAD=1 yarn install --frozen-lockfile && cd ../..
-```
+This builds upstream-build/run (gitignored): a copy of upstream/ with the patches applied and the server and collector installed. The first build takes a few minutes; the eval run repeats it, which takes seconds when nothing changed.
 
 ```bash
 ollama pull qwen3:8b

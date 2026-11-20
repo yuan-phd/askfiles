@@ -1,21 +1,22 @@
-// Boots the real Ollama, collector and server through the process manager with every patch in
-// patches/ applied. Needs RUN_INTEGRATION=1, an ollama binary on PATH (or OLLAMA_BIN), qwen3:0.6b
-// pulled, and the upstream packages installed (scripts/install_pkgs.sh). Prints what it checks,
+// Boots the real Ollama, collector and server through the process manager from upstream-build/run,
+// the copy of upstream/ with every patch in patches/ applied (built by global-setup.mts). Needs
+// RUN_INTEGRATION=1, an ollama binary on PATH (or OLLAMA_BIN) and qwen3:0.6b pulled. Prints what it checks,
 // including the listening sockets (ss on Linux, lsof on macOS) used for the bind check.
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { ProcessManager } from '../../src/main/process-manager/index.js';
 import { isAlive } from '../../src/main/process-manager/__fixtures__/helpers.js';
 // @ts-expect-error plain JavaScript helper from Session B without type declarations
-import { applyPatches, listPatches } from '../../scripts/lib/patches.mjs';
+import { checkPatches, listPatches } from '../../scripts/lib/patches.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const SERVER = path.join(ROOT, 'upstream', 'server');
-const COLLECTOR = path.join(ROOT, 'upstream', 'collector');
+const RUN = path.join(ROOT, 'upstream-build', 'run');
+const SERVER = path.join(RUN, 'server');
+const COLLECTOR = path.join(RUN, 'collector');
 const PRISMA_CLI = path.join(SERVER, 'node_modules', 'prisma', 'build', 'index.js');
 const CHAT_MODEL = 'qwen3:0.6b';
 const FOREIGN = 'https://evil.example';
@@ -39,7 +40,7 @@ function skipReason(): string | null {
   if (process.env.RUN_INTEGRATION !== '1') return 'RUN_INTEGRATION is not 1';
   if (!OLLAMA) return 'no ollama binary on PATH and OLLAMA_BIN is not set';
   for (const p of [path.join(SERVER, 'node_modules'), path.join(COLLECTOR, 'node_modules'), PRISMA_CLI]) {
-    if (!fs.existsSync(p)) return `${path.relative(ROOT, p)} is missing; run scripts/install_pkgs.sh`;
+    if (!fs.existsSync(p)) return `${path.relative(ROOT, p)} is missing; run npm run build:upstream`;
   }
   return null;
 }
@@ -104,47 +105,28 @@ function lsofListeners(): Listener[] {
   return found;
 }
 
-function prismaGenerate(): void {
-  const r = spawnSync(process.execPath, [PRISMA_CLI, 'generate', '--schema=./prisma/schema.prisma'], {
-    cwd: SERVER,
-    env: { ...process.env, CHECKPOINT_DISABLE: '1' },
-    encoding: 'utf8',
-  });
-  if (r.status !== 0) throw new Error(`prisma generate failed: ${r.stderr}`);
-}
-
 function stat(file: string): string {
   return fs.existsSync(file) ? `mtime ${fs.statSync(file).mtimeMs}` : 'absent';
 }
 
 describe.skipIf(reason !== null)('process manager with real ollama, collector and server', () => {
-  let applied: string[] = [];
   let manager: ProcessManager | null = null;
-
-  beforeAll(() => {
-    // scripts/build.sh applies patches/ and then runs prisma generate. Do the same for this run;
-    // patches that are already applied are left alone.
-    const results = applyPatches({ repoRoot: ROOT, log }) as { name: string; action: string }[];
-    applied = results.filter((r) => r.action === 'applied').map((r) => r.name);
-    log(`patches applied for this run: ${applied.join(', ') || 'none'}; reverted afterwards`);
-    // Patch 002 changes the datasource, which is baked into the generated client.
-    if (applied.length) prismaGenerate();
-  });
 
   afterAll(async () => {
     await manager?.stop();
-    for (const name of [...applied].reverse()) {
-      const r = spawnSync('git', ['apply', '--reverse', '--directory=upstream', path.join(ROOT, 'patches', name)], {
-        cwd: ROOT,
-        encoding: 'utf8',
-      });
-      if (r.status !== 0) log(`could not revert ${name}: ${r.stderr}`);
-    }
-    if (applied.length) prismaGenerate();
   });
 
   it('boots, binds to 127.0.0.1, keeps data under the data directory, refuses foreign origins, stays offline, chats without thinking, and leaves no child', async () => {
     expect(listPatches(path.join(ROOT, 'patches'))).toHaveLength(8);
+    // The copy the stack runs from holds every patch (scripts/build.sh applied them there).
+    const patches = checkPatches({ dir: RUN, patchesDir: path.join(ROOT, 'patches') }) as {
+      name: string;
+      applied: boolean;
+    }[];
+    log(
+      `patches in upstream-build/run: ${patches.map((p) => `${p.name} ${p.applied ? 'applied' : 'MISSING'}`).join(', ')}`,
+    );
+    expect(patches.filter((p) => !p.applied)).toEqual([]);
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'askfiles-it-'));
     const data = path.join(dir, 'data');
     const logs = path.join(dir, 'logs');
@@ -270,7 +252,7 @@ describe.skipIf(reason !== null)('process manager with real ollama, collector an
     expect(fs.existsSync(path.join(data, 'storage', 'documents', doc!.location))).toBe(true);
     expect(fs.existsSync(path.join(COLLECTOR, 'hotdir', 'it-note.txt'))).toBe(false);
 
-    // 5b. A settings change rewrites <dataDir>/server/.env, not upstream/server/.env.
+    // 5b. A settings change rewrites <dataDir>/server/.env, not the .env beside the server code.
     const upstreamEnv = path.join(SERVER, '.env');
     const upstreamEnvBefore = stat(upstreamEnv);
     const update = await fetch(`${base}/system/update-env`, {
@@ -281,7 +263,7 @@ describe.skipIf(reason !== null)('process manager with real ollama, collector an
     const dataEnv = fs.readFileSync(path.join(data, 'server', '.env'), 'utf8');
     log(
       `update-env -> ${update.status}; data .env has OLLAMA_MODEL_TOKEN_LIMIT='8192': ${dataEnv.includes("OLLAMA_MODEL_TOKEN_LIMIT='8192'")}; ` +
-        `upstream/server/.env before ${upstreamEnvBefore}, after ${stat(upstreamEnv)}`,
+        `${path.relative(ROOT, upstreamEnv)} before ${upstreamEnvBefore}, after ${stat(upstreamEnv)}`,
     );
     expect(update.status).toBe(200);
     expect(dataEnv).toContain("OLLAMA_MODEL_TOKEN_LIMIT='8192'");

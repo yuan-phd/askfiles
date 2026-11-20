@@ -7,9 +7,9 @@
 //
 // Usage: node scripts/third-party-notices.mjs [out-file] [--strict] [--allow-unpruned]
 //        node scripts/third-party-notices.mjs --snapshot frontend
-// Run it after PACKAGE_TARGET=<target> bash scripts/build.sh, which prunes server and collector:
-// the list must hold what ships, so an unpruned server tree is refused (--allow-unpruned to look at
-// one anyway). npm run package:mac runs it on the Mac after the build and before signing. Platform
+// Run it after PACKAGE_TARGET=<target> bash scripts/build.sh, which prunes server and collector in
+// upstream-build/package: the list must hold what ships, so an unpruned server tree is refused
+// (--allow-unpruned to look at one anyway). npm run package:mac runs it on the Mac after the build and before signing. Platform
 // packages follow the machine it runs on: on Linux the list has linux builds, on the Mac darwin ones.
 // The frontend ships as the built server/public, and the mac workflow reuses a cached build without
 // frontend/node_modules, so scripts/build.sh records the frontend's packages with --snapshot when it
@@ -20,6 +20,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PROVIDERS } from './prune.mjs';
+import { PACKAGE_DIR, RUN_DIR } from './lib/upstream-copy.mjs';
 import { lgplSourceLines, libvipsBuildsIn } from './lib/lgpl-sources.mjs';
 import { windowsRuntimeLines, windowsRuntimes } from './lib/windows-runtimes.mjs';
 import {
@@ -35,13 +36,14 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const COMPONENTS = [
   { key: 'shell', label: 'AskFiles shell (app.asar)', dir: ROOT },
-  { key: 'server', label: 'upstream server', dir: path.join(ROOT, 'upstream', 'server') },
-  { key: 'collector', label: 'upstream collector', dir: path.join(ROOT, 'upstream', 'collector') },
+  // What ships: the pruned copy electron-builder packs (scripts/build.sh with a PACKAGE_TARGET).
+  { key: 'server', label: 'upstream server', dir: path.join(ROOT, PACKAGE_DIR, 'server') },
+  { key: 'collector', label: 'upstream collector', dir: path.join(ROOT, PACKAGE_DIR, 'collector') },
   {
     key: 'frontend',
     label: 'upstream frontend (server/public)',
-    dir: path.join(ROOT, 'upstream', 'frontend'),
-    snapshot: path.join(ROOT, 'upstream', 'frontend', 'dist', '.askfiles-notices.json'),
+    dir: path.join(ROOT, RUN_DIR, 'frontend'),
+    snapshot: path.join(ROOT, RUN_DIR, 'frontend', 'dist', '.askfiles-notices.json'),
   },
 ];
 
@@ -462,10 +464,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   }
   const outArg = args.find((a) => !a.startsWith('--'));
   const outFile = path.resolve(outArg ?? path.join(ROOT, 'THIRD-PARTY-NOTICES'));
-  const left = unprunedProviders(path.join(ROOT, 'upstream', 'server'));
+  const left = unprunedProviders(path.join(ROOT, PACKAGE_DIR, 'server'));
   if (left.length && !args.includes('--allow-unpruned')) {
     fail(
-      `upstream/server/node_modules is not pruned (${left.join(', ')} still there), so the list would name packages ` +
+      `${PACKAGE_DIR}/server/node_modules is not pruned (${left.join(', ')} still there), so the list would name packages ` +
         'the app does not ship. Run PACKAGE_TARGET=<mac-arm64|linux-x64> bash scripts/build.sh first.',
     );
   }

@@ -138,7 +138,15 @@ if (!reason) {
         resolveSources: (s) => w.resolveSources(s),
         index,
         reranker: rerankerProcess({
-          transformersDir: path.join(ROOT, 'upstream', 'server', 'node_modules', '@xenova', 'transformers'),
+          transformersDir: path.join(
+            ROOT,
+            'upstream-build',
+            'run',
+            'server',
+            'node_modules',
+            '@xenova',
+            'transformers',
+          ),
           modelsDir: RERANKER_DIR,
           repo: RERANKER,
           log,

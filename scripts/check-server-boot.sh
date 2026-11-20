@@ -7,14 +7,14 @@
 #   default binary: node_modules/electron/dist/electron (Linux) or the one inside Electron.app (macOS)
 #   on the Mac after packaging: scripts/check-server-boot.sh /Applications/AskFiles.app/Contents/MacOS/AskFiles
 #
-# Runs against upstream/server in this repository, not inside the app bundle: until Session C's
-# patches land, the server writes its SQLite DB to upstream/server/storage and may rewrite
-# upstream/server/.env (docs/upstream-analysis.md risk 1), which must never happen inside a signed app.
+# Runs against upstream-build/run/server, the patched copy scripts/build.sh prepares, not inside the
+# app bundle and never in upstream/: prisma migrate deploy and the server may still write next to
+# the server code (docs/upstream-analysis.md risk 1), which must never happen inside a signed app.
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SERVER="$ROOT/upstream/server"
+SERVER="$ROOT/upstream-build/run/server"
 if [ -n "${1:-}" ]; then
   ELECTRON="$1"
 elif [ "$(uname -s)" = "Darwin" ]; then
@@ -28,7 +28,7 @@ TIMEOUT="${CHECK_TIMEOUT:-90}"
 fail() { echo "[check-server-boot] FAIL: $*" >&2; exit 1; }
 
 [ -x "$ELECTRON" ] || fail "Electron binary not found at $ELECTRON (run: node node_modules/electron/install.js)"
-[ -f "$SERVER/public/_index.html" ] || fail "upstream/server is not built (run: make build)"
+[ -f "$SERVER/public/_index.html" ] || fail "upstream-build/run/server is not built (run: npm run build:upstream)"
 
 WORK="$(mktemp -d)"
 SERVER_PID=""

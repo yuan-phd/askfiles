@@ -30,7 +30,10 @@ export const OLLAMA_PORT_ENV = 'ASKFILES_OLLAMA_PORT';
 
 /** Where a dev run takes its backend from, in place of the app bundle. */
 export interface DevBackend {
-  /** Stands in for process.resourcesPath: upstream/ holds server/ and collector/ like Resources. */
+  /**
+   * Stands in for process.resourcesPath: upstream-build/run holds server/ and collector/ like
+   * Resources, patched and installed by scripts/build.sh (npm run dev runs it first).
+   */
   resourcesPath: string;
   /** Plain Node for server and collector: their native modules were built by yarn for it, not for Electron. */
   nodePath: string;
@@ -43,7 +46,7 @@ export function devBackend(env: Env, appPath: string): DevBackend | null {
   const port = raw ? Number(raw) : 11434;
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error(`${OLLAMA_PORT_ENV} must be a port number`);
   return {
-    resourcesPath: path.join(appPath, 'upstream'),
+    resourcesPath: path.join(appPath, 'upstream-build', 'run'),
     nodePath: env.npm_node_execpath || 'node',
     externalOllamaPort: port,
   };
