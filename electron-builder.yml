@@ -77,7 +77,6 @@ extraResources:
     to: server/node_modules
     filter: &node-modules-filter
       - '**/*'
-      - '!.install_pkgs.sha256'
       - '!.askfiles-build-stamp'
       # Binaries for other platforms, dev files and unused packages are already gone: scripts/build.sh
       # runs scripts/prune.mjs on upstream-build/package for the PACKAGE_TARGET (docs/bundle-report.md).

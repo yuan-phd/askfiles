@@ -10,7 +10,7 @@ import {
   warmMatchers,
 } from './identifiers.js';
 
-// Invented documents only (CLAUDE.md rule 10).
+// Invented documents only.
 const invented = () =>
   buildIdentities([
     doc('01_Pump_Station_Procedure_2025.pdf', [['Isolation', 'x']]),

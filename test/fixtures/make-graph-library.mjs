@@ -1,7 +1,7 @@
 // An invented library for the large-library graph (docs/graph.md, Large libraries): by default 900
 // browse documents of a made-up water cooperative in nested folders, with headings drawn from
 // shared, department and folder pools so the documents link the way a real library does: mostly
-// within a department, some across. Everything here is invented (CLAUDE.md rule 10). Deterministic
+// within a department, some across. Everything here is invented. Deterministic
 // from the seed; nothing is written to disk.
 //
 // The browse helpers are passed in, so the vitest tests use src/main and the Playwright specs
