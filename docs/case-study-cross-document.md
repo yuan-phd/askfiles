@@ -10,7 +10,7 @@ AskFiles answers from the user's own documents with a local model and cites the 
 2. **Attribution drifts.** With sections from two files in front of it, a small model attributes a sentence from one file to the other, or cites a section that shares vocabulary with the right one but does not hold the fact.
 3. **The answer covers one side.** The model states what one document says and leaves out the other, or merges the two.
 
-The owner's first test on a real library (10 questions, 2026-10-30) gave 2 passes, 4 partial answers and 4 failures, and the failures were mostly of these kinds. That test is why the shell took over retrieval, prompt assembly and the model call from the AnythingLLM chat route ([docs/plan.md](plan.md), Decisions: Answer pipeline).
+My first test on a real library (10 questions) gave 2 passes, 4 partial answers and 4 failures, and the failures were mostly of these kinds. That test is why the shell took over retrieval, prompt assembly and the model call from the AnythingLLM chat route ([docs/plan.md](plan.md), Decisions: Answer pipeline).
 
 ## Setup
 
@@ -36,7 +36,7 @@ All computed by the harness ([docs/eval.md](eval.md), Metrics) on the app's own 
 - **Attribution**: the answer states at least one key element, every stated element is in a cited section, and every cited section supports the sentence that cites it (it passed the citation check against that section). A refusal to an absent question counts as correct. Known blind spot: an extra citation to a section that merely shares vocabulary with the right one passes as long as the fact is in another cited section. So a second count, cited sections without any key element (`cited_without_key`), is reported beside it and gated.
 - **Coverage** (key element coverage): the share of key elements present in the answer, counted only over elements that appear word for word in the expected sections (a paraphrase no quoting answer can contain is left out).
 - **Refusal**, as two rates: false refusals (answerable questions answered "not in your documents") and false answers (absent questions given an answer).
-- **Complete** (final figures only): graded by hand by the owner from the answer as the user sees it, the full expected section text and the key elements. Every fact asked for is stated, and nothing wrong or unsupported.
+- **Complete** (final figures only): graded by hand, by me, from the answer as the user sees it, the full expected section text and the key elements. Every fact asked for is stated, and nothing wrong or unsupported.
 
 ## Method
 
@@ -55,11 +55,11 @@ All computed by the harness ([docs/eval.md](eval.md), Metrics) on the app's own 
 - A change that moves only the cross-document set is kept only if it is a deterministic root-cause fix whose mechanism is written down, **never a numeric adjustment** such as a quota, threshold or bonus. On ten questions, a tuned number would fit the set rather than the problem.
 - Per gated set, `cited_without_key` must not rise, except by one when that set's cited count rises by at least two questions.
 
-**A sealed holdout.** A fresh set of cross-document questions was written, its file hashed and recorded, and not opened, read or run until the owner said so. It was run once, measurement only, on the final configuration; no round may be started from its result.
+**A sealed holdout.** A fresh set of cross-document questions was written, its file hashed and recorded, and not opened, read or run until I decided to. It was run once, measurement only, on the final configuration; no round may be started from its result.
 
-**Stopping conditions** (owner, 2026-11-06). A phase ends when every remaining failure is classed as a capability limit rather than a mechanism bug, when a fix has been validated once on a fresh sealed holdout, or when a round costs more than it returns. Verification-layer bugs found later get a fixed budget of two per release.
+**Stopping conditions.** A phase ends when every remaining failure is classed as a capability limit rather than a mechanism bug, when a fix has been validated once on a fresh sealed holdout, or when a round costs more than it returns. Verification-layer bugs found later get a fixed budget of two per release.
 
-The harness, the switches and the rounds were built in Claude Code sessions working from the plan; the owner validated the question sets and answer keys, graded the final answers by hand, and decided every keep or drop.
+The harness, the switches and the rounds were built in Claude Code sessions working from the plan; I validated the question sets and answer keys, graded the final answers by hand, and decided every keep or drop.
 
 ## What was tried
 
@@ -82,7 +82,7 @@ Rounds that bear on cross-document answers, in order. "Kept" means on in every t
 | P2 | Format label after the names of format copies | no | One cross-document reply moved to a section without a key element |
 | V1, V2, P1, P3 | Citation-check fixes: rule echoes are refusals; question words are not evidence; lead-in sentences are not unsupported; English compared by stem | yes | Measured by rescoring; fewer † markers on correct sentences (P1, P3), no gated metric fell |
 
-The judge-rerank round shows the keep rule at work, including where it bent. The first result looked like a win on the headline number, but the per-set count of cited sections without a key element exposed a defect: two copies of one section, in two formats, were not recognised as identical, so an answer gained a card that proved nothing. After fixing the normalization, cited rose from 70 to 90 percent. The kept run still had one more cited section without a key element than before. In the same round the owner amended the rule to allow an increase of one when the set's cited count rises by at least two questions. The amendment is recorded with the reason, and it is a judgement call: it accepts one weak extra citation for two more questions with both right sources cited.
+The judge-rerank round shows the keep rule at work, including where it bent. The first result looked like a win on the headline number, but the per-set count of cited sections without a key element exposed a defect: two copies of one section, in two formats, were not recognised as identical, so an answer gained a card that proved nothing. After fixing the normalization, cited rose from 70 to 90 percent. The kept run still had one more cited section without a key element than before. In the same round I amended the rule to allow an increase of one when the set's cited count rises by at least two questions. The amendment is recorded with the reason, and it is a judgement call: it accepts one weak extra citation for two more questions with both right sources cited.
 
 ## The holdout result
 

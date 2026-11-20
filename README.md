@@ -21,7 +21,7 @@ The screenshots show an invented demo library.
 ## System requirements
 
 - **Mac**: Apple silicon (M1 or later), macOS 14 (Sonoma) or later. There is no build for Intel Macs.
-- **Windows**: Windows 10 or 11, x64.
+- **Windows**: Windows 10 (version 22H2 or newer) or Windows 11, x64.
 - At least 15 GB of free disk space, and an internet connection for the first start, which downloads the models.
 
 | Memory | What you get | First download |
