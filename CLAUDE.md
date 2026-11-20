@@ -47,7 +47,7 @@ Some of these are created by Session B. Until then, the upstream commands still 
 - npm test                         unit tests with vitest
 - npm run test:integration         integration tests; needs RUN_INTEGRATION=1 and a reachable Ollama
 - npm run lint                     eslint and prettier check
-- npm run build:upstream           scripts/build.sh: apply patches, build upstream frontend into upstream/server/public, install server and collector, prisma generate
+- npm run build:upstream           scripts/build.sh: copy upstream/ into upstream-build/run (gitignored) and apply patches there, build the frontend into its server/public, install server and collector, prisma generate. With PACKAGE_TARGET it also builds the pruned upstream-build/package that packaging ships. No script writes to upstream/.
 - npm run eval -- <corpus> <questions.csv>   evaluation harness from Session G
 - npm run build:main:test, npm run dev:test, npm run package:mac:test (after package:mac)   the test build with the local question record (docs/test-build.md); npm run build:main is the release flavour
 - node scripts/test-record/summarize.mjs <folder>   summary of the test records testers exported

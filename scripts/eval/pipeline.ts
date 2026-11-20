@@ -176,7 +176,7 @@ export async function buildPipeline(o: {
   if (!rerankerOff(o.config.answer)) {
     await ensureReranker({ repo, modelsDir: o.config.rerankerDir, log: o.log });
     reranker = rerankerProcess({
-      transformersDir: path.join(o.root, 'upstream', 'server', 'node_modules', '@xenova', 'transformers'),
+      transformersDir: path.join(o.root, 'upstream-build', 'run', 'server', 'node_modules', '@xenova', 'transformers'),
       modelsDir: o.config.rerankerDir,
       repo,
       log: o.log,

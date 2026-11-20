@@ -51,13 +51,16 @@ npm run package:mac
 This runs, in order:
 
 1. `tsc` for src/main into dist/main
-2. `scripts/build.sh` with PACKAGE_TARGET=mac-arm64: checks resources/ollama, applies patches/, builds the upstream frontend into upstream/server/public (and records the frontend's packages in frontend/dist/.askfiles-notices.json), installs server and collector production dependencies, runs prisma generate, removes Prisma engines for every platform except darwin-arm64, checks that dev dependencies are gone, prunes for darwin-arm64 (scripts/prune.mjs), prints sizes
+2. `scripts/build.sh` with PACKAGE_TARGET=mac-arm64: checks resources/ollama; brings upstream-build/run up to date (gitignored; the tracked upstream/ files are copied there and patches/ applied when either changed): builds the upstream frontend into its server/public (and records the frontend's packages in frontend/dist/.askfiles-notices.json), installs server and collector production dependencies, runs prisma generate and checks that dev dependencies are gone; then rebuilds upstream-build/package from run (an APFS clone, seconds and almost no disk), removes Prisma engines there for every platform except darwin-arm64, prunes it for darwin-arm64 (scripts/prune.mjs) and prints sizes. upstream/ is only read; run is never pruned, so npm run dev and the integration tests still work after packaging
 3. `npm run notices -- --strict`: regenerates THIRD-PARTY-NOTICES from the pruned darwin trees (see Third-party notices below)
 4. `vitest run scripts/third-party-notices.test.mjs`: fails the packaging when a listed package that names a license has no text in the file, or when a package the prune step removes is still listed
-5. `electron-builder --mac dir --arm64 --publish never`: creates release/mac-arm64/AskFiles.app without a DMG (layout below); THIRD-PARTY-NOTICES goes into app.asar here
+5. `electron-builder --mac dir --arm64 --publish never`: creates release/mac-arm64/AskFiles.app without a DMG (layout below), with server and collector copied from upstream-build/package; THIRD-PARTY-NOTICES goes into app.asar here
 6. `scripts/sign-adhoc.sh`: ad-hoc signs every Mach-O file under Contents/Resources, then the whole app, then verifies with `codesign --verify --deep --strict`
-7. `electron-builder --mac dmg --arm64 --prepackaged release/mac-arm64/AskFiles.app --publish never`: wraps the signed app into release/AskFiles-0.1.0-arm64.dmg. Every packaging command passes --publish never: on CI electron-builder otherwise publishes implicitly (on a push to main it asked for a GitHub token and failed, mac run #65); builds are distributed from the workflow artifacts only
-8. `node scripts/lib/patches.mjs restore .`: reverts patches/ in upstream/, last patch first, so upstream/ is back at its committed state and git status shows nothing under it. It runs whether or not the steps before it passed, and the command keeps their exit status. The app bundle already holds the patched copy. `npm run package:mac:test` applies the patches again for its own electron-builder run and restores them when it ends. `npm run build:upstream` alone still leaves them applied, because `npm run dev` and the boot check below run the server from upstream/.
+7. `node scripts/check-packaged-parsers.mjs`: parses one invented file of every supported type inside the packaged app.asar
+8. `node scripts/lib/patches.mjs check release/mac-arm64/AskFiles.app/Contents/Resources`: fails unless the packaged server and collector hold every patch in patches/ (it reverts them, last first, on a temporary copy of the patched files; the app is only read). Expected: `[patches] ok: all 8 patches are applied in ...`
+9. `electron-builder --mac dmg --arm64 --prepackaged release/mac-arm64/AskFiles.app --publish never`: wraps the signed app into release/AskFiles-0.1.0-arm64.dmg. Every packaging command passes --publish never: on CI electron-builder otherwise publishes implicitly (on a push to main it asked for a GitHub token and failed, mac run #65); builds are distributed from the workflow artifacts only
+
+Nothing in these steps writes to upstream/, so git status shows nothing under it afterwards; the mac and windows workflows fail when it does (.github/scripts/check-upstream-unchanged.sh). `npm run package:mac:test` packages upstream-build/package again as this run left it.
 
 The DMG is built after signing on purpose: signing the app after the DMG exists would leave an unsigned copy inside the DMG.
 
@@ -66,7 +69,7 @@ Expected time: 3 to 10 minutes on first run, mostly yarn installs. Expected outp
 Notes on messages you may see:
 
 - `skipped macOS code signing reason=identity explicitly is set to null`: expected; step 6 signs.
-- In step 2, if it stops with `no query engine for darwin-arm64` or `no schema engine for darwin-arm64`, prisma generate did not download the Mac engines. Run `cd upstream/server && node node_modules/prisma/build/index.js generate` once with network access, then run `npm run package:mac` again.
+- In step 2, if it stops with `no query engine for darwin-arm64` or `no schema engine for darwin-arm64`, prisma generate did not download the Mac engines. Run `cd upstream-build/run/server && node node_modules/prisma/build/index.js generate` once with network access, then run `npm run package:mac` again.
 
 To sign an app by hand, for example after a manual electron-builder run: `bash scripts/sign-adhoc.sh release/mac-arm64/AskFiles.app`.
 
@@ -132,12 +135,12 @@ The server's canvas module draws thumbnails for chat export and charts for the T
 bash scripts/check-server-boot.sh /Applications/AskFiles.app/Contents/MacOS/AskFiles
 ```
 
-Expected last line: `[check-server-boot] ok: /api/ping returned {"online":true} with canvas blocked`. It runs prisma migrate deploy and the server from upstream/server in the repository (not from the bundle, see Bundle layout), on port 3901 (CHECK_PORT to change), with a temporary STORAGE_DIR, and stops the server when done. It leaves upstream/server/storage/anythingllm.db behind (analysis risk 1); delete it if you like, it is not packaged. While it runs the server listens on all interfaces until the Session C bind-host patch lands. Ollama does not need to be running.
+Expected last line: `[check-server-boot] ok: /api/ping returned {"online":true} with canvas blocked`. It runs prisma migrate deploy and the server from upstream-build/run/server, the patched copy npm run build:upstream (or package:mac) prepares (not from the bundle, see Bundle layout, and never from upstream/), on port 3901 (CHECK_PORT to change), with a temporary STORAGE_DIR and DATABASE_URL, and stops the server when done. Ollama does not need to be running.
 
 Also record whether canvas itself loads on the Mac, for the record only:
 
 ```
-cd upstream/server && ELECTRON_RUN_AS_NODE=1 /Applications/AskFiles.app/Contents/MacOS/AskFiles -e "require('canvas'); console.log('canvas ok')"
+cd upstream-build/run/server && ELECTRON_RUN_AS_NODE=1 /Applications/AskFiles.app/Contents/MacOS/AskFiles -e "require('canvas'); console.log('canvas ok')"
 ```
 
 ### 5. Copy to a second Mac by USB
@@ -155,4 +158,4 @@ cd upstream/server && ELECTRON_RUN_AS_NODE=1 /Applications/AskFiles.app/Contents
 
 ## Clean up
 
-`make clean` removes dist/, release/, upstream/server/public and upstream/frontend/dist. It keeps node_modules and resources/ollama.
+`make clean` removes dist/, release/, release-test/, upstream-build/package and the frontend build in upstream-build/run. It keeps node_modules, resources/ollama and the installed packages in upstream-build/run (about 2.4 GB; delete upstream-build/ by hand to rebuild from scratch). Build output that older versions of build.sh left inside upstream/ is ignored by git and no longer used: `git clean -ndX upstream/` lists it and `git clean -fdX upstream/` removes it.

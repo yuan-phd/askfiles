@@ -1,17 +1,16 @@
 # patches
 
-Unified diffs applied to upstream/ by scripts/build.sh, in file name order (001-..., 002-...).
+Unified diffs that scripts/build.sh applies, in file name order (001-..., 002-...), to upstream-build/run: a gitignored copy of the tracked upstream/ files that dev runs, tests and packaging use (scripts/lib/upstream-copy.mjs). upstream/ itself is never patched.
 
 Each patch starts with a comment block that says what it changes and why upstream cannot be used as is. Keep patches minimal; re-check them with git apply --check after every upstream upgrade.
 
-Paths inside a patch are relative to upstream/. Apply from the repository root:
+Paths inside a patch are relative to upstream/. A new patch applies on top of the earlier ones, which upstream-build/run already holds, so it can be checked there without changing anything, from the repository root:
 
-    git apply --check --directory=upstream patches/NNN-name.patch
-    git apply --directory=upstream patches/NNN-name.patch
+    git apply --check --directory=upstream-build/run patches/NNN-name.patch
 
-`node scripts/lib/patches.mjs apply .` applies every patch that is not applied yet; `node scripts/lib/patches.mjs restore .` reverts every applied one, last first, and stops with the patch name if a patched file was edited by hand. The packaging commands (npm run package:mac, package:win and their :test variants) run restore when they end, so upstream/ is back at its committed state after a package run.
+Then npm run build:upstream copies upstream/ again and applies every patch, the new one included. Running git apply from inside a folder of the repository silently skips every file ("Skipped patch"), because git resolves patch paths from the repository top level; scripts/lib/patches.mjs therefore runs git with that folder as a ceiling.
 
-Running git apply from inside upstream/ silently skips every file ("Skipped patch"), because git resolves patch paths from the repository top level.
+`node scripts/lib/patches.mjs check <dir>` reports whether a tree that has server/ and collector/ holds every patch, by reverting them last first on a temporary copy of the patched files. The packaging commands run it on the packaged app's Resources folder.
 
 | Patch | Why |
 | --- | --- |
@@ -24,4 +23,4 @@ Running git apply from inside upstream/ silently skips every file ("Skipped patc
 | 007-reasoning-effort-api.patch | /api/v1 workspace and thread chat routes take reasoningEffort, default DEFAULT_REASONING_EFFORT |
 | 008-bulk-remove-documents.patch | Removing documents from a LanceDB workspace deletes their vectors in batches (one delete per 1000 vector ids) instead of one delete per document; clearing 1311 sections for Reindex went from 289 s to 6 s (docs/app.md, Indexing time) |
 
-test/integration/process-manager.test.ts applies all patches in sequence for its run (as build.sh does), checks what each one is for, and reverts them afterwards.
+test/integration/process-manager.test.ts runs the stack from upstream-build/run, checks that every patch is applied there and what each one is for.

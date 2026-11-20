@@ -16,7 +16,7 @@ Before on the mac is CI run 8 (this PR's first push, which only added the measur
 
 ## Pruning steps
 
-scripts/build.sh runs scripts/prune.mjs as step 7 for `PACKAGE_TARGET=mac-arm64` (target darwin-arm64) and `PACKAGE_TARGET=linux-x64` (the cloud check). It works on upstream/server/node_modules and upstream/collector/node_modules after the production install, which is the copy electron-builder packages; tracked files under upstream/ are never touched. Savings below were measured on the Linux install in this container, one step after the other.
+scripts/build.sh runs scripts/prune.mjs as step 7 for `PACKAGE_TARGET=mac-arm64` (target darwin-arm64) and `PACKAGE_TARGET=linux-x64` (the cloud check). It works on server/node_modules and collector/node_modules after the production install, which is the copy electron-builder packages; since 2026-11-20 that is upstream-build/package, rebuilt from upstream-build/run by every package run, and nothing under upstream/ is touched. Savings below were measured on the Linux install in this container, one step after the other.
 
 | Step | server | collector | Linux packaging after the step |
 | --- | --- | --- | --- |

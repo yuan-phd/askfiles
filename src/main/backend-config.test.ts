@@ -21,7 +21,7 @@ afterEach(async () => {
 describe('bundledBackendConfig', () => {
   it('uses an external Ollama for a dev run and spawns none', () => {
     const dev = bundledBackendConfig({
-      resourcesPath: '/repo/upstream',
+      resourcesPath: '/repo/upstream-build/run',
       dataDir: '/d',
       logDir: '/l',
       nodePath: '/usr/local/bin/node',
@@ -29,7 +29,7 @@ describe('bundledBackendConfig', () => {
     });
     expect(dev.externalOllamaPort).toBe(11434);
     expect(dev.ollama).toBeUndefined();
-    expect(dev.server.args).toEqual(['/repo/upstream/server/index.js']);
+    expect(dev.server.args).toEqual(['/repo/upstream-build/run/server/index.js']);
     expect(cfg.externalOllamaPort).toBeUndefined();
   });
 

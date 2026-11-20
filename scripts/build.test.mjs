@@ -25,7 +25,7 @@ describe('build.sh preflight', () => {
     const result = run({ PACKAGE_TARGET: 'win-arm64' });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("unknown PACKAGE_TARGET 'win-arm64'");
-    expect(result.stdout).not.toContain('1/8');
+    expect(result.stdout).not.toContain('1/7');
   });
 
   // CI runs this on Linux and the owner on the Mac; the Windows runner never runs the unit tests.
@@ -33,25 +33,25 @@ describe('build.sh preflight', () => {
     const result = run({ PACKAGE_TARGET: 'win-x64' });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('PACKAGE_TARGET=win-x64 builds on Windows only');
-    expect(result.stdout).not.toContain('1/8');
+    expect(result.stdout).not.toContain('1/7');
   });
 
   it('stops before building for mac-arm64 when resources/ollama is missing', () => {
     const result = run({ PACKAGE_TARGET: 'mac-arm64' });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('resources/ollama/ollama is missing');
-    expect(result.stdout).not.toContain('1/8');
+    expect(result.stdout).not.toContain('1/7');
   });
 
   it('accepts linux-x64 without resources/ollama', () => {
     const result = run({ PACKAGE_TARGET: 'linux-x64' });
-    expect(result.stdout).toContain('1/8 apply patches');
+    expect(result.stdout).toContain('1/7 copy upstream/ into upstream-build/run and apply patches');
   });
 
-  it('fails with the patch step message when the tree has no patch helper', () => {
+  it('fails with the copy step message when the tree has no copy helper', () => {
     const result = run({ PACKAGE_TARGET: '' });
     expect(result.status).toBe(1);
-    expect(result.stdout).toContain('1/8 apply patches');
-    expect(result.stderr).toContain('patching upstream failed');
+    expect(result.stdout).toContain('1/7 copy upstream/ into upstream-build/run and apply patches');
+    expect(result.stderr).toContain('preparing upstream-build/run failed');
   });
 });

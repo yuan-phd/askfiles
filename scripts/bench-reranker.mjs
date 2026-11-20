@@ -1,6 +1,7 @@
 // Times the rerankers of config/presets.json on the machine it runs on, through the shell's own
-// code (dist/main/answer: ensureReranker, crossEncoder) and the server's @xenova/transformers.
-// The mac workflow runs it on the CI Mac; docs/plan.md records the numbers.
+// code (dist/main/answer: ensureReranker, crossEncoder) and the @xenova/transformers of the server
+// that ships: upstream-build/package, pruned by npm run package:mac. The mac workflow runs it on the
+// CI Mac after packaging; docs/plan.md records the numbers.
 // Each model runs in its own child process, so the memory figure is that model's alone.
 // Usage: node scripts/bench-reranker.mjs <models dir> [repo ...]   (after npm run build:main)
 import { execFileSync } from 'node:child_process';
@@ -42,7 +43,7 @@ async function benchOne(repo) {
   await ensureReranker({ repo, modelsDir, log: (msg) => console.error(`[bench] ${msg}`) });
   const fetchMs = Math.round(performance.now() - t0);
   const r = crossEncoder({
-    transformersDir: path.join(ROOT, 'upstream', 'server', 'node_modules', '@xenova', 'transformers'),
+    transformersDir: path.join(ROOT, 'upstream-build', 'package', 'server', 'node_modules', '@xenova', 'transformers'),
     modelsDir,
     repo,
   });

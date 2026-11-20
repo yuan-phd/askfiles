@@ -1,19 +1,16 @@
-// Boots Ollama, collector and server for the e2e tests through the Session C process manager,
-// with every patch in patches/ applied for the run and reverted afterwards, as
-// test/integration/process-manager.test.ts does.
-import { spawnSync } from 'node:child_process';
+// Boots Ollama, collector and server for the integration tests through the Session C process
+// manager, from upstream-build/run: the patched copy of upstream/ with its Prisma client, which
+// test/integration/global-setup.mts builds once per run (scripts/build.sh). upstream/ is never touched.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 // The compiled build: Playwright's loader cannot map the manager's .js imports to its .ts sources.
 import { ProcessManager } from '../../dist/main/process-manager/index.js';
-// @ts-expect-error plain JavaScript helper from Session B without type declarations
-import { applyPatches } from '../../scripts/lib/patches.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const SERVER = path.join(ROOT, 'upstream', 'server');
-const COLLECTOR = path.join(ROOT, 'upstream', 'collector');
+const SERVER = path.join(ROOT, 'upstream-build', 'run', 'server');
+const COLLECTOR = path.join(ROOT, 'upstream-build', 'run', 'collector');
 const PRISMA_CLI = path.join(SERVER, 'node_modules', 'prisma', 'build', 'index.js');
 
 export const CHAT_MODEL = process.env.ASKFILES_TEST_CHAT_MODEL ?? 'qwen3:0.6b';
@@ -38,29 +35,9 @@ function which(bin: string): string | null {
 export function skipReason(): string | null {
   if (!(process.env.OLLAMA_BIN ?? which('ollama'))) return 'no ollama binary on PATH and OLLAMA_BIN is not set';
   for (const p of [path.join(SERVER, 'node_modules'), path.join(COLLECTOR, 'node_modules'), PRISMA_CLI]) {
-    if (!fs.existsSync(p)) return `${path.relative(ROOT, p)} is missing; run scripts/install_pkgs.sh`;
+    if (!fs.existsSync(p)) return `${path.relative(ROOT, p)} is missing; run npm run build:upstream`;
   }
   return null;
-}
-
-function prismaGenerate(): void {
-  const r = spawnSync(process.execPath, [PRISMA_CLI, 'generate', '--schema=./prisma/schema.prisma'], {
-    cwd: SERVER,
-    env: { ...process.env, CHECKPOINT_DISABLE: '1' },
-    encoding: 'utf8',
-  });
-  if (r.status !== 0) throw new Error(`prisma generate failed: ${r.stderr}`);
-}
-
-function revertPatches(applied: string[]): void {
-  for (const name of [...applied].reverse()) {
-    const r = spawnSync('git', ['apply', '--reverse', '--directory=upstream', path.join(ROOT, 'patches', name)], {
-      cwd: ROOT,
-      encoding: 'utf8',
-    });
-    if (r.status !== 0) log(`could not revert ${name}: ${r.stderr}`);
-  }
-  if (applied.length) prismaGenerate();
 }
 
 export interface Upstream {
@@ -75,11 +52,6 @@ export interface Upstream {
 
 /** Starts the stack; allowedOrigins must hold the origin the page is served from (patch 005). */
 export async function startUpstream({ allowedOrigins }: { allowedOrigins: string[] }): Promise<Upstream> {
-  const results = applyPatches({ repoRoot: ROOT, log }) as { name: string; action: string }[];
-  const applied = results.filter((r) => r.action === 'applied').map((r) => r.name);
-  // Patch 002 changes the datasource, which is baked into the generated client.
-  if (applied.length) prismaGenerate();
-
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'askfiles-e2e-'));
   const data = path.join(dir, 'data');
   const manager = new ProcessManager({
@@ -116,13 +88,7 @@ export async function startUpstream({ allowedOrigins }: { allowedOrigins: string
     timeoutsMs: { ollama: 60_000, collector: 120_000, migrate: 180_000, server: 240_000 },
   });
 
-  let status;
-  try {
-    status = await manager.start();
-  } catch (e) {
-    revertPatches(applied);
-    throw e;
-  }
+  const status = await manager.start();
   const ports = status.ports!;
   const tags = (await (await fetch(`http://127.0.0.1:${ports.ollama}/api/tags`)).json()) as {
     models?: { name: string }[];
@@ -130,7 +96,6 @@ export async function startUpstream({ allowedOrigins }: { allowedOrigins: string
   const names = (tags.models ?? []).map((m) => m.name);
   const stop = async () => {
     await manager.stop();
-    revertPatches(applied);
   };
   if (!names.includes(CHAT_MODEL) || !names.includes(EMBED_MODEL)) {
     await stop();
