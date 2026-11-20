@@ -69,7 +69,7 @@ The smoke job (scripts/smoke-windows.mjs) on a fresh windows-latest runner:
 
 1. installs the setup.exe with /S and finds AskFiles.exe in `%LOCALAPPDATA%\Programs\AskFiles`, checking that the install has no ROCm runtime;
 2. launches it on an empty `%LOCALAPPDATA%\AskFiles` (only the cached test models kept) with the smoke preset and a folder holding test/fixtures/handbook.pdf;
-3. waits for `%LOCALAPPDATA%\AskFiles\ports.json`, checks with netstat that Ollama, collector and server listen on 127.0.0.1 only, waits for the first run and the Ask page, and checks the server API with the stored key (/api/ping, the library workspace);
+3. waits for `%LOCALAPPDATA%\AskFiles\ports.json`, the first run and the Ask page, then checks with netstat that Ollama, collector and server listen on 127.0.0.1 only (a port without a listener is retried for up to 30 s, since the first run restarts the backend; any other address fails at once), and checks the server API with the stored key (/api/ping, the library workspace);
 4. waits for the handbook to be indexed and for the app's one answer through the pipeline (ASKFILES_SMOKE_QUESTION), and asserts it found an answer citing [1];
 5. closes the window the way a user does (taskkill without /F sends WM_CLOSE) and checks that within 60 s no process whose executable lies in the install folder is left, ollama.exe and its runners included, and that ports.json is gone.
 

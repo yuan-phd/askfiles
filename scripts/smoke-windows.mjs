@@ -24,6 +24,8 @@ const [installer, outArg] = process.argv.slice(2);
 const QUESTION = 'How many days of paid annual leave does an employee get per year?';
 const START_TIMEOUT = Number(process.env.SMOKE_START_TIMEOUT ?? 600) * 1000;
 const SETUP_TIMEOUT = Number(process.env.SMOKE_SETUP_TIMEOUT ?? 900) * 1000;
+// How long a port may stay without a listener after the first run, while the backend restarts.
+const LISTEN_TIMEOUT = 30_000;
 const LOCAL = process.env.LOCALAPPDATA ?? '';
 const DATA = path.join(LOCAL, 'AskFiles');
 const LOGS = path.join(DATA, 'logs');
@@ -139,7 +141,7 @@ const running = () => {
 };
 log(`launched pid ${app.pid}`);
 
-// 3. Backend up, bound to loopback only.
+// 3. Backend up.
 const up = await until('ports.json', START_TIMEOUT, () => {
   const failed = newLog().match(/\[main\] backend (failed|not started).*/);
   if (failed) fail(`the backend did not start: ${failed[0]}`);
@@ -149,13 +151,6 @@ const up = await until('ports.json', START_TIMEOUT, () => {
 log(`backend up after ${up.seconds}s: ${JSON.stringify(up.value)}`);
 if (!newLog().includes('start page onboarding')) fail('a fresh data directory did not start on the onboarding page');
 if (!newLog().includes('ocr data seeded')) fail('main.log does not show the OCR data seeding');
-for (const name of ['ollama', 'collector', 'server']) {
-  const addrs = listeners(up.value[name]);
-  if (addrs.length === 0) fail(`nothing listens on the ${name} port ${up.value[name]}`);
-  if (addrs.some((a) => a !== '127.0.0.1')) fail(`${name} listens on ${addrs.join(', ')}, not only 127.0.0.1`);
-  log(`${name} listens on ${addrs.join(', ')}:${up.value[name]}`);
-}
-
 const setup = await until('the first run', SETUP_TIMEOUT, () => {
   const failed = newLog().match(/\[(first-run|wizard)\] .* failed:.*/);
   if (failed) fail(`the first run failed: ${failed[0]}`);
@@ -166,8 +161,37 @@ log(`first run done after ${setup.seconds}s at ${setup.value}`);
 await until('the Ask page', 60_000, () => newLog().includes('[main] page ready ask connected=true'), 1000);
 log('Ask page ready');
 
+// Every process bound to loopback only. Checked here, not when ports.json first appears: the first
+// run restarts the backend once it has written the preset, and with the models cached that restart
+// can come within a second, while the check is still running. A port nobody listens on yet is
+// retried for a short while; a listener on any address other than 127.0.0.1 fails at once.
+const bound = await until(
+  'every process to listen on its port',
+  LISTEN_TIMEOUT,
+  () => {
+    running();
+    const p = readJson(PORTS);
+    if (!p) return null;
+    const found = {};
+    for (const name of ['ollama', 'collector', 'server']) {
+      const addrs = listeners(p[name]);
+      if (addrs.some((a) => a !== '127.0.0.1')) fail(`${name} listens on ${addrs.join(', ')}, not only 127.0.0.1`);
+      if (addrs.length === 0) {
+        log(`nothing listens on the ${name} port ${p[name]} yet`);
+        return null;
+      }
+      found[name] = addrs;
+    }
+    return { ports: p, found };
+  },
+  1000,
+);
+for (const [name, addrs] of Object.entries(bound.value.found)) {
+  log(`${name} listens on ${addrs.join(', ')}:${bound.value.ports[name]}`);
+}
+
 // The wizard restarted the backend, so read the ports again.
-const ports = readJson(PORTS) ?? fail('ports.json is gone after setup');
+const ports = bound.value.ports;
 const shell = readJson(path.join(DATA, 'shell.json'));
 const key = shell?.apiKey;
 const slug = shell?.libraries?.[0]?.workspaceSlug;
