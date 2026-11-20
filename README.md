@@ -48,7 +48,8 @@ An answer takes about 14 seconds in English and 7 in Chinese; a question naming 
 AskFiles is an Electron app. Its main process starts three local processes, all bound to 127.0.0.1, and owns the retrieval and answer pipeline itself:
 
 ```mermaid
-flowchart TB
+%%{init: {"flowchart": {"diagramPadding": 120}}}%%
+flowchart LR
   subgraph App["AskFiles (Electron)"]
     UI["Window<br/>Ask, Browse, Find, Graph<br/>plain HTML, CSS, JS"]
     Main["Main process<br/>folder watcher, section splitter,<br/>keyword index, answer pipeline,<br/>citation check"]
@@ -59,8 +60,8 @@ flowchart TB
     Ollama["Model runtime (Ollama)<br/>Qwen3 14B for answers<br/>bge-m3 for embeddings"]
   end
   Files[("Your folders<br/>read only")]
-  Files --> Main
   UI <--> Main
+  Files --> Main
   Main -- "documents, vector search" --> Server
   Server --> Collector
   Server -- embeddings --> Ollama
