@@ -13,3 +13,5 @@
 - test-build.md: the test build with its local question record: flavours, building, export, record format, the summary script.
 - tester-sheet.md: one page for testers of the test build, in English and Chinese.
 - reference/old-graph-code.txt: the owner's earlier wiki graph code, the source the Graph page ports.
+- case-study-cross-document.md: how cross-document answers were evaluated and improved: metrics, seeded runs, the keep rule, the rounds, the sealed holdout and its result.
+- media/: the README screenshots and GIF, taken from an invented demo library.

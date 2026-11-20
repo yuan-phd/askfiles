@@ -1,106 +1,105 @@
 # AskFiles
 
-Ask questions about your own documents, on your own computer.
+**Ask questions about your own documents and get answers that cite the file, section and page, with everything running on your own computer.**
 
-AskFiles is a desktop app for macOS and Windows. You point it at your files, ask a question in plain English or Chinese, and get an answer with numbered sources you can open and check. The documents, the questions and the answers never leave your machine: the language model, the search index and the text recognition all run locally, and after the first setup the app works without an internet connection.
+![Asking a question: the answer streams in with numbered citations, the source cards show file, section and passage, and Read section opens the document at that section](docs/media/ask-demo.gif)
 
-> **Status: test builds.** AskFiles is in early testing with invited users. Expect rough edges, and please report what you find.
+| Browse: Compare | Browse: Library |
+|---|---|
+| ![The same heading across three documents, side by side](docs/media/compare.png) | ![Every document with its type and a one-sentence summary checked against its text](docs/media/library.png) |
 
-## What it does
+The screenshots show an invented demo library.
 
-**Ask**
-- Answers questions from your documents with numbered citations, each linked to a source card showing the file, the section and the page.
-- Checks every sentence of the answer against the sources by the share of its words found in the passage it cites. A citation that does not hold moves to a source that supports the sentence; a sentence no source supports loses its citation and is marked with †, so you know which parts to verify yourself.
-- Says so when your documents do not contain the answer, and lists the closest sections instead of making one up.
-- Handles questions that compare two documents when you name them, by searching each document separately (slower, about a minute longer).
+**What makes it different**
 
-**Browse**
-- **Library**: every document with its outline, its type and a one-sentence summary (16 GB of memory or more); open a document to read its full text.
-- **Compare**: the same heading across several documents, side by side.
-- **Find**: word search across your documents; every word must appear in the section, and words in quotes are found as a phrase.
-- **Graph**: how your documents relate, for example through shared headings, references and versions (the links drawn depend on the kind of library), with Folders and Local views for large libraries.
+- **Fully local.** The language model, the embeddings, the search index and text recognition all run on the machine. Documents and questions never leave it; there is no account, no telemetry, and after the first model download no internet connection is needed.
+- **Answers with checked sources.** Every sentence of an answer is checked against the passage it cites. A citation that does not hold moves to a source that supports the sentence, or is removed.
+- **Unsupported sentences are marked.** A sentence that no source supports keeps its place in the answer but gets a dagger (†), so the reader knows exactly which part to verify. When the documents do not contain the answer, AskFiles says so and lists the closest sections instead of guessing.
 
-**Your files**
-- PDF (including scanned pages, with built-in English and simplified Chinese text recognition), Word (.docx), Excel (.xlsx, .xlsm, .xls), CSV, Markdown and plain text.
-- Several libraries, each built from linked folders and individually added files. Changes to your files are picked up automatically.
-- Optional summaries of every section (16 GB of memory or more), and an export of the library as Markdown notes that Obsidian can open.
+**[Download v1.0.0](https://github.com/yuan-phd/askfiles/releases/tag/v1.0.0)**: `AskFiles-1.0.0-arm64.dmg` for macOS, `AskFiles-1.0.0-x64-setup.exe` for Windows.
 
-## Requirements
+## System requirements
+
+- **Mac**: Apple silicon (M1 or later), macOS 14 (Sonoma) or later. There is no build for Intel Macs.
+- **Windows**: Windows 10 (version 22H2 or newer) or Windows 11, x64.
+- At least 15 GB of free disk space, and an internet connection for the first start, which downloads the models.
 
 | Memory | What you get | First download |
 |---|---|---|
-| 32 GB or more | Ask, Browse and Find, with the Qwen3 14B model | about 10.4 GB |
-| 16 GB | Ask, Browse and Find, with a smaller version of the same model | about 8.5 GB |
-| 8 GB | Browse and Find only | about 1.2 GB |
-
-- macOS 14 (Sonoma) or later on Apple Silicon (M1 or later), or Windows 10/11 on x64.
-- At least 15 GB of free disk space.
-- An internet connection for the first start only, to download the models.
-
-## Install
-
-Download the latest build from the [Releases page](https://github.com/yuan-phd/askfiles/releases): the `.dmg` for macOS or the setup `.exe` for Windows.
-
-The builds are not yet code-signed, so your system will warn you the first time:
-
-- **macOS**: if macOS says it cannot verify the app, open System Settings, Privacy & Security, and click **Open Anyway**. If that does not work, run this in Terminal and open the app again:
-  ```
-  xattr -dr com.apple.quarantine "/Applications/AskFiles Test.app"
-  ```
-  (For a release build the app is called `AskFiles.app`.) Work computers managed by an organisation may block unsigned apps entirely.
-- **Windows**: if SmartScreen appears, click **More info**, then **Run anyway**.
-
-On first start, AskFiles checks your computer's memory, downloads the matching models, and opens. Add a folder or some files, wait for indexing to finish, and ask.
+| 32 GB or more | Ask, Browse and Find, with Qwen3 14B (4-bit) | about 10.4 GB |
+| 16 GB | Ask, Browse and Find, with Qwen3 14B (3-bit) | about 8.5 GB |
+| 8 GB | Browse and Find only; Ask needs 16 GB | about 1.2 GB |
 
 ## How accurate is it?
 
-Measured on our own test documents (one English and one Chinese set of public procurement regulations and guidance); results on other documents may differ.
+Measured on two evaluation sets of public procurement documents, 12 in English and 15 in Chinese, on a Mac with 64 GB of memory. Results on other documents may differ. Questions that compare two documents are reported in two rows, because the result depends on how the question refers to the documents:
 
-| Question type | Result |
-|---|---|
-| About one document, answer complete (hand graded) | English 32 of 36, Chinese 19 of 20 |
-| Comparing two documents named in the question | right sources cited 9 of 10, answer complete 8 of 10 |
-| Comparing two documents described rather than named | right sources cited 2 of 8, answer complete 3 of 8 |
-| No answer in the documents | said it could not find it 21 of 21, made nothing up |
+| Question type | Right sources cited | Answer complete |
+|---|---|---|
+| Compare two documents, **question names both files** | 9 of 10 | 8 of 10 |
+| Compare two documents, **question only describes them** (sealed holdout set) | 2 of 8 | 3 of 8 |
+| About one document (graded by hand) | | English 32 of 36, Chinese 19 of 20 |
+| No answer in the documents | | said so in 21 of 21, made nothing up |
 
-Typical time on a 64 GB Mac: about 14 seconds per question in English and 7 in Chinese; questions comparing two named documents take about 76 seconds. Machines with less memory are slower.
+An answer takes about 14 seconds in English and 7 in Chinese; a question naming two documents takes about 76 seconds. [The case study](docs/case-study-cross-document.md) explains how these figures were measured, what was tried, and why the second row is so much lower than the first.
 
-## Known limits
+## Architecture
 
-- Arithmetic on tables can be wrong. Check calculated figures against the source.
-- Comparison questions work best when you name both documents; asking about each document separately is more reliable.
-- Poor-quality scans may be misread.
-- Spreadsheet formulas are not read, only their values.
-- Sentences marked † may be accurate summaries or may be wrong; always check them against the source cards.
+AskFiles is an Electron app. Its main process starts three local processes, all bound to 127.0.0.1, and owns the retrieval and answer pipeline itself:
 
-## How it works
+```mermaid
+flowchart LR
+  subgraph App["AskFiles (Electron)"]
+    UI["Window<br/>Ask, Browse, Find, Graph<br/>plain HTML, CSS, JS"]
+    Main["Main process<br/>folder watcher, section splitter,<br/>keyword index, answer pipeline,<br/>citation check"]
+  end
+  subgraph Local["Child processes on 127.0.0.1"]
+    Server["AnythingLLM server<br/>document store, LanceDB vectors"]
+    Collector["AnythingLLM collector<br/>parsing, OCR"]
+    Ollama["Ollama<br/>Qwen3 14B (answers)<br/>bge-m3 (embeddings)"]
+  end
+  Files[("Your folders<br/>read only")]
+  UI <--> Main
+  Files --> Main
+  Main -- "documents, vector search" --> Server
+  Server --> Collector
+  Server -- embeddings --> Ollama
+  Main -- "chat, streamed" --> Ollama
+```
 
-AskFiles is an [Electron](https://www.electronjs.org/) app that runs everything locally:
+- [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm) v1.19.0 (MIT) is vendored in [upstream/](upstream/) and used headless as the document store, parser, OCR, embedder and vector database. It is never edited: eight small patches in [patches/](patches/) are applied to a copy at build time, for example to bind to 127.0.0.1 and to stop requests made at startup.
+- [Ollama](https://ollama.com/) is bundled in the app, with its cloud features off. The model is chosen from the machine's memory; the user never picks one.
+- The shell splits documents itself, by section, so every source card can name a section and page: PDF bookmarks or font sizes, Word heading styles, Markdown headings, one section per spreadsheet sheet or slide.
 
-- [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm) as the document store, embedding and vector search backend, used headless with local-only patches.
-- [Ollama](https://ollama.com/) to run [Qwen3](https://github.com/QwenLM/Qwen3) for answers and [bge-m3](https://huggingface.co/BAAI/bge-m3) for embeddings, with its cloud features turned off.
-- Hybrid search (vector and keyword), section-level selection, and a citation check that runs on every answer as soon as it is complete.
-- Tesseract for text recognition of scanned pages.
+## How retrieval and citation checking work
 
-Third-party licenses are listed in [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES). The AnythingLLM core in [upstream/](upstream/) is MIT-licensed ([upstream/LICENSE](upstream/LICENSE)); AskFiles' own code is licensed under the Apache License 2.0 (see [License](#license)).
+1. **Split by section, not by length.** Each section is one unit. A long section is cut into chunks of at most 2,000 characters that all carry the section's title, and hits from the same section are merged back into one.
+2. **Two searches, one ranking.** Vector search (bge-m3) and a BM25 keyword index over the sections each return 30 candidates; reciprocal rank fusion merges them into a single ranked list of sections. Keyword search catches exact terms, codes and names that vector search misses.
+3. **Select whole sections.** The default scope reads the best 5 sections above a similarity floor, within an 8,192-token context. When the question names two or more files, each named file is also searched on its own and contributes its best sections, so one document cannot crowd out the other. There is no cross-encoder reranker: onnxruntime crashed on the test Mac when one loaded, so sections stay in fused order.
+4. **Answer from numbered sources.** The model (Qwen3 14B, thinking off) sees numbered sources without file names or pages and must cite `[n]`, or reply that the sources do not state the answer. Source cards are built from the shell's own section records, never from the model's text.
+5. **Check every sentence.** After the reply, each sentence is compared with the passage it cites: the share of its content words (English by stem, Chinese by character pairs) found there. A sentence at or above the threshold keeps its citation; below it, the citation moves to a selected source that does reach it; otherwise the citation is removed and the sentence is marked †. An unsupported sentence that only says some information is missing is dropped when supported sentences remain.
 
-## Documentation
+The section summaries in Browse go through the same check, and an unsupported summary is not shown. [docs/app.md](docs/app.md) describes the pipeline step by step; [docs/eval.md](docs/eval.md) describes the evaluation harness and every switch that was measured.
 
-- [User guide](docs/user-guide.md)
-- [How the app is built](docs/app.md)
-- [Packaging](docs/packaging.md) and [Windows](docs/windows.md)
-- [Evaluation](docs/eval.md)
+## Install
+
+Download the file for your system from the [v1.0.0 release](https://github.com/yuan-phd/askfiles/releases/tag/v1.0.0). The builds are not code-signed, so the system warns the first time:
+
+- **macOS**: open the `.dmg` and drag AskFiles to Applications. If macOS says it cannot verify the app, open System Settings, Privacy & Security, and click **Open Anyway**. Work computers managed by an organisation may block unsigned apps entirely.
+- **Windows**: run the installer. If SmartScreen appears, click **More info**, then **Run anyway**.
+
+On first start, AskFiles checks the computer's memory, downloads the matching models and opens. Add a folder or some files, wait for indexing to finish, and ask. The [user guide](docs/user-guide.md) covers the rest, including what AskFiles does not do well.
+
+## Building from source
+
+Node 22 and, for the evaluation harness, Ollama. `npm install`, then `npm run dev`, which builds the patched upstream copy and starts the app; `npm test` runs the unit tests. Packaging is described in [docs/packaging.md](docs/packaging.md) (macOS) and [docs/windows.md](docs/windows.md) (Windows), the project plan and its decisions in [docs/plan.md](docs/plan.md).
 
 ## Feedback
 
-Please open an [issue](https://github.com/yuan-phd/askfiles/issues) with what you asked, what you expected, and what happened. Do not paste content from confidential documents.
+Please open an [issue](https://github.com/yuan-phd/askfiles/issues) with what you asked, what you expected and what happened. Do not paste content from confidential documents.
 
 ## License
 
 Copyright 2026 yuan-phd.
 
-AskFiles is licensed under the [Apache License 2.0](LICENSE). You may use, modify, distribute and sell it, provided you keep the copyright and license notices (including [NOTICE](NOTICE)) and state significant changes you make.
-
-The AnythingLLM core in [upstream/](upstream/) is MIT-licensed ([upstream/LICENSE](upstream/LICENSE)). Third-party components keep their own licenses, listed in [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES).
-
-Contributions: see [CONTRIBUTING.md](CONTRIBUTING.md).
+AskFiles is licensed under the [Apache License 2.0](LICENSE). The AnythingLLM core in [upstream/](upstream/) is MIT-licensed ([upstream/LICENSE](upstream/LICENSE)). Third-party components keep their own licenses, listed in [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES). Contributions: see [CONTRIBUTING.md](CONTRIBUTING.md).
