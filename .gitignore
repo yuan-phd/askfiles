@@ -42,6 +42,3 @@ coverage/
 
 # test build packages (scripts/package-test-build.sh)
 release-test/
-
-# Instructions for Claude Code sessions; kept on disk, not tracked
-/CLAUDE.md

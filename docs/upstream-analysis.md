@@ -505,7 +505,7 @@ Node version outcome: install, prisma generate, frontend build, migrate deploy, 
    cd upstream/frontend  && yarn install --frozen-lockfile   # 17 s
    ```
 
-   Warnings: server: resolution field form-data@4.0.4 incompatible with requested 4.0.0; engine pnpm appears to be invalid (@qdrant/js-client-rest, chart.js); @lancedb/lancedb 0.15.0 has incorrect peer dependency apache-arrow >=15 <=18.1.0 (installed 19.0.0, loads and works); unmet peers for zod, typescript, request, eslint; @datastax/astra-db-ts unable to read bin directory. Collector: engine bare appears to be invalid (bare-fs, bare-os); unmet peer ts-toolbelt; prettier peer. Frontend: unmet peers for @lobehub/icons (antd, react 19). No native build errors. @vscode/ripgrep postinstall needs GitHub release access; this environment seeds its cache (scripts/install_pkgs.sh, seed_ripgrep_cache) because api.github.com is refused by the proxy for unattached repositories.
+   Warnings: server: resolution field form-data@4.0.4 incompatible with requested 4.0.0; engine pnpm appears to be invalid (@qdrant/js-client-rest, chart.js); @lancedb/lancedb 0.15.0 has incorrect peer dependency apache-arrow >=15 <=18.1.0 (installed 19.0.0, loads and works); unmet peers for zod, typescript, request, eslint; @datastax/astra-db-ts unable to read bin directory. Collector: engine bare appears to be invalid (bare-fs, bare-os); unmet peer ts-toolbelt; prettier peer. Frontend: unmet peers for @lobehub/icons (antd, react 19). No native build errors. @vscode/ripgrep postinstall needs GitHub release access; the environment of this analysis seeded its cache from the release asset because its proxy refused api.github.com.
 
 2. Prisma client, using the local CLI. Exit 0.
 

@@ -1,4 +1,4 @@
-// No upstream product name anywhere a user can see it (docs/sessions/H-app-wiring.md, Added):
+// No upstream product name anywhere a user can see it:
 // the packaged pages and main process (src/), the files packed next to them (config/,
 // package.json), the build scripts, and the window title. Exempt by design: upstream/ itself,
 // THIRD-PARTY-NOTICES and its generator, and the About page, which credit the project as its MIT
