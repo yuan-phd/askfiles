@@ -48,7 +48,7 @@ An answer takes about 14 seconds in English and 7 in Chinese; a question naming 
 AskFiles is an Electron app. Its main process starts three local processes, all bound to 127.0.0.1, and owns the retrieval and answer pipeline itself:
 
 ```mermaid
-%%{init: {"flowchart": {"diagramPadding": 120}}}%%
+%%{init: {"flowchart": {"diagramPadding": 200}}}%%
 flowchart LR
   subgraph App["AskFiles (Electron)"]
     UI["Window<br/>Ask, Browse, Find, Graph<br/>plain HTML, CSS, JS"]

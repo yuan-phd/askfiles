@@ -14,7 +14,7 @@ import {
   withNeighbours,
 } from './graph-model.js';
 
-// Invented documents only (CLAUDE.md rule 10).
+// Invented documents only.
 const node = (id, relPath, o = {}) => ({
   id,
   relPath,

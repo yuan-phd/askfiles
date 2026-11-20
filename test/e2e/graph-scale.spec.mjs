@@ -1,6 +1,6 @@
 // The graph of a large library (docs/graph.md, Large libraries): the Local, Folders and All views,
 // recentring, search, "+N more", Show in graph from the Document page and the Library, on graphs
-// built by the real graph code (dist/main/graph) from invented libraries only (CLAUDE.md rule 10):
+// built by the real graph code (dist/main/graph) from invented libraries only:
 // the 900-document water cooperative of test/fixtures/make-graph-library.mjs, and a small hub
 // library made here. Also measures build and settle times and takes the screenshots of each view
 // (docs/screenshots/graph).
