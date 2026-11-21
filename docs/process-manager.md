@@ -7,7 +7,7 @@ src/main/process-manager starts, watches and stops the three local processes: Ol
 start() runs these steps in order and stops at the first failure:
 
 1. Allocate three free ports on the host (default 127.0.0.1), one each for Ollama, collector and server. Ports are new at every start.
-2. Write <dataDir>/server/.env if it does not exist: fresh JWT_SECRET, SIG_KEY and SIG_SALT (32 random bytes, base64), the ports of this first run, DISABLE_TELEMETRY. The manager never touches an existing file; the first-run wizard and the model manager (Session E) add the preset values to it, see docs/presets.md.
+2. Write <dataDir>/server/.env if it does not exist: fresh JWT_SECRET, SIG_KEY and SIG_SALT (32 random bytes, base64), the ports of this first run, DISABLE_TELEMETRY. The manager never touches an existing file; the first-run wizard and the model manager add the preset values to it, see docs/presets.md.
 3. Ollama: spawn, poll GET /api/tags until 200.
 4. Collector: spawn, poll GET /accepts until 200. The collector has no health route; /accepts is a plain GET route that answers once the app is mounted.
 5. Migrate: run the migrate command (prisma migrate deploy) to completion; exit code 0 required.

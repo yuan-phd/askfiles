@@ -1,6 +1,6 @@
 # Library profiles
 
-Session N. A profile says what kinds of document a library holds: the type names, a colour per type, keyword cues per type, the band order of the layered graph and the edge rules it draws (docs/graph.md). Files in config/profiles, one JSON per profile, read at launch (src/main/graph/profiles.ts, loadProfiles, which refuses a broken file with the reason). Shipped in app.asar.
+A profile says what kinds of document a library holds: the type names, a colour per type, keyword cues per type, the band order of the layered graph and the edge rules it draws (docs/graph.md). Files in config/profiles, one JSON per profile, read at launch (src/main/graph/profiles.ts, loadProfiles, which refuses a broken file with the reason). Shipped in app.asar.
 
 | Profile | Types | Edges |
 | --- | --- | --- |
@@ -8,7 +8,7 @@ Session N. A profile says what kinds of document a library holds: the type names
 | team-work (Team work) | meeting, report, ticket, spec, other | project names from titles, ticket ids, title mentions, date adjacency |
 | general (General) | book, article, note, reference | title mentions, relatedness by shared rare terms; shared headings off |
 
-legal-finance and team-work have a type `other` for documents the signals cannot place (kind other), so a guess is never shown as a finding. The brief lists six legal-finance types without it; the decision is noted in the PR. general sends kind other to note.
+legal-finance and team-work have a type `other` for documents the signals cannot place (kind other), so a guess is never shown as a finding. The original design listed six legal-finance types without it. general sends kind other to note.
 
 ## File format
 

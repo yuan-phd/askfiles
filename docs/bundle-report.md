@@ -1,18 +1,18 @@
 # Bundle report
 
-Session I, 2026-10-29. What the packaged server and collector dependencies weigh, what scripts/prune.mjs removes and why each removal is safe. Regenerate the tables with `bash scripts/measure-bundle.sh [resources-dir]`.
+Measured 2026-10-29. What the packaged server and collector dependencies weigh, what scripts/prune.mjs removes and why each removal is safe. Regenerate the tables with `bash scripts/measure-bundle.sh [resources-dir]`.
 
 ## Summary
 
 | | Before | After |
 | --- | --- | --- |
-| DMG, mac CI (macos-14) | 695 967 267 bytes (663.7 MiB), run 8 | 578 415 079 bytes (551.6 MiB), run 15: 117.6 MB (16.9 percent) smaller, although Session H added the tesseract data and pages to app.asar since run 8 |
+| DMG, mac CI (macos-14) | 695 967 267 bytes (663.7 MiB), run 8 | 578 415 079 bytes (551.6 MiB), run 15: 117.6 MB (16.9 percent) smaller, although the tesseract data and pages were added to app.asar since run 8 |
 | AskFiles.app unpacked, mac CI | 2 458 796 KB (2.34 GiB) | 1 900 344 KB (1.81 GiB) |
 | server and collector node_modules, mac CI | 1.15 GB in 93 884 files | 740.6 MB in 53 354 files |
 | server and collector node_modules, Linux packaging | 1.33 GB in 92 594 files | 842.2 MB in 52 063 files |
 | package job, mac CI | 26 min 45 s on main (run 6), of which 22 min 52 s in Build, package and sign; 19 min 20 s in run 8 | 4 min 15 s with warm caches (run 12), 9 min 27 s with the new caches empty (run 11) |
 
-Before on the mac is CI run 8 (this PR's first push, which only added the measurement step) against main's build. The brief expected about 1.6 GB; that is the size of the unpacked dependency folders, the DMG was already compressed to 664 MiB. Ollama (523 MiB unpacked, kept whole) is the largest part that pruning does not touch.
+Before on the mac is CI run 8 (this PR's first push, which only added the measurement step) against main's build. The earlier estimate was about 1.6 GB; that is the size of the unpacked dependency folders, the DMG was already compressed to 664 MiB. Ollama (523 MiB unpacked, kept whole) is the largest part that pruning does not touch.
 
 ## Pruning steps
 
@@ -27,9 +27,9 @@ scripts/build.sh runs scripts/prune.mjs as step 7 for `PACKAGE_TARGET=mac-arm64`
 | 4. unused: canvas, chartjs-node-canvas, @mintplex-labs/mdpdf, puppeteer | 136.8 MB, 9 packages | 8.8 MB, 64 packages | 910.0 MB, 55 659 files |
 | 5. providers: vector database clients 74.8 MB, model provider SDKs 2.1 MB | 76.9 MB, 73 packages | 0 | 842.2 MB, 52 063 files |
 
-On the mac runner (run 15, rebased onto Session H) the same steps removed: platform 72.1 MB server and 73.7 MB collector, dev 186.4 MB and 105.8 MB, unused 71.1 MB server (mdpdf for one platform only, canvas) and 8.8 MB collector, providers 76.9 MB server (vector database clients 74.8 MB, model provider SDKs 2.1 MB). The smoke test of that DMG passed (first run, search page, quit).
+On the mac runner (run 15, rebased onto the app wiring of 2026-10-29) the same steps removed: platform 72.1 MB server and 73.7 MB collector, dev 186.4 MB and 105.8 MB, unused 71.1 MB server (mdpdf for one platform only, canvas) and 8.8 MB collector, providers 76.9 MB server (vector database clients 74.8 MB, model provider SDKs 2.1 MB). The smoke test of that DMG passed (first run, search page, quit).
 
-After every step: scripts/check-server-boot.sh passed, and scripts/check-packaged-backend.mjs passed against the packaged copy (release/linux-unpacked/resources): prisma migrate deploy, collector and server healthy, upload and parse of a PDF, a DOCX, an XLSX and a Markdown file, OCR of a PNG, embedding of the five documents into a workspace with all-minilm, one chat answer with sources from qwen3:0.6b. After step 4, `npm run test:integration` passed (5 tests) on the same pruned tree; after step 5, on the tree rebased onto Session H, it passed again (7 tests in 5 files).
+After every step: scripts/check-server-boot.sh passed, and scripts/check-packaged-backend.mjs passed against the packaged copy (release/linux-unpacked/resources): prisma migrate deploy, collector and server healthy, upload and parse of a PDF, a DOCX, an XLSX and a Markdown file, OCR of a PNG, embedding of the five documents into a workspace with all-minilm, one chat answer with sources from qwen3:0.6b. After step 4, `npm run test:integration` passed (5 tests) on the same pruned tree; after step 5, on the tree rebased onto the app wiring, it passed again (7 tests in 5 files).
 
 ### 1. Other platforms
 
@@ -93,7 +93,7 @@ Checked and kept, because the step refuses them:
 
 ## CI time
 
-Timestamps from the package job logs. Run 6 is main after Session F, run 8 this PR's measurement-only push, run 11 the push with pruning, the faster signing and the caches (the new caches still empty), run 12 the next push with both new caches hit.
+Timestamps from the package job logs. Run 6 is main after the folder watcher and the macOS workflow were added, run 8 this PR's measurement-only push, run 11 the push with pruning, the faster signing and the caches (the new caches still empty), run 12 the next push with both new caches hit.
 
 | Package job part | main, run 6 | run 8 | run 11 | run 12 |
 | --- | --- | --- | --- | --- |

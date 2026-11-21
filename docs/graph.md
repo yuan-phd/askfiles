@@ -1,6 +1,6 @@
 # The library graph
 
-Session N. Code in src/main/graph (no model anywhere) and src/renderer/browse/graph.js. The Graph page (named Overview until 2026-11-04) is an entry of the Browse sidebar, after Find. It shows a library's documents as a graph: one node per document, coloured by type, linked by what the documents share. Types, colours and the links drawn depend on the library's profile (docs/profiles.md).
+Code in src/main/graph (no model anywhere) and src/renderer/browse/graph.js. The Graph page (named Overview until 2026-11-04) is an entry of the Browse sidebar, after Find. It shows a library's documents as a graph: one node per document, coloured by type, linked by what the documents share. Types, colours and the links drawn depend on the library's profile (docs/profiles.md).
 
 ## Where it comes from
 
@@ -12,7 +12,7 @@ Build time, measured on the two test corpora on an M1 Max: 270 ms for the 12 Eng
 
 ## Kinds
 
-src/main/graph/kinds.ts, detectKind. Each document gets a structural kind when its browse entry is built (browse/build.ts). The kind is stored in the entry as `kind: { kind, scores, words }`, which is the document record the brief means. A browse file stored before Session N gets one when the index loads, written back once.
+src/main/graph/kinds.ts, detectKind. Each document gets a structural kind when its browse entry is built (browse/build.ts). The kind is stored in the entry as `kind: { kind, scores, words }`, which is the document record. A browse file stored before 2026-11-04 gets one when the index loads, written back once.
 
 Signals, counted over at most 200,000 characters:
 

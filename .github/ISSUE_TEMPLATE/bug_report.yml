@@ -1,0 +1,42 @@
+name: Bug report
+description: An answer, a page or the app did not do what you expected.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting. Do not paste content from confidential documents: describe the document in general terms (for example "a 40-page PDF regulation in Chinese") and use invented text if an example is needed.
+  - type: textarea
+    id: asked
+    attributes:
+      label: What you asked
+      description: The question, or what you did in the app.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened
+      description: The answer or behaviour you got. A screenshot helps, if it shows nothing confidential.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: AskFiles version
+      description: Shown on the About AskFiles page, for example 1.0.0.
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System and memory
+      description: For example macOS 15 on an M2 with 16 GB, or Windows 11 x64 with 32 GB.
+    validations:
+      required: true

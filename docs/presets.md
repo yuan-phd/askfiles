@@ -1,6 +1,6 @@
 # Presets, first-run wizard and model manager
 
-Session E, plan tasks 1.4, 1.5 and 1.6. Code in src/main/presets, src/main/wizard, src/main/models, src/main/ollama; pages in src/renderer/onboarding and src/renderer/models.
+Code in src/main/presets, src/main/wizard, src/main/models, src/main/ollama; pages in src/renderer/onboarding and src/renderer/models.
 
 ## config/presets.json
 
@@ -21,7 +21,7 @@ chatModelFile pins a chat model pulled from Hugging Face: repository, revision, 
 | similarityThreshold | 0.5 | 0.5 | 0.5 | Plan phase 2 Medium; upstream's Medium option is 0.5 (upstream/frontend/src/pages/WorkspaceSettings/VectorDatabase/DocumentSimilarityThreshold/index.jsx:25) |
 | chatMode | query | query | query | Plan decision |
 | temperature | 0.1 | 0.1 | 0.1 | Plan phase 2 |
-| reasoningEffort | off | off | off | Plan phase 2, Session C patch 7 |
+| reasoningEffort | off | off | off | Plan phase 2, patch 007 |
 | ocrLanguages (TARGET_OCR_LANG) | eng,chi_sim | same | same | Q7, Q14 |
 | indexing | structuredTables, cjkHeadings on; ocrUpscale off | same | same | Rounds I1 to I3 (docs/plan.md, Measurement rounds and switches): structuredTables kept; ocrUpscale did not help on the scanned file; cjkHeadings on by owner ruling after round C4, an exception to the keep rule: it costs one Chinese cross-document question and halves Chinese answer time |
 | summariesFasterModel | off | off | off | Owner decision 2026-11-04: summaries use the Ask model on every tier. The option (the Faster tier's model for summaries when installed) stays in the code; on the owner's Mac Q3_K_M was slower than q4_K_M for section summaries and kept a second chat model loaded (docs/summaries.md, Batches) |
@@ -45,7 +45,7 @@ Total RAM in GiB (os.totalmem() / 1024^3; a 16 GB Mac reports exactly 1717986918
 | chatMode, similarityThreshold, topN, openAiTemp, openAiPrompt | Library workspace columns through POST /api/v1/workspace/new or /api/v1/workspace/{slug}/update (workspaceSettings) | markOnboarded calls deps.applyWorkspaceSettings when given; the library setup must also pass them when it creates the workspace |
 | indexing | The shell's section splitter (sectionSplitter, collectorOcr's upscale); every switch that is on, with its revision, is part of the split key, so changing one reindexes every library once. Optional in the schema; missing means all off | Splitter reads it from the preset |
 | summariesFasterModel | The summary service (src/main/app.ts summaryModel, refreshSummaryModel): on, summaries use the Faster tier's model when it is installed and its pinned file matches. Optional in the schema; missing means off | App reads it from the preset |
-| chunkMaxChars | The shell's section splitter (folder watcher, Session F) and EMBEDDING_MODEL_MAX_CHUNK_LENGTH; upstream's chunk size defaults to that limit (upstream/server/utils/TextSplitter/index.js:47-57), so a section up to this size stays one chunk | Splitter reads it from the preset |
+| chunkMaxChars | The shell's section splitter (folder watcher) and EMBEDDING_MODEL_MAX_CHUNK_LENGTH; upstream's chunk size defaults to that limit (upstream/server/utils/TextSplitter/index.js:47-57), so a section up to this size stays one chunk | Splitter reads it from the preset |
 
 The 16 GB .env, byte for byte, is in src/main/presets/__fixtures__/server-16gb.env (secrets replaced by test values).
 
@@ -62,7 +62,7 @@ any step --fails--> error --retry()--> retry -> the step that failed
 - chooseTier: emits a tier event (RAM, tier, models, belowMinimum).
 - pullModels: embedder first, then chat model, through POST /api/pull with streaming. Models already in /api/tags are skipped, so a retry does not download a finished model again. Progress events carry model, index, count, status, completedBytes, totalBytes and percent. Percent never goes back and is 100 only after Ollama reports success.
 - writeConfig: merges presetEnv into the server .env; creates the file with fresh secrets if the process manager has not written it.
-- markOnboarded: deps.restartServer() (with the Session C manager: stop() then start(), because start() reads the .env), then the onboarding calls, then deps.applyWorkspaceSettings.
+- markOnboarded: deps.restartServer() (with the process manager: stop() then start(), because start() reads the .env), then the onboarding calls, then deps.applyWorkspaceSettings.
 
 start() and retry() never reject; they resolve with a snapshot whose state is done or error. Events go to the onboarding page through the bridge described at the top of src/renderer/onboarding/onboarding.js.
 
@@ -72,5 +72,5 @@ ModelManager lists installed models (GET /api/tags) with their role from the ser
 
 ## Not done here
 
-- Electron wiring (LOCAL): a preload script exposing window.askfiles.wizard and window.askfiles.models over IPC, src/main/index.ts starting the process manager, running the wizard when GET /api/onboarding is false, passing presetSpawnEnv in the server spec env, and loading the onboarding page. Not written because none of it can run in a cloud session.
+- Electron wiring (LOCAL): a preload script exposing window.askfiles.wizard and window.askfiles.models over IPC, src/main/index.ts starting the process manager, running the wizard when GET /api/onboarding is false, passing presetSpawnEnv in the server spec env, and loading the onboarding page. Not written then, because none of it could run without the Mac.
 - Visual pass on the onboarding and models pages (LOCAL, plan task 3.6). Both pages take their tokens from src/renderer/ask/ask.css.
