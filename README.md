@@ -118,7 +118,7 @@ flowchart LR
 ```
 
 - [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm) v1.19.0 (MIT) is vendored in [upstream/](upstream/) and used headless as the document store, parser, OCR, embedder and vector database. It is never edited: eight small patches in [patches/](patches/) are applied to a copy at build time, for example to bind to 127.0.0.1 and to stop requests made at startup.
-- [Ollama](https://ollama.com/) is bundled in the app, with its cloud features off. The model is chosen from the machine's memory; the user never picks one.
+- [Ollama](https://ollama.com/) is bundled in the app, with its cloud features off. The model is chosen from the machine's memory. Settings offers Better, the default, and on 32 GB or more also Faster, the 16 GB model (Qwen3 14B, 3-bit), which answers sooner.
 - The shell splits documents itself, by section, so every source card can name a section and page: PDF bookmarks or font sizes, Word heading styles, Markdown headings, one section per spreadsheet sheet or slide.
 
 How a question is answered:
@@ -152,7 +152,7 @@ Answers were measured acceptable only with Qwen3 14B, which needs 16 GB. A small
 
 <details><summary>Can I choose my own model?</summary>
 
-Not freely. AskFiles picks the model from the computer's memory, and Settings offers two answer models: Better (the default, this computer's model) and, where there is one, Faster (the model of the next lower memory tier).
+The model is chosen from the machine's memory. Settings offers Better, the default, and on 32 GB or more also Faster, the 16 GB model (Qwen3 14B, 3-bit), which answers sooner.
 
 </details>
 
