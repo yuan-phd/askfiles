@@ -53,6 +53,10 @@ On first start, AskFiles checks the computer's memory, downloads the matching mo
 
 Supported files: PDF, Word (.docx), Excel (.xlsx, .xlsm, .xls), PowerPoint (.pptx), Markdown (.md, .markdown) and text (.txt).
 
+![The Graph page: forty invented documents as coloured dots by type, joined by lines where they share headings](docs/media/graph.png)
+
+Browse: Graph. Each dot is a document, coloured by its type; lines link documents that share headings, mention each other, or are versions of one document.
+
 | Browse: Compare                                                                  | Browse: Library                                                                                              |
 | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | ![The same heading across three documents, side by side](docs/media/compare.png) | ![Every document with its type and a one-sentence summary checked against its text](docs/media/library.png) |
