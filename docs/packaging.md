@@ -1,8 +1,8 @@
 # Packaging AskFiles on the Mac
 
-How to turn this repository into AskFiles.app and a DMG on an Apple Silicon Mac, sign it ad-hoc, and copy it to a second Mac. Everything here is LOCAL: cloud sessions stop before step 3.
+How to turn this repository into AskFiles.app and a DMG on an Apple Silicon Mac, sign it ad-hoc, and copy it to a second Mac. Everything here is LOCAL: from step 3 on it needs the Mac.
 
-State of the app at this point (after Session H): the packaged app starts Ollama, the collector and the server from its bundle (src/main/app.ts, docs/process-manager.md), shows a starting page, then the onboarding page on the first launch and the Ask page afterwards, both from the app bundle (docs/app.md). The upstream interface opens only with ASKFILES_UPSTREAM_UI=1. ASKFILES_PORT, or {"port": N} in the file named by ASKFILES_CONFIG (default ~/Library/Application Support/AskFiles/config.json), still makes the app connect to a server started by hand instead. The CI workflow .github/workflows/mac.yml builds the same DMG and smoke tests it with scripts/smoke-mac.sh.
+State of the app at this point (2026-10-29): the packaged app starts Ollama, the collector and the server from its bundle (src/main/app.ts, docs/process-manager.md), shows a starting page, then the onboarding page on the first launch and the Ask page afterwards, both from the app bundle (docs/app.md). The upstream interface opens only with ASKFILES_UPSTREAM_UI=1. ASKFILES_PORT, or {"port": N} in the file named by ASKFILES_CONFIG (default ~/Library/Application Support/AskFiles/config.json), still makes the app connect to a server started by hand instead. The CI workflow .github/workflows/mac.yml builds the same DMG and smoke tests it with scripts/smoke-mac.sh.
 
 ## What you need
 
@@ -36,9 +36,9 @@ tar -xzf /tmp/ollama-darwin.tgz -C resources/ollama
 resources/ollama/ollama --version
 ```
 
-Expected: the checksum is `a4ceae4b2aaf18df37ebcbfb56ba3a37a87838631112d66c2be07268693c8d58` (measured in Session B on 2026-10-29), and the last command prints the client version 0.40.4 plus a warning that it could not connect to a running Ollama instance. That warning is fine. If the checksum differs, stop: the file is not the one pinned here.
+Expected: the checksum is `a4ceae4b2aaf18df37ebcbfb56ba3a37a87838631112d66c2be07268693c8d58` (measured on 2026-10-29), and the last command prints the client version 0.40.4 plus a warning that it could not connect to a running Ollama instance. That warning is fine. If the checksum differs, stop: the file is not the one pinned here.
 
-Why v0.40.4: the rule is the newest release that is at least 14 days old. Its macOS archive was uploaded on 2026-10-14 00:52 UTC and its Docker image pushed at 00:31 UTC the same day; v0.40.5 followed on 2026-10-15 18:49 UTC, less than 14 days before 2026-10-29. The GitHub releases API was refused in the cloud session, so the dates come from the asset Last-Modified header and Docker Hub, not from the release page. To change the version later, apply the same rule and update the version and checksum here.
+Why v0.40.4: the rule is the newest release that is at least 14 days old. Its macOS archive was uploaded on 2026-10-14 00:52 UTC and its Docker image pushed at 00:31 UTC the same day; v0.40.5 followed on 2026-10-15 18:49 UTC, less than 14 days before 2026-10-29. The GitHub releases API was refused in the cloud build environment, so the dates come from the asset Last-Modified header and Docker Hub, not from the release page. To change the version later, apply the same rule and update the version and checksum here.
 
 The archive holds 59 entries, about 550 MB unpacked: the ollama binary (universal arm64 and x86_64), llama-server, dylibs, two mlx_metal folders and the license files (docs/upstream-analysis.md Q12). Keep all of them together: the binary loads its libraries from its own folder and the licenses must ship with it. The cloud environment runs a newer Ollama (0.40.13) for tests; differences between the two versions were not checked.
 
@@ -93,7 +93,7 @@ Only the shell's own code is in app.asar. Server and collector are copied as pla
 
 ```
 AskFiles.app/Contents/
-  MacOS/AskFiles                      Electron; also runs server and collector with ELECTRON_RUN_AS_NODE=1 (Session C)
+  MacOS/AskFiles                      Electron; also runs server and collector with ELECTRON_RUN_AS_NODE=1
   Resources/app.asar                  package.json and dist/main
   Resources/server/                   upstream/server: code, public/ (frontend build), node_modules, prisma/
   Resources/server/storage/assets/    default logo images only; no runtime data
@@ -102,7 +102,7 @@ AskFiles.app/Contents/
   Resources/licenses/                 AnythingLLM license
 ```
 
-Not copied: server and collector storage/, hotdir/, .env files, tests, yarn.lock, and onnxruntime-node binaries for other platforms. The bundle is read-only once signed. Upstream still writes its SQLite DB, .env and hotdir next to its code (analysis risk 1); Session C's patches move them to ~/Library/Application Support/AskFiles. Until then, do not start the server from inside the bundle.
+Not copied: server and collector storage/, hotdir/, .env files, tests, yarn.lock, and onnxruntime-node binaries for other platforms. The bundle is read-only once signed. Upstream still writes its SQLite DB, .env and hotdir next to its code (analysis risk 1); the patches in patches/ move them to ~/Library/Application Support/AskFiles. Until then, do not start the server from inside the bundle.
 
 ### 4. Check the package on this Mac
 
@@ -118,7 +118,7 @@ ASKFILES_PORT=3001 /Applications/AskFiles.app/Contents/MacOS/AskFiles
 
 Logs are in ~/Library/Logs/AskFiles/main.log, one line per event with the [main] prefix.
 
-Things to look at and report back in the PR for task 1.7, because they could not be checked in the cloud:
+Things to look at on the Mac after the first package, because they could not be checked in the cloud:
 
 - `ls /Applications/AskFiles.app/Contents/Resources/server/node_modules/.prisma/client` lists libquery_engine-darwin-arm64.dylib.node
 - `ls /Applications/AskFiles.app/Contents/Resources/server/node_modules/@prisma/engines` lists schema-engine-darwin-arm64

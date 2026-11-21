@@ -1,6 +1,6 @@
 # Evaluation harness
 
-Plan task 2.3, extended by Session L. The harness takes one corpus folder and one questions CSV, puts the corpus into a hidden AnythingLLM workspace with the configuration under test, asks every question, and writes results.csv and run.json into a run folder. By default questions go through the shell's own answer pipeline (src/main/answer, the code the app runs); with --upstream they go through the upstream chat route as before, so both can be compared on the same questions.
+The harness takes one corpus folder and one questions CSV, puts the corpus into a hidden AnythingLLM workspace with the configuration under test, asks every question, and writes results.csv and run.json into a run folder. By default questions go through the shell's own answer pipeline (src/main/answer, the code the app runs); with --upstream they go through the upstream chat route as before, so both can be compared on the same questions.
 
 Scripts are in scripts/eval: run.ts (one run), score.ts (report for one or more runs), compare.ts (two upstream-route runs side by side). The section splitter is the shell's own, in src/main/sections, so the eval measures the split the app ships.
 
@@ -76,7 +76,7 @@ Options:
 | --try count=N,floor=X | the config's scope values | Stage 2 configuration, repeatable |
 | --counts | 1,2,3,4,5,6 | Section counts of the stage 1 sweep |
 | --floors | 0,0.01,0.05,0.1,0.2,0.3,0.5,0.7; with rerankerModel none 0,0.3,0.4,0.45,0.5,0.55,0.6,0.65 | Floors of the stage 1 sweep: rerank floors, or vector floors without a reranker |
-| --upstream | off | Ask through the upstream chat route instead (owner scoring, as before Session L) |
+| --upstream | off | Ask through the upstream chat route instead (owner scoring, as before 2026-10-30) |
 | --corpus-label | the corpus folder name (its parent's name when the folder is called corpus) | Name recorded in run.json and used to group reports; use S and L |
 | --out | eval-runs/<UTC time>-<corpus>-<config label> | Run folder |
 
@@ -305,7 +305,7 @@ npm run eval:rescore -- eval-runs/<run> --out eval-runs/<new folder> [--set rest
 - The harness measures latency on the machine it runs on; the Electron app adds nothing to it but window rendering. The reranker runs in the harness's Node process here and in the app's main process there.
 - The stage 1 cache is keyed by question text and index hash only: after changing the pipeline code itself, delete .eval-data/retrieval-cache.
 - With rerankerBypassCjk on, a library that mixes Chinese and English sections bypasses the reranker for most questions, and the floor columns of the sweep then show the same numbers.
-- Smoke runs in the cloud container use qwen3:0.6b and all-minilm on CPU and only test the pipeline; their answers say nothing about quality. Their output is in docs/eval-smoke: eval-s and eval-l through the upstream route (Session G), pipeline-s and pipeline-l through the answer pipeline, stages 1 and 2 (Session L).
+- Smoke runs in the cloud container use qwen3:0.6b and all-minilm on CPU and only test the pipeline; their answers say nothing about quality. Their output is in docs/eval-smoke: eval-s and eval-l through the upstream route (2026-10-29), pipeline-s and pipeline-l through the answer pipeline, stages 1 and 2 (2026-10-30).
 
 ## Seeded runs
 

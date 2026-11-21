@@ -1,6 +1,6 @@
 # Upstream analysis: AnythingLLM v1.19.0
 
-Session A, plan task 1.1. Analysis of the vendored core in upstream/ at the tag in UPSTREAM_VERSION (v1.19.0), done on 2026-10-29 in a Linux x86_64 cloud container with Node v22.22.0.
+Analysis of the vendored core in upstream/ at the tag in UPSTREAM_VERSION (v1.19.0), done on 2026-10-29 in a Linux x86_64 cloud container with Node v22.22.0.
 
 Labels used in this document:
 
@@ -11,7 +11,7 @@ Labels used in this document:
 
 Experiments ran against a scratch copy of upstream/server, upstream/collector and upstream/frontend (fresh install, same package.json and yarn.lock). Nothing under upstream/ was changed.
 
-## Summary for the next sessions
+## Summary
 
 What the shell has to do, in order of impact. Details are under each question and in Risks found.
 
@@ -96,7 +96,7 @@ READ and VERIFIED:
 - No environment variable sets a bind host. The server always calls the collector at 127.0.0.1 (upstream/server/utils/collectorApi/index.js:54), so binding both to 127.0.0.1 breaks nothing.
 - VERIFIED: /proc/net/tcp showed both sockets on 0.0.0.0, and `curl http://<container ip>:3001/api/ping` and `:8888/` answered 200.
 
-Answer: a patch is required, as already recorded in the plan (Session C). The same patch should add a host argument at the three listen calls. Also see Q4b below, which belongs to the same patch.
+Answer: a patch is required, as already recorded in the plan. The same patch should add a host argument at the three listen calls. Also see Q4b below, which belongs to the same patch.
 
 ### Q4b. CORS and unauthenticated API (found while answering Q4)
 
@@ -175,7 +175,7 @@ Env file handling (READ, partly VERIFIED):
 - upstream/server/.env.example ships live placeholder values for JWT_SECRET, SIG_KEY and SIG_SALT. Never copy it as is.
 - Documented but never read: AGENT_GSE_CTX, AGENT_GSE_KEY, AWS_BEDROCK_API_KEY, TEXT_GEN_WEB_UI_TOKEN_LIMIT.
 
-Preset variables named in plan task 1.5, checked against the code: LLM_PROVIDER, OLLAMA_BASE_PATH, OLLAMA_MODEL_PREF, OLLAMA_MODEL_TOKEN_LIMIT, EMBEDDING_ENGINE, EMBEDDING_MODEL_PREF, EMBEDDING_MODEL_MAX_CHUNK_LENGTH, VECTOR_DB, DISABLE_TELEMETRY all exist with these exact names. Task 1.5 must add EMBEDDING_BASE_PATH (required by the Ollama embedder) and TARGET_OCR_LANG, and should set NODE_ENV=production, STORAGE_DIR, SERVER_PORT, COLLECTOR_PORT, JWT_SECRET, SIG_KEY, SIG_SALT. Server bound to 127.0.0.1 needs the patch from Q4.
+Preset variables named in the plan, checked against the code: LLM_PROVIDER, OLLAMA_BASE_PATH, OLLAMA_MODEL_PREF, OLLAMA_MODEL_TOKEN_LIMIT, EMBEDDING_ENGINE, EMBEDDING_MODEL_PREF, EMBEDDING_MODEL_MAX_CHUNK_LENGTH, VECTOR_DB, DISABLE_TELEMETRY all exist with these exact names. Task 1.5 must add EMBEDDING_BASE_PATH (required by the Ollama embedder) and TARGET_OCR_LANG, and should set NODE_ENV=production, STORAGE_DIR, SERVER_PORT, COLLECTOR_PORT, JWT_SECRET, SIG_KEY, SIG_SALT. Server bound to 127.0.0.1 needs the patch from Q4.
 
 ## Q8. Hiding the LLM and embedder settings pages
 
@@ -248,7 +248,7 @@ Streaming format (VERIFIED, 195 events for one answer): each event is one line `
 
 Other facts for the client (VERIFIED unless marked):
 
-- Thinking models: qwen3 output arrives with `<think>...</think>` inside textResponse in both /chat and stream-chat (VERIFIED). Owner decision: Session C patch 7 passes reasoningEffort through the /v1 chat routes with DEFAULT_REASONING_EFFORT as the default, presets set it to off, and the search page strips think blocks regardless.
+- Thinking models: qwen3 output arrives with `<think>...</think>` inside textResponse in both /chat and stream-chat (VERIFIED). Owner decision: patch 007 passes reasoningEffort through the /v1 chat routes with DEFAULT_REASONING_EFFORT as the default, presets set it to off, and the search page strips think blocks regardless.
 - Thinking control (READ): the upstream Ollama provider can turn thinking off. It sends `think: false` when a chat carries reasoningEffort `off` (upstream/server/utils/helpers/reasoningEffort.js:159-161, used at upstream/server/utils/AiProviders/ollama/index.js:297 and :353), and only for models whose /api/show lists the thinking capability (reasoningEffort.js:306-331). But only the session-auth UI routes read reasoningEffort from the request body (upstream/server/endpoints/chat.js:32, :123). The developer routes /api/v1/workspace/{slug}/chat and stream-chat never pass it (no reasoning reference in upstream/server/utils/chats/apiChatHandler.js or upstream/server/endpoints/api/workspace/index.js), and there is no environment variable or workspace column for it. So the shell, which uses the /v1 API, cannot disable thinking without a patch. Options: a small patch that passes reasoningEffort (or a fixed `off` from an environment variable) through the /v1 chat routes into apiChatHandler, or a preset chat model without thinking.
 - `openAiHistory: 0` is turned into 20 by `openAiHistory || 20` (upstream/server/utils/chats/apiChatHandler.js:269, READ). Earlier answers in the same session can backfill context, so in query mode an answer can be produced from history with `sources: []`. Use a fresh sessionId per question or `reset: true` (READ).
 - The uploaded document's `url` is the hotdir copy (`file://.../collector/hotdir/manual.pdf`), not the user's original path. The shell keeps its own mapping from document to original file.
@@ -452,7 +452,7 @@ Reranker model (vectorSearchMode=rerank), for phase 2:
 - Size (VERIFIED with the Hugging Face API): onnx/model_quantized.onnx 23.1 MB, tokenizer.json 0.7 MB, vocab.txt 0.2 MB, configs under 5 KB; about 24 MB in total. INFERRED: transformers.js 2.x loads the quantized file by default. The full-precision onnx/model.onnx is 91 MB.
 - Cache: STORAGE_DIR/models/Xenova/ms-marco-MiniLM-L-6-v2 (:24-30). Downloaded on the first rerank call.
 - It is an English MS MARCO model (INFERRED from the model card name); its value on Chinese text must be measured in phase 2.
-- Owner decision: reranking stays a phase 2 candidate and the model is not shipped yet. The phase 2 runs on the Mac download it once; if reranking improves the scores, Session B ships these files, otherwise reranking is dropped.
+- Owner decision: reranking stays a phase 2 candidate and the model is not shipped yet. The phase 2 runs on the Mac download it once; if reranking improves the scores, the app ships these files, otherwise reranking is dropped.
 
 ## Internet calls by default
 
@@ -479,20 +479,20 @@ Ordered by impact on packaging.
 | --- | --- | --- | --- | --- |
 | 1 | Upstream writes into its own code directories in production: SQLite DB in server/storage, server/.env by dumpENV, collector/hotdir and collector/storage/tmp; uploads use STORAGE_DIR/../../collector/hotdir | VERIFIED (Q2, Collector) | Inside a signed, read-only app bundle uploads and DB fail, or writing breaks the code signature (INFERRED) | Patches: DATABASE_URL in schema.prisma (1 line, VERIFIED); hotdir and collector tmp path from an env var (server files/index.js:22, multer.js:16 and :36; collector constants.js:1 and files/index.js:159 and :176); dumpENV path from an env var (updateENV.js:1717). Pass all config through the spawn environment |
 | 2 | Any web page can call the local API: CORS reflects every origin and /api/system is open without AUTH_TOKEN | VERIFIED (Q4b) | Documents and API keys readable by a malicious site; breaks the privacy promise | Patch CORS to the shell's origin, in the same patch as the bind host; random ports help but are not a fix |
-| 3 | Server and collector bind all interfaces | VERIFIED (Q4) | LAN exposure; Windows firewall prompt later | Bind-host patch (Session C) |
+| 3 | Server and collector bind all interfaces | VERIFIED (Q4) | LAN exposure; Windows firewall prompt later | Bind-host patch (patch 001) |
 | 4 | Native modules and Prisma engines are per platform and some download at install time (sharp libvips, canvas prebuilds, ripgrep from GitHub; Prisma engines from binaries.prisma.sh) | VERIFIED (Q1) | A Linux build cannot be packaged for the Mac; install-time downloads can fail on CI | Install on macOS arm64 (CI macos-15, formerly macos-14, or LOCAL); ship server and collector outside asar; prune non-darwin binaries (onnxruntime other platforms, about 70 MB) |
-| 5 | OCR language data downloaded on first use, and a failed download kills the collector | VERIFIED (Q14) | Scanned files fail offline, and every later upload fails until restart | Pre-seed eng and chi_sim traineddata from the npm packages into STORAGE_DIR/models/tesseract at first run; TARGET_OCR_LANG=eng,chi_sim; process manager restarts the collector on exit (already in Session C scope) |
+| 5 | OCR language data downloaded on first use, and a failed download kills the collector | VERIFIED (Q14) | Scanned files fail offline, and every later upload fails until restart | Pre-seed eng and chi_sim traineddata from the npm packages into STORAGE_DIR/models/tesseract at first run; TARGET_OCR_LANG=eng,chi_sim; process manager restarts the collector on exit (already planned) |
 | 6 | Two outbound requests at every boot with no switch | VERIFIED (Internet calls) | Breaks no request leaves the machine | Small patch to skip both when an env flag is set, or pre-seeded caches refreshed by the shell |
 | 7 | Embedding input silently truncated at 2048 tokens by Ollama | VERIFIED (Q10) | Long Chinese sections partly unindexed without any error | Chunk maximum at or below about 2800 characters, or a 1-line patch adding num_batch |
 | 8 | Bundle size: server 1.07 GB and collector 0.6 GB production node_modules on Linux | VERIFIED (Q3) | Large DMG | Prune other-platform binaries; drop mdpdf, canvas and puppeteer-core only if their code paths are hidden (INFERRED, needs care) |
 | 9 | LanceDB table schema fixed by the first document | VERIFIED (Q13) | Section fields silently dropped if a collector upload lands first | One workspace written only through the section JSON route with fixed keys and types |
-| 10 | Thinking output from qwen3 arrives inside textResponse; the /v1 chat routes cannot turn thinking off | VERIFIED (Q9), READ for the routes | Users see reasoning text; slower answers | Search page strips think blocks (Session D); Session C patch 7 passes the thinking switch through /v1; presets set DEFAULT_REASONING_EFFORT=off (Session E) |
+| 10 | Thinking output from qwen3 arrives inside textResponse; the /v1 chat routes cannot turn thinking off | VERIFIED (Q9), READ for the routes | Users see reasoning text; slower answers | Search page strips think blocks; patch 007 passes the thinking switch through /v1; presets set DEFAULT_REASONING_EFFORT=off |
 | 11 | Upstream UI redirects to onboarding whenever /api/onboarding fails | READ (Q5) | Onboarding pages and survey call during slow starts | Load the UI only after /api/ping; hide onboarding routes in the 1.9 patch |
-| 12 | Native reranker downloads from Hugging Face | READ (Workspace settings) | Reranking on in phase 2 calls the internet | Phase 2 on the Mac downloads it once; Session B ships it only if it improves the scores |
+| 12 | Native reranker downloads from Hugging Face | READ (Workspace settings) | Reranking on in phase 2 calls the internet | Phase 2 on the Mac downloads it once; the app ships it only if it improves the scores |
 
 ## Commands verified in this environment
 
-Environment: Ubuntu 24.04 x86_64, 4 vCPU, Node v22.22.0, yarn 1.22.22, Ollama 0.40.13 with qwen3:0.6b and all-minilm; bge-m3 pulled during the session. Outbound HTTPS through the session proxy.
+Environment: Ubuntu 24.04 x86_64, 4 vCPU, Node v22.22.0, yarn 1.22.22, Ollama 0.40.13 with qwen3:0.6b and all-minilm; bge-m3 pulled during the analysis. Outbound HTTPS through the environment proxy.
 
 Node version outcome: install, prisma generate, frontend build, migrate deploy, server and collector all worked on Node 22.22.0. No engine errors for Node; the only engine warnings name bare, pnpm (third-party package metadata). The Node 20 fallback was not needed and was not run. Server and collector also ran on Electron 45.1.0 (Node 24.22.1).
 
@@ -585,7 +585,7 @@ Node version outcome: install, prisma generate, frontend build, migrate deploy, 
 To run on the Mac (LOCAL):
 
 - Items 1 to 4 on macOS arm64 with the same commands, and record whether sharp, canvas and ripgrep downloads succeed.
-- Item 6 with the Electron version Session B pins, against the darwin-arm64 install.
+- Item 6 with the pinned Electron version, against the darwin-arm64 install.
 - `ls` of the macOS Ollama release archive and its license files (Q12).
 - OCR timing of one real scanned page with eng,chi_sim (Q14).
 - Production node_modules size on darwin-arm64 (Q3).

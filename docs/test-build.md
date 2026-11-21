@@ -114,7 +114,7 @@ One per question, written when it ends.
 | switches.namedFiles | named-file detection: `fired` true when the question names two or more files (crossDocQuota); `files`, the files detected, in the order the question names them |
 | switches.perFileQuota | `fired` true when sections were taken from inside each named file; `sections`, how many |
 | switches.judgeRerank | `fired` true when the chat model judged each named file's candidates; `files`, how many files; `ms`, the time of all judge calls |
-| outcome | answer, refusal (the not-found answer), error, or cancelled (a newer question or the page cancelled it before it ended; the brief named three outcomes, this fourth keeps a cut-off question from being lost) |
+| outcome | answer, refusal (the not-found answer), error, or cancelled (a newer question or the page cancelled it before it ended; the original design named three outcomes, this fourth keeps a cut-off question from being lost) |
 | error | the message the page showed, for error only |
 | answer | the answer text as shown (after unsupported hedges are dropped), or the refusal text; null for error and cancelled |
 | cited | the cited sources in citation order: `file`, `display` (the display name the source card showed first, null when it showed the file name), `section` (heading path joined with " > "), `page` (first page, null without pages) |
